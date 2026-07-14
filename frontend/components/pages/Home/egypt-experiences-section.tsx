@@ -8,6 +8,7 @@ import {
   Star,
 } from "lucide-react";
 
+import { RevealOnView } from "@/components/pages/Home/reveal-on-view";
 import { Button, ButtonArrow } from "@/components/ui/button";
 
 const egyptCards = [
@@ -54,7 +55,7 @@ function ExperienceCard({ card }: ExperienceCardProps) {
   return (
     <article
       className={`group relative overflow-hidden rounded-[8px] ${
-        card.featured ? "min-h-[425px]" : "min-h-[220px]"
+        card.featured ? "min-h-[452px]" : "min-h-[220px]"
       }`}
     >
       <Image
@@ -109,10 +110,19 @@ export function EgyptExperiencesSection() {
           </div>
 
           <div className="mt-5 grid gap-3 lg:grid-cols-[356px_480px]">
-            <ExperienceCard card={egyptCards[0]} />
+            <RevealOnView motion="scale" replay>
+              <ExperienceCard card={egyptCards[0]} />
+            </RevealOnView>
             <div className="grid gap-3 sm:grid-cols-2">
-              {egyptCards.slice(1).map((card) => (
-                <ExperienceCard key={card.title} card={card} />
+              {egyptCards.slice(1).map((card, index) => (
+                <RevealOnView
+                  key={card.title}
+                  delay={80 + index * 90}
+                  motion="scale"
+                  replay
+                >
+                  <ExperienceCard card={card} />
+                </RevealOnView>
               ))}
             </div>
           </div>

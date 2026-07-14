@@ -59,14 +59,17 @@ export function FaqSection() {
       </div>
 
       <div className="mx-auto w-full max-w-[1200px] px-5 pt-9 sm:px-8">
-        <Accordion className="grid gap-x-6 gap-y-5 md:grid-cols-2">
+        <Accordion
+          multiple={false}
+          className="grid items-start gap-x-6 gap-y-5 md:grid-cols-2"
+        >
           {faqItems.map((item) => (
             <AccordionItem
               key={item.question}
               value={item.question}
               className="rounded-[10px] border border-border/70 bg-white shadow-[0_3px_8px_rgba(50,50,50,0.12)]"
             >
-              <AccordionTrigger className="min-h-[46px] items-center gap-4 px-5 py-3 font-sans text-description italic no-underline hover:no-underline [&_[data-slot=accordion-trigger-icon]]:hidden">
+              <AccordionTrigger className="min-h-[46px] items-center gap-4 px-5 py-3 font-sans text-description italic no-underline hover:no-underline [&_[data-slot=accordion-trigger-icon]]:hidden cursor-pointer">
                 <span className="font-sans text-description font-normal italic">
                   {item.question}
                 </span>

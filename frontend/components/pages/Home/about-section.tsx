@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { Pause, Play, Volume2, VolumeX, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
 
@@ -10,19 +10,38 @@ const aboutVideoSrc = "/home assets/About_banner.mp4";
 
 export function AboutSection() {
   const [isVideoOpen, setIsVideoOpen] = useState(false);
+  const [isVideoVisible, setIsVideoVisible] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
   const modalVideoRef = useRef<HTMLVideoElement>(null);
+  const closeTimeoutRef = useRef(0);
+
+  const closeVideo = useCallback(() => {
+    setIsVideoVisible(false);
+    window.clearTimeout(closeTimeoutRef.current);
+    closeTimeoutRef.current = window.setTimeout(() => {
+      setIsVideoOpen(false);
+    }, 320);
+  }, []);
+
+  useEffect(() => {
+    return () => window.clearTimeout(closeTimeoutRef.current);
+  }, []);
 
   useEffect(() => {
     if (!isVideoOpen) {
       return;
     }
 
+    const frameId = window.requestAnimationFrame(() => {
+      setIsVideoVisible(true);
+    });
+
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
     return () => {
+      window.cancelAnimationFrame(frameId);
       document.body.style.overflow = previousOverflow;
     };
   }, [isVideoOpen]);
@@ -34,14 +53,14 @@ export function AboutSection() {
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setIsVideoOpen(false);
+        closeVideo();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
 
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isVideoOpen]);
+  }, [closeVideo, isVideoOpen]);
 
   const toggleSound = () => {
     setIsMuted((current) => !current);
@@ -66,8 +85,10 @@ export function AboutSection() {
   };
 
   const openVideo = () => {
+    window.clearTimeout(closeTimeoutRef.current);
     setIsMuted(true);
     setIsPlaying(true);
+    setIsVideoVisible(false);
     setIsVideoOpen(true);
   };
 
@@ -88,7 +109,7 @@ export function AboutSection() {
           type="button"
           aria-label="Play Ancient Trails video"
           onClick={openVideo}
-          className="group absolute left-1/2 top-[74px] z-10 grid size-[116px] -translate-x-1/2 place-items-center rounded-full border-0 bg-transparent p-0 text-white"
+          className="group absolute left-1/2 top-[74px] z-10 grid size-[116px] -translate-x-1/2 place-items-center rounded-full border-0 bg-transparent p-0 text-white cursor-pointer"
         >
           <svg
             aria-hidden="true"
@@ -151,18 +172,26 @@ export function AboutSection() {
           role="dialog"
           aria-modal="true"
           aria-label="Ancient Trails video"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-secondary/80 px-5 py-8 backdrop-blur-sm"
+          className={`fixed inset-0 z-50 flex items-center justify-center bg-secondary/80 px-5 py-8 backdrop-blur-sm transition-opacity duration-300 ease-out ${
+            isVideoVisible ? "opacity-100" : "opacity-0"
+          }`}
         >
           <button
             type="button"
             aria-label="Close video"
-            onClick={() => setIsVideoOpen(false)}
-            className="absolute right-6 top-6 grid size-11 place-items-center rounded-full border border-white/40 bg-white text-secondary transition-colors hover:bg-primary hover:text-white"
+            onClick={closeVideo}
+            className="absolute right-6 top-6 grid size-11 place-items-center rounded-full border border-white/40 bg-white text-secondary transition-colors hover:bg-primary hover:text-white cursor-pointer"
           >
             <X className="size-6" strokeWidth={2.2} />
           </button>
 
-          <div className="relative w-full max-w-[1040px] overflow-hidden rounded-[12px] bg-secondary shadow-[0_24px_90px_rgba(0,0,0,0.35)]">
+          <div
+            className={`relative w-full max-w-[1040px] origin-center overflow-hidden rounded-[12px] bg-secondary shadow-[0_24px_90px_rgba(0,0,0,0.35)] transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+              isVideoVisible
+                ? "scale-100 opacity-100 blur-0"
+                : "scale-[0.86] opacity-0 blur-[2px]"
+            }`}
+          >
             <video
               ref={modalVideoRef}
               className="aspect-video w-full bg-secondary object-cover"
@@ -178,7 +207,7 @@ export function AboutSection() {
                 type="button"
                 aria-label={isPlaying ? "Pause video" : "Play video"}
                 onClick={togglePlayback}
-                className="grid size-11 place-items-center rounded-full border border-white/40 bg-white/95 text-secondary transition-colors hover:bg-primary hover:text-white"
+                className="grid size-11 place-items-center rounded-full border border-white/40 bg-white/95 text-secondary transition-colors hover:bg-primary hover:text-white cursor-pointer"
               >
                 {isPlaying ? (
                   <Pause className="size-5 fill-current" strokeWidth={0} />
@@ -190,7 +219,7 @@ export function AboutSection() {
                 type="button"
                 aria-label={isMuted ? "Turn sound on" : "Turn sound off"}
                 onClick={toggleSound}
-                className="flex h-11 items-center gap-2 rounded-full border border-white/40 bg-white/95 px-5 text-button text-secondary transition-colors hover:bg-primary hover:text-white"
+                className="flex h-11 items-center gap-2 rounded-full border border-white/40 bg-white/95 px-5 text-button text-secondary transition-colors hover:bg-primary hover:text-white cursor-pointer"
               >
                 {isMuted ? (
                   <VolumeX className="size-5" strokeWidth={2} />

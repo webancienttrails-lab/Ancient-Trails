@@ -1,5 +1,6 @@
 import Image from "next/image";
 
+import { RevealOnView } from "@/components/pages/Home/reveal-on-view";
 import { Button, ButtonArrow } from "@/components/ui/button";
 
 const customisedTours = [
@@ -84,7 +85,9 @@ export function CustomisedToursSection() {
           </div>
 
           <div>
-            <CustomisedTourCard tour={kashmirTour} />
+            <RevealOnView replay>
+              <CustomisedTourCard tour={kashmirTour} />
+            </RevealOnView>
 
             <div className="mt-7">
               <span className="mb-4 block h-px w-[72px] bg-primary" />
@@ -107,11 +110,15 @@ export function CustomisedToursSection() {
               </p>
             </div>
 
-            <CustomisedTourCard tour={rajasthanTour} />
+            <RevealOnView delay={160} replay>
+              <CustomisedTourCard tour={rajasthanTour} />
+            </RevealOnView>
           </div>
 
           <div className="lg:pt-[21px]">
-            <CustomisedTourCard tour={shimlaTour} />
+            <RevealOnView delay={280} replay>
+              <CustomisedTourCard tour={shimlaTour} />
+            </RevealOnView>
 
             <div className="mt-8">
               <span className="mb-4 block h-px w-[76px] bg-primary" />

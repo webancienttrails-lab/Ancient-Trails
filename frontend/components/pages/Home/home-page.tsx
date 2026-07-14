@@ -89,7 +89,7 @@ function TourCard({ tour, className, sizes }: TourCardProps) {
 export function HomePage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <section className="relative h-[80vh] overflow-hidden">
+      <section className="relative h-[80vh] overflow-visible">
         <Image
           src="/home assets/Heritage Banner.webp"
           alt="Amber fort over a heritage landscape"
@@ -100,17 +100,17 @@ export function HomePage() {
         />
 
       
-        <div className="relative z-10 mx-auto flex h-full w-full max-w-[1320px] flex-col px-5 py-9 sm:px-8 lg:px-12">
+        <div className="relative z-10 mx-auto flex h-full w-full max-w-[1300px] flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-8 lg:px-12">
           <Header />
 
-          <div className="flex flex-1 items-center px-10 py-16 sm:py-20">
+          <div className="flex min-h-0 flex-1 items-center px-0 py-[clamp(0.5rem,3vh,4rem)] sm:px-6 lg:px-10">
             <div className="max-w-[430px] text-accent">
-              <p className="mb-3 text-eyebrow font-medium uppercase tracking-normal text-primary">
+              <p className="mb-[clamp(0.5rem,1.5vh,0.75rem)] text-eyebrow font-medium uppercase tracking-normal text-primary">
                 Learn. Explore. Remember.
               </p>
 
               <div className="flex items-end">
-                <h1 className="font-heading text-title font-bold tracking-normal text-secondary">
+                <h1 className="font-heading text-[40px] font-bold leading-none tracking-normal text-secondary sm:text-title [@media(max-height:600px)]:text-[38px]">
                   <span className="block">Travel Deeper</span>
                   <span className="flex items-center gap-3">
                     Into Places
@@ -119,7 +119,7 @@ export function HomePage() {
                 </h1>
               </div>
 
-              <p className="mt-7 max-w-[380px] text-description text-accent">
+              <p className="mt-[clamp(0.75rem,3vh,1.75rem)] max-w-[380px] text-description text-accent">
                 Ancient-Trails curates heritage-based travel experiences across
                 India and the world with an expert blend of history, leisure and
                 culture.
@@ -144,21 +144,23 @@ export function HomePage() {
                 </h2>
               </div>
 
-              <TourCard
-                tour={upcomingTours.khajuraho}
-                className="aspect-[1.88/1]"
-                sizes="(min-width: 1024px) 410px, 100vw"
-              />
+              <RevealOnView>
+                <TourCard
+                  tour={upcomingTours.khajuraho}
+                  className="aspect-[1.88/1]"
+                  sizes="(min-width: 1024px) 410px, 100vw"
+                />
+              </RevealOnView>
 
               <div className="grid gap-5 sm:grid-cols-2">
-                <RevealOnView delay={80}>
+                <RevealOnView delay={220} replay>
                   <TourCard
                     tour={upcomingTours.haridwar}
                     className="aspect-[1/1.04]"
                     sizes="(min-width: 1024px) 190px, (min-width: 640px) 50vw, 100vw"
                   />
                 </RevealOnView>
-                <RevealOnView delay={180}>
+                <RevealOnView delay={340} replay>
                   <TourCard
                     tour={upcomingTours.vietnam}
                     className="aspect-[1/1.04]"
@@ -170,19 +172,23 @@ export function HomePage() {
 
             <div className="space-y-8 lg:pt-6">
               <div className="grid gap-5 lg:grid-cols-[0.85fr_1fr] lg:items-stretch">
-                <TourCard
-                  tour={upcomingTours.indonesia}
-                  className="h-[410px] lg:h-auto"
-                  sizes="(min-width: 1024px) 330px, 100vw"
-                />
+                <RevealOnView delay={80} className="h-[410px] lg:h-full">
+                  <TourCard
+                    tour={upcomingTours.indonesia}
+                    className="h-full"
+                    sizes="(min-width: 1024px) 330px, 100vw"
+                  />
+                </RevealOnView>
 
                 <div className="grid gap-5">
-                  <TourCard
-                    tour={upcomingTours.combodia}
-                    className="aspect-[1.4/1]"
-                    sizes="(min-width: 1024px) 390px, 100vw"
-                  />
-                  <RevealOnView delay={260}>
+                  <RevealOnView delay={120}>
+                    <TourCard
+                      tour={upcomingTours.combodia}
+                      className="aspect-[1.4/1]"
+                      sizes="(min-width: 1024px) 390px, 100vw"
+                    />
+                  </RevealOnView>
+                  <RevealOnView delay={460} replay>
                     <TourCard
                       tour={upcomingTours.egypt}
                       className="aspect-[1.4/1]"

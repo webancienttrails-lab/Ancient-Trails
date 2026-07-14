@@ -210,7 +210,7 @@ export function PlanTripLauncher() {
         }`}
       />
 
-      <div ref={launcherRef} className="relative z-30 mt-16 inline-flex">
+      <div ref={launcherRef} className="relative z-30 mt-[clamp(1.5rem,7vh,4rem)] inline-flex">
         <Button
           type="button"
           variant="outline"
