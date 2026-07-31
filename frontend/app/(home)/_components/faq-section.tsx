@@ -8,6 +8,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { TextReveal } from "./reveal-on-view";
 
 const faqItems = [
   {
@@ -46,19 +47,23 @@ export function FaqSection() {
   return (
     <section className="bg-background pb-16">
       <div className="bg-[#fbf0e8]">
-        <div className="mx-auto grid w-full max-w-[1200px] place-content-center gap-10 px-5 py-8 sm:px-8 lg:grid-cols-[330px_580px] lg:items-start lg:gap-[68px]">
-          <h2 className="max-w-[700px] font-heading text-[36px] font-bold leading-[0.98] text-secondary">
-            Frequently Asked Questions
-          </h2>
-          <p className="max-w-[600px] text-description italic text-secondary">
-            Ancient Trails offers heritage tours across India and the world,
-            including Indian heritage trails, international tours, specialized
-            tours, customized tours, and corporate/MICE tours.
-          </p>
+        <div className="mx-auto grid w-full max-w-[1300px] content-center gap-6 px-5 py-8 sm:px-0 lg:grid-cols-[330px_580px] lg:items-start lg:gap-[68px]">
+          <TextReveal>
+            <h2 className="max-w-[700px] font-heading text-[32px] font-bold leading-[0.98] text-secondary sm:text-[36px]">
+              Frequently Asked Questions
+            </h2>
+          </TextReveal>
+          <TextReveal delay={160}>
+            <p className="max-w-[600px] text-description italic text-secondary">
+              Ancient Trails offers heritage tours across India and the world,
+              including Indian heritage trails, international tours, specialized
+              tours, customized tours, and corporate/MICE tours.
+            </p>
+          </TextReveal>
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-[1200px] px-5 pt-9 sm:px-8">
+      <div className="mx-auto w-full max-w-[1300px] px-5 pt-9 sm:px-0">
         <Accordion
           multiple={false}
           className="grid items-start gap-x-6 gap-y-5 md:grid-cols-2"
@@ -69,8 +74,8 @@ export function FaqSection() {
               value={item.question}
               className="rounded-[10px] border border-border/70 bg-white shadow-[0_3px_8px_rgba(50,50,50,0.12)]"
             >
-              <AccordionTrigger className="min-h-[46px] items-center gap-4 px-5 py-3 font-sans text-description italic no-underline hover:no-underline [&_[data-slot=accordion-trigger-icon]]:hidden cursor-pointer">
-                <span className="font-sans text-description font-normal italic">
+              <AccordionTrigger className="min-h-[46px] items-center gap-3 px-4 py-3 font-sans text-[15px] italic no-underline hover:no-underline sm:gap-4 sm:px-5 sm:text-description [&_[data-slot=accordion-trigger-icon]]:hidden cursor-pointer">
+                <span className="font-sans text-[15px] font-normal italic sm:text-description">
                   {item.question}
                 </span>
                 <span className="ml-auto grid size-5 shrink-0 place-items-center text-description">

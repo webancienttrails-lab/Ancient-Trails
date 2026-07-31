@@ -5,6 +5,7 @@ import { Pause, Play, Volume2, VolumeX, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
+import { TextReveal } from "./reveal-on-view";
 
 const aboutVideoSrc = "/home assets/About_banner.mp4";
 
@@ -93,8 +94,8 @@ export function AboutSection() {
   };
 
   return (
-    <section className="relative bg-background pb-20 pt-4">
-      <div className="relative h-[380px] overflow-hidden">
+    <section className="relative bg-background pb-16 pt-4 lg:pb-20">
+      <div className="relative h-[320px] overflow-hidden sm:h-[380px]">
         <video
           className="h-full w-full object-cover"
           src={aboutVideoSrc}
@@ -128,13 +129,13 @@ export function AboutSection() {
               </textPath>
             </text>
           </svg>
-          <span className="grid size-[58px] place-items-center rounded-full bg-white text-secondary shadow-[0_12px_30px_rgba(0,0,0,0.25)] transition-transform duration-300 group-hover:scale-105">
+          <span className="grid size-[58px] place-items-center rounded-full bg-white text-secondary shadow-[0_12px_30px_rgba(0,0,0,0.25)] transition-transform duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-105">
             <Play className="ml-1 size-7 fill-current" strokeWidth={0} />
           </span>
         </button>
       </div>
 
-      <div className="relative z-10 mx-auto -mt-[100px] w-full max-w-[1300px] px-5 sm:px-8">
+      <div className="relative z-10 mx-auto -mt-[100px] w-full max-w-[1300px] px-5 sm:px-0">
         <div className="relative overflow-hidden rounded-[12px] border border-primary/15 bg-white p-4 ">
           <div className="relative min-h-[200px] overflow-hidden rounded-[8px]">
             <Image
@@ -145,19 +146,25 @@ export function AboutSection() {
               className="object-cover"
             />
             <div className="relative z-10 flex min-h-[230px] max-w-[900px] flex-col justify-center px-3 py-8 sm:px-4">
-              <p className="text-description font-medium uppercase text-primary">
-                About Ancient Trails
-              </p>
-              <h2 className="mt-2 font-heading text-title font-bold text-secondary">
-                Learning with Leisure
-              </h2>
-              <p className="mt-6 max-w-[430px] text-description text-secondary">
-                With knowledgeable mentors, tour experts and carefully planned
-                itineraries, we turn rich heritage into an experience you can
-                cherish and learn from.
-              </p>
+              <TextReveal>
+                <p className="text-description font-medium uppercase text-primary">
+                  About Ancient Trails
+                </p>
+              </TextReveal>
+              <TextReveal delay={120}>
+                <h2 className="mt-2 font-heading text-[34px] font-bold leading-none text-secondary sm:text-[40px] lg:text-title">
+                  Learning with Leisure
+                </h2>
+              </TextReveal>
+              <TextReveal delay={240}>
+                <p className="mt-6 max-w-[430px] text-description text-secondary">
+                  With knowledgeable mentors, tour experts and carefully planned
+                  itineraries, we turn rich heritage into an experience you can
+                  cherish and learn from.
+                </p>
+              </TextReveal>
               <div className="mt-7">
-                <Button className="h-11 min-w-[190px] justify-between gap-6 px-6 font-normal">
+                <Button className="h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:min-w-[190px]">
                   Know About Us
                   <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
                 </Button>
@@ -172,7 +179,7 @@ export function AboutSection() {
           role="dialog"
           aria-modal="true"
           aria-label="Ancient Trails video"
-          className={`fixed inset-0 z-50 flex items-center justify-center bg-secondary/80 px-5 py-8 backdrop-blur-sm transition-opacity duration-300 ease-out ${
+          className={`fixed inset-0 z-50 flex items-center justify-center bg-secondary/80 px-5 py-8 backdrop-blur-sm transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
             isVideoVisible ? "opacity-100" : "opacity-0"
           }`}
         >
@@ -180,16 +187,16 @@ export function AboutSection() {
             type="button"
             aria-label="Close video"
             onClick={closeVideo}
-            className="absolute right-6 top-6 grid size-11 place-items-center rounded-full border border-white/40 bg-white text-secondary transition-colors hover:bg-primary hover:text-white cursor-pointer"
+            className="absolute right-6 top-6 grid size-11 place-items-center rounded-full border border-white/40 bg-white text-secondary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-white cursor-pointer"
           >
             <X className="size-6" strokeWidth={2.2} />
           </button>
 
           <div
-            className={`relative w-full max-w-[1040px] origin-center overflow-hidden rounded-[12px] bg-secondary shadow-[0_24px_90px_rgba(0,0,0,0.35)] transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            className={`relative w-full max-w-[1040px] origin-center overflow-hidden rounded-[12px] bg-secondary shadow-[0_24px_90px_rgba(0,0,0,0.35)] transition-[opacity,transform,filter] duration-[760ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
               isVideoVisible
                 ? "scale-100 opacity-100 blur-0"
-                : "scale-[0.86] opacity-0 blur-[2px]"
+                : "scale-[0.94] opacity-0 blur-[1px]"
             }`}
           >
             <video
@@ -207,7 +214,7 @@ export function AboutSection() {
                 type="button"
                 aria-label={isPlaying ? "Pause video" : "Play video"}
                 onClick={togglePlayback}
-                className="grid size-11 place-items-center rounded-full border border-white/40 bg-white/95 text-secondary transition-colors hover:bg-primary hover:text-white cursor-pointer"
+                className="grid size-11 place-items-center rounded-full border border-white/40 bg-white/95 text-secondary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-white cursor-pointer"
               >
                 {isPlaying ? (
                   <Pause className="size-5 fill-current" strokeWidth={0} />
@@ -219,7 +226,7 @@ export function AboutSection() {
                 type="button"
                 aria-label={isMuted ? "Turn sound on" : "Turn sound off"}
                 onClick={toggleSound}
-                className="flex h-11 items-center gap-2 rounded-full border border-white/40 bg-white/95 px-5 text-button text-secondary transition-colors hover:bg-primary hover:text-white cursor-pointer"
+                className="flex h-11 items-center gap-2 rounded-full border border-white/40 bg-white/95 px-5 text-button text-secondary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-white cursor-pointer"
               >
                 {isMuted ? (
                   <VolumeX className="size-5" strokeWidth={2} />

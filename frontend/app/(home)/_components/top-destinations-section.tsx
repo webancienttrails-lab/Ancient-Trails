@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
+import { TextReveal } from "./reveal-on-view";
 
 const popularDestinations = [
   {
@@ -63,42 +64,48 @@ const jaipurHighlights = [
 export function TopDestinationsSection() {
   return (
     <section className="bg-background py-10">
-      <div className="mx-auto w-full max-w-[1300px] px-5 sm:px-8">
-        <div className="grid items-end gap-8 lg:grid-cols-[330px_1px_1fr_auto]">
+      <div className="mx-auto w-full max-w-[1300px] px-5 sm:px-0">
+        <div className="grid items-start gap-8 lg:grid-cols-[330px_1px_1fr_auto] lg:items-end">
           <div>
-            <div className="mb-3 flex items-center gap-3 text-primary">
-              <p className="text-description font-medium uppercase">
-                Explore India
-              </p>
-            </div>
-            <h2 className="font-heading text-title font-bold text-secondary">
-              <span className="block">Top Trending</span>
-              <span className="block text-primary">Destinations</span>
-            </h2>
-            <div className="relative mt-2 h-[22px] w-[154px]">
-              <Image
-                src="/home assets/destination/Destination_bottom.webp"
-                alt=""
-                fill
-                sizes="154px"
-                className="object-contain"
-              />
-            </div>
+            <TextReveal>
+              <div>
+                <div className="mb-3 flex items-center gap-3 text-primary">
+                  <p className="text-description font-medium uppercase">
+                    Explore India
+                  </p>
+                </div>
+                <h2 className="font-heading text-[34px] font-bold leading-none text-secondary sm:text-[40px] lg:text-title">
+                  <span className="block">Top Trending</span>
+                  <span className="block text-primary">Destinations</span>
+                </h2>
+                <div className="relative mt-2 h-[22px] w-[154px]">
+                  <Image
+                    src="/home assets/destination/Destination_bottom.webp"
+                    alt=""
+                    fill
+                    sizes="154px"
+                    className="object-contain"
+                  />
+                </div>
+              </div>
+            </TextReveal>
           </div>
 
           <div className="hidden h-[82px] w-px bg-secondary/40 lg:block" />
 
-          <p className="max-w-[260px] text-description italic text-secondary">
-            Pick a place to visit in the cradle of diverse culture.
-          </p>
+          <TextReveal delay={160}>
+            <p className="max-w-none text-description italic text-secondary lg:max-w-[260px]">
+              Pick a place to visit in the cradle of diverse culture.
+            </p>
+          </TextReveal>
 
-          <Button className="h-11 min-w-[230px] justify-between gap-8 px-6 font-normal">
+          <Button className="h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:min-w-[230px]">
             View all destinations
             <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
           </Button>
         </div>
 
-        <div className="relative mt-6 min-h-[600px] overflow-visible">
+        <div className="relative mt-6 min-h-[360px] overflow-visible lg:min-h-[600px]">
           <div className="absolute left-0 top-4 z-10 hidden w-[250px] lg:block">
             <div>
               <div className="mb-5 flex items-center gap-3">
@@ -137,7 +144,7 @@ export function TopDestinationsSection() {
             </div>
           </div>
 
-          <div className="relative mx-auto h-[535px] w-full max-w-[900px] lg:-translate-x-5">
+          <div className="relative mx-auto h-[330px] w-full max-w-[900px] sm:h-[430px] lg:h-[535px] lg:-translate-x-5">
             <Image
               src="/home assets/Map.webp"
               alt="Top destinations map of India"

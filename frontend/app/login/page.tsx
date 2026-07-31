@@ -1,15 +1,13 @@
 import Image from "next/image";
 import type { Metadata } from "next";
 import {
-  ArrowRight,
   Bookmark,
   CalendarCheck,
-  Phone,
   Quote,
-  Send,
   ShieldCheck,
 } from "lucide-react";
 
+import { TravellerLoginCard } from "@/components/auth/traveller-login-card";
 import { Header } from "@/components/layout/header";
 
 export const metadata: Metadata = {
@@ -34,14 +32,6 @@ const journeyHighlights = [
   },
 ];
 
-function GoogleMark() {
-  return (
-    <span className="relative grid size-5 shrink-0 place-items-center rounded-full bg-white font-sans text-[15px] font-bold leading-none">
-      <span className="text-[#4285f4]">G</span>
-    </span>
-  );
-}
-
 export default function LoginPage() {
   return (
     <main className="h-[100dvh] overflow-hidden bg-[#f4eee6] text-secondary">
@@ -59,7 +49,7 @@ export default function LoginPage() {
         
 
 
-        <div className="absolute left-0 right-0 top-[clamp(0.75rem,3vh,2rem)] z-30 mx-auto w-full max-w-[1300px] px-5 sm:px-8 lg:px-12">
+        <div className="absolute inset-x-0 top-0 z-[2147483647] mx-auto w-full max-w-[1300px] px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0">
           <Header />
         </div>
 
@@ -112,81 +102,7 @@ export default function LoginPage() {
           </section>
 
           <section className="flex items-center justify-center lg:justify-end">
-            <div className="w-full max-w-[560px] rounded-[13px] border border-white/85 bg-white/96 px-[clamp(1.5rem,3.5vw,3rem)] py-[clamp(1.4rem,3.5vh,2.5rem)] shadow-[0_26px_70px_rgba(50,50,50,0.16)] backdrop-blur-md">
-              <div className="grid grid-cols-2 border-b border-border text-center font-sans text-[16px] font-bold">
-                <button
-                  type="button"
-                  className="border-b-2 border-primary pb-[clamp(0.65rem,1.6vh,1rem)] text-primary"
-                >
-                  Login
-                </button>
-                <button
-                  type="button"
-                  className="pb-[clamp(0.65rem,1.6vh,1rem)] text-secondary/62 transition-colors hover:text-primary"
-                >
-                  Sign Up
-                </button>
-              </div>
-
-              <div className="mt-[clamp(1.25rem,3vh,2.25rem)] text-center">
-                <h2 className="font-heading text-[clamp(1.55rem,3vh,1.9rem)] font-bold leading-none text-secondary">
-                  Welcome Back!
-                </h2>
-                <p className="mt-[clamp(0.55rem,1.5vh,1rem)] font-sans text-[14px] text-secondary/62">
-                  Login to continue your journey with us
-                </p>
-              </div>
-
-              <form className="mt-[clamp(1.25rem,3vh,2.25rem)] space-y-[clamp(1rem,2.5vh,1.75rem)]">
-                <label className="block">
-                  <span className="font-sans text-[13px] font-bold text-secondary">
-                    Phone Number
-                  </span>
-                  <span className="mt-3 flex h-[clamp(3rem,6vh,3.625rem)] items-center gap-4 rounded-[7px] border border-border bg-white px-5 text-secondary/48 shadow-[0_8px_18px_rgba(50,50,50,0.03)] transition-colors focus-within:border-primary">
-                    <Phone className="size-5" strokeWidth={1.8} />
-                    <input
-                      type="tel"
-                      inputMode="tel"
-                      placeholder="Enter your phone number"
-                      className="h-full min-w-0 flex-1 bg-transparent font-sans text-[14px] text-secondary outline-none placeholder:text-secondary/42"
-                    />
-                  </span>
-                </label>
-
-                <button
-                  type="submit"
-                  className="flex h-[clamp(3rem,5.8vh,3.5rem)] w-full items-center justify-center gap-3 rounded-[7px] bg-[#d84b00] font-sans text-[15px] font-bold text-white shadow-[0_16px_28px_rgba(216,75,0,0.22)] transition-colors hover:bg-primary"
-                >
-                  <Send className="size-4" strokeWidth={2.2} />
-                  Send OTP
-                </button>
-              </form>
-
-              <div className="my-[clamp(1rem,2.5vh,1.75rem)] grid grid-cols-[1fr_auto_1fr] items-center gap-4">
-                <span className="h-px bg-border" />
-                <span className="font-sans text-[13px] text-secondary/55">
-                  or continue with
-                </span>
-                <span className="h-px bg-border" />
-              </div>
-
-              <button
-                type="button"
-                className="flex h-[clamp(2.75rem,5vh,3rem)] w-full items-center justify-center gap-3 rounded-[7px] border border-border bg-white font-sans text-[14px] font-semibold text-secondary shadow-[0_8px_18px_rgba(50,50,50,0.03)] transition-colors hover:border-primary hover:text-primary"
-              >
-                <GoogleMark />
-                Continue with Google
-              </button>
-
-              <div className="mt-[clamp(1.4rem,3.5vh,2.75rem)] flex flex-wrap items-center justify-center gap-2 font-sans text-[14px] font-semibold text-secondary/72">
-                New here?
-                <a href="#" className="text-primary hover:text-accent">
-                  Sign up
-                </a>
-                <span>and start exploring!</span>
-                <ArrowRight className="size-4 text-primary" strokeWidth={2} />
-              </div>
-            </div>
+            <TravellerLoginCard />
           </section>
         </div>
       </section>

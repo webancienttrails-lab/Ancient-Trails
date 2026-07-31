@@ -2,15 +2,15 @@ import Image from "next/image";
 
 import { Header } from "@/components/layout/header";
 import { PlanTripLauncher } from "@/components/plan-trip-launcher";
-import { AboutSection } from "@/components/pages/Home/about-section";
-import { CustomisedToursSection } from "@/components/pages/Home/customised-tours-section";
-import { EgyptExperiencesSection } from "@/components/pages/Home/egypt-experiences-section";
-import { FaqSection } from "@/components/pages/Home/faq-section";
-import { RevealOnView } from "@/components/pages/Home/reveal-on-view";
-import { SpecialisedToursSection } from "@/components/pages/Home/specialised-tours-section";
-import { TopDestinationsSection } from "@/components/pages/Home/top-destinations-section";
-import { WhyChooseUsSection } from "@/components/pages/Home/why-choose-us-section";
 import { Button, ButtonArrow } from "@/components/ui/button";
+import { AboutSection } from "./about-section";
+import { CustomisedToursSection } from "./customised-tours-section";
+import { EgyptExperiencesSection } from "./egypt-experiences-section";
+import { FaqSection } from "./faq-section";
+import { RevealOnView, TextReveal } from "./reveal-on-view";
+import { SpecialisedToursSection } from "./specialised-tours-section";
+import { TopDestinationsSection } from "./top-destinations-section";
+import { WhyChooseUsSection } from "./why-choose-us-section";
 
 const upcomingTours = {
   khajuraho: {
@@ -89,7 +89,7 @@ function TourCard({ tour, className, sizes }: TourCardProps) {
 export function HomePage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <section className="relative h-[80vh] overflow-visible">
+      <section className="relative h-[100svh] min-h-[560px] overflow-visible lg:h-[80vh] lg:min-h-0">
         <Image
           src="/home assets/Heritage Banner.webp"
           alt="Amber fort over a heritage landscape"
@@ -100,30 +100,36 @@ export function HomePage() {
         />
 
       
-        <div className="relative z-10 mx-auto flex h-full w-full max-w-[1300px] flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-8 lg:px-12">
+        <div className="relative z-[2147483647] mx-auto flex h-full w-full max-w-[1300px] flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0">
           <Header />
 
           <div className="flex min-h-0 flex-1 items-center px-0 py-[clamp(0.5rem,3vh,4rem)] sm:px-6 lg:px-10">
             <div className="max-w-[430px] text-accent">
-              <p className="mb-[clamp(0.5rem,1.5vh,0.75rem)] text-eyebrow font-medium uppercase tracking-normal text-primary">
-                Learn. Explore. Remember.
-              </p>
+              <TextReveal trigger="load" delay={120}>
+                <p className="mb-[clamp(0.5rem,1.5vh,0.75rem)] text-eyebrow font-medium uppercase tracking-normal text-primary">
+                  Learn. Explore. Remember.
+                </p>
+              </TextReveal>
 
-              <div className="flex items-end">
-                <h1 className="font-heading text-[40px] font-bold leading-none tracking-normal text-secondary sm:text-title [@media(max-height:600px)]:text-[38px]">
-                  <span className="block">Travel Deeper</span>
-                  <span className="flex items-center gap-3">
-                    Into Places
-                    <span className="mt-5 hidden h-px w-[80px] shrink-0 bg-accent sm:block" />
-                  </span>
-                </h1>
-              </div>
+              <TextReveal trigger="load" delay={280}>
+                <div className="flex items-end">
+                  <h1 className="font-heading text-[36px] font-bold leading-none tracking-normal text-secondary sm:text-[44px] lg:text-title [@media(max-height:600px)]:text-[38px]">
+                    <span className="block">Travel Deeper</span>
+                    <span className="flex items-center gap-3">
+                      Into Places
+                      <span className="mt-5 hidden h-px w-[80px] shrink-0 bg-accent sm:block" />
+                    </span>
+                  </h1>
+                </div>
+              </TextReveal>
 
-              <p className="mt-[clamp(0.75rem,3vh,1.75rem)] max-w-[380px] text-description text-accent">
-                Ancient-Trails curates heritage-based travel experiences across
-                India and the world with an expert blend of history, leisure and
-                culture.
-              </p>
+              <TextReveal trigger="load" delay={460}>
+                <p className="mt-[clamp(0.75rem,3vh,1.75rem)] max-w-[380px] text-description text-accent">
+                  Ancient-Trails curates heritage-based travel experiences across
+                  India and the world with an expert blend of history, leisure and
+                  culture.
+                </p>
+              </TextReveal>
 
               <PlanTripLauncher />
             </div>
@@ -132,19 +138,21 @@ export function HomePage() {
       </section>
 
       <section className="bg-background py-10 sm:py-10">
-        <div className="mx-auto w-full max-w-[1300px] px-5 sm:px-8">
+        <div className="mx-auto w-full max-w-[1300px] px-5 sm:px-0">
           <div className="grid gap-7 lg:grid-cols-[1.38fr_1.85fr] lg:gap-10">
             <div className="space-y-5">
-              <div>
-                <p className="text-eyebrow font-medium uppercase text-primary">
-                  Explore Upcoming Tours
-                </p>
-                <h2 className="mt-2 font-heading text-title font-bold text-secondary">
-                  Trails Leaving Soon
-                </h2>
-              </div>
+              <TextReveal>
+                <div>
+                  <p className="text-eyebrow font-medium uppercase text-primary">
+                    Explore Upcoming Tours
+                  </p>
+                  <h2 className="mt-2 font-heading text-[34px] font-bold leading-none text-secondary sm:text-[40px] lg:text-title">
+                    Trails Leaving Soon
+                  </h2>
+                </div>
+              </TextReveal>
 
-              <RevealOnView>
+              <RevealOnView motion="scale" rootMargin="0px 0px 320px 0px">
                 <TourCard
                   tour={upcomingTours.khajuraho}
                   className="aspect-[1.88/1]"
@@ -172,7 +180,12 @@ export function HomePage() {
 
             <div className="space-y-8 lg:pt-6">
               <div className="grid gap-5 lg:grid-cols-[0.85fr_1fr] lg:items-stretch">
-                <RevealOnView delay={80} className="h-[410px] lg:h-full">
+                <RevealOnView
+                  delay={120}
+                  motion="scale"
+                  rootMargin="0px 0px 320px 0px"
+                  className="h-[320px] sm:h-[410px] lg:h-full"
+                >
                   <TourCard
                     tour={upcomingTours.indonesia}
                     className="h-full"
@@ -181,7 +194,11 @@ export function HomePage() {
                 </RevealOnView>
 
                 <div className="grid gap-5">
-                  <RevealOnView delay={120}>
+                  <RevealOnView
+                    delay={220}
+                    motion="scale"
+                    rootMargin="0px 0px 320px 0px"
+                  >
                     <TourCard
                       tour={upcomingTours.combodia}
                       className="aspect-[1.4/1]"
@@ -199,11 +216,13 @@ export function HomePage() {
               </div>
 
               <div className="grid gap-5 lg:grid-cols-[0.85fr_1fr] lg:items-center">
-                <p className="text-description text-accent">
-                  Find upcoming tours &amp; explore destinations beyond borders
-                </p>
+                <TextReveal delay={120}>
+                  <p className="text-description text-accent">
+                    Find upcoming tours &amp; explore destinations beyond borders
+                  </p>
+                </TextReveal>
                 <div className="flex justify-start lg:justify-end">
-                  <Button className="h-11 min-w-[230px] justify-between gap-8 px-6 font-normal">
+                  <Button className="h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:min-w-[230px]">
                     View Tour Calendar
                     <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
                   </Button>

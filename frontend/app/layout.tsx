@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Playfair_Display, Poppins } from "next/font/google";
+import { ToastProvider } from "@/components/ui/toast";
+import { SiteLoader } from "@/components/layout/site-loader";
 import "./globals.css";
 
 const playfairDisplay = Playfair_Display({
@@ -33,7 +35,12 @@ export default function RootLayout({
       lang="en"
       className={`${playfairDisplay.variable} ${poppins.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <ToastProvider>
+          <SiteLoader />
+          {children}
+        </ToastProvider>
+      </body>
     </html>
   );
 }
