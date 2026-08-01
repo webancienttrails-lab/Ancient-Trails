@@ -48,6 +48,8 @@ const allowedOrigins = Array.from(
       process.env.FRONTEND_URLS,
       process.env.ADMIN_URL,
       process.env.ADMIN_URLS,
+      "https://ancienttrailsmain.netlify.app",
+      "https://adminancienttrail.netlify.app"
     ).concat(localDevelopmentOrigins)
   )
 );
