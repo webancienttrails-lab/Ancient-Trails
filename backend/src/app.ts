@@ -47,7 +47,7 @@ const allowedOrigins = Array.from(
       process.env.FRONTEND_URL,
       process.env.FRONTEND_URLS,
       process.env.ADMIN_URL,
-      process.env.ADMIN_URLS
+      process.env.ADMIN_URLS,
     ).concat(localDevelopmentOrigins)
   )
 );
