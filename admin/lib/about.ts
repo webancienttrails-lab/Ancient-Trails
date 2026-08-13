@@ -6,30 +6,44 @@ import {
 } from "@/lib/api";
 import { getAdminSession } from "@/lib/admin-auth";
 
-export type AdminExpert = {
+export type AboutStatIcon =
+  | "BookOpen"
+  | "CalendarDays"
+  | "Globe2"
+  | "MapPin"
+  | "Users";
+
+export type AboutStat = {
   id: string;
-  expertId: string;
-  fullName: string;
+  label: string;
+  value: string;
+  icon: AboutStatIcon;
+  sortOrder: number;
+};
+
+export type AboutTeamMember = {
+  id: string;
+  name: string;
+  role: string;
+  bio: string;
   image: string;
-  fullBiography: string;
-  expertiseTags: string[];
-  qualifications: string[];
-  languages: string[];
+  sortOrder: number;
+};
+
+export type AboutPageContent = {
+  id: string;
+  stats: AboutStat[];
+  teamMembers: AboutTeamMember[];
   createdAt: string;
   updatedAt: string;
 };
 
-export type ExpertPayload = {
-  expertId: string;
-  fullName: string;
-  image: string;
-  fullBiography: string;
-  expertiseTags: string[];
-  qualifications: string[];
-  languages: string[];
+export type AboutPagePayload = {
+  stats: Array<Omit<AboutStat, "id">>;
+  teamMembers: Array<Omit<AboutTeamMember, "id">>;
 };
 
-export type ExpertImageUploadResponse = {
+export type AboutImageUploadResponse = {
   image: string;
 };
 
@@ -68,7 +82,7 @@ async function readUploadResponse<TData>(
   return body as ApiResponse<TData>;
 }
 
-export function getExpertMediaUrl(source: string): string {
+export function getAboutMediaUrl(source: string): string {
   const trimmedSource = source.trim();
 
   if (!trimmedSource) {
@@ -86,45 +100,27 @@ export function getExpertMediaUrl(source: string): string {
   return trimmedSource;
 }
 
-export async function listAdminExperts() {
-  return apiRequest<{ experts: AdminExpert[] }>("/api/admin/experts", {
+export async function getAdminAboutPage() {
+  return apiRequest<{ about: AboutPageContent }>("/api/admin/about", {
     headers: getAdminHeaders(),
   });
 }
 
-export async function createAdminExpert(payload: ExpertPayload) {
-  return apiRequest<{ expert: AdminExpert }>("/api/admin/experts", {
-    method: "POST",
-    headers: getAdminHeaders(),
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function updateAdminExpert(
-  id: string,
-  payload: ExpertPayload
-) {
-  return apiRequest<{ expert: AdminExpert }>(`/api/admin/experts/${id}`, {
-    method: "PATCH",
+export async function updateAdminAboutPage(payload: AboutPagePayload) {
+  return apiRequest<{ about: AboutPageContent }>("/api/admin/about", {
+    method: "PUT",
     headers: getAdminHeaders(),
     body: JSON.stringify(payload),
   });
 }
 
-export async function deleteAdminExpert(id: string) {
-  return apiRequest<{ expert: AdminExpert }>(`/api/admin/experts/${id}`, {
-    method: "DELETE",
-    headers: getAdminHeaders(),
-  });
-}
-
-export async function uploadExpertImage(image: File) {
+export async function uploadAboutImage(image: File) {
   const formData = new FormData();
 
   formData.append("image", image);
 
-  return readUploadResponse<ExpertImageUploadResponse>(
-    await fetch(`${apiBaseUrl}/api/admin/experts/upload`, {
+  return readUploadResponse<AboutImageUploadResponse>(
+    await fetch(`${apiBaseUrl}/api/admin/about/upload`, {
       method: "POST",
       headers: getAdminHeaders(),
       body: formData,

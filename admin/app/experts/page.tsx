@@ -7,6 +7,7 @@ import {
   Bell,
   ChevronDown,
   Eye,
+  ImageIcon,
   Languages,
   MoreHorizontal,
   Pencil,
@@ -44,8 +45,10 @@ import { useToast } from "@/components/ui/toast";
 import {
   createAdminExpert,
   deleteAdminExpert,
+  getExpertMediaUrl,
   listAdminExperts,
   updateAdminExpert,
+  uploadExpertImage,
   type AdminExpert,
   type ExpertPayload,
 } from "@/lib/experts";
@@ -74,6 +77,7 @@ type ExpertSheetMode = "add" | "view" | "edit";
 const emptyExpertForm: ExpertFormState = {
   expertId: "",
   fullName: "",
+  image: "",
   fullBiography: "",
   expertiseTags: "",
   qualifications: "",
@@ -99,6 +103,7 @@ function expertToForm(expert: AdminExpert): ExpertFormState {
   return {
     expertId: expert.expertId,
     fullName: expert.fullName,
+    image: expert.image,
     fullBiography: expert.fullBiography,
     expertiseTags: expert.expertiseTags.join("\n"),
     qualifications: expert.qualifications.join("\n"),
@@ -110,6 +115,7 @@ function createExpertPayload(expertForm: ExpertFormState): ExpertPayload {
   return {
     expertId: expertForm.expertId.trim(),
     fullName: expertForm.fullName.trim(),
+    image: expertForm.image.trim(),
     fullBiography: expertForm.fullBiography.trim(),
     expertiseTags: parseTextList(expertForm.expertiseTags),
     qualifications: parseTextList(expertForm.qualifications),
@@ -199,6 +205,7 @@ export default function ExpertsPage() {
     useState<ExpertSheetMode | null>(null);
   const [selectedExpert, setSelectedExpert] = useState<AdminExpert | null>(null);
   const [isSavingExpert, setIsSavingExpert] = useState(false);
+  const [isUploadingExpertImage, setIsUploadingExpertImage] = useState(false);
   const [isDeletingExpertId, setIsDeletingExpertId] = useState<string | null>(
     null
   );
@@ -242,6 +249,7 @@ export default function ExpertsPage() {
       [
         expert.expertId,
         expert.fullName,
+        expert.image,
         expert.fullBiography,
         ...expert.expertiseTags,
         ...expert.qualifications,
@@ -254,7 +262,7 @@ export default function ExpertsPage() {
   }, [experts, searchQuery]);
 
   const expertMetrics = useMemo(() => createExpertMetrics(experts), [experts]);
-  const isExpertFormBusy = isSavingExpert;
+  const isExpertFormBusy = isSavingExpert || isUploadingExpertImage;
   const isExpertSheetOpen = expertSheetMode !== null;
 
   function updateExpertForm<K extends keyof ExpertFormState>(
@@ -293,6 +301,27 @@ export default function ExpertsPage() {
     setExpertSheetMode(null);
     setSelectedExpert(null);
     setExpertForm(emptyExpertForm);
+  }
+
+  async function handleExpertImageUpload(files: FileList | null) {
+    const image = files?.[0];
+
+    if (!image) {
+      return;
+    }
+
+    setIsUploadingExpertImage(true);
+
+    try {
+      const response = await uploadExpertImage(image);
+
+      updateExpertForm("image", response.data.image);
+      toast.success("Expert image uploaded", response.message);
+    } catch (error) {
+      toast.error("Image not uploaded", getErrorMessage(error));
+    } finally {
+      setIsUploadingExpertImage(false);
+    }
   }
 
   async function handleDeleteExpert(expert: AdminExpert) {
@@ -422,7 +451,9 @@ export default function ExpertsPage() {
         isBusy={isExpertFormBusy}
         isOpen={isExpertSheetOpen}
         isSaving={isSavingExpert}
+        isUploadingImage={isUploadingExpertImage}
         onClose={closeExpertSheet}
+        onImageUpload={handleExpertImageUpload}
         onSubmit={handleSaveExpert}
         onUpdate={updateExpertForm}
       />
@@ -637,7 +668,7 @@ function ExpertTable({
                       className="px-2 py-3"
                     >
                       <div className="flex items-center gap-2.5">
-                        <ExpertAvatar name={expert.fullName} />
+                        <ExpertAvatar image={expert.image} name={expert.fullName} />
                         <div className="min-w-0">
                           <p className="truncate text-sm font-bold text-foreground">
                             {expert.fullName}
@@ -704,10 +735,25 @@ function ExpertTable({
   );
 }
 
-function ExpertAvatar({ name }: { name: string }) {
+function ExpertAvatar({ image, name }: { image?: string; name: string }) {
+  const resolvedImage = image ? getExpertMediaUrl(image) : "";
+
   return (
-    <span className="grid size-12 shrink-0 place-items-center rounded-sm bg-[#7a3b22] text-xs font-bold text-white">
-      {getInitials(name)}
+    <span
+      className={cn(
+        "grid size-12 shrink-0 place-items-center overflow-hidden rounded-sm bg-[#7a3b22] bg-cover bg-center text-xs font-bold text-white",
+        resolvedImage && "bg-muted text-transparent"
+      )}
+      style={
+        resolvedImage
+          ? {
+              backgroundImage: `url("${resolvedImage}")`,
+            }
+          : undefined
+      }
+      aria-label={`${name} expert image`}
+    >
+      {!resolvedImage ? getInitials(name) : null}
     </span>
   );
 }
@@ -803,7 +849,9 @@ function ExpertFormDialog({
   mode,
   isOpen,
   isSaving,
+  isUploadingImage,
   onClose,
+  onImageUpload,
   onSubmit,
   onUpdate,
 }: {
@@ -812,7 +860,9 @@ function ExpertFormDialog({
   mode: ExpertSheetMode | null;
   isOpen: boolean;
   isSaving: boolean;
+  isUploadingImage: boolean;
   onClose: () => void;
+  onImageUpload: (files: FileList | null) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onUpdate: <K extends keyof ExpertFormState>(
     field: K,
@@ -830,6 +880,8 @@ function ExpertFormDialog({
         : "Add the expert profile and credentials.";
   const submitButtonLabel = isSaving
     ? "Saving..."
+    : isUploadingImage
+      ? "Uploading image..."
     : mode === "edit"
       ? "Update Expert"
       : "Save Expert";
@@ -899,6 +951,49 @@ function ExpertFormDialog({
                 className={inputClassName}
                 placeholder="Dr. Meera Sharma"
               />
+            </FormField>
+
+            <FormField className="sm:col-span-2" label="Expert Image">
+              <div className="grid gap-3 sm:grid-cols-[132px_minmax(0,1fr)]">
+                <div
+                  role="img"
+                  aria-label={form.fullName || "Expert image preview"}
+                  className={cn(
+                    "grid aspect-square place-items-center overflow-hidden rounded-sm border border-border bg-white bg-cover bg-center text-foreground/35",
+                    !form.image.trim() && "bg-muted/45"
+                  )}
+                  style={
+                    form.image.trim()
+                      ? {
+                          backgroundImage: `url("${getExpertMediaUrl(form.image)}")`,
+                        }
+                      : undefined
+                  }
+                >
+                  {!form.image.trim() ? <ImageIcon className="size-8" /> : null}
+                </div>
+                <div className="grid gap-3">
+                  {!isReadOnly ? (
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={isBusy}
+                      onChange={(event) => {
+                        onImageUpload(event.target.files);
+                        event.currentTarget.value = "";
+                      }}
+                      className="block h-11 w-full rounded-sm border border-border bg-white px-3 py-2 text-sm file:mr-3 file:rounded-sm file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-white disabled:cursor-default disabled:bg-muted/35 disabled:text-foreground/60"
+                    />
+                  ) : null}
+                  <input
+                    readOnly={isReadOnly}
+                    value={form.image}
+                    onChange={(event) => onUpdate("image", event.target.value)}
+                    className={inputClassName}
+                    placeholder="/uploads/experts/expert.webp"
+                  />
+                </div>
+              </div>
             </FormField>
 
             <FormField className="sm:col-span-2" label="Full Biography">

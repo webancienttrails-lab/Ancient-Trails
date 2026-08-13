@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   Archive,
   Bell,
@@ -53,6 +54,7 @@ type PageMetric = {
 
 type AdminPageRecord = {
   description: string;
+  editorHref?: string;
   slug: string;
   status: "Published" | "Draft";
   thumbnailTone: string;
@@ -110,6 +112,7 @@ const pages: AdminPageRecord[] = [
   {
     title: "Home",
     description: "Manage content for homepage hero, sections, features, etc.",
+    editorHref: "/pages/home",
     slug: "/",
     status: "Published",
     thumbnailTone: "from-orange-500 via-amber-200 to-stone-800",
@@ -119,9 +122,10 @@ const pages: AdminPageRecord[] = [
     updatedTime: "10:30 AM",
   },
   {
-    title: "About Us",
+    title: "About",
     description: "Manage content for about us page, mission, vision, team.",
-    slug: "/about-us",
+    editorHref: "/pages/about",
+    slug: "/about",
     status: "Published",
     thumbnailTone: "from-emerald-700 via-stone-300 to-stone-800",
     type: "Main Page",
@@ -474,7 +478,7 @@ function PagesTable() {
                   </span>
                 </td>
                 <td data-actions data-label="Actions" className="px-4 py-3">
-                  <RowActions itemName={page.title} />
+                  <RowActions editorHref={page.editorHref} itemName={page.title} />
                 </td>
               </tr>
             ))}
@@ -508,7 +512,13 @@ function PageThumbnail({ page }: { page: AdminPageRecord }) {
   );
 }
 
-function RowActions({ itemName }: { itemName: string }) {
+function RowActions({
+  editorHref,
+  itemName,
+}: {
+  editorHref?: string;
+  itemName: string;
+}) {
   const toast = useToast();
 
   return (
@@ -536,6 +546,19 @@ function RowActions({ itemName }: { itemName: string }) {
             <Eye className="size-4 text-foreground/60" />
             Preview
           </DropdownMenuItem>
+          {editorHref ? (
+            <DropdownMenuItem
+              render={
+                <Link
+                  href={editorHref}
+                  className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-2 text-xs font-semibold"
+                />
+              }
+            >
+              <PencilLine className="size-4 text-primary" />
+              Edit Content
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem
             onClick={() => toast.info("Open Page", `${itemName} link is ready.`)}
             className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"

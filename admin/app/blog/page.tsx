@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
-import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
 import {
   Archive,
   Bell,
@@ -17,6 +18,7 @@ import {
   PencilLine,
   Plus,
   Search,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -30,6 +32,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -40,6 +43,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import {
+  deleteAdminBlog,
+  getBlogMediaUrl,
+  listAdminBlogs,
+  type AdminBlog,
+  type BlogCategory,
+  type BlogStatus,
+} from "@/lib/blogs";
 import { cn } from "@/lib/utils";
 
 type BlogMetric = {
@@ -51,180 +62,259 @@ type BlogMetric = {
   tone: string;
 };
 
-type BlogPost = {
-  author: {
-    avatarTone: string;
-    initials: string;
-    name: string;
-  };
-  category: "Heritage" | "Destination" | "Travel Guide" | "Culture";
-  description: string;
-  publishedDate: string;
-  publishedTime: string;
-  status: "Published" | "Draft" | "Archived";
-  thumbnailTone: string;
-  title: string;
-};
-
-const blogMetrics: BlogMetric[] = [
-  {
-    label: "Total Blogs",
-    value: "48",
-    trend: "All blog posts",
-    trendClassName: "text-foreground/60",
-    icon: FileText,
-    tone: "bg-primary/10 text-primary",
-  },
-  {
-    label: "Published Blogs",
-    value: "40",
-    trend: "83.33% of total",
-    trendClassName: "text-emerald-600",
-    icon: FileCheck2,
-    tone: "bg-emerald-100 text-emerald-700",
-  },
-  {
-    label: "Draft Blogs",
-    value: "6",
-    trend: "12.5% of total",
-    trendClassName: "text-primary",
-    icon: PencilLine,
-    tone: "bg-amber-100 text-amber-700",
-  },
-  {
-    label: "Archived Blogs",
-    value: "2",
-    trend: "4.17% of total",
-    trendClassName: "text-violet-600",
-    icon: Archive,
-    tone: "bg-violet-100 text-violet-700",
-  },
-];
-
-const blogPosts: BlogPost[] = [
-  {
-    title: "Exploring the Timeless Caves of Badami",
-    description: "Discover the rich history and stunning architecture of Badami...",
-    category: "Heritage",
-    author: {
-      name: "Rahul Sharma",
-      initials: "RS",
-      avatarTone: "bg-[#7a3b22]",
-    },
-    status: "Published",
-    publishedDate: "30-07-2026",
-    publishedTime: "10:30 AM",
-    thumbnailTone: "from-primary via-amber-200 to-[#7a3b22]",
-  },
-  {
-    title: "Hampi: Where History Comes to Life",
-    description: "A journey through the magnificent ruins and stories of Hampi...",
-    category: "Destination",
-    author: {
-      name: "Priya Mehta",
-      initials: "PM",
-      avatarTone: "bg-primary",
-    },
-    status: "Published",
-    publishedDate: "29-07-2026",
-    publishedTime: "09:15 AM",
-    thumbnailTone: "from-emerald-700 via-stone-300 to-stone-800",
-  },
-  {
-    title: "Top 10 Ancient Stepwells in India",
-    description: "Step back in time as we explore the most beautiful stepwells...",
-    category: "Heritage",
-    author: {
-      name: "Arjun Verma",
-      initials: "AV",
-      avatarTone: "bg-[#7a3b22]",
-    },
-    status: "Draft",
-    publishedDate: "-",
-    publishedTime: "",
-    thumbnailTone: "from-green-700 via-sky-200 to-stone-700",
-  },
-  {
-    title: "A Guide to Rajasthan's Hidden Forts",
-    description: "Offbeat forts that hold incredible stories and breathtaking views...",
-    category: "Travel Guide",
-    author: {
-      name: "Sneha Iyer",
-      initials: "SI",
-      avatarTone: "bg-violet-700",
-    },
-    status: "Published",
-    publishedDate: "27-07-2026",
-    publishedTime: "05:30 PM",
-    thumbnailTone: "from-orange-500 via-amber-200 to-stone-900",
-  },
-  {
-    title: "Festivals That Bring India's Heritage Alive",
-    description: "Celebrate the vibrant festivals that reflect our rich cultural legacy...",
-    category: "Culture",
-    author: {
-      name: "Karan Patel",
-      initials: "KP",
-      avatarTone: "bg-[#7a3b22]",
-    },
-    status: "Published",
-    publishedDate: "26-07-2026",
-    publishedTime: "11:20 AM",
-    thumbnailTone: "from-red-600 via-amber-300 to-stone-800",
-  },
-  {
-    title: "The Architectural Marvels of Konark Sun Temple",
-    description: "Unveiling the brilliance and precision of ancient Indian...",
-    category: "Heritage",
-    author: {
-      name: "Rahul Sharma",
-      initials: "RS",
-      avatarTone: "bg-[#7a3b22]",
-    },
-    status: "Archived",
-    publishedDate: "20-07-2026",
-    publishedTime: "02:45 PM",
-    thumbnailTone: "from-[#7a3b22] via-stone-300 to-amber-800",
-  },
-];
-
-const statusOptions = ["All Status", "Published", "Draft", "Archived"];
-const categoryOptions = [
-  "All Categories",
+const blogCategoryOptions: BlogCategory[] = [
   "Heritage",
-  "Destination",
+  "History",
+  "Art & Culture",
   "Travel Guide",
-  "Culture",
+  "Destinations",
+  "Travel Tips",
+  "Uncategorized",
 ];
-const authorOptions = [
-  "All Authors",
-  "Rahul Sharma",
-  "Priya Mehta",
-  "Arjun Verma",
-  "Sneha Iyer",
-  "Karan Patel",
-];
+const blogStatusOptions: BlogStatus[] = ["Published", "Draft", "Archived"];
+const statusFilterOptions = ["All Status", ...blogStatusOptions];
+const categoryFilterOptions = ["All Categories", ...blogCategoryOptions];
+
+function getErrorMessage(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "details" in error &&
+    Array.isArray((error as { details?: unknown }).details)
+  ) {
+    const details = (error as {
+      details: Array<{ message?: unknown; path?: unknown }>;
+    }).details;
+    const detailMessages = details
+      .map((detail) => {
+        const message =
+          typeof detail.message === "string" ? detail.message.trim() : "";
+        const path =
+          typeof detail.path === "string" && detail.path.trim()
+            ? `${detail.path}: `
+            : "";
+
+        return message ? `${path}${message}` : "";
+      })
+      .filter(Boolean);
+
+    if (detailMessages.length > 0) {
+      return detailMessages.join(" ");
+    }
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return "Something went wrong. Please try again.";
+}
+
+function formatDate(value: string | null): string {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+
+  return `${day}-${month}-${year}`;
+}
+
+function formatTime(value: string | null): string {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getInitials(name: string): string {
+  return (
+    name
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "AT"
+  );
+}
+
+function createBlogMetrics(blogs: AdminBlog[]): BlogMetric[] {
+  const publishedCount = blogs.filter((blog) => blog.status === "Published").length;
+  const draftCount = blogs.filter((blog) => blog.status === "Draft").length;
+  const archivedCount = blogs.filter((blog) => blog.status === "Archived").length;
+  const publishedRatio = blogs.length
+    ? `${Math.round((publishedCount / blogs.length) * 100)}% of total`
+    : "No published blogs yet";
+
+  return [
+    {
+      label: "Total Blogs",
+      value: blogs.length.toString(),
+      trend: "Live blog records",
+      trendClassName: "text-foreground/60",
+      icon: FileText,
+      tone: "bg-primary/10 text-primary",
+    },
+    {
+      label: "Published Blogs",
+      value: publishedCount.toString(),
+      trend: publishedRatio,
+      trendClassName: "text-emerald-600",
+      icon: FileCheck2,
+      tone: "bg-emerald-100 text-emerald-700",
+    },
+    {
+      label: "Draft Blogs",
+      value: draftCount.toString(),
+      trend: "Waiting to publish",
+      trendClassName: "text-primary",
+      icon: PencilLine,
+      tone: "bg-amber-100 text-amber-700",
+    },
+    {
+      label: "Archived Blogs",
+      value: archivedCount.toString(),
+      trend: "Hidden from public blog",
+      trendClassName: "text-violet-600",
+      icon: Archive,
+      tone: "bg-violet-100 text-violet-700",
+    },
+  ];
+}
 
 export default function BlogPage() {
   const toast = useToast();
+  const [blogs, setBlogs] = useState<AdminBlog[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All Status");
+  const [categoryFilter, setCategoryFilter] = useState("All Categories");
+  const [isLoadingBlogs, setIsLoadingBlogs] = useState(true);
+  const [isDeletingBlogId, setIsDeletingBlogId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadBlogs() {
+      try {
+        const response = await listAdminBlogs();
+
+        if (isMounted) {
+          setBlogs(response.data.blogs);
+        }
+      } catch (error) {
+        toast.error("Unable to load blogs", getErrorMessage(error));
+      } finally {
+        if (isMounted) {
+          setIsLoadingBlogs(false);
+        }
+      }
+    }
+
+    loadBlogs();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [toast]);
+
+  const filteredBlogs = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    return blogs.filter((blog) => {
+      const matchesQuery =
+        !query ||
+        [
+          blog.blogId,
+          blog.title,
+          blog.slug,
+          blog.category,
+          blog.authorName,
+          blog.content,
+          blog.seoTitle,
+          blog.seoDescription,
+          blog.seoKeywords,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(query);
+      const matchesStatus =
+        statusFilter === "All Status" || blog.status === statusFilter;
+      const matchesCategory =
+        categoryFilter === "All Categories" || blog.category === categoryFilter;
+
+      return matchesQuery && matchesStatus && matchesCategory;
+    });
+  }, [blogs, categoryFilter, searchQuery, statusFilter]);
+
+  const blogMetrics = useMemo(() => createBlogMetrics(blogs), [blogs]);
+
+  async function handleDeleteBlog(blog: AdminBlog) {
+    const shouldDelete = window.confirm(
+      `Delete "${blog.title}" from the blog library?`
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    setIsDeletingBlogId(blog.id);
+
+    try {
+      const response = await deleteAdminBlog(blog.id);
+
+      setBlogs((currentBlogs) =>
+        currentBlogs.filter((currentBlog) => currentBlog.id !== blog.id)
+      );
+      toast.success("Blog deleted", response.message);
+    } catch (error) {
+      toast.error("Blog not deleted", getErrorMessage(error));
+    } finally {
+      setIsDeletingBlogId(null);
+    }
+  }
 
   return (
     <AdminDashboardShell activeLabel="Blog">
       <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-5">
         <BlogHeader />
 
-        <div className="flex justify-end">
+        <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="font-sans text-2xl font-bold tracking-normal text-foreground">
+              Blog
+            </h1>
+            <p className="mt-1 text-sm text-foreground/60">
+              Upload, edit, publish, and archive website blog posts.
+            </p>
+          </div>
+
           <Button
+            render={<Link href="/blog/new" />}
             type="button"
-            onClick={() =>
-              toast.info("Add Blog", "Blog editor will open here.")
-            }
-            className="h-11 rounded-sm px-4 text-xs font-bold"
+            className="h-10 rounded-sm px-4 text-xs font-bold"
           >
             <Plus className="size-4" data-icon="inline-start" />
             Add New Blog
           </Button>
-        </div>
+        </section>
 
         <section
           data-admin-metric-grid
@@ -236,8 +326,21 @@ export default function BlogPage() {
         </section>
 
         <section className="overflow-hidden rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
-          <BlogToolbar />
-          <BlogTable />
+          <BlogToolbar
+            categoryFilter={categoryFilter}
+            onCategoryFilterChange={setCategoryFilter}
+            onSearchQueryChange={setSearchQuery}
+            onStatusFilterChange={setStatusFilter}
+            searchQuery={searchQuery}
+            statusFilter={statusFilter}
+          />
+          <BlogTable
+            blogs={filteredBlogs}
+            isDeletingBlogId={isDeletingBlogId}
+            isLoading={isLoadingBlogs}
+            onDelete={handleDeleteBlog}
+            totalCount={blogs.length}
+          />
         </section>
       </div>
     </AdminDashboardShell>
@@ -326,24 +429,45 @@ function MetricCard({ metric }: { metric: BlogMetric }) {
   );
 }
 
-function BlogToolbar() {
+function BlogToolbar({
+  categoryFilter,
+  onCategoryFilterChange,
+  onSearchQueryChange,
+  onStatusFilterChange,
+  searchQuery,
+  statusFilter,
+}: {
+  categoryFilter: string;
+  onCategoryFilterChange: (value: string) => void;
+  onSearchQueryChange: (value: string) => void;
+  onStatusFilterChange: (value: string) => void;
+  searchQuery: string;
+  statusFilter: string;
+}) {
   return (
-    <div className="grid gap-3 border-b border-border p-4 xl:grid-cols-[minmax(260px,1fr)_170px_170px_170px_120px] xl:items-end">
+    <div className="grid gap-3 border-b border-border p-4 xl:grid-cols-[minmax(260px,1fr)_180px_190px_120px] xl:items-end">
       <label className="relative min-w-0">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground/40" />
         <input
           className="h-10 w-full rounded-sm border border-border bg-white pl-9 pr-3 text-xs font-medium outline-none transition-colors placeholder:text-foreground/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
           placeholder="Search blogs by title, author or tag..."
           type="search"
+          value={searchQuery}
+          onChange={(event) => onSearchQueryChange(event.target.value)}
         />
       </label>
-      <ToolbarSelect label="Status" options={statusOptions} value="All Status" />
+      <ToolbarSelect
+        label="Status"
+        options={statusFilterOptions}
+        value={statusFilter}
+        onValueChange={onStatusFilterChange}
+      />
       <ToolbarSelect
         label="Category"
-        options={categoryOptions}
-        value="All Categories"
+        options={categoryFilterOptions}
+        value={categoryFilter}
+        onValueChange={onCategoryFilterChange}
       />
-      <ToolbarSelect label="Author" options={authorOptions} value="All Authors" />
       <Button
         type="button"
         variant="outline"
@@ -358,10 +482,12 @@ function BlogToolbar() {
 
 function ToolbarSelect({
   label,
+  onValueChange,
   options,
   value,
 }: {
   label: string;
+  onValueChange: (value: string) => void;
   options: string[];
   value: string;
 }) {
@@ -370,7 +496,14 @@ function ToolbarSelect({
       <span className="text-[11px] font-semibold text-foreground/55">
         {label}
       </span>
-      <Select value={value}>
+      <Select
+        value={value}
+        onValueChange={(nextValue) => {
+          if (typeof nextValue === "string") {
+            onValueChange(nextValue);
+          }
+        }}
+      >
         <SelectTrigger className="h-10 min-h-10 rounded-sm border-border bg-white px-3 py-2 text-xs">
           <SelectValue />
         </SelectTrigger>
@@ -386,18 +519,31 @@ function ToolbarSelect({
   );
 }
 
-function BlogTable() {
+function BlogTable({
+  blogs,
+  isDeletingBlogId,
+  isLoading,
+  onDelete,
+  totalCount,
+}: {
+  blogs: AdminBlog[];
+  isDeletingBlogId: string | null;
+  isLoading: boolean;
+  onDelete: (blog: AdminBlog) => void;
+  totalCount: number;
+}) {
   return (
     <>
       <div className="max-w-full overflow-hidden">
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <colgroup>
-            <col className="w-[36%]" />
-            <col className="w-[13%]" />
-            <col className="w-[17%]" />
+            <col className="w-[34%]" />
             <col className="w-[13%]" />
             <col className="w-[14%]" />
+            <col className="w-[12%]" />
+            <col className="w-[14%]" />
             <col className="w-[7%]" />
+            <col className="w-[6%]" />
           </colgroup>
           <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
             <tr>
@@ -406,116 +552,144 @@ function BlogTable() {
               <th className="px-4 py-3 font-bold">Author</th>
               <th className="px-4 py-3 font-bold">Status</th>
               <th className="px-4 py-3 font-bold">Published On</th>
+              <th className="px-4 py-3 font-bold">Read</th>
               <th className="px-4 py-3 text-right font-bold">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {blogPosts.map((post) => (
-              <tr
-                key={post.title}
-                className="border-t border-border transition-colors hover:bg-muted/25"
-              >
-                <td data-label="Blog" data-mobile-primary className="px-4 py-3">
-                  <div className="grid grid-cols-[82px_minmax(0,1fr)] items-center gap-3">
-                    <BlogThumbnail post={post} />
-                    <div className="min-w-0">
-                      <p className="line-clamp-2 text-xs font-bold text-foreground">
-                        {post.title}
-                      </p>
-                      <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-foreground/55">
-                        {post.description}
-                      </p>
-                    </div>
-                  </div>
-                </td>
-                <td data-label="Category" className="px-4 py-3">
-                  <span
-                    className={cn(
-                      "inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold",
-                      getCategoryClassName(post.category)
-                    )}
-                  >
-                    {post.category}
-                  </span>
-                </td>
-                <td data-label="Author" className="px-4 py-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span
-                      className={cn(
-                        "grid size-7 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white",
-                        post.author.avatarTone
-                      )}
-                    >
-                      {post.author.initials}
-                    </span>
-                    <span className="truncate text-xs font-bold text-foreground">
-                      {post.author.name}
-                    </span>
-                  </div>
-                </td>
-                <td data-label="Status" className="px-4 py-3">
-                  <span
-                    className={cn(
-                      "inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold",
-                      getStatusClassName(post.status)
-                    )}
-                  >
-                    {post.status === "Published" ? "+ " : ""}
-                    {post.status}
-                  </span>
-                </td>
-                <td
-                  data-label="Published On"
-                  className="px-4 py-3 text-xs text-foreground/70"
-                >
-                  <span className="block truncate font-semibold">
-                    {post.publishedDate}
-                  </span>
-                  {post.publishedTime ? (
-                    <span className="mt-1 block truncate text-foreground/55">
-                      {post.publishedTime}
-                    </span>
-                  ) : null}
-                </td>
-                <td data-actions data-label="Actions" className="px-4 py-3">
-                  <RowActions post={post} />
+            {isLoading ? (
+              <tr>
+                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={7}>
+                  Loading blogs...
                 </td>
               </tr>
-            ))}
+            ) : null}
+
+            {!isLoading && blogs.length === 0 ? (
+              <tr>
+                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={7}>
+                  No blogs added yet.
+                </td>
+              </tr>
+            ) : null}
+
+            {!isLoading
+              ? blogs.map((post) => (
+                  <tr
+                    key={post.id}
+                    className="border-t border-border transition-colors hover:bg-muted/25"
+                  >
+                    <td data-label="Blog" data-mobile-primary className="px-4 py-3">
+                      <div className="grid grid-cols-[82px_minmax(0,1fr)] items-center gap-3">
+                        <BlogThumbnail post={post} />
+                        <div className="min-w-0">
+                          <p className="line-clamp-2 text-xs font-bold text-foreground">
+                            {post.title}
+                          </p>
+                          <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-foreground/55">
+                            {post.slug}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td data-label="Category" className="px-4 py-3">
+                      <span
+                        className={cn(
+                          "inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold",
+                          getCategoryClassName(post.category)
+                        )}
+                      >
+                        {post.category}
+                      </span>
+                    </td>
+                    <td data-label="Author" className="px-4 py-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-[#7a3b22] text-[10px] font-bold text-white">
+                          {getInitials(post.authorName)}
+                        </span>
+                        <span className="truncate text-xs font-bold text-foreground">
+                          {post.authorName}
+                        </span>
+                      </div>
+                    </td>
+                    <td data-label="Status" className="px-4 py-3">
+                      <span
+                        className={cn(
+                          "inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold",
+                          getStatusClassName(post.status)
+                        )}
+                      >
+                        {post.status}
+                      </span>
+                    </td>
+                    <td
+                      data-label="Published On"
+                      className="px-4 py-3 text-xs text-foreground/70"
+                    >
+                      <span className="block truncate font-semibold">
+                        {formatDate(post.publishedAt)}
+                      </span>
+                      {formatTime(post.publishedAt) ? (
+                        <span className="mt-1 block truncate text-foreground/55">
+                          {formatTime(post.publishedAt)}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td data-label="Read" className="px-4 py-3 text-xs font-semibold text-foreground/70">
+                      {post.readTimeMinutes} min
+                    </td>
+                    <td data-actions data-label="Actions" className="px-4 py-3">
+                      <RowActions
+                        isDeleting={isDeletingBlogId === post.id}
+                        post={post}
+                        onDelete={onDelete}
+                      />
+                    </td>
+                  </tr>
+                ))
+              : null}
           </tbody>
         </table>
       </div>
 
-      <TableFooter />
+      <TableFooter shownCount={blogs.length} totalCount={totalCount} />
     </>
   );
 }
 
-function BlogThumbnail({ post }: { post: BlogPost }) {
+function BlogThumbnail({ post }: { post: AdminBlog }) {
+  const image = post.heroImage;
+
   return (
     <div
       className={cn(
-        "relative h-14 w-[82px] overflow-hidden rounded-sm bg-gradient-to-br",
-        post.thumbnailTone
+        "grid h-14 w-[82px] place-items-center overflow-hidden rounded-sm bg-gradient-to-br from-primary via-amber-200 to-[#7a3b22]",
+        image && "bg-muted"
       )}
+      style={
+        image
+          ? {
+              backgroundImage: `url("${getBlogMediaUrl(image)}")`,
+              backgroundPosition: "center",
+              backgroundSize: "cover",
+            }
+          : undefined
+      }
     >
-      <Image
-        src="/admin-login/heritage-login-bg.png"
-        alt={post.title}
-        fill
-        sizes="82px"
-        className="object-cover opacity-70 mix-blend-multiply"
-      />
-      <span className="absolute bottom-1 left-1 h-2 w-8 rounded-full bg-white/70" />
-      <span className="absolute bottom-3 left-3 h-5 w-5 rounded-sm border border-white/70 bg-white/30" />
+      {!image ? <FileText className="size-5 text-white/85" /> : null}
     </div>
   );
 }
 
-function RowActions({ post }: { post: BlogPost }) {
-  const toast = useToast();
-  const canPreview = post.status !== "Draft";
-
+function RowActions({
+  isDeleting,
+  onDelete,
+  post,
+}: {
+  isDeleting: boolean;
+  onDelete: (blog: AdminBlog) => void;
+  post: AdminBlog;
+}) {
   return (
     <div className="flex justify-end">
       <DropdownMenu>
@@ -532,30 +706,31 @@ function RowActions({ post }: { post: BlogPost }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="w-40 rounded-sm border border-border bg-white p-1 shadow-lg shadow-stone-200/70"
+          className="w-36 rounded-sm border border-border bg-white p-1 shadow-lg shadow-stone-200/70"
         >
-          {canPreview ? (
-            <DropdownMenuItem
-              onClick={() => toast.info("Preview Blog", `${post.title} preview.`)}
-              className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
-            >
-              <Eye className="size-4 text-foreground/60" />
-              Preview
-            </DropdownMenuItem>
-          ) : null}
           <DropdownMenuItem
-            onClick={() => toast.info("Edit Blog", `${post.title} editor.`)}
+            render={<Link href={`/blog/view?id=${post.id}`} />}
+            className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
+          >
+            <Eye className="size-4 text-foreground/60" />
+            View
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            render={<Link href={`/blog/edit?id=${post.id}`} />}
             className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
           >
             <Pencil className="size-4 text-primary" />
             Edit
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
-            onClick={() => toast.info("Blog Actions", `${post.title} menu.`)}
+            onClick={() => onDelete(post)}
+            variant="destructive"
+            disabled={isDeleting}
             className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
           >
-            <MoreHorizontal className="size-4 text-foreground/60" />
-            More Actions
+            <Trash2 className="size-4" />
+            {isDeleting ? "Deleting..." : "Delete"}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -563,30 +738,27 @@ function RowActions({ post }: { post: BlogPost }) {
   );
 }
 
-function TableFooter() {
+function TableFooter({
+  shownCount,
+  totalCount,
+}: {
+  shownCount: number;
+  totalCount: number;
+}) {
   return (
     <div className="flex flex-col gap-3 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-xs text-foreground/55">Showing 1 to 10 of 48 blogs</p>
+      <p className="text-xs text-foreground/55">
+        Showing {shownCount ? `1 to ${shownCount}` : "0"} of {totalCount} blogs
+      </p>
       <div className="flex flex-wrap items-center gap-2">
-        <PaginationButton label="First page" disabled>
-          <span className="text-sm leading-none">&lt;&lt;</span>
-        </PaginationButton>
         <PaginationButton label="Previous page" disabled>
           <ChevronLeft className="size-4" />
         </PaginationButton>
-        {[1, 2, 3, 4, 5].map((page) => (
-          <PaginationButton key={page} label={`Page ${page}`} active={page === 1}>
-            {page}
-          </PaginationButton>
-        ))}
-        <PaginationButton label="More pages">
-          <span className="text-xs leading-none">...</span>
+        <PaginationButton label="Page 1" active>
+          1
         </PaginationButton>
-        <PaginationButton label="Next page">
+        <PaginationButton label="Next page" disabled>
           <ChevronRight className="size-4" />
-        </PaginationButton>
-        <PaginationButton label="Last page">
-          <span className="text-sm leading-none">&gt;&gt;</span>
         </PaginationButton>
       </div>
     </div>
@@ -619,20 +791,26 @@ function PaginationButton({
   );
 }
 
-function getCategoryClassName(category: BlogPost["category"]): string {
+function getCategoryClassName(category: BlogCategory): string {
   switch (category) {
     case "Heritage":
       return "bg-primary/10 text-primary";
-    case "Destination":
-      return "bg-emerald-100 text-emerald-700";
+    case "History":
+      return "bg-amber-100 text-amber-700";
+    case "Art & Culture":
+      return "bg-violet-100 text-violet-700";
     case "Travel Guide":
       return "bg-sky-100 text-sky-700";
-    case "Culture":
-      return "bg-violet-100 text-violet-700";
+    case "Destinations":
+      return "bg-emerald-100 text-emerald-700";
+    case "Travel Tips":
+      return "bg-orange-100 text-orange-700";
+    case "Uncategorized":
+      return "bg-stone-200 text-foreground/65";
   }
 }
 
-function getStatusClassName(status: BlogPost["status"]): string {
+function getStatusClassName(status: BlogStatus): string {
   switch (status) {
     case "Published":
       return "bg-emerald-100 text-emerald-700";

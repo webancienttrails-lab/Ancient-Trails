@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 import {
   Bell,
@@ -24,8 +25,7 @@ import {
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
 import { HeaderDateRangePicker } from "@/components/admin-dashboard/header-date-range-picker";
-import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/ui/toast";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type Metric = {
@@ -38,6 +38,7 @@ type Metric = {
 
 type QuickAction = {
   label: string;
+  href: string;
   icon: LucideIcon;
   tone: string;
 };
@@ -81,12 +82,42 @@ const metrics: Metric[] = [
 ];
 
 const quickActions: QuickAction[] = [
-  { label: "Add Destination", icon: MapPin, tone: "text-primary" },
-  { label: "+ Add Tour", icon: CalendarDays, tone: "text-orange-600" },
-  { label: "+ Add Blog Post", icon: FilePlus, tone: "text-orange-500" },
-  { label: "+ Add User", icon: Users, tone: "text-blue-600" },
-  { label: "View Bookings", icon: Ticket, tone: "text-primary" },
-  { label: "View Enquiries", icon: MessageCircle, tone: "text-violet-600" },
+  {
+    label: "Add Destination",
+    href: "/destinations",
+    icon: MapPin,
+    tone: "text-primary",
+  },
+  {
+    label: "+ Add Tour",
+    href: "/tours",
+    icon: CalendarDays,
+    tone: "text-orange-600",
+  },
+  {
+    label: "+ Add Blog Post",
+    href: "/blog",
+    icon: FilePlus,
+    tone: "text-orange-500",
+  },
+  {
+    label: "+ Add User",
+    href: "/users",
+    icon: Users,
+    tone: "text-blue-600",
+  },
+  {
+    label: "View Bookings",
+    href: "/bookings",
+    icon: Ticket,
+    tone: "text-primary",
+  },
+  {
+    label: "View Enquiries",
+    href: "/enquiries",
+    icon: MessageCircle,
+    tone: "text-violet-600",
+  },
 ];
 
 const upcomingTours = [
@@ -203,8 +234,6 @@ const statusLegend = [
 ];
 
 export default function DashboardPage() {
-  const toast = useToast();
-
   return (
     <AdminDashboardShell activeLabel="Dashboard">
       <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-5">
@@ -225,17 +254,14 @@ export default function DashboardPage() {
               const Icon = action.icon;
 
               return (
-                <Button
+                <Link
                   key={action.label}
-                  type="button"
-                  onClick={() =>
-                    toast.info(
-                      action.label.replace(/^\+\s*/, ""),
-                      "This admin action is ready to be connected."
-                    )
-                  }
-                  variant="outline"
-                  className="h-11 w-full cursor-pointer justify-start rounded-sm border-border bg-white px-3 text-left text-xs font-semibold text-foreground hover:border-primary hover:bg-primary hover:text-primary-foreground"
+                  href={action.href}
+                  data-slot="button"
+                  className={cn(
+                    buttonVariants({ variant: "outline" }),
+                    "h-11 w-full cursor-pointer justify-start rounded-sm border-border bg-white px-3 text-left text-xs font-semibold text-foreground hover:border-primary hover:bg-primary hover:text-primary-foreground"
+                  )}
                 >
                   <span className="grid w-5 shrink-0 place-items-center">
                     <Icon
@@ -246,7 +272,7 @@ export default function DashboardPage() {
                     />
                   </span>
                   <span className="min-w-0 truncate">{action.label}</span>
-                </Button>
+                </Link>
               );
             })}
           </div>

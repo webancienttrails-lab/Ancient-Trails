@@ -1,0 +1,987 @@
+"use client";
+
+/* eslint-disable @next/next/no-img-element */
+
+import {
+  type FormEvent,
+  type MouseEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  Bell,
+  CalendarDays,
+  ChevronDown,
+  CircleDot,
+  FileText,
+  MapPin,
+  Plus,
+  Save,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react";
+
+import {
+  AdminDashboardShell,
+  AdminSidebarToggle,
+} from "@/components/admin-dashboard/admin-dashboard-shell";
+import { HeaderDateRangePicker } from "@/components/admin-dashboard/header-date-range-picker";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
+import {
+  getDestinationMediaUrl,
+  listAdminDestinations,
+  type AdminDestination,
+} from "@/lib/destinations";
+import {
+  getAdminHomePage,
+  getDefaultDestinationMarker,
+  isLegacyDestinationMarker,
+  updateAdminHomePage,
+  type HomePageContent,
+  type HomePagePayload,
+} from "@/lib/home";
+import {
+  getTourMediaUrl,
+  listAdminTourDepartures,
+  listAdminTours,
+  type AdminTour,
+  type AdminTourDeparture,
+} from "@/lib/tours";
+import { cn } from "@/lib/utils";
+
+type HomeFormState = HomePagePayload;
+
+const emptyForm: HomeFormState = {
+  upcomingTours: [],
+  trendingDestinations: [],
+};
+
+function getErrorMessage(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "details" in error &&
+    Array.isArray((error as { details?: unknown }).details)
+  ) {
+    return (error as { details: Array<{ path?: string; message?: string }> })
+      .details.map((detail) =>
+        [detail.path, detail.message].filter(Boolean).join(": ")
+      )
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return "Something went wrong. Please try again.";
+}
+
+function createFormState(
+  content: HomePageContent,
+  destinations: AdminDestination[] = []
+): HomeFormState {
+  const destinationById = new Map(
+    destinations.map((destination) => [destination.destinationId, destination])
+  );
+
+  return {
+    upcomingTours: [...content.upcomingTours]
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map(({ departureId, sortOrder, tourId }) => ({
+        departureId,
+        sortOrder,
+        tourId,
+      })),
+    trendingDestinations: [...content.trendingDestinations]
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map(({ destinationId, markerX, markerY, sortOrder }, index) => {
+        const destination = destinationById.get(destinationId);
+        const autoMarker = destination
+          ? getDefaultDestinationMarker(destination, index)
+          : { markerX, markerY };
+        const useAutoMarker =
+          isLegacyDestinationMarker(markerX, markerY, index) ||
+          (markerX === 50 && markerY === 50);
+
+        return {
+          destinationId,
+          markerX: useAutoMarker ? autoMarker.markerX : markerX,
+          markerY: useAutoMarker ? autoMarker.markerY : markerY,
+          sortOrder,
+        };
+      }),
+  };
+}
+
+function createPayload(form: HomeFormState): HomePagePayload {
+  return {
+    upcomingTours: form.upcomingTours.map((tour, index) => ({
+      ...tour,
+      sortOrder: index,
+    })),
+    trendingDestinations: form.trendingDestinations.map((destination, index) => ({
+      ...destination,
+      markerX: clampPercent(destination.markerX),
+      markerY: clampPercent(destination.markerY),
+      sortOrder: index,
+    })),
+  };
+}
+
+function clampPercent(value: number) {
+  if (Number.isNaN(value)) {
+    return 50;
+  }
+
+  return Math.min(100, Math.max(0, value));
+}
+
+function formatDate(value: string | null) {
+  if (!value) {
+    return "Coming Soon";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Coming Soon";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+export default function PagesHomePage() {
+  const toast = useToast();
+  const [form, setForm] = useState<HomeFormState>(emptyForm);
+  const [tours, setTours] = useState<AdminTour[]>([]);
+  const [departures, setDepartures] = useState<AdminTourDeparture[]>([]);
+  const [destinations, setDestinations] = useState<AdminDestination[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [activeDestinationIndex, setActiveDestinationIndex] = useState(0);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadHomeEditor() {
+      try {
+        const [homeResponse, toursResponse, departuresResponse, destinationsResponse] =
+          await Promise.all([
+            getAdminHomePage(),
+            listAdminTours(),
+            listAdminTourDepartures(),
+            listAdminDestinations(),
+          ]);
+
+        if (!isMounted) {
+          return;
+        }
+
+        setForm(
+          createFormState(
+            homeResponse.data.home,
+            destinationsResponse.data.destinations
+          )
+        );
+        setTours(toursResponse.data.tours);
+        setDepartures(departuresResponse.data.departures);
+        setDestinations(destinationsResponse.data.destinations);
+      } catch (error) {
+        toast.error("Unable to load home page", getErrorMessage(error));
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadHomeEditor();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [toast]);
+
+  const overviewMetrics = useMemo(
+    () => [
+      {
+        label: "Upcoming Tours",
+        value: form.upcomingTours.length.toString(),
+        detail: "Homepage tour cards",
+        icon: CalendarDays,
+      },
+      {
+        label: "Trending Destinations",
+        value: form.trendingDestinations.length.toString(),
+        detail: "Map and destination list",
+        icon: MapPin,
+      },
+      {
+        label: "Available Records",
+        value: `${tours.length}/${destinations.length}`,
+        detail: "Tours / destinations",
+        icon: FileText,
+      },
+    ],
+    [destinations.length, form.trendingDestinations.length, form.upcomingTours.length, tours.length]
+  );
+
+  function updateUpcomingTour<
+    K extends keyof HomeFormState["upcomingTours"][number],
+  >(
+    index: number,
+    field: K,
+    value: HomeFormState["upcomingTours"][number][K]
+  ) {
+    setForm((currentForm) => ({
+      ...currentForm,
+      upcomingTours: currentForm.upcomingTours.map((tour, tourIndex) =>
+        tourIndex === index
+          ? {
+              ...tour,
+              [field]: value,
+              ...(field === "tourId" ? { departureId: "" } : {}),
+            }
+          : tour
+      ),
+    }));
+  }
+
+  function updateTrendingDestination<
+    K extends keyof HomeFormState["trendingDestinations"][number],
+  >(
+    index: number,
+    field: K,
+    value: HomeFormState["trendingDestinations"][number][K]
+  ) {
+    setForm((currentForm) => ({
+      ...currentForm,
+      trendingDestinations: currentForm.trendingDestinations.map(
+        (destination, destinationIndex) =>
+          destinationIndex === index
+            ? {
+                ...destination,
+                [field]: value,
+              }
+            : destination
+      ),
+    }));
+  }
+
+  function addUpcomingTour() {
+    if (form.upcomingTours.length >= 6) {
+      toast.error("Limit reached", "Upcoming Tours can show up to 6 cards.");
+      return;
+    }
+
+    const selectedTourIds = new Set(form.upcomingTours.map((tour) => tour.tourId));
+    const nextTour = tours.find((tour) => !selectedTourIds.has(tour.tourId));
+
+    if (!nextTour) {
+      toast.error("No tour available", "Please add tours before selecting them.");
+      return;
+    }
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      upcomingTours: [
+        ...currentForm.upcomingTours,
+        {
+          departureId: "",
+          sortOrder: currentForm.upcomingTours.length,
+          tourId: nextTour.tourId,
+        },
+      ],
+    }));
+  }
+
+  function removeUpcomingTour(index: number) {
+    setForm((currentForm) => ({
+      ...currentForm,
+      upcomingTours: currentForm.upcomingTours.filter(
+        (_tour, tourIndex) => tourIndex !== index
+      ),
+    }));
+  }
+
+  function addTrendingDestination() {
+    if (form.trendingDestinations.length >= 8) {
+      toast.error("Limit reached", "Top Trending Destinations can show up to 8 pins.");
+      return;
+    }
+
+    const selectedDestinationIds = new Set(
+      form.trendingDestinations.map((destination) => destination.destinationId)
+    );
+    const nextDestination = destinations.find(
+      (destination) => !selectedDestinationIds.has(destination.destinationId)
+    );
+
+    if (!nextDestination) {
+      toast.error(
+        "No destination available",
+        "Please add destinations before selecting them."
+      );
+      return;
+    }
+
+    const position = getDefaultDestinationMarker(
+      nextDestination,
+      form.trendingDestinations.length
+    );
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      trendingDestinations: [
+        ...currentForm.trendingDestinations,
+        {
+          destinationId: nextDestination.destinationId,
+          markerX: position.markerX,
+          markerY: position.markerY,
+          sortOrder: currentForm.trendingDestinations.length,
+        },
+      ],
+    }));
+    setActiveDestinationIndex(form.trendingDestinations.length);
+  }
+
+  function removeTrendingDestination(index: number) {
+    setForm((currentForm) => ({
+      ...currentForm,
+      trendingDestinations: currentForm.trendingDestinations.filter(
+        (_destination, destinationIndex) => destinationIndex !== index
+      ),
+    }));
+    setActiveDestinationIndex((currentIndex) => Math.max(0, currentIndex - 1));
+  }
+
+  function selectTrendingDestination(index: number, destinationId: string) {
+    const selectedDestination = destinations.find(
+      (destination) => destination.destinationId === destinationId
+    );
+    const position = selectedDestination
+      ? getDefaultDestinationMarker(selectedDestination, index)
+      : { markerX: 50, markerY: 50 };
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      trendingDestinations: currentForm.trendingDestinations.map(
+        (destination, destinationIndex) =>
+          destinationIndex === index
+            ? {
+                ...destination,
+                destinationId,
+                markerX: position.markerX,
+                markerY: position.markerY,
+              }
+            : destination
+      ),
+    }));
+    setActiveDestinationIndex(index);
+  }
+
+  function autoPlaceTrendingDestination(index: number) {
+    const destinationSetting = form.trendingDestinations[index];
+
+    if (!destinationSetting) {
+      return;
+    }
+
+    const selectedDestination = destinations.find(
+      (destination) =>
+        destination.destinationId === destinationSetting.destinationId
+    );
+
+    if (!selectedDestination) {
+      return;
+    }
+
+    const position = getDefaultDestinationMarker(selectedDestination, index);
+
+    updateTrendingDestination(index, "markerX", position.markerX);
+    updateTrendingDestination(index, "markerY", position.markerY);
+    setActiveDestinationIndex(index);
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSaving(true);
+
+    try {
+      const response = await updateAdminHomePage(createPayload(form));
+
+      setForm(createFormState(response.data.home, destinations));
+      toast.success("Home page saved", response.message);
+    } catch (error) {
+      toast.error("Home page not saved", getErrorMessage(error));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <AdminDashboardShell activeLabel="Pages">
+      <form
+        onSubmit={handleSubmit}
+        className="mx-auto flex w-full max-w-[1480px] flex-col gap-5"
+      >
+        <HomeHeader isSaving={isSaving} />
+
+        <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <p className="text-sm text-foreground/60">
+            Select the tour cards and map destinations shown on the public home page.
+          </p>
+          <Button
+            type="submit"
+            disabled={isLoading || isSaving}
+            className="h-11 rounded-sm px-4 text-xs font-bold"
+          >
+            <Save className="size-4" data-icon="inline-start" />
+            {isSaving ? "Saving..." : "Save Home Page"}
+          </Button>
+        </section>
+
+        <section data-admin-metric-grid className="grid gap-3 sm:grid-cols-3">
+          {overviewMetrics.map((metric) => (
+            <OverviewMetric key={metric.label} metric={metric} />
+          ))}
+        </section>
+
+        <section className="grid gap-5 xl:grid-cols-[0.9fr_1.35fr]">
+          <EditorPanel
+            actionLabel="Add Tour"
+            onAction={addUpcomingTour}
+            title="Upcoming Tours"
+          >
+            <div className="grid gap-4">
+              {isLoading ? (
+                <LoadingPanel label="Loading upcoming tours..." />
+              ) : form.upcomingTours.length > 0 ? (
+                form.upcomingTours.map((tour, index) => (
+                  <UpcomingTourEditor
+                    key={`${tour.tourId}-${index}`}
+                    departures={departures}
+                    index={index}
+                    onRemove={removeUpcomingTour}
+                    onUpdate={updateUpcomingTour}
+                    tour={tour}
+                    tours={tours}
+                  />
+                ))
+              ) : (
+                <EmptyState label="No upcoming tours selected." />
+              )}
+            </div>
+          </EditorPanel>
+
+          <EditorPanel
+            actionLabel="Add Destination"
+            onAction={addTrendingDestination}
+            title="Top Trending Destinations"
+          >
+            <MapPositionPreview
+              activeIndex={activeDestinationIndex}
+              destinations={destinations}
+              form={form}
+              onActivate={setActiveDestinationIndex}
+              onUpdate={updateTrendingDestination}
+            />
+
+            <div className="mt-4 grid gap-4">
+              {isLoading ? (
+                <LoadingPanel label="Loading destinations..." />
+              ) : form.trendingDestinations.length > 0 ? (
+                form.trendingDestinations.map((destination, index) => (
+                  <TrendingDestinationEditor
+                    key={`${destination.destinationId}-${index}`}
+                    destination={destination}
+                    destinations={destinations}
+                    index={index}
+                    isActive={index === activeDestinationIndex}
+                    onActivate={setActiveDestinationIndex}
+                    onAutoPlace={autoPlaceTrendingDestination}
+                    onRemove={removeTrendingDestination}
+                    onSelectDestination={selectTrendingDestination}
+                    onUpdate={updateTrendingDestination}
+                  />
+                ))
+              ) : (
+                <EmptyState label="No trending destinations selected." />
+              )}
+            </div>
+          </EditorPanel>
+        </section>
+      </form>
+    </AdminDashboardShell>
+  );
+}
+
+function HomeHeader({ isSaving }: { isSaving: boolean }) {
+  const toast = useToast();
+
+  return (
+    <header className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-center gap-4">
+        <AdminSidebarToggle />
+        <div className="min-w-0">
+          <h1 className="font-sans text-2xl font-bold tracking-normal text-foreground">
+            Home Page
+          </h1>
+          <div className="mt-1 flex items-center gap-2 text-xs text-foreground/55">
+            <span>Dashboard</span>
+            <span aria-hidden="true">&gt;</span>
+            <span>Pages</span>
+            <span aria-hidden="true">&gt;</span>
+            <span className="font-medium text-foreground/75">Home</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <HeaderDateRangePicker />
+        <button
+          onClick={() =>
+            toast.info("Notifications", "Home page editor is ready.")
+          }
+          className="relative grid size-10 place-items-center rounded-sm border border-border bg-white text-foreground transition-colors hover:border-primary hover:text-primary"
+          type="button"
+          aria-label="Notifications"
+        >
+          <Bell className="size-5" />
+          <span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-bold text-white">
+            1
+          </span>
+        </button>
+        <Button
+          type="submit"
+          disabled={isSaving}
+          className="h-10 rounded-sm px-4 text-xs font-bold"
+        >
+          <Save className="size-4" data-icon="inline-start" />
+          {isSaving ? "Saving..." : "Save"}
+        </Button>
+        <button
+          onClick={() => toast.info("Admin profile", "Profile menu will open here.")}
+          className="flex h-10 items-center gap-2 rounded-sm border border-border bg-white px-2.5 text-sm font-semibold transition-colors hover:border-primary"
+          type="button"
+        >
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#7a3b22] text-xs font-bold text-white">
+            AU
+          </span>
+          <span className="hidden sm:inline">Admin User</span>
+          <ChevronDown className="size-4 text-foreground/45" />
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function OverviewMetric({
+  metric,
+}: {
+  metric: {
+    detail: string;
+    icon: LucideIcon;
+    label: string;
+    value: string;
+  };
+}) {
+  const Icon = metric.icon;
+
+  return (
+    <div className="rounded-sm border border-border bg-white p-4 shadow-sm shadow-stone-200/40">
+      <div className="flex items-center gap-3">
+        <span className="grid size-12 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+          <Icon className="size-6" />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium text-foreground/60">
+            {metric.label}
+          </p>
+          <p className="mt-1 text-2xl font-bold leading-none text-foreground">
+            {metric.value}
+          </p>
+          <p className="mt-2 text-[11px] font-semibold text-foreground/55">
+            {metric.detail}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditorPanel({
+  actionLabel,
+  children,
+  onAction,
+  title,
+}: {
+  actionLabel: string;
+  children: ReactNode;
+  onAction: () => void;
+  title: string;
+}) {
+  return (
+    <section className="overflow-hidden rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <h2 className="font-sans text-base font-bold text-foreground">{title}</h2>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onAction}
+          className="h-9 rounded-sm px-3 text-xs font-bold"
+        >
+          <Plus className="size-4" data-icon="inline-start" />
+          {actionLabel}
+        </Button>
+      </div>
+      <div className="p-4">{children}</div>
+    </section>
+  );
+}
+
+function UpcomingTourEditor({
+  departures,
+  index,
+  onRemove,
+  onUpdate,
+  tour,
+  tours,
+}: {
+  departures: AdminTourDeparture[];
+  index: number;
+  onRemove: (index: number) => void;
+  onUpdate: <K extends keyof HomeFormState["upcomingTours"][number]>(
+    index: number,
+    field: K,
+    value: HomeFormState["upcomingTours"][number][K]
+  ) => void;
+  tour: HomeFormState["upcomingTours"][number];
+  tours: AdminTour[];
+}) {
+  const selectedTour = tours.find((item) => item.tourId === tour.tourId);
+  const departureOptions = departures.filter(
+    (departure) => departure.tourId === tour.tourId
+  );
+
+  return (
+    <article className="grid gap-3 rounded-sm border border-border bg-[#fffaf7] p-3 lg:grid-cols-[132px_minmax(0,1fr)_44px]">
+      <div className="relative aspect-[1.32/1] overflow-hidden rounded-sm border border-border bg-white">
+        {selectedTour?.bannerImage || selectedTour?.galleryImages[0] ? (
+          <img
+            src={getTourMediaUrl(
+              selectedTour.bannerImage || selectedTour.galleryImages[0]
+            )}
+            alt={selectedTour.tourName}
+            className="size-full object-cover"
+          />
+        ) : (
+          <span className="grid size-full place-items-center text-foreground/30">
+            <CalendarDays className="size-8" />
+          </span>
+        )}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <FormField label="Tour">
+          <select
+            required
+            value={tour.tourId}
+            onChange={(event) => onUpdate(index, "tourId", event.target.value)}
+            className={inputClassName}
+          >
+            {tours.map((option) => (
+              <option key={option.tourId} value={option.tourId}>
+                {option.tourName} ({option.tourId})
+              </option>
+            ))}
+          </select>
+        </FormField>
+        <FormField label="Departure">
+          <select
+            value={tour.departureId || "__none__"}
+            onChange={(event) =>
+              onUpdate(
+                index,
+                "departureId",
+                event.target.value === "__none__" ? "" : event.target.value
+              )
+            }
+            className={inputClassName}
+          >
+            <option value="__none__">No fixed date</option>
+            {departureOptions.map((departure) => (
+              <option key={departure.departureId} value={departure.departureId}>
+                {formatDate(departure.departureDate)} ({departure.departureId})
+              </option>
+            ))}
+          </select>
+        </FormField>
+        <p className="text-xs font-medium leading-relaxed text-foreground/60 sm:col-span-2">
+          {selectedTour
+            ? `${selectedTour.durationDn} · ${selectedTour.destinationId}`
+            : "Select a tour to show this card on the homepage."}
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onRemove(index)}
+        className="grid size-11 place-items-center rounded-sm border border-border bg-white text-foreground/55 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+        aria-label={`Remove upcoming tour ${index + 1}`}
+      >
+        <Trash2 className="size-4" />
+      </button>
+    </article>
+  );
+}
+
+function TrendingDestinationEditor({
+  destination,
+  destinations,
+  index,
+  isActive,
+  onActivate,
+  onAutoPlace,
+  onRemove,
+  onSelectDestination,
+  onUpdate,
+}: {
+  destination: HomeFormState["trendingDestinations"][number];
+  destinations: AdminDestination[];
+  index: number;
+  isActive: boolean;
+  onActivate: (index: number) => void;
+  onAutoPlace: (index: number) => void;
+  onRemove: (index: number) => void;
+  onSelectDestination: (index: number, destinationId: string) => void;
+  onUpdate: <K extends keyof HomeFormState["trendingDestinations"][number]>(
+    index: number,
+    field: K,
+    value: HomeFormState["trendingDestinations"][number][K]
+  ) => void;
+}) {
+  const selectedDestination = destinations.find(
+    (item) => item.destinationId === destination.destinationId
+  );
+
+  return (
+    <article
+      className={cn(
+        "grid gap-3 rounded-sm border bg-[#fffaf7] p-3 transition-colors lg:grid-cols-[112px_minmax(0,1fr)_44px]",
+        isActive ? "border-primary/45" : "border-border"
+      )}
+      onFocus={() => onActivate(index)}
+      onMouseEnter={() => onActivate(index)}
+    >
+      <div className="relative aspect-[1.32/1] overflow-hidden rounded-sm border border-border bg-white">
+        {selectedDestination?.bannerImage ||
+        selectedDestination?.galleryImages[0] ? (
+          <img
+            src={getDestinationMediaUrl(
+              selectedDestination.bannerImage ||
+                selectedDestination.galleryImages[0]
+            )}
+            alt={selectedDestination.destinationName}
+            className="size-full object-cover"
+          />
+        ) : (
+          <span className="grid size-full place-items-center text-foreground/30">
+            <MapPin className="size-8" />
+          </span>
+        )}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_96px_96px]">
+        <FormField className="sm:col-span-3" label="Destination">
+          <select
+            required
+            value={destination.destinationId}
+            onChange={(event) =>
+              onSelectDestination(index, event.target.value)
+            }
+            className={inputClassName}
+          >
+            {destinations.map((option) => (
+              <option key={option.destinationId} value={option.destinationId}>
+                {option.destinationName} ({option.destinationId})
+              </option>
+            ))}
+          </select>
+        </FormField>
+        <FormField label="Marker X">
+          <input
+            min={0}
+            max={100}
+            type="number"
+            value={destination.markerX}
+            onChange={(event) =>
+              onUpdate(index, "markerX", Number(event.target.value))
+            }
+            className={inputClassName}
+          />
+        </FormField>
+        <FormField label="Marker Y">
+          <input
+            min={0}
+            max={100}
+            type="number"
+            value={destination.markerY}
+            onChange={(event) =>
+              onUpdate(index, "markerY", Number(event.target.value))
+            }
+            className={inputClassName}
+          />
+        </FormField>
+        <div className="flex items-end">
+          <button
+            type="button"
+            onClick={() => onAutoPlace(index)}
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm border border-primary bg-white px-3 text-xs font-bold text-primary transition-colors hover:bg-primary hover:text-white"
+          >
+            <CircleDot className="size-4" />
+            Auto
+          </button>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onRemove(index)}
+        className="grid size-11 place-items-center rounded-sm border border-border bg-white text-foreground/55 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+        aria-label={`Remove destination ${index + 1}`}
+      >
+        <Trash2 className="size-4" />
+      </button>
+    </article>
+  );
+}
+
+function MapPositionPreview({
+  activeIndex,
+  destinations,
+  form,
+  onActivate,
+  onUpdate,
+}: {
+  activeIndex: number;
+  destinations: AdminDestination[];
+  form: HomeFormState;
+  onActivate: (index: number) => void;
+  onUpdate: <K extends keyof HomeFormState["trendingDestinations"][number]>(
+    index: number,
+    field: K,
+    value: HomeFormState["trendingDestinations"][number][K]
+  ) => void;
+}) {
+  const previewRef = useRef<HTMLDivElement>(null);
+
+  function handlePreviewClick(event: MouseEvent<HTMLDivElement>) {
+    if (!form.trendingDestinations[activeIndex]) {
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const markerX = clampPercent(((event.clientX - rect.left) / rect.width) * 100);
+    const markerY = clampPercent(((event.clientY - rect.top) / rect.height) * 100);
+
+    onUpdate(activeIndex, "markerX", Number(markerX.toFixed(1)));
+    onUpdate(activeIndex, "markerY", Number(markerY.toFixed(1)));
+  }
+
+  return (
+    <div
+      ref={previewRef}
+      onClick={handlePreviewClick}
+      className="relative aspect-[900/535] overflow-hidden rounded-sm border border-border bg-white"
+    >
+      <img
+        src="/home-assets/map.webp"
+        alt="India map preview"
+        className="absolute inset-0 size-full object-contain"
+      />
+      <div className="absolute inset-0 bg-white/15" />
+      {form.trendingDestinations.map((destination, index) => {
+        const selectedDestination = destinations.find(
+          (item) => item.destinationId === destination.destinationId
+        );
+        const isActive = index === activeIndex;
+
+        return (
+          <button
+            key={`${destination.destinationId}-${index}`}
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onActivate(index);
+            }}
+            className={cn(
+              "absolute z-10 grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border text-xs font-bold shadow-sm transition-transform",
+              isActive
+                ? "scale-110 border-primary bg-primary text-white"
+                : "border-white bg-white text-primary hover:scale-105"
+            )}
+            style={{
+              left: `${destination.markerX}%`,
+              top: `${destination.markerY}%`,
+            }}
+            aria-label={`Select ${selectedDestination?.destinationName || destination.destinationId}`}
+          >
+            {index + 1}
+          </button>
+        );
+      })}
+      <p className="absolute bottom-3 left-4 right-4 rounded-sm bg-white/88 px-3 py-2 text-xs font-semibold text-foreground/65 shadow-sm">
+        Pins are auto-placed from destination and state. Select a row, then click the map to fine tune.
+      </p>
+    </div>
+  );
+}
+
+function LoadingPanel({ label }: { label: string }) {
+  return (
+    <div className="rounded-sm border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-xs font-semibold text-foreground/55">
+      {label}
+    </div>
+  );
+}
+
+function EmptyState({ label }: { label: string }) {
+  return (
+    <div className="rounded-sm border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-xs font-semibold text-foreground/55">
+      {label}
+    </div>
+  );
+}
+
+function FormField({
+  children,
+  className,
+  label,
+}: {
+  children: ReactNode;
+  className?: string;
+  label: string;
+}) {
+  return (
+    <label className={cn("grid min-w-0 gap-1.5", className)}>
+      <span className="text-[11px] font-bold uppercase tracking-normal text-foreground/55">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+const inputClassName =
+  "h-10 w-full rounded-sm border border-border bg-white px-3 text-xs font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15";

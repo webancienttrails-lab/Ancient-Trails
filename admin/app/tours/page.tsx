@@ -4,17 +4,20 @@ import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   Bell,
+  BookOpen,
   CalendarDays,
   ChevronDown,
   Eye,
   MapPin,
   MoreHorizontal,
   Pencil,
+  Play,
   Plus,
   Route,
   Search,
   Ticket,
   Trash2,
+  Upload,
   Users,
   X,
   type LucideIcon,
@@ -63,22 +66,31 @@ import { listAdminExperts, type AdminExpert } from "@/lib/experts";
 import {
   createAdminTour,
   createAdminTourDeparture,
+  createAdminTourItinerary,
   deleteAdminTour,
   deleteAdminTourDeparture,
+  deleteAdminTourItinerary,
+  getTourMediaUrl,
   listAdminTourDepartures,
+  listAdminTourItineraries,
   listAdminTours,
   updateAdminTour,
   updateAdminTourDeparture,
+  updateAdminTourItinerary,
+  uploadTourMedia,
   type AdminTour,
   type AdminTourDeparture,
+  type AdminTourItinerary,
   type TourDeparturePayload,
+  type TourItineraryPayload,
   type TourPayload,
 } from "@/lib/tours";
 import { cn } from "@/lib/utils";
 
-type TourTab = "master" | "departures";
+type TourTab = "master" | "departures" | "itineraries";
 type TourSheetMode = "add" | "view" | "edit";
 type DepartureSheetMode = "add" | "view" | "edit";
+type ItinerarySheetMode = "add" | "view" | "edit";
 
 type TourMetric = {
   label: string;
@@ -89,26 +101,71 @@ type TourMetric = {
   trendTone: string;
 };
 
-type TourFormState = Omit<TourPayload, "inclusions" | "exclusions"> & {
+type TourFormState = Omit<
+  TourPayload,
+  "destinationIds" | "inclusions" | "exclusions" | "galleryImages"
+> & {
+  destinationIds: string[];
   inclusions: string;
   exclusions: string;
+  galleryImages: string;
 };
 
 type DepartureFormState = Omit<
   TourDeparturePayload,
+  | "destinationId"
+  | "childPricingRules"
+  | "departureDate"
+  | "returnDate"
+  | "earlyBirdOffer"
+  | "bookingDeadline"
   | "seatsAvailable"
+  | "roomPolicy"
   | "priceAdult"
-  | "priceChild"
+  | "priceExtraBed"
+  | "priceChildWithoutExtraBed"
   | "singleOccupancy"
   | "depositValue"
   | "balanceDueDaysBefore"
 > & {
+  destinationId: string;
+  departureDate: string;
+  returnDate: string;
+  earlyBirdOffer: string;
+  bookingDeadline: string;
+  childPricingRules: Array<{
+    minAge: string;
+    maxAge: string;
+    allowExtraBed: boolean;
+    allowWithoutExtraBed: boolean;
+  }>;
+  roomPolicy: {
+    allowChildBedSharing: boolean;
+    maxChildrenWithoutExtraBedPerRoom: string;
+    allowExtraBed: boolean;
+    allowChildSingleRoom: boolean;
+  };
   seatsAvailable: string;
   priceAdult: string;
-  priceChild: string;
+  priceExtraBed: string;
+  priceChildWithoutExtraBed: string;
   singleOccupancy: string;
   depositValue: string;
   balanceDueDaysBefore: string;
+};
+
+type ItineraryDayFormState = {
+  dayNumber: string;
+  title: string;
+  summary: string;
+  placesVisited: string;
+  transport: string;
+  walkingDifficulty: string;
+  meals: string;
+};
+
+type ItineraryFormState = Omit<TourItineraryPayload, "days"> & {
+  days: ItineraryDayFormState[];
 };
 
 const emptyTourForm: TourFormState = {
@@ -116,6 +173,7 @@ const emptyTourForm: TourFormState = {
   tourName: "",
   tourType: "",
   destinationId: "",
+  destinationIds: [],
   durationDn: "",
   category: "",
   difficulty: "",
@@ -125,6 +183,9 @@ const emptyTourForm: TourFormState = {
   exclusions: "",
   expertId: "",
   notes: "",
+  bannerImage: "",
+  galleryImages: "",
+  video: "",
 };
 
 const emptyDepartureForm: DepartureFormState = {
@@ -135,13 +196,41 @@ const emptyDepartureForm: DepartureFormState = {
   returnDate: "",
   seatsAvailable: "0",
   priceAdult: "0",
-  priceChild: "0",
+  priceExtraBed: "0",
+  priceChildWithoutExtraBed: "0",
   singleOccupancy: "0",
-  depositType: "",
+  depositType: "fixed",
   depositValue: "0",
+  depositAppliesTo: "per_person",
   balanceDueDaysBefore: "0",
   earlyBirdOffer: "",
   bookingDeadline: "",
+  status: "scheduled",
+  childPricingRules: [],
+  roomPolicy: {
+    allowChildBedSharing: true,
+    maxChildrenWithoutExtraBedPerRoom: "1",
+    allowExtraBed: true,
+    allowChildSingleRoom: false,
+  },
+};
+
+function createEmptyItineraryDay(dayNumber: number): ItineraryDayFormState {
+  return {
+    dayNumber: dayNumber.toString(),
+    title: "",
+    summary: "",
+    placesVisited: "",
+    transport: "",
+    walkingDifficulty: "",
+    meals: "",
+  };
+}
+
+const emptyItineraryForm: ItineraryFormState = {
+  tourId: "",
+  itinerarySummary: "",
+  days: [createEmptyItineraryDay(1)],
 };
 
 function getErrorMessage(error: unknown): string {
@@ -159,12 +248,52 @@ function parseTextList(value: string): string[] {
     .filter(Boolean);
 }
 
+function appendTextList(currentValue: string, newValues: string[]): string {
+  return Array.from(new Set([...parseTextList(currentValue), ...newValues])).join(
+    "\n"
+  );
+}
+
+function normalizeDestinationIds(
+  destinationIds: string[] = [],
+  destinationId = ""
+): string[] {
+  return Array.from(
+    new Set(
+      [destinationId, ...destinationIds]
+        .map((value) => value.trim().toUpperCase())
+        .filter(Boolean)
+    )
+  );
+}
+
+function getTourDestinationIds(
+  tour: Pick<AdminTour, "destinationId"> & { destinationIds?: string[] }
+) {
+  return normalizeDestinationIds(tour.destinationIds || [], tour.destinationId);
+}
+
+function getDestinationNameList(
+  destinationIds: string[],
+  destinationNameById: Map<string, string>
+) {
+  return (
+    destinationIds
+      .map((destinationId) => destinationNameById.get(destinationId))
+      .filter(Boolean)
+      .join(", ") || "-"
+  );
+}
+
 function createTourPayload(form: TourFormState): TourPayload {
+  const destinationIds = normalizeDestinationIds(form.destinationIds);
+
   return {
     tourId: form.tourId.trim(),
     tourName: form.tourName.trim(),
     tourType: form.tourType.trim(),
-    destinationId: form.destinationId.trim(),
+    destinationId: destinationIds[0] || "",
+    destinationIds,
     durationDn: form.durationDn.trim(),
     category: form.category.trim(),
     difficulty: form.difficulty.trim(),
@@ -174,36 +303,79 @@ function createTourPayload(form: TourFormState): TourPayload {
     exclusions: parseTextList(form.exclusions),
     expertId: form.expertId.trim(),
     notes: form.notes.trim(),
+    bannerImage: form.bannerImage.trim(),
+    galleryImages: parseTextList(form.galleryImages),
+    video: form.video.trim(),
   };
 }
 
 function createDeparturePayload(
   form: DepartureFormState
 ): TourDeparturePayload {
+  const isComingSoon = form.status === "coming_soon";
+
   return {
     departureId: form.departureId.trim(),
     tourId: form.tourId.trim(),
-    destinationId: form.destinationId.trim(),
-    departureDate: form.departureDate,
-    returnDate: form.returnDate,
+    destinationId: form.destinationId.trim() || undefined,
+    departureDate: isComingSoon || !form.departureDate ? null : form.departureDate,
+    returnDate: isComingSoon || !form.returnDate ? null : form.returnDate,
     seatsAvailable: Number(form.seatsAvailable) || 0,
     priceAdult: Number(form.priceAdult) || 0,
-    priceChild: Number(form.priceChild) || 0,
+    priceExtraBed: Number(form.priceExtraBed) || 0,
+    priceChildWithoutExtraBed:
+      Number(form.priceChildWithoutExtraBed) || 0,
     singleOccupancy: Number(form.singleOccupancy) || 0,
-    depositType: form.depositType.trim(),
+    depositType: form.depositType,
     depositValue: Number(form.depositValue) || 0,
+    depositAppliesTo: form.depositAppliesTo,
     balanceDueDaysBefore: Number(form.balanceDueDaysBefore) || 0,
-    earlyBirdOffer: form.earlyBirdOffer.trim(),
-    bookingDeadline: form.bookingDeadline,
+    earlyBirdOffer: form.earlyBirdOffer.trim() || null,
+    bookingDeadline: form.bookingDeadline || null,
+    status: form.status,
+    childPricingRules: form.childPricingRules.map((rule) => ({
+      minAge: Number(rule.minAge) || 0,
+      maxAge: Number(rule.maxAge) || 0,
+      allowExtraBed: rule.allowExtraBed,
+      allowWithoutExtraBed: rule.allowWithoutExtraBed,
+    })),
+    roomPolicy: {
+      allowChildBedSharing: form.roomPolicy.allowChildBedSharing,
+      maxChildrenWithoutExtraBedPerRoom:
+        Number(form.roomPolicy.maxChildrenWithoutExtraBedPerRoom) || 0,
+      allowExtraBed: form.roomPolicy.allowExtraBed,
+      allowChildSingleRoom: form.roomPolicy.allowChildSingleRoom,
+    },
+  };
+}
+
+function createItineraryPayload(
+  form: ItineraryFormState
+): TourItineraryPayload {
+  return {
+    tourId: form.tourId.trim(),
+    itinerarySummary: form.itinerarySummary.trim(),
+    days: form.days.map((day, index) => ({
+      dayNumber: Number(day.dayNumber) || index + 1,
+      title: day.title.trim(),
+      summary: day.summary.trim(),
+      placesVisited: parseTextList(day.placesVisited),
+      transport: day.transport.trim(),
+      walkingDifficulty: day.walkingDifficulty.trim(),
+      meals: day.meals.trim(),
+    })),
   };
 }
 
 function tourToForm(tour: AdminTour): TourFormState {
+  const destinationIds = getTourDestinationIds(tour);
+
   return {
     tourId: tour.tourId,
     tourName: tour.tourName,
     tourType: tour.tourType,
-    destinationId: tour.destinationId,
+    destinationId: destinationIds[0] || tour.destinationId,
+    destinationIds,
     durationDn: tour.durationDn,
     category: tour.category,
     difficulty: tour.difficulty,
@@ -213,6 +385,9 @@ function tourToForm(tour: AdminTour): TourFormState {
     exclusions: tour.exclusions.join("\n"),
     expertId: tour.expertId,
     notes: tour.notes,
+    bannerImage: tour.bannerImage,
+    galleryImages: tour.galleryImages.join("\n"),
+    video: tour.video,
   };
 }
 
@@ -225,17 +400,60 @@ function departureToForm(departure: AdminTourDeparture): DepartureFormState {
     returnDate: formatDateInput(departure.returnDate),
     seatsAvailable: departure.seatsAvailable.toString(),
     priceAdult: departure.priceAdult.toString(),
-    priceChild: departure.priceChild.toString(),
+    priceExtraBed: departure.priceExtraBed.toString(),
+    priceChildWithoutExtraBed:
+      departure.priceChildWithoutExtraBed.toString(),
     singleOccupancy: departure.singleOccupancy.toString(),
-    depositType: departure.depositType,
+    depositType: departure.depositType || "fixed",
     depositValue: departure.depositValue.toString(),
+    depositAppliesTo: departure.depositAppliesTo || "per_person",
     balanceDueDaysBefore: departure.balanceDueDaysBefore.toString(),
-    earlyBirdOffer: departure.earlyBirdOffer,
+    earlyBirdOffer: departure.earlyBirdOffer || "",
     bookingDeadline: formatDateInput(departure.bookingDeadline),
+    status: departure.status || "scheduled",
+    childPricingRules: departure.childPricingRules.map((rule) => ({
+      minAge: rule.minAge.toString(),
+      maxAge: rule.maxAge.toString(),
+      allowExtraBed: rule.allowExtraBed,
+      allowWithoutExtraBed: rule.allowWithoutExtraBed,
+    })),
+    roomPolicy: {
+      allowChildBedSharing:
+        departure.roomPolicy?.allowChildBedSharing ?? true,
+      maxChildrenWithoutExtraBedPerRoom: String(
+        departure.roomPolicy?.maxChildrenWithoutExtraBedPerRoom ?? 1
+      ),
+      allowExtraBed: departure.roomPolicy?.allowExtraBed ?? true,
+      allowChildSingleRoom:
+        departure.roomPolicy?.allowChildSingleRoom ?? false,
+    },
   };
 }
 
-function formatDate(value: string): string {
+function itineraryToForm(itinerary: AdminTourItinerary): ItineraryFormState {
+  return {
+    tourId: itinerary.tourId,
+    itinerarySummary: itinerary.itinerarySummary,
+    days:
+      itinerary.days.length > 0
+        ? itinerary.days.map((day, index) => ({
+            dayNumber: (day.dayNumber || index + 1).toString(),
+            title: day.title,
+            summary: day.summary,
+            placesVisited: day.placesVisited.join("\n"),
+            transport: day.transport,
+            walkingDifficulty: day.walkingDifficulty,
+            meals: day.meals,
+          }))
+        : [createEmptyItineraryDay(1)],
+  };
+}
+
+function formatDate(value: string | null): string {
+  if (!value) {
+    return "-";
+  }
+
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
@@ -245,7 +463,11 @@ function formatDate(value: string): string {
   return formatDateWithDashes(date);
 }
 
-function formatDateInput(value: string): string {
+function formatDateInput(value: string | null): string {
+  if (!value) {
+    return "";
+  }
+
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
@@ -305,6 +527,13 @@ function formatCurrency(value: number): string {
   }).format(value || 0);
 }
 
+function formatEnumLabel(value: string): string {
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function createTourMetrics(
   tours: AdminTour[],
   departures: AdminTourDeparture[]
@@ -314,7 +543,9 @@ function createTourMetrics(
     0
   );
   const upcomingDepartures = departures.filter(
-    (departure) => new Date(departure.departureDate).getTime() >= Date.now()
+    (departure) =>
+      departure.departureDate &&
+      new Date(departure.departureDate).getTime() >= Date.now()
   ).length;
 
   return [
@@ -359,22 +590,37 @@ export default function ToursPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [tours, setTours] = useState<AdminTour[]>([]);
   const [departures, setDepartures] = useState<AdminTourDeparture[]>([]);
+  const [itineraries, setItineraries] = useState<AdminTourItinerary[]>([]);
   const [destinations, setDestinations] = useState<AdminDestination[]>([]);
   const [experts, setExperts] = useState<AdminExpert[]>([]);
   const [isLoadingTours, setIsLoadingTours] = useState(true);
   const [tourSheetMode, setTourSheetMode] = useState<TourSheetMode | null>(null);
   const [departureSheetMode, setDepartureSheetMode] =
     useState<DepartureSheetMode | null>(null);
+  const [itinerarySheetMode, setItinerarySheetMode] =
+    useState<ItinerarySheetMode | null>(null);
   const [selectedTour, setSelectedTour] = useState<AdminTour | null>(null);
   const [selectedDeparture, setSelectedDeparture] =
     useState<AdminTourDeparture | null>(null);
+  const [selectedItinerary, setSelectedItinerary] =
+    useState<AdminTourItinerary | null>(null);
   const [tourForm, setTourForm] = useState<TourFormState>(emptyTourForm);
   const [departureForm, setDepartureForm] =
     useState<DepartureFormState>(emptyDepartureForm);
+  const [itineraryForm, setItineraryForm] =
+    useState<ItineraryFormState>(emptyItineraryForm);
   const [isSavingTour, setIsSavingTour] = useState(false);
+  const [isUploadingTourBannerImage, setIsUploadingTourBannerImage] =
+    useState(false);
+  const [isUploadingTourGalleryImages, setIsUploadingTourGalleryImages] =
+    useState(false);
+  const [isUploadingTourVideo, setIsUploadingTourVideo] = useState(false);
   const [isSavingDeparture, setIsSavingDeparture] = useState(false);
+  const [isSavingItinerary, setIsSavingItinerary] = useState(false);
   const [isDeletingTourId, setIsDeletingTourId] = useState<string | null>(null);
   const [isDeletingDepartureId, setIsDeletingDepartureId] =
+    useState<string | null>(null);
+  const [isDeletingItineraryId, setIsDeletingItineraryId] =
     useState<string | null>(null);
 
   useEffect(() => {
@@ -385,11 +631,13 @@ export default function ToursPage() {
         const [
           toursResponse,
           departuresResponse,
+          itinerariesResponse,
           destinationsResponse,
           expertsResponse,
         ] = await Promise.all([
           listAdminTours(),
           listAdminTourDepartures(),
+          listAdminTourItineraries(),
           listAdminDestinations(),
           listAdminExperts(),
         ]);
@@ -397,6 +645,7 @@ export default function ToursPage() {
         if (isMounted) {
           setTours(toursResponse.data.tours);
           setDepartures(departuresResponse.data.departures);
+          setItineraries(itinerariesResponse.data.itineraries);
           setDestinations(destinationsResponse.data.destinations);
           setExperts(expertsResponse.data.experts);
         }
@@ -434,6 +683,7 @@ export default function ToursPage() {
         tour.tourName,
         tour.tourType,
         tour.destinationId,
+        ...getTourDestinationIds(tour),
         tour.durationDn,
         tour.category,
         tour.difficulty,
@@ -457,7 +707,6 @@ export default function ToursPage() {
       [
         departure.departureId,
         departure.tourId,
-        departure.destinationId,
         departure.depositType,
         departure.earlyBirdOffer,
         formatDate(departure.departureDate),
@@ -468,6 +717,32 @@ export default function ToursPage() {
         .includes(query)
     );
   }, [activeTab, departures, searchQuery]);
+
+  const filteredItineraries = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    if (!query || activeTab !== "itineraries") {
+      return itineraries;
+    }
+
+    return itineraries.filter((itinerary) =>
+      [
+        itinerary.tourId,
+        itinerary.itinerarySummary,
+        ...itinerary.days.flatMap((day) => [
+          day.title,
+          day.summary,
+          day.placesVisited.join(" "),
+          day.transport,
+          day.walkingDifficulty,
+          day.meals,
+        ]),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query)
+    );
+  }, [activeTab, itineraries, searchQuery]);
 
   const destinationNameById = useMemo(
     () =>
@@ -490,6 +765,11 @@ export default function ToursPage() {
     () => new Map(tours.map((tour) => [tour.tourId, tour.tourName])),
     [tours]
   );
+  const isTourFormBusy =
+    isSavingTour ||
+    isUploadingTourBannerImage ||
+    isUploadingTourGalleryImages ||
+    isUploadingTourVideo;
 
   function updateTourForm<K extends keyof TourFormState>(
     field: K,
@@ -497,6 +777,12 @@ export default function ToursPage() {
   ) {
     setTourForm((currentForm) => ({
       ...currentForm,
+      ...(field === "destinationIds"
+        ? {
+            destinationId:
+              (value as string[])[0] || "",
+          }
+        : {}),
       [field]: value,
     }));
   }
@@ -508,15 +794,54 @@ export default function ToursPage() {
     setDepartureForm((currentForm) => ({
       ...currentForm,
       [field]: value,
-      ...(field === "tourId"
-        ? {
-            destinationId:
-              tours.find(
-                (tour) =>
-                  tour.tourId === String(value).trim().toUpperCase()
-              )?.destinationId || currentForm.destinationId,
-          }
-        : {}),
+    }));
+  }
+
+  function updateItineraryForm<K extends keyof ItineraryFormState>(
+    field: K,
+    value: ItineraryFormState[K]
+  ) {
+    setItineraryForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+    }));
+  }
+
+  function updateItineraryDay(
+    dayIndex: number,
+    field: keyof ItineraryDayFormState,
+    value: string
+  ) {
+    setItineraryForm((currentForm) => ({
+      ...currentForm,
+      days: currentForm.days.map((day, index) =>
+        index === dayIndex ? { ...day, [field]: value } : day
+      ),
+    }));
+  }
+
+  function addItineraryDay() {
+    setItineraryForm((currentForm) => ({
+      ...currentForm,
+      days: [
+        ...currentForm.days,
+        createEmptyItineraryDay(currentForm.days.length + 1),
+      ],
+    }));
+  }
+
+  function removeItineraryDay(dayIndex: number) {
+    setItineraryForm((currentForm) => ({
+      ...currentForm,
+      days:
+        currentForm.days.length > 1
+          ? currentForm.days
+              .filter((_day, index) => index !== dayIndex)
+              .map((day, index) => ({
+                ...day,
+                dayNumber: (index + 1).toString(),
+              }))
+          : currentForm.days,
     }));
   }
 
@@ -539,13 +864,105 @@ export default function ToursPage() {
   }
 
   function closeTourSheet() {
-    if (isSavingTour) {
+    if (isTourFormBusy) {
       return;
     }
 
     setTourSheetMode(null);
     setSelectedTour(null);
     setTourForm(emptyTourForm);
+  }
+
+  async function handleTourBannerImageUpload(files: FileList | null) {
+    const [bannerImage] = Array.from(files || []);
+
+    if (!bannerImage) {
+      return;
+    }
+
+    setIsUploadingTourBannerImage(true);
+
+    try {
+      const response = await uploadTourMedia({ bannerImage });
+
+      setTourForm((currentForm) => ({
+        ...currentForm,
+        bannerImage: response.data.bannerImage,
+      }));
+      toast.success("Banner uploaded", response.message);
+    } catch (error) {
+      toast.error("Banner upload failed", getErrorMessage(error));
+    } finally {
+      setIsUploadingTourBannerImage(false);
+    }
+  }
+
+  async function handleTourGalleryImagesUpload(files: FileList | null) {
+    const galleryImages = Array.from(files || []);
+
+    if (galleryImages.length === 0) {
+      return;
+    }
+
+    setIsUploadingTourGalleryImages(true);
+
+    try {
+      const response = await uploadTourMedia({ galleryImages });
+
+      setTourForm((currentForm) => ({
+        ...currentForm,
+        galleryImages: appendTextList(
+          currentForm.galleryImages,
+          response.data.galleryImages
+        ),
+      }));
+      toast.success("Gallery uploaded", response.message);
+    } catch (error) {
+      toast.error("Gallery upload failed", getErrorMessage(error));
+    } finally {
+      setIsUploadingTourGalleryImages(false);
+    }
+  }
+
+  async function handleTourVideoUpload(files: FileList | null) {
+    const [video] = Array.from(files || []);
+
+    if (!video) {
+      return;
+    }
+
+    setIsUploadingTourVideo(true);
+
+    try {
+      const response = await uploadTourMedia({ video });
+
+      setTourForm((currentForm) => ({
+        ...currentForm,
+        video: response.data.video,
+      }));
+      toast.success("Video uploaded", response.message);
+    } catch (error) {
+      toast.error("Video upload failed", getErrorMessage(error));
+    } finally {
+      setIsUploadingTourVideo(false);
+    }
+  }
+
+  function handleRemoveTourBannerImage() {
+    updateTourForm("bannerImage", "");
+  }
+
+  function handleRemoveTourGalleryImage(indexToRemove: number) {
+    setTourForm((currentForm) => ({
+      ...currentForm,
+      galleryImages: parseTextList(currentForm.galleryImages)
+        .filter((_image, index) => index !== indexToRemove)
+        .join("\n"),
+    }));
+  }
+
+  function handleRemoveTourVideo() {
+    updateTourForm("video", "");
   }
 
   function openAddDepartureSheet() {
@@ -576,10 +993,43 @@ export default function ToursPage() {
     setDepartureForm(emptyDepartureForm);
   }
 
+  function openAddItinerarySheet() {
+    setSelectedItinerary(null);
+    setItineraryForm(emptyItineraryForm);
+    setItinerarySheetMode("add");
+  }
+
+  function openViewItinerarySheet(itinerary: AdminTourItinerary) {
+    setSelectedItinerary(itinerary);
+    setItineraryForm(itineraryToForm(itinerary));
+    setItinerarySheetMode("view");
+  }
+
+  function openEditItinerarySheet(itinerary: AdminTourItinerary) {
+    setSelectedItinerary(itinerary);
+    setItineraryForm(itineraryToForm(itinerary));
+    setItinerarySheetMode("edit");
+  }
+
+  function closeItinerarySheet() {
+    if (isSavingItinerary) {
+      return;
+    }
+
+    setItinerarySheetMode(null);
+    setSelectedItinerary(null);
+    setItineraryForm(emptyItineraryForm);
+  }
+
   async function handleSaveTour(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (tourSheetMode === "view") {
+    if (
+      tourSheetMode === "view" ||
+      isUploadingTourBannerImage ||
+      isUploadingTourGalleryImages ||
+      isUploadingTourVideo
+    ) {
       return;
     }
 
@@ -674,6 +1124,60 @@ export default function ToursPage() {
     }
   }
 
+  async function handleSaveItinerary(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (itinerarySheetMode === "view") {
+      return;
+    }
+
+    setIsSavingItinerary(true);
+
+    const payload = createItineraryPayload(itineraryForm);
+
+    try {
+      if (itinerarySheetMode === "edit" && selectedItinerary) {
+        const response = await updateAdminTourItinerary(
+          selectedItinerary.id,
+          payload
+        );
+
+        setItineraries((currentItineraries) =>
+          currentItineraries.map((itinerary) =>
+            itinerary.id === selectedItinerary.id
+              ? response.data.itinerary
+              : itinerary
+          )
+        );
+        setItinerarySheetMode(null);
+        setSelectedItinerary(null);
+        setItineraryForm(emptyItineraryForm);
+        toast.success("Itinerary updated", response.message);
+        return;
+      }
+
+      const response = await createAdminTourItinerary(payload);
+
+      setItineraries((currentItineraries) => [
+        response.data.itinerary,
+        ...currentItineraries,
+      ]);
+      setItinerarySheetMode(null);
+      setSelectedItinerary(null);
+      setItineraryForm(emptyItineraryForm);
+      toast.success("Itinerary added", response.message);
+    } catch (error) {
+      toast.error(
+        itinerarySheetMode === "edit"
+          ? "Itinerary not updated"
+          : "Itinerary not saved",
+        getErrorMessage(error)
+      );
+    } finally {
+      setIsSavingItinerary(false);
+    }
+  }
+
   async function handleDeleteTour(tour: AdminTour) {
     const shouldDelete = window.confirm(`Delete ${tour.tourName}?`);
 
@@ -722,8 +1226,41 @@ export default function ToursPage() {
     }
   }
 
+  async function handleDeleteItinerary(itinerary: AdminTourItinerary) {
+    const shouldDelete = window.confirm(`Delete itinerary for ${itinerary.tourId}?`);
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    setIsDeletingItineraryId(itinerary.id);
+
+    try {
+      const response = await deleteAdminTourItinerary(itinerary.id);
+
+      setItineraries((currentItineraries) =>
+        currentItineraries.filter((item) => item.id !== itinerary.id)
+      );
+      toast.success("Itinerary deleted", response.message);
+    } catch (error) {
+      toast.error("Itinerary not deleted", getErrorMessage(error));
+    } finally {
+      setIsDeletingItineraryId(null);
+    }
+  }
+
   const addButtonLabel =
-    activeTab === "master" ? "Add New Tour" : "Add New Departure";
+    activeTab === "master"
+      ? "Add New Tour"
+      : activeTab === "itineraries"
+        ? "Add New Itinerary"
+        : "Add New Departure";
+  const handleAddButtonClick =
+    activeTab === "master"
+      ? openAddTourSheet
+      : activeTab === "itineraries"
+        ? openAddItinerarySheet
+        : openAddDepartureSheet;
 
   return (
     <AdminDashboardShell activeLabel="Tours">
@@ -740,15 +1277,13 @@ export default function ToursPage() {
               Tours
             </h1>
             <p className="mt-1 text-sm text-foreground/60">
-              Manage tour masters and scheduled departures.
+              Manage tour masters, itineraries, and scheduled departures.
             </p>
           </div>
 
           <Button
             type="button"
-            onClick={
-              activeTab === "master" ? openAddTourSheet : openAddDepartureSheet
-            }
+            onClick={handleAddButtonClick}
             className="h-10 rounded-sm px-4 text-xs font-bold"
           >
             <Plus className="size-4" data-icon="inline-start" />
@@ -790,9 +1325,19 @@ export default function ToursPage() {
               totalCount={tours.length}
               tours={filteredTours}
             />
+          ) : activeTab === "itineraries" ? (
+            <TourItineraryTable
+              itineraries={filteredItineraries}
+              isDeletingItineraryId={isDeletingItineraryId}
+              isLoading={isLoadingTours}
+              onDelete={handleDeleteItinerary}
+              onEdit={openEditItinerarySheet}
+              onView={openViewItinerarySheet}
+              totalCount={itineraries.length}
+              tourNameById={tourNameById}
+            />
           ) : (
             <TourDepartureTable
-              destinationNameById={destinationNameById}
               departures={filteredDepartures}
               isDeletingDepartureId={isDeletingDepartureId}
               isLoading={isLoadingTours}
@@ -810,17 +1355,25 @@ export default function ToursPage() {
         destinations={destinations}
         experts={experts}
         form={tourForm}
-        isBusy={isSavingTour}
+        isBusy={isTourFormBusy}
         isOpen={tourSheetMode !== null}
         isSaving={isSavingTour}
+        isUploadingBannerImage={isUploadingTourBannerImage}
+        isUploadingGalleryImages={isUploadingTourGalleryImages}
+        isUploadingVideo={isUploadingTourVideo}
         mode={tourSheetMode}
+        onBannerImageUpload={handleTourBannerImageUpload}
         onClose={closeTourSheet}
+        onGalleryImagesUpload={handleTourGalleryImagesUpload}
+        onRemoveBannerImage={handleRemoveTourBannerImage}
+        onRemoveGalleryImage={handleRemoveTourGalleryImage}
+        onRemoveVideo={handleRemoveTourVideo}
         onSubmit={handleSaveTour}
         onUpdate={updateTourForm}
+        onVideoUpload={handleTourVideoUpload}
       />
 
       <DepartureFormDialog
-        destinations={destinations}
         form={departureForm}
         isBusy={isSavingDeparture}
         isOpen={departureSheetMode !== null}
@@ -829,6 +1382,21 @@ export default function ToursPage() {
         onClose={closeDepartureSheet}
         onSubmit={handleSaveDeparture}
         onUpdate={updateDepartureForm}
+        tours={tours}
+      />
+
+      <ItineraryFormDialog
+        form={itineraryForm}
+        isBusy={isSavingItinerary}
+        isOpen={itinerarySheetMode !== null}
+        isSaving={isSavingItinerary}
+        mode={itinerarySheetMode}
+        onAddDay={addItineraryDay}
+        onClose={closeItinerarySheet}
+        onRemoveDay={removeItineraryDay}
+        onSubmit={handleSaveItinerary}
+        onUpdate={updateItineraryForm}
+        onUpdateDay={updateItineraryDay}
         tours={tours}
       />
     </AdminDashboardShell>
@@ -846,7 +1414,11 @@ function AdminPageTopbar({
 }) {
   const toast = useToast();
   const searchPlaceholder =
-    activeTab === "master" ? "Search tours..." : "Search departures...";
+    activeTab === "master"
+      ? "Search tours..."
+      : activeTab === "itineraries"
+        ? "Search itineraries..."
+        : "Search departures...";
 
   return (
     <header className="hidden flex-col gap-4 border-b border-border pb-4 md:flex xl:flex-row xl:items-center xl:justify-between">
@@ -960,6 +1532,12 @@ function TourTabs({
         label="Tour Departure"
         onClick={() => onTabChange("departures")}
       />
+      <TabButton
+        active={activeTab === "itineraries"}
+        icon={BookOpen}
+        label="Itinerary"
+        onClick={() => onTabChange("itineraries")}
+      />
     </div>
   );
 }
@@ -1000,7 +1578,11 @@ function TourFilters({
   onSearchQueryChange: (value: string) => void;
 }) {
   const searchPlaceholder =
-    activeTab === "master" ? "Search tours..." : "Search departures...";
+    activeTab === "master"
+      ? "Search tours..."
+      : activeTab === "itineraries"
+        ? "Search itineraries..."
+        : "Search departures...";
 
   return (
     <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1058,7 +1640,7 @@ function TourMasterTable({
               <th className="px-2 py-3 font-bold">Tour ID</th>
               <th className="px-2 py-3 font-bold">Tour Name</th>
               <th className="px-2 py-3 font-bold">Type / Category</th>
-              <th className="px-2 py-3 font-bold">Destination ID</th>
+              <th className="px-2 py-3 font-bold">Destination IDs</th>
               <th className="px-2 py-3 font-bold">Duration</th>
               <th className="px-2 py-3 font-bold">Difficulty</th>
               <th className="px-2 py-3 font-bold">Expert ID</th>
@@ -1089,11 +1671,14 @@ function TourMasterTable({
             ) : null}
 
             {!isLoading
-              ? tours.map((tour) => (
-                  <tr
-                    key={tour.id}
-                    className="border-t border-border transition-colors hover:bg-muted/25"
-                  >
+              ? tours.map((tour) => {
+                  const destinationIds = getTourDestinationIds(tour);
+
+                  return (
+                    <tr
+                      key={tour.id}
+                      className="border-t border-border transition-colors hover:bg-muted/25"
+                    >
                     <td
                       data-label="Tour ID"
                       className="px-2 py-3 text-xs font-semibold text-foreground/70"
@@ -1106,7 +1691,9 @@ function TourMasterTable({
                       className="px-2 py-3"
                     >
                       <div className="flex min-w-0 items-center gap-2.5">
-                        <TourThumb />
+                        <TourThumb
+                          photo={tour.bannerImage || tour.galleryImages[0]}
+                        />
                         <div className="min-w-0">
                           <p className="truncate text-sm font-bold text-foreground">
                             {tour.tourName}
@@ -1129,14 +1716,17 @@ function TourMasterTable({
                       </span>
                     </td>
                     <td
-                      data-label="Destination ID"
+                      data-label="Destination IDs"
                       className="px-2 py-3 text-xs text-foreground/70"
                     >
                       <span className="block truncate font-semibold">
-                        {tour.destinationId}
+                        {destinationIds.join(", ") || "-"}
                       </span>
                       <span className="mt-1 block truncate text-foreground/50">
-                        {destinationNameById.get(tour.destinationId) || "-"}
+                        {getDestinationNameList(
+                          destinationIds,
+                          destinationNameById
+                        )}
                       </span>
                     </td>
                     <td
@@ -1176,7 +1766,8 @@ function TourMasterTable({
                       />
                     </td>
                   </tr>
-                ))
+                  );
+                })
               : null}
           </tbody>
         </table>
@@ -1192,7 +1783,6 @@ function TourMasterTable({
 }
 
 function TourDepartureTable({
-  destinationNameById,
   departures,
   isDeletingDepartureId,
   isLoading,
@@ -1202,7 +1792,6 @@ function TourDepartureTable({
   totalCount,
   tourNameById,
 }: {
-  destinationNameById: Map<string, string>;
   departures: AdminTourDeparture[];
   isDeletingDepartureId: string | null;
   isLoading: boolean;
@@ -1229,7 +1818,7 @@ function TourDepartureTable({
           <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
             <tr>
               <th className="px-2 py-3 font-bold">Departure ID</th>
-              <th className="px-2 py-3 font-bold">Tour / Destination</th>
+              <th className="px-2 py-3 font-bold">Tour</th>
               <th className="px-2 py-3 font-bold">Dates</th>
               <th className="px-2 py-3 font-bold">Seats</th>
               <th className="px-2 py-3 font-bold">Price</th>
@@ -1276,7 +1865,7 @@ function TourDepartureTable({
                       </span>
                     </td>
                     <td
-                      data-label="Tour / Destination"
+                      data-label="Tour"
                       data-mobile-primary
                       className="px-2 py-3 text-xs text-foreground/70"
                     >
@@ -1286,22 +1875,15 @@ function TourDepartureTable({
                       <span className="mt-1 block truncate text-foreground/50">
                         {tourNameById.get(departure.tourId) || "-"}
                       </span>
-                      <span className="mt-1 block truncate text-foreground/50">
-                        {departure.destinationId || "-"}
-                        {departure.destinationId
-                          ? ` · ${
-                              destinationNameById.get(departure.destinationId) ||
-                              "-"
-                            }`
-                          : ""}
-                      </span>
                     </td>
                     <td
                       data-label="Dates"
                       className="px-2 py-3 text-xs text-foreground/70"
                     >
                       <span className="block truncate">
-                        {formatDate(departure.departureDate)}
+                        {departure.status === "coming_soon"
+                          ? "Coming Soon"
+                          : formatDate(departure.departureDate)}
                       </span>
                       <span className="mt-1 block truncate text-foreground/50">
                         Return {formatDate(departure.returnDate)}
@@ -1318,10 +1900,14 @@ function TourDepartureTable({
                       className="px-2 py-3 text-xs text-foreground/70"
                     >
                       <span className="block truncate font-semibold">
-                        {formatCurrency(departure.priceAdult)}
+                        Adult {formatCurrency(departure.priceAdult)}
                       </span>
                       <span className="mt-1 block truncate text-foreground/50">
-                        Child {formatCurrency(departure.priceChild)}
+                        Extra {formatCurrency(departure.priceExtraBed)}
+                      </span>
+                      <span className="mt-1 block truncate text-foreground/50">
+                        Child no bed{" "}
+                        {formatCurrency(departure.priceChildWithoutExtraBed)}
                       </span>
                     </td>
                     <td
@@ -1329,10 +1915,13 @@ function TourDepartureTable({
                       className="px-2 py-3 text-xs text-foreground/70"
                     >
                       <span className="block truncate font-semibold">
-                        {departure.depositType || "-"}
+                        {formatEnumLabel(departure.depositType || "fixed")}
                       </span>
                       <span className="mt-1 block truncate text-foreground/50">
-                        {formatCurrency(departure.depositValue)}
+                        {formatCurrency(departure.depositValue)} /{" "}
+                        {formatEnumLabel(
+                          departure.depositAppliesTo || "per_person"
+                        )}
                       </span>
                     </td>
                     <td
@@ -1343,6 +1932,7 @@ function TourDepartureTable({
                         {formatDate(departure.bookingDeadline)}
                       </span>
                       <span className="mt-1 block truncate text-foreground/50">
+                        {formatEnumLabel(departure.status)} -{" "}
                         {departure.balanceDueDaysBefore} days
                       </span>
                     </td>
@@ -1371,10 +1961,160 @@ function TourDepartureTable({
   );
 }
 
-function TourThumb() {
+function TourItineraryTable({
+  itineraries,
+  isDeletingItineraryId,
+  isLoading,
+  onDelete,
+  onEdit,
+  onView,
+  totalCount,
+  tourNameById,
+}: {
+  itineraries: AdminTourItinerary[];
+  isDeletingItineraryId: string | null;
+  isLoading: boolean;
+  onDelete: (itinerary: AdminTourItinerary) => void;
+  onEdit: (itinerary: AdminTourItinerary) => void;
+  onView: (itinerary: AdminTourItinerary) => void;
+  totalCount: number;
+  tourNameById: Map<string, string>;
+}) {
   return (
-    <span className="grid size-12 shrink-0 place-items-center rounded-sm bg-[#7a3b22] text-white">
-      <MapPin className="size-5" />
+    <>
+      <div className="max-w-full overflow-hidden">
+        <table className="w-full table-fixed border-collapse text-left text-sm">
+          <colgroup>
+            <col className="w-[18%]" />
+            <col className="w-[30%]" />
+            <col className="w-[10%]" />
+            <col className="w-[22%]" />
+            <col className="w-[14%]" />
+            <col className="w-[6%]" />
+          </colgroup>
+          <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
+            <tr>
+              <th className="px-2 py-3 font-bold">Tour</th>
+              <th className="px-2 py-3 font-bold">Itinerary Summary</th>
+              <th className="px-2 py-3 font-bold">Days</th>
+              <th className="px-2 py-3 font-bold">Highlights</th>
+              <th className="px-2 py-3 font-bold">Updated</th>
+              <th className="px-2 py-3 text-right font-bold">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr>
+                <td
+                  className="px-5 py-8 text-center text-xs text-foreground/55"
+                  colSpan={6}
+                >
+                  Loading itineraries...
+                </td>
+              </tr>
+            ) : null}
+
+            {!isLoading && itineraries.length === 0 ? (
+              <tr>
+                <td
+                  className="px-5 py-8 text-center text-xs text-foreground/55"
+                  colSpan={6}
+                >
+                  No tour itineraries added yet.
+                </td>
+              </tr>
+            ) : null}
+
+            {!isLoading
+              ? itineraries.map((itinerary) => {
+                  const highlightedPlaces = itinerary.days
+                    .flatMap((day) => day.placesVisited)
+                    .slice(0, 4);
+
+                  return (
+                    <tr
+                      key={itinerary.id}
+                      className="border-t border-border transition-colors hover:bg-muted/25"
+                    >
+                      <td
+                        data-label="Tour"
+                        data-mobile-primary
+                        className="px-2 py-3 text-xs text-foreground/70"
+                      >
+                        <span className="block truncate font-semibold">
+                          {itinerary.tourId}
+                        </span>
+                        <span className="mt-1 block truncate text-foreground/50">
+                          {tourNameById.get(itinerary.tourId) || "-"}
+                        </span>
+                      </td>
+                      <td
+                        data-label="Itinerary Summary"
+                        className="px-2 py-3 text-xs text-foreground/70"
+                      >
+                        <span className="line-clamp-2">
+                          {itinerary.itinerarySummary || "-"}
+                        </span>
+                      </td>
+                      <td
+                        data-label="Days"
+                        className="px-2 py-3 text-xs font-semibold text-foreground/70"
+                      >
+                        {itinerary.days.length}
+                      </td>
+                      <td
+                        data-label="Highlights"
+                        className="px-2 py-3 text-xs text-foreground/70"
+                      >
+                        <span className="line-clamp-2">
+                          {highlightedPlaces.length > 0
+                            ? highlightedPlaces.join(", ")
+                            : "-"}
+                        </span>
+                      </td>
+                      <td
+                        data-label="Updated"
+                        className="px-2 py-3 text-xs text-foreground/70"
+                      >
+                        {formatDate(itinerary.updatedAt)}
+                      </td>
+                      <td data-actions data-label="Actions" className="px-2 py-3">
+                        <TourActionsMenu
+                          itemName={itinerary.tourId}
+                          isDeleting={isDeletingItineraryId === itinerary.id}
+                          onDelete={() => onDelete(itinerary)}
+                          onEdit={() => onEdit(itinerary)}
+                          onView={() => onView(itinerary)}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })
+              : null}
+          </tbody>
+        </table>
+      </div>
+
+      <TableFooter
+        count={itineraries.length}
+        totalCount={totalCount}
+        itemLabel="itineraries"
+      />
+    </>
+  );
+}
+
+function TourThumb({ photo }: { photo?: string }) {
+  return (
+    <span
+      className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-sm bg-[#7a3b22] bg-cover bg-center text-white"
+      style={
+        photo
+          ? { backgroundImage: `url("${getTourMediaUrl(photo)}")` }
+          : undefined
+      }
+    >
+      {!photo ? <MapPin className="size-5" /> : null}
     </span>
   );
 }
@@ -1476,10 +2216,19 @@ function TourFormDialog({
   isBusy,
   isOpen,
   isSaving,
+  isUploadingBannerImage,
+  isUploadingGalleryImages,
+  isUploadingVideo,
   mode,
+  onBannerImageUpload,
   onClose,
+  onGalleryImagesUpload,
+  onRemoveBannerImage,
+  onRemoveGalleryImage,
+  onRemoveVideo,
   onSubmit,
   onUpdate,
+  onVideoUpload,
 }: {
   destinations: AdminDestination[];
   experts: AdminExpert[];
@@ -1487,13 +2236,22 @@ function TourFormDialog({
   isBusy: boolean;
   isOpen: boolean;
   isSaving: boolean;
+  isUploadingBannerImage: boolean;
+  isUploadingGalleryImages: boolean;
+  isUploadingVideo: boolean;
   mode: TourSheetMode | null;
+  onBannerImageUpload: (files: FileList | null) => void;
   onClose: () => void;
+  onGalleryImagesUpload: (files: FileList | null) => void;
+  onRemoveBannerImage: () => void;
+  onRemoveGalleryImage: (index: number) => void;
+  onRemoveVideo: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onUpdate: <K extends keyof TourFormState>(
     field: K,
     value: TourFormState[K]
   ) => void;
+  onVideoUpload: (files: FileList | null) => void;
 }) {
   const isReadOnly = mode === "view";
   const sheetTitle =
@@ -1506,6 +2264,8 @@ function TourFormDialog({
         : "Add a tour master record.";
   const submitButtonLabel = isSaving
     ? "Saving..."
+    : isUploadingBannerImage || isUploadingGalleryImages || isUploadingVideo
+      ? "Uploading media..."
     : mode === "edit"
       ? "Update Tour"
       : "Save Tour";
@@ -1588,49 +2348,13 @@ function TourFormDialog({
               />
             </FormField>
 
-            <FormField label="Destination ID" required>
-              <Select
+            <FormField label="Destination IDs" required>
+              <DestinationMultiSelect
+                destinations={destinations}
                 disabled={isReadOnly || destinations.length === 0}
-                name="destinationId"
-                required
-                value={form.destinationId}
-                onValueChange={(value) =>
-                  onUpdate("destinationId", String(value || ""))
-                }
-              >
-                <SelectTrigger className={inputClassName}>
-                  <SelectValue
-                    placeholder={
-                      destinations.length
-                        ? "Select destination"
-                        : "No destinations available"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {destinations.length ? (
-                    destinations.map((destination) => (
-                      <SelectItem
-                        key={destination.id}
-                        value={destination.destinationId}
-                      >
-                        <span className="flex min-w-max flex-col gap-0.5">
-                          <span className="whitespace-nowrap">
-                            {destination.destinationId}
-                          </span>
-                          <span className="whitespace-nowrap text-xs font-medium text-foreground/55">
-                            {destination.destinationName}
-                          </span>
-                        </span>
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem disabled value="empty-destinations">
-                      No destinations available
-                    </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
+                value={form.destinationIds}
+                onChange={(value) => onUpdate("destinationIds", value)}
+              />
             </FormField>
 
             <FormField label="Duration (D/N)" required>
@@ -1752,6 +2476,56 @@ function TourFormDialog({
                 placeholder="Internal notes for operations."
               />
             </FormField>
+
+            <FormField className="sm:col-span-2" label="Banner Image">
+              {!isReadOnly ? (
+                <UploadField
+                  accept="image/*"
+                  disabled={isBusy}
+                  isUploading={isUploadingBannerImage}
+                  label="Upload banner image"
+                  onFilesSelected={onBannerImageUpload}
+                />
+              ) : null}
+              <ImagePreviewGrid
+                images={form.bannerImage.trim() ? [form.bannerImage.trim()] : []}
+                onRemove={!isReadOnly ? onRemoveBannerImage : undefined}
+                variant="banner"
+              />
+            </FormField>
+
+            <FormField className="sm:col-span-2" label="Gallery Photos">
+              {!isReadOnly ? (
+                <UploadField
+                  accept="image/*"
+                  disabled={isBusy}
+                  isUploading={isUploadingGalleryImages}
+                  label="Upload gallery photos"
+                  multiple
+                  onFilesSelected={onGalleryImagesUpload}
+                />
+              ) : null}
+              <ImagePreviewGrid
+                images={parseTextList(form.galleryImages)}
+                onRemove={!isReadOnly ? onRemoveGalleryImage : undefined}
+              />
+            </FormField>
+
+            <FormField className="sm:col-span-2" label="Video">
+              {!isReadOnly ? (
+                <UploadField
+                  accept="video/mp4,video/quicktime,video/webm"
+                  disabled={isBusy}
+                  isUploading={isUploadingVideo}
+                  label="Upload video"
+                  onFilesSelected={onVideoUpload}
+                />
+              ) : null}
+              <VideoPreview
+                source={form.video}
+                onRemove={!isReadOnly ? onRemoveVideo : undefined}
+              />
+            </FormField>
           </div>
 
           {!isReadOnly ? (
@@ -1772,7 +2546,6 @@ function TourFormDialog({
 }
 
 function DepartureFormDialog({
-  destinations,
   form,
   isBusy,
   isOpen,
@@ -1783,7 +2556,6 @@ function DepartureFormDialog({
   onUpdate,
   tours,
 }: {
-  destinations: AdminDestination[];
   form: DepartureFormState;
   isBusy: boolean;
   isOpen: boolean;
@@ -1819,6 +2591,41 @@ function DepartureFormDialog({
     "h-11 rounded-sm border border-border bg-white px-3 text-sm outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15 read-only:cursor-default read-only:bg-muted/35 disabled:cursor-default disabled:bg-muted/35 disabled:text-foreground/60";
   const textareaClassName =
     "min-h-24 rounded-sm border border-border bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15 read-only:cursor-default read-only:bg-muted/35 disabled:cursor-default disabled:bg-muted/35 disabled:text-foreground/60";
+  const isComingSoon = form.status === "coming_soon";
+
+  function updateChildPricingRule<
+    TField extends keyof DepartureFormState["childPricingRules"][number],
+  >(
+    index: number,
+    field: TField,
+    value: DepartureFormState["childPricingRules"][number][TField]
+  ) {
+    onUpdate(
+      "childPricingRules",
+      form.childPricingRules.map((rule, ruleIndex) =>
+        ruleIndex === index ? { ...rule, [field]: value } : rule
+      )
+    );
+  }
+
+  function addChildPricingRule() {
+    onUpdate("childPricingRules", [
+      ...form.childPricingRules,
+      {
+        minAge: "0",
+        maxAge: "11",
+        allowExtraBed: true,
+        allowWithoutExtraBed: true,
+      },
+    ]);
+  }
+
+  function removeChildPricingRule(index: number) {
+    onUpdate(
+      "childPricingRules",
+      form.childPricingRules.filter((_rule, ruleIndex) => ruleIndex !== index)
+    );
+  }
 
   return (
     <Sheet
@@ -1914,54 +2721,44 @@ function DepartureFormDialog({
               </Select>
             </FormField>
 
-            <FormField label="Destination ID" required>
-              <Select
-                disabled={isReadOnly || destinations.length === 0}
-                name="departureDestinationId"
-                required
+            <FormField label="Destination ID">
+              <input
+                readOnly={isReadOnly}
                 value={form.destinationId}
+                onChange={(event) =>
+                  onUpdate("destinationId", event.target.value)
+                }
+                className={inputClassName}
+                placeholder="Leave blank to use tour destination"
+              />
+            </FormField>
+
+            <FormField label="Departure Status">
+              <Select
+                disabled={isReadOnly}
+                value={form.status}
                 onValueChange={(value) =>
-                  onUpdate("destinationId", String(value || ""))
+                  onUpdate(
+                    "status",
+                    String(value || "scheduled") as DepartureFormState["status"]
+                  )
                 }
               >
                 <SelectTrigger className={inputClassName}>
-                  <SelectValue
-                    placeholder={
-                      destinations.length
-                        ? "Select destination"
-                        : "No destinations available"
-                    }
-                  />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {destinations.length ? (
-                    destinations.map((destination) => (
-                      <SelectItem
-                        key={destination.id}
-                        value={destination.destinationId}
-                      >
-                        <span className="flex min-w-max flex-col gap-0.5">
-                          <span className="whitespace-nowrap">
-                            {destination.destinationId}
-                          </span>
-                          <span className="whitespace-nowrap text-xs font-medium text-foreground/55">
-                            {destination.destinationName}
-                          </span>
-                        </span>
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem disabled value="empty-departure-destinations">
-                      No destinations available
-                    </SelectItem>
-                  )}
+                  <SelectItem value="scheduled">Scheduled</SelectItem>
+                  <SelectItem value="coming_soon">Coming Soon</SelectItem>
+                  <SelectItem value="closed">Closed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
             </FormField>
 
-            <FormField label="Departure Date" required>
+            <FormField label="Departure Date" required={!isComingSoon}>
               <DatePicker
-                required
+                required={!isComingSoon}
                 readOnly={isReadOnly}
                 value={form.departureDate}
                 onChange={(value) => onUpdate("departureDate", value)}
@@ -1969,9 +2766,9 @@ function DepartureFormDialog({
               />
             </FormField>
 
-            <FormField label="Return Date" required>
+            <FormField label="Return Date" required={!isComingSoon}>
               <DatePicker
-                required
+                required={!isComingSoon}
                 readOnly={isReadOnly}
                 value={form.returnDate}
                 onChange={(value) => onUpdate("returnDate", value)}
@@ -1992,7 +2789,7 @@ function DepartureFormDialog({
               />
             </FormField>
 
-            <FormField label="Price (Adult)">
+            <FormField label="Adult Price">
               <input
                 min={0}
                 readOnly={isReadOnly}
@@ -2003,18 +2800,33 @@ function DepartureFormDialog({
               />
             </FormField>
 
-            <FormField label="Price (Child)">
+            <FormField label="Extra Bed Price">
               <input
                 min={0}
                 readOnly={isReadOnly}
                 type="number"
-                value={form.priceChild}
-                onChange={(event) => onUpdate("priceChild", event.target.value)}
+                value={form.priceExtraBed}
+                onChange={(event) =>
+                  onUpdate("priceExtraBed", event.target.value)
+                }
                 className={inputClassName}
               />
             </FormField>
 
-            <FormField label="Single Occupancy">
+            <FormField label="Child Without Extra Bed Price">
+              <input
+                min={0}
+                readOnly={isReadOnly}
+                type="number"
+                value={form.priceChildWithoutExtraBed}
+                onChange={(event) =>
+                  onUpdate("priceChildWithoutExtraBed", event.target.value)
+                }
+                className={inputClassName}
+              />
+            </FormField>
+
+            <FormField label="Single Occupancy Price">
               <input
                 min={0}
                 readOnly={isReadOnly}
@@ -2028,13 +2840,24 @@ function DepartureFormDialog({
             </FormField>
 
             <FormField label="Deposit Type">
-              <input
-                readOnly={isReadOnly}
+              <Select
+                disabled={isReadOnly}
                 value={form.depositType}
-                onChange={(event) => onUpdate("depositType", event.target.value)}
-                className={inputClassName}
-                placeholder="Fixed Amount"
-              />
+                onValueChange={(value) =>
+                  onUpdate(
+                    "depositType",
+                    String(value || "fixed") as DepartureFormState["depositType"]
+                  )
+                }
+              >
+                <SelectTrigger className={inputClassName}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="fixed">Fixed Amount</SelectItem>
+                  <SelectItem value="percentage">Percentage</SelectItem>
+                </SelectContent>
+              </Select>
             </FormField>
 
             <FormField label="Deposit Value">
@@ -2050,6 +2873,27 @@ function DepartureFormDialog({
               />
             </FormField>
 
+            <FormField label="Deposit Applies To">
+              <Select
+                disabled={isReadOnly}
+                value={form.depositAppliesTo}
+                onValueChange={(value) =>
+                  onUpdate(
+                    "depositAppliesTo",
+                    String(value || "per_person") as DepartureFormState["depositAppliesTo"]
+                  )
+                }
+              >
+                <SelectTrigger className={inputClassName}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="per_person">Per Person</SelectItem>
+                  <SelectItem value="per_booking">Per Booking</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+
             <FormField label="Balance Due Days Before">
               <input
                 min={0}
@@ -2063,9 +2907,9 @@ function DepartureFormDialog({
               />
             </FormField>
 
-            <FormField label="Booking Deadline" required>
+            <FormField label="Booking Deadline" required={!isComingSoon}>
               <DatePicker
-                required
+                required={!isComingSoon}
                 readOnly={isReadOnly}
                 value={form.bookingDeadline}
                 onChange={(value) => onUpdate("bookingDeadline", value)}
@@ -2084,6 +2928,485 @@ function DepartureFormDialog({
                 placeholder="Early booking discount details."
               />
             </FormField>
+
+            <div className="grid gap-3 sm:col-span-2">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-xs font-bold uppercase tracking-normal text-foreground/55">
+                  Child Pricing Rules
+                </h3>
+                {!isReadOnly ? (
+                  <Button
+                    type="button"
+                    onClick={addChildPricingRule}
+                    variant="outline"
+                    className="h-9 rounded-sm px-3 text-xs font-bold"
+                  >
+                    <Plus className="size-4" data-icon="inline-start" />
+                    Add Rule
+                  </Button>
+                ) : null}
+              </div>
+
+              <div className="grid gap-3 rounded-sm border border-border bg-muted/15 p-3 sm:grid-cols-4">
+                <FormField label="Allow Bed Sharing">
+                  <label className="flex h-11 items-center gap-2 rounded-sm border border-border bg-white px-3 text-sm font-semibold text-foreground/70">
+                    <input
+                      checked={form.roomPolicy.allowChildBedSharing}
+                      disabled={isReadOnly}
+                      type="checkbox"
+                      onChange={(event) =>
+                        onUpdate("roomPolicy", {
+                          ...form.roomPolicy,
+                          allowChildBedSharing: event.target.checked,
+                        })
+                      }
+                      className="size-4 rounded-sm border-border accent-primary"
+                    />
+                    Enabled
+                  </label>
+                </FormField>
+
+                <FormField label="Max Shared Children / Room">
+                  <input
+                    min={0}
+                    readOnly={isReadOnly}
+                    type="number"
+                    value={form.roomPolicy.maxChildrenWithoutExtraBedPerRoom}
+                    onChange={(event) =>
+                      onUpdate("roomPolicy", {
+                        ...form.roomPolicy,
+                        maxChildrenWithoutExtraBedPerRoom: event.target.value,
+                      })
+                    }
+                    className={inputClassName}
+                  />
+                </FormField>
+
+                <FormField label="Allow Extra Bed">
+                  <label className="flex h-11 items-center gap-2 rounded-sm border border-border bg-white px-3 text-sm font-semibold text-foreground/70">
+                    <input
+                      checked={form.roomPolicy.allowExtraBed}
+                      disabled={isReadOnly}
+                      type="checkbox"
+                      onChange={(event) =>
+                        onUpdate("roomPolicy", {
+                          ...form.roomPolicy,
+                          allowExtraBed: event.target.checked,
+                        })
+                      }
+                      className="size-4 rounded-sm border-border accent-primary"
+                    />
+                    Enabled
+                  </label>
+                </FormField>
+
+                <FormField label="Child Single Room">
+                  <label className="flex h-11 items-center gap-2 rounded-sm border border-border bg-white px-3 text-sm font-semibold text-foreground/70">
+                    <input
+                      checked={form.roomPolicy.allowChildSingleRoom}
+                      disabled={isReadOnly}
+                      type="checkbox"
+                      onChange={(event) =>
+                        onUpdate("roomPolicy", {
+                          ...form.roomPolicy,
+                          allowChildSingleRoom: event.target.checked,
+                        })
+                      }
+                      className="size-4 rounded-sm border-border accent-primary"
+                    />
+                    Enabled
+                  </label>
+                </FormField>
+              </div>
+
+              {form.childPricingRules.length === 0 ? (
+                <div className="rounded-sm border border-dashed border-border bg-muted/25 px-3 py-4 text-xs font-semibold text-foreground/50">
+                  No child pricing rules configured.
+                </div>
+              ) : null}
+
+              {form.childPricingRules.map((rule, index) => (
+                <div
+                  key={`child-rule-${index}`}
+                  className="grid gap-3 rounded-sm border border-border bg-muted/15 p-3 sm:grid-cols-[1fr_1fr_1fr_auto]"
+                >
+                  <FormField label="Minimum Age">
+                    <input
+                      min={0}
+                      readOnly={isReadOnly}
+                      type="number"
+                      value={rule.minAge}
+                      onChange={(event) =>
+                        updateChildPricingRule(index, "minAge", event.target.value)
+                      }
+                      className={inputClassName}
+                    />
+                  </FormField>
+
+                  <FormField label="Maximum Age">
+                    <input
+                      min={0}
+                      readOnly={isReadOnly}
+                      type="number"
+                      value={rule.maxAge}
+                      onChange={(event) =>
+                        updateChildPricingRule(index, "maxAge", event.target.value)
+                      }
+                      className={inputClassName}
+                    />
+                  </FormField>
+
+                  <FormField label="Allowed Bed Modes">
+                    <div className="grid min-h-11 gap-2 rounded-sm border border-border bg-white px-3 py-2 text-xs font-semibold text-foreground/70">
+                      <label className="flex items-center gap-2">
+                        <input
+                          checked={rule.allowExtraBed}
+                          disabled={isReadOnly}
+                          type="checkbox"
+                          onChange={(event) =>
+                            updateChildPricingRule(
+                              index,
+                              "allowExtraBed",
+                              event.target.checked
+                            )
+                          }
+                          className="size-4 rounded-sm border-border accent-primary"
+                        />
+                        Extra bed
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          checked={rule.allowWithoutExtraBed}
+                          disabled={isReadOnly}
+                          type="checkbox"
+                          onChange={(event) =>
+                            updateChildPricingRule(
+                              index,
+                              "allowWithoutExtraBed",
+                              event.target.checked
+                            )
+                          }
+                          className="size-4 rounded-sm border-border accent-primary"
+                        />
+                        Without extra bed
+                      </label>
+                    </div>
+                  </FormField>
+
+                  {!isReadOnly ? (
+                    <button
+                      type="button"
+                      onClick={() => removeChildPricingRule(index)}
+                      className="mt-6 grid size-10 place-items-center rounded-sm border border-border bg-white text-foreground/55 transition-colors hover:border-destructive hover:text-destructive"
+                      aria-label={`Remove child pricing rule ${index + 1}`}
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {!isReadOnly ? (
+            <SheetFooter className="border-t border-border bg-white px-7 py-6">
+              <Button
+                type="submit"
+                disabled={isBusy}
+                className="h-11 rounded-sm px-4 text-sm font-bold"
+              >
+                {submitButtonLabel}
+              </Button>
+            </SheetFooter>
+          ) : null}
+        </form>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function ItineraryFormDialog({
+  form,
+  isBusy,
+  isOpen,
+  isSaving,
+  mode,
+  onAddDay,
+  onClose,
+  onRemoveDay,
+  onSubmit,
+  onUpdate,
+  onUpdateDay,
+  tours,
+}: {
+  form: ItineraryFormState;
+  isBusy: boolean;
+  isOpen: boolean;
+  isSaving: boolean;
+  mode: ItinerarySheetMode | null;
+  onAddDay: () => void;
+  onClose: () => void;
+  onRemoveDay: (dayIndex: number) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onUpdate: <K extends keyof ItineraryFormState>(
+    field: K,
+    value: ItineraryFormState[K]
+  ) => void;
+  onUpdateDay: (
+    dayIndex: number,
+    field: keyof ItineraryDayFormState,
+    value: string
+  ) => void;
+  tours: AdminTour[];
+}) {
+  const isReadOnly = mode === "view";
+  const sheetTitle =
+    mode === "edit"
+      ? "Edit Itinerary"
+      : mode === "view"
+        ? "View Itinerary"
+        : "Add Itinerary";
+  const sheetDescription =
+    mode === "edit"
+      ? "Update the linked tour itinerary."
+      : mode === "view"
+        ? "Review the linked tour itinerary."
+        : "Add an itinerary and daily plan for a tour.";
+  const submitButtonLabel = isSaving
+    ? "Saving..."
+    : mode === "edit"
+      ? "Update Itinerary"
+      : "Save Itinerary";
+  const inputClassName =
+    "h-11 rounded-sm border border-border bg-white px-3 text-sm outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15 read-only:cursor-default read-only:bg-muted/35 disabled:cursor-default disabled:bg-muted/35 disabled:text-foreground/60";
+  const textareaClassName =
+    "min-h-24 rounded-sm border border-border bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15 read-only:cursor-default read-only:bg-muted/35 disabled:cursor-default disabled:bg-muted/35 disabled:text-foreground/60";
+
+  return (
+    <Sheet
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+    >
+      <SheetContent
+        side="right"
+        showCloseButton={false}
+        className="w-full gap-0 border-l border-border bg-white p-0 shadow-2xl shadow-stone-900/20 duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] data-[side=right]:w-full data-[side=right]:sm:max-w-[760px]"
+      >
+        <form
+          onSubmit={onSubmit}
+          className="flex h-full min-h-0 flex-col bg-white"
+        >
+          <SheetHeader className="border-b border-border px-7 py-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <SheetTitle className="font-sans text-xl font-bold tracking-normal text-foreground">
+                  {sheetTitle}
+                </SheetTitle>
+                <SheetDescription className="mt-1 text-xs text-foreground/55">
+                  {sheetDescription}
+                </SheetDescription>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isBusy}
+                className="grid size-8 shrink-0 place-items-center rounded-sm border border-emerald-600 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:pointer-events-none disabled:opacity-50"
+                aria-label="Close itinerary form"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          </SheetHeader>
+
+          <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto px-7 py-6 sm:grid-cols-2">
+            <FormField label="Tour ID" required>
+              <Select
+                disabled={isReadOnly || tours.length === 0}
+                name="itineraryTourId"
+                required
+                value={form.tourId}
+                onValueChange={(value) =>
+                  onUpdate("tourId", String(value || ""))
+                }
+              >
+                <SelectTrigger className={inputClassName}>
+                  <SelectValue
+                    placeholder={
+                      tours.length ? "Select tour" : "No tours available"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {tours.length ? (
+                    tours.map((tour) => (
+                      <SelectItem key={tour.id} value={tour.tourId}>
+                        <span className="flex min-w-max flex-col gap-0.5">
+                          <span className="whitespace-nowrap">
+                            {tour.tourId}
+                          </span>
+                          <span className="whitespace-nowrap text-xs font-medium text-foreground/55">
+                            {tour.tourName}
+                          </span>
+                        </span>
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem disabled value="empty-itinerary-tours">
+                      No tours available
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </FormField>
+
+            <FormField className="sm:col-span-2" label="Itinerary Summary" required>
+              <textarea
+                required
+                readOnly={isReadOnly}
+                value={form.itinerarySummary}
+                onChange={(event) =>
+                  onUpdate("itinerarySummary", event.target.value)
+                }
+                className={textareaClassName}
+                placeholder="Short overview of the full itinerary."
+              />
+            </FormField>
+
+            <div className="flex items-center justify-between gap-3 sm:col-span-2">
+              <h3 className="text-xs font-bold uppercase tracking-normal text-foreground/55">
+                Days
+              </h3>
+              {!isReadOnly ? (
+                <Button
+                  type="button"
+                  onClick={onAddDay}
+                  disabled={isBusy}
+                  variant="outline"
+                  className="h-9 rounded-sm px-3 text-xs font-bold"
+                >
+                  <Plus className="size-4" data-icon="inline-start" />
+                  Add Day
+                </Button>
+              ) : null}
+            </div>
+
+            {form.days.map((day, index) => (
+              <div
+                key={`itinerary-day-${index}`}
+                className="grid gap-4 rounded-sm border border-border bg-muted/15 p-4 sm:col-span-2 sm:grid-cols-2"
+              >
+                <div className="flex items-center justify-between gap-3 sm:col-span-2">
+                  <h4 className="text-sm font-bold text-foreground">
+                    Day {index + 1}
+                  </h4>
+                  {!isReadOnly && form.days.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveDay(index)}
+                      disabled={isBusy}
+                      className="grid size-8 place-items-center rounded-sm border border-border bg-white text-foreground/55 transition-colors hover:border-destructive hover:text-destructive disabled:pointer-events-none disabled:opacity-50"
+                      aria-label={`Remove day ${index + 1}`}
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  ) : null}
+                </div>
+
+                <FormField label="Day Number" required>
+                  <input
+                    required
+                    min={1}
+                    readOnly={isReadOnly}
+                    type="number"
+                    value={day.dayNumber}
+                    onChange={(event) =>
+                      onUpdateDay(index, "dayNumber", event.target.value)
+                    }
+                    className={inputClassName}
+                  />
+                </FormField>
+
+                <FormField label="Title" required>
+                  <input
+                    required
+                    readOnly={isReadOnly}
+                    value={day.title}
+                    onChange={(event) =>
+                      onUpdateDay(index, "title", event.target.value)
+                    }
+                    className={inputClassName}
+                    placeholder="Arrival and heritage walk"
+                  />
+                </FormField>
+
+                <FormField className="sm:col-span-2" label="Summary">
+                  <textarea
+                    readOnly={isReadOnly}
+                    value={day.summary}
+                    onChange={(event) =>
+                      onUpdateDay(index, "summary", event.target.value)
+                    }
+                    className={textareaClassName}
+                    placeholder="Day-wise experience summary."
+                  />
+                </FormField>
+
+                <FormField
+                  className="sm:col-span-2"
+                  label="Places Visited / Highlights"
+                >
+                  <textarea
+                    readOnly={isReadOnly}
+                    value={day.placesVisited}
+                    onChange={(event) =>
+                      onUpdateDay(index, "placesVisited", event.target.value)
+                    }
+                    className={textareaClassName}
+                    placeholder="Add one place or highlight per line."
+                  />
+                </FormField>
+
+                <FormField label="Transport">
+                  <input
+                    readOnly={isReadOnly}
+                    value={day.transport}
+                    onChange={(event) =>
+                      onUpdateDay(index, "transport", event.target.value)
+                    }
+                    className={inputClassName}
+                    placeholder="Coach, train, walk"
+                  />
+                </FormField>
+
+                <FormField label="Walking / Difficulty">
+                  <input
+                    readOnly={isReadOnly}
+                    value={day.walkingDifficulty}
+                    onChange={(event) =>
+                      onUpdateDay(index, "walkingDifficulty", event.target.value)
+                    }
+                    className={inputClassName}
+                    placeholder="Easy walking"
+                  />
+                </FormField>
+
+                <FormField className="sm:col-span-2" label="Meals">
+                  <textarea
+                    readOnly={isReadOnly}
+                    value={day.meals}
+                    onChange={(event) =>
+                      onUpdateDay(index, "meals", event.target.value)
+                    }
+                    className={textareaClassName}
+                    placeholder="Breakfast, lunch, dinner notes."
+                  />
+                </FormField>
+              </div>
+            ))}
           </div>
 
           {!isReadOnly ? (
@@ -2159,6 +3482,158 @@ function DatePicker({
   );
 }
 
+function ImagePreviewGrid({
+  images,
+  onRemove,
+  variant = "gallery",
+}: {
+  images: string[];
+  onRemove?: (index: number) => void;
+  variant?: "banner" | "gallery";
+}) {
+  if (images.length === 0) {
+    return (
+      <div
+        className={cn(
+          "grid place-items-center rounded-sm border border-dashed border-border bg-muted/35 text-xs font-medium text-foreground/45",
+          variant === "banner" ? "h-28" : "h-20"
+        )}
+      >
+        Preview will appear here
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "grid gap-2",
+        variant === "banner" ? "grid-cols-1" : "grid-cols-3"
+      )}
+    >
+      {images.slice(0, variant === "banner" ? 1 : 6).map((image, index) => (
+        <div
+          key={`${image}-${index}`}
+          className={cn(
+            "relative overflow-hidden rounded-sm border border-border bg-muted",
+            variant === "banner" ? "h-32" : "h-20"
+          )}
+        >
+          {onRemove ? (
+            <button
+              type="button"
+              onClick={() => onRemove(index)}
+              className="absolute right-1.5 top-1.5 z-10 grid size-6 place-items-center rounded-sm border border-white/70 bg-white/95 text-foreground shadow-sm transition-colors hover:border-primary hover:text-primary"
+              aria-label={
+                variant === "banner"
+                  ? "Remove banner image"
+                  : `Remove gallery photo ${index + 1}`
+              }
+            >
+              <X className="size-3.5" />
+            </button>
+          ) : null}
+          <div
+            className="h-full w-full bg-cover bg-center"
+            role="img"
+            aria-label={
+              variant === "banner"
+                ? "Tour banner preview"
+                : `Tour gallery preview ${index + 1}`
+            }
+            style={{
+              backgroundImage: `url("${getTourMediaUrl(image)}")`,
+            }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function VideoPreview({
+  onRemove,
+  source,
+}: {
+  onRemove?: () => void;
+  source: string;
+}) {
+  const trimmedSource = source.trim();
+
+  if (!trimmedSource) {
+    return (
+      <div className="grid h-28 place-items-center rounded-sm border border-dashed border-border bg-muted/35 text-xs font-medium text-foreground/45">
+        <span className="inline-flex items-center gap-2">
+          <Play className="size-4" />
+          Preview will appear here
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative overflow-hidden rounded-sm border border-border bg-muted">
+      {onRemove ? (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="absolute right-1.5 top-1.5 z-10 grid size-6 place-items-center rounded-sm border border-white/70 bg-white/95 text-foreground shadow-sm transition-colors hover:border-primary hover:text-primary"
+          aria-label="Remove tour video"
+        >
+          <X className="size-3.5" />
+        </button>
+      ) : null}
+      <video
+        className="aspect-video w-full bg-black object-cover"
+        controls
+        preload="metadata"
+        src={getTourMediaUrl(trimmedSource)}
+      >
+        Your browser does not support the video tag.
+      </video>
+    </div>
+  );
+}
+
+function UploadField({
+  accept,
+  disabled,
+  isUploading,
+  label,
+  multiple,
+  onFilesSelected,
+}: {
+  accept: string;
+  disabled: boolean;
+  isUploading: boolean;
+  label: string;
+  multiple?: boolean;
+  onFilesSelected: (files: FileList | null) => void;
+}) {
+  return (
+    <label
+      className={cn(
+        "flex h-11 cursor-pointer items-center justify-center gap-2 rounded-sm border border-dashed border-primary/30 bg-primary/5 px-3 text-sm font-bold text-primary transition-colors hover:border-primary hover:bg-primary/10",
+        disabled && "pointer-events-none cursor-not-allowed opacity-60"
+      )}
+    >
+      <Upload className="size-4 shrink-0" />
+      <span>{isUploading ? "Uploading..." : label}</span>
+      <input
+        accept={accept}
+        className="sr-only"
+        disabled={disabled}
+        multiple={multiple}
+        onChange={(event) => {
+          onFilesSelected(event.target.files);
+          event.target.value = "";
+        }}
+        type="file"
+      />
+    </label>
+  );
+}
+
 function FormField({
   children,
   className,
@@ -2178,6 +3653,122 @@ function FormField({
       </span>
       {children}
     </label>
+  );
+}
+
+function DestinationMultiSelect({
+  destinations,
+  disabled,
+  onChange,
+  value,
+}: {
+  destinations: AdminDestination[];
+  disabled: boolean;
+  onChange: (value: string[]) => void;
+  value: string[];
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedIds = normalizeDestinationIds(value);
+  const selectedIdSet = new Set(selectedIds);
+  const placeholder = destinations.length
+    ? "Select destinations"
+    : "No destinations available";
+
+  function toggleDestination(destinationId: string) {
+    if (disabled) {
+      return;
+    }
+
+    if (selectedIdSet.has(destinationId)) {
+      onChange(selectedIds.filter((selectedId) => selectedId !== destinationId));
+      return;
+    }
+
+    onChange([...selectedIds, destinationId]);
+  }
+
+  return (
+    <Popover
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!disabled) {
+          setIsOpen(open);
+        }
+      }}
+    >
+      <PopoverTrigger
+        type="button"
+        disabled={disabled}
+        className={cn(
+          "flex min-h-11 w-full items-center justify-between gap-3 rounded-sm border border-border bg-white px-3 py-2 text-left text-sm outline-none transition-colors hover:border-primary/60 focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/15 data-[popup-open]:border-primary data-[popup-open]:ring-3 data-[popup-open]:ring-primary/15 disabled:cursor-default disabled:bg-muted/35 disabled:text-foreground/60"
+        )}
+      >
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          {selectedIds.length > 0 ? (
+            selectedIds.map((destinationId) => (
+              <span
+                key={destinationId}
+                className="rounded-sm bg-primary/10 px-2 py-1 text-xs font-bold text-primary"
+              >
+                {destinationId}
+              </span>
+            ))
+          ) : (
+            <span className="truncate text-sm font-semibold text-foreground/45">
+              {placeholder}
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 text-foreground/65 transition-transform",
+            isOpen && "rotate-180"
+          )}
+        />
+      </PopoverTrigger>
+      {destinations.length > 0 ? (
+        <PopoverContent
+          align="start"
+          sideOffset={6}
+          className="w-(--anchor-width) min-w-72 overflow-hidden p-0"
+        >
+          <div className="grid max-h-56 gap-1 overflow-y-auto p-2">
+          {destinations.map((destination) => {
+            const isSelected = selectedIdSet.has(destination.destinationId);
+
+            return (
+              <label
+                key={destination.id}
+                className={cn(
+                  "flex cursor-pointer items-center gap-3 rounded-sm px-2 py-2 transition-colors hover:bg-primary/5",
+                  disabled && "cursor-default hover:bg-transparent",
+                  isSelected && "bg-primary/10"
+                )}
+              >
+                <input
+                  checked={isSelected}
+                  disabled={disabled}
+                  onChange={() =>
+                    toggleDestination(destination.destinationId)
+                  }
+                  type="checkbox"
+                  className="size-4 rounded-sm border-border accent-primary"
+                />
+                <span className="min-w-0">
+                  <span className="block truncate text-xs font-bold text-foreground">
+                    {destination.destinationId}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[11px] font-medium text-foreground/55">
+                    {destination.destinationName}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
+          </div>
+        </PopoverContent>
+      ) : null}
+    </Popover>
   );
 }
 
