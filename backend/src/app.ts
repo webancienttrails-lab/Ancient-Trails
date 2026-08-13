@@ -10,10 +10,18 @@ import express, {
 import helmet from "helmet";
 import morgan from "morgan";
 
+import { adminAboutRoutes, publicAboutRoutes } from "./routes/about.routes";
 import authRoutes from "./routes/auth.routes";
+import { adminBlogRoutes, publicBlogRoutes } from "./routes/blog.routes";
 import bookingRoutes from "./routes/booking.routes";
 import destinationRoutes from "./routes/destination.routes";
-import expertRoutes from "./routes/expert.routes";
+import expertRoutes, { publicExpertRoutes } from "./routes/expert.routes";
+import {
+  adminHomePageRoutes,
+  publicHomePageRoutes,
+} from "./routes/homePage.routes";
+import publicDestinationRoutes from "./routes/publicDestination.routes";
+import publicTourRoutes from "./routes/publicTour.routes";
 import tourRoutes from "./routes/tour.routes";
 import { HttpError } from "./utils/httpError";
 
@@ -159,6 +167,15 @@ app.get("/api/health", (_request: Request, response: Response) => {
  * app.use("/api/bookings", bookingRoutes);
  */
 app.use("/api/auth", authRoutes);
+app.use("/api/about", publicAboutRoutes);
+app.use("/api/admin/about", adminAboutRoutes);
+app.use("/api/blogs", publicBlogRoutes);
+app.use("/api/admin/blogs", adminBlogRoutes);
+app.use("/api/home", publicHomePageRoutes);
+app.use("/api/admin/home", adminHomePageRoutes);
+app.use("/api/destinations", publicDestinationRoutes);
+app.use("/api/tours", publicTourRoutes);
+app.use("/api/experts", publicExpertRoutes);
 app.use("/api/admin/bookings", bookingRoutes);
 app.use("/api/admin/destinations", destinationRoutes);
 app.use("/api/admin/experts", expertRoutes);

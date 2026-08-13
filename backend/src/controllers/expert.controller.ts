@@ -1,4 +1,8 @@
+import { mkdirSync } from "node:fs";
+import path from "node:path";
+
 import type { Request, Response } from "express";
+import multer from "multer";
 import { z } from "zod";
 
 import { Expert, type ExpertDocument } from "../models/expert.model";
@@ -7,6 +11,17 @@ import { HttpError } from "../utils/httpError";
 const textField = (max: number) => z.string().trim().max(max).default("");
 const requiredTextField = (fieldName: string, max: number) =>
   z.string().trim().min(1, `${fieldName} is required`).max(max);
+const expertUploadDirectory = path.resolve(
+  process.cwd(),
+  process.env.UPLOAD_PATH || "./storage",
+  "experts"
+);
+const imageMimeExtensions: Record<string, string> = {
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+};
 
 const stringListSchema = z
   .array(z.string().trim().min(1).max(300))
@@ -22,10 +37,56 @@ const expertPayloadSchema = z.object({
     )
     .transform((value) => value.toUpperCase()),
   fullName: requiredTextField("Full name", 120),
+  image: textField(500),
   fullBiography: textField(3000),
   expertiseTags: stringListSchema,
   qualifications: stringListSchema,
   languages: stringListSchema,
+});
+
+mkdirSync(expertUploadDirectory, { recursive: true });
+
+function createSafeFileName(file: Express.Multer.File): string {
+  const baseName =
+    path
+      .basename(file.originalname, path.extname(file.originalname))
+      .replace(/[^a-z0-9_-]+/gi, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || "expert";
+  const extension =
+    imageMimeExtensions[file.mimetype] ||
+    path.extname(file.originalname).toLowerCase() ||
+    ".jpg";
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  return `${baseName}-${suffix}${extension}`;
+}
+
+function getUploadUrl(file: Express.Multer.File): string {
+  return `/uploads/experts/${file.filename}`;
+}
+
+export const expertImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_request, _file, callback) => {
+      callback(null, expertUploadDirectory);
+    },
+    filename: (_request, file, callback) => {
+      callback(null, createSafeFileName(file));
+    },
+  }),
+  fileFilter: (_request, file, callback) => {
+    if (file.mimetype in imageMimeExtensions) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new HttpError(400, "Only JPG, PNG, WebP, and GIF images are allowed"));
+  },
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 1,
+  },
 });
 
 function parseRequestBody<TSchema extends z.ZodType>(
@@ -71,6 +132,7 @@ function formatExpert(expert: ExpertDocument) {
     id: expert._id.toString(),
     expertId: expert.expertId,
     fullName: expert.fullName,
+    image: expert.image || "",
     fullBiography: expert.fullBiography,
     expertiseTags: expert.expertiseTags,
     qualifications: expert.qualifications,
@@ -92,6 +154,7 @@ export async function listExperts(
     filters.$or = [
       { expertId: new RegExp(search, "i") },
       { fullName: new RegExp(search, "i") },
+      { image: new RegExp(search, "i") },
       { fullBiography: new RegExp(search, "i") },
       { expertiseTags: new RegExp(search, "i") },
       { qualifications: new RegExp(search, "i") },
@@ -106,6 +169,25 @@ export async function listExperts(
     message: "Experts fetched successfully",
     data: {
       experts: experts.map(formatExpert),
+    },
+  });
+}
+
+export async function uploadExpertImage(
+  request: Request,
+  response: Response
+): Promise<void> {
+  const file = request.file;
+
+  if (!file) {
+    throw new HttpError(400, "Please select an expert image to upload");
+  }
+
+  response.status(201).json({
+    success: true,
+    message: "Expert image uploaded successfully",
+    data: {
+      image: getUploadUrl(file),
     },
   });
 }

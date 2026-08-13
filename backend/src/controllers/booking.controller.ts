@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import mongoose from "mongoose";
 import { z } from "zod";
 
 import {
@@ -8,6 +9,16 @@ import {
   type IBookingGuestDetails,
 } from "../models/booking.model";
 import { Tour } from "../models/tour.model";
+import {
+  TourDeparture,
+  type TourDepartureDocument,
+} from "../models/tourDeparture.model";
+import { generateAccommodationOptions } from "../services/accommodation/accommodation.generator";
+import type { Traveller } from "../services/accommodation/accommodation.types";
+import { createPricingSnapshot } from "../services/booking/booking.snapshot";
+import type { PricedDeparture } from "../services/departure/departure.types";
+import { validateDepartureForBooking } from "../services/departure/departure.validation";
+import { calculateAgeOnDate } from "../services/accommodation/accommodation.validation";
 import { HttpError } from "../utils/httpError";
 
 const requiredTextField = (fieldName: string, max: number) =>
@@ -87,9 +98,20 @@ const accommodationDetailsPayloadSchema = z.object({
   tripleOccupancy: nonNegativeIntegerField("Triple occupancy", 100),
 });
 
+const travellerPayloadSchema = z.object({
+  id: requiredTextField("Traveller ID", 80),
+  type: z.enum(["adult", "child"]),
+  firstName: z.string().trim().max(80).optional(),
+  lastName: z.string().trim().max(80).optional(),
+  dateOfBirth: z.string().trim().optional(),
+  ageOnDeparture: z.coerce.number().int().min(0).max(120).optional(),
+});
+
 const bookingPayloadSchema = z
   .object({
     tourId: requiredCodeField("Tour ID", 40),
+    departureId: requiredCodeField("Departure ID", 40).optional(),
+    selectedAccommodationOptionId: z.string().trim().max(200).optional(),
     totalGuest: nonNegativeIntegerField("Total guest", 1000).min(
       1,
       "Total guest must be at least 1"
@@ -98,7 +120,15 @@ const bookingPayloadSchema = z
     childCount: nonNegativeIntegerField("Child count", 1000),
     childDetails: z.array(childDetailsPayloadSchema).max(1000).default([]),
     guestDetails: z.array(guestDetailsPayloadSchema).max(1000).default([]),
-    accommodationDetails: accommodationDetailsPayloadSchema,
+    travellers: z.array(travellerPayloadSchema).max(25).default([]),
+    accommodationDetails: accommodationDetailsPayloadSchema.default({
+      singleOccupancyOneRoom: 0,
+      singleOccupancyTwoRooms: 0,
+      doubleOccupancy: 0,
+      twinOccupancy: 0,
+      tripleOccupancy: 0,
+    }),
+    gstPercentage: z.coerce.number().min(0).max(100).default(0),
   })
   .superRefine((payload, context) => {
     if (payload.totalGuest !== payload.adultCount + payload.childCount) {
@@ -122,6 +152,64 @@ const bookingPayloadSchema = z
         code: "custom",
         path: ["childDetails"],
         message: "Child details count must match child count",
+      });
+    }
+
+    if (payload.travellers.length > 0) {
+      const adultCount = payload.travellers.filter(
+        (traveller) => traveller.type === "adult"
+      ).length;
+      const childCount = payload.travellers.filter(
+        (traveller) => traveller.type === "child"
+      ).length;
+      const travellerIds = new Set(
+        payload.travellers.map((traveller) => traveller.id)
+      );
+
+      if (payload.travellers.length !== payload.totalGuest) {
+        context.addIssue({
+          code: "custom",
+          path: ["travellers"],
+          message: "Traveller count must match total guest",
+        });
+      }
+
+      if (travellerIds.size !== payload.travellers.length) {
+        context.addIssue({
+          code: "custom",
+          path: ["travellers"],
+          message: "Traveller IDs must be unique",
+        });
+      }
+
+      if (adultCount !== payload.adultCount || childCount !== payload.childCount) {
+        context.addIssue({
+          code: "custom",
+          path: ["travellers"],
+          message: "Traveller types must match adult and child counts",
+        });
+      }
+
+      payload.travellers.forEach((traveller, index) => {
+        if (traveller.type === "child" && !traveller.dateOfBirth) {
+          context.addIssue({
+            code: "custom",
+            path: ["travellers", index, "dateOfBirth"],
+            message: "Date of birth is required for each child",
+          });
+        }
+      });
+    }
+
+    if (
+      payload.departureId &&
+      payload.travellers.length > 0 &&
+      !payload.selectedAccommodationOptionId
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["selectedAccommodationOptionId"],
+        message: "Accommodation option is required",
       });
     }
   });
@@ -179,11 +267,21 @@ function formatBooking(booking: BookingDocument) {
   return {
     id: booking._id.toString(),
     tourId: booking.tourId,
+    departureId: booking.departureId || "",
+    selectedAccommodationOptionId: booking.selectedAccommodationOptionId || "",
     totalGuest: booking.totalGuest,
     adultCount: booking.adultCount,
     childCount: booking.childCount,
     childDetails: booking.childDetails.map(formatChildDetails),
     guestDetails: booking.guestDetails.map(formatGuestDetails),
+    travellers: booking.travellers.map((traveller) => ({
+      id: traveller.id,
+      type: traveller.type,
+      firstName: traveller.firstName,
+      lastName: traveller.lastName,
+      dateOfBirth: traveller.dateOfBirth,
+      ageOnDeparture: traveller.ageOnDeparture,
+    })),
     accommodationDetails: {
       singleOccupancyOneRoom:
         booking.accommodationDetails.singleOccupancyOneRoom,
@@ -193,6 +291,14 @@ function formatBooking(booking: BookingDocument) {
       twinOccupancy: booking.accommodationDetails.twinOccupancy,
       tripleOccupancy: booking.accommodationDetails.tripleOccupancy,
     },
+    pricingSnapshot: booking.pricingSnapshot,
+    subtotal: booking.subtotal,
+    gstPercentage: booking.gstPercentage,
+    gstAmount: booking.gstAmount,
+    grandTotal: booking.grandTotal,
+    depositAmount: booking.depositAmount,
+    balanceAmount: booking.balanceAmount,
+    balanceDueDate: booking.balanceDueDate,
     createdAt: booking.createdAt,
     updatedAt: booking.updatedAt,
   };
@@ -204,6 +310,128 @@ async function assertTourExists(tourId: string): Promise<void> {
   if (!tourExists) {
     throw new HttpError(400, `Tour ID ${tourId} does not exist`);
   }
+}
+
+function toPricedDeparture(departure: TourDepartureDocument): PricedDeparture {
+  return {
+    departureId: departure.departureId,
+    tourId: departure.tourId,
+    destinationId: departure.destinationId,
+    departureDate: departure.departureDate,
+    returnDate: departure.returnDate,
+    seatsAvailable: departure.seatsAvailable,
+    priceAdult: departure.priceAdult,
+    priceExtraBed: departure.priceExtraBed,
+    priceChildWithoutExtraBed: departure.priceChildWithoutExtraBed,
+    singleOccupancy: departure.singleOccupancy,
+    depositType: departure.depositType,
+    depositValue: departure.depositValue,
+    depositAppliesTo: departure.depositAppliesTo,
+    balanceDueDaysBefore: departure.balanceDueDaysBefore,
+    earlyBirdOffer: departure.earlyBirdOffer,
+    bookingDeadline: departure.bookingDeadline,
+    status: departure.status,
+    childPricingRules: departure.childPricingRules.map((rule) => ({
+      minAge: rule.minAge,
+      maxAge: rule.maxAge,
+      allowExtraBed: rule.allowExtraBed,
+      allowWithoutExtraBed: rule.allowWithoutExtraBed,
+    })),
+    roomPolicy: departure.roomPolicy,
+  };
+}
+
+function toAccommodationTravellers(
+  travellers: z.infer<typeof travellerPayloadSchema>[]
+): Traveller[] {
+  return travellers.map((traveller) => ({
+    id: traveller.id,
+    type: traveller.type,
+    firstName: traveller.firstName,
+    lastName: traveller.lastName,
+    dateOfBirth: traveller.dateOfBirth,
+    ageOnDeparture: traveller.ageOnDeparture,
+  }));
+}
+
+function toBookingTravellers(
+  travellers: z.infer<typeof travellerPayloadSchema>[],
+  departure: PricedDeparture
+) {
+  return travellers.map((traveller) => {
+    const dateOfBirth = traveller.dateOfBirth
+      ? new Date(traveller.dateOfBirth)
+      : undefined;
+    const ageOnDeparture =
+      traveller.type === "child" && dateOfBirth && departure.departureDate
+        ? calculateAgeOnDate(dateOfBirth, departure.departureDate)
+        : traveller.ageOnDeparture;
+
+    return {
+      id: traveller.id,
+      type: traveller.type,
+      firstName: traveller.firstName,
+      lastName: traveller.lastName,
+      dateOfBirth,
+      ageOnDeparture,
+    };
+  });
+}
+
+async function createSnapshotPayload(
+  payload: z.infer<typeof bookingPayloadSchema>
+) {
+  if (
+    !payload.departureId ||
+    !payload.selectedAccommodationOptionId ||
+    payload.travellers.length === 0
+  ) {
+    return null;
+  }
+
+  const departure = await TourDeparture.findOne({
+    departureId: payload.departureId,
+  });
+
+  if (!departure) {
+    throw new HttpError(400, `Departure ID ${payload.departureId} does not exist`);
+  }
+
+  const pricedDeparture = toPricedDeparture(departure);
+  const departureValidation = validateDepartureForBooking(
+    pricedDeparture,
+    payload.totalGuest
+  );
+
+  if (!departureValidation.isValid) {
+    throw new HttpError(400, departureValidation.errors[0], departureValidation.errors);
+  }
+
+  const options = generateAccommodationOptions({
+    travellers: toAccommodationTravellers(payload.travellers),
+    departure: pricedDeparture,
+    childPricingRules: pricedDeparture.childPricingRules,
+    roomPolicy: pricedDeparture.roomPolicy,
+  });
+  const selectedAccommodationOption = options.find(
+    (option) => option.id === payload.selectedAccommodationOptionId
+  );
+
+  if (!selectedAccommodationOption) {
+    throw new HttpError(400, "Selected accommodation option is no longer available");
+  }
+
+  const pricingSnapshot = createPricingSnapshot({
+    accommodationOption: selectedAccommodationOption,
+    departure: pricedDeparture,
+    gstPercentage: payload.gstPercentage,
+  });
+
+  return {
+    departure,
+    pricingSnapshot,
+    travellers: toBookingTravellers(payload.travellers, pricedDeparture),
+  };
 }
 
 export async function listBookings(
@@ -255,7 +483,66 @@ export async function createBooking(
 
   await assertTourExists(payload.tourId);
 
-  const booking = await Booking.create(payload);
+  const snapshotPayload = await createSnapshotPayload(payload);
+  let booking!: BookingDocument;
+
+  if (snapshotPayload) {
+    const session = await mongoose.startSession();
+
+    try {
+      await session.withTransaction(async () => {
+        const updatedDeparture = await TourDeparture.findOneAndUpdate(
+          {
+            departureId: payload.departureId,
+            seatsAvailable: { $gte: payload.totalGuest },
+            status: "scheduled",
+          },
+          {
+            $inc: {
+              seatsAvailable: -payload.totalGuest,
+            },
+          },
+          {
+            new: true,
+            session,
+          }
+        );
+
+        if (!updatedDeparture) {
+          throw new HttpError(
+            409,
+            "Requested travellers exceed available seats."
+          );
+        }
+
+        const createdBookings = await Booking.create(
+          [
+            {
+              ...payload,
+              travellers: snapshotPayload.travellers,
+              pricingSnapshot: snapshotPayload.pricingSnapshot,
+              subtotal: snapshotPayload.pricingSnapshot.subtotal,
+              gstPercentage: snapshotPayload.pricingSnapshot.gstPercentage,
+              gstAmount: snapshotPayload.pricingSnapshot.gstAmount,
+              grandTotal: snapshotPayload.pricingSnapshot.grandTotal,
+              depositAmount: snapshotPayload.pricingSnapshot.depositAmount,
+              balanceAmount: snapshotPayload.pricingSnapshot.balanceAmount,
+              balanceDueDate: snapshotPayload.pricingSnapshot.balanceDueDate,
+            },
+          ],
+          {
+            session,
+          }
+        );
+
+        booking = createdBookings[0];
+      });
+    } finally {
+      await session.endSession();
+    }
+  } else {
+    booking = await Booking.create(payload);
+  }
 
   response.status(201).json({
     success: true,
@@ -274,11 +561,30 @@ export async function updateBooking(
 
   try {
     await assertTourExists(payload.tourId);
+    const snapshotPayload = await createSnapshotPayload(payload);
+    const updatePayload = snapshotPayload
+      ? {
+          ...payload,
+          travellers: snapshotPayload.travellers,
+          pricingSnapshot: snapshotPayload.pricingSnapshot,
+          subtotal: snapshotPayload.pricingSnapshot.subtotal,
+          gstPercentage: snapshotPayload.pricingSnapshot.gstPercentage,
+          gstAmount: snapshotPayload.pricingSnapshot.gstAmount,
+          grandTotal: snapshotPayload.pricingSnapshot.grandTotal,
+          depositAmount: snapshotPayload.pricingSnapshot.depositAmount,
+          balanceAmount: snapshotPayload.pricingSnapshot.balanceAmount,
+          balanceDueDate: snapshotPayload.pricingSnapshot.balanceDueDate,
+        }
+      : payload;
 
-    const booking = await Booking.findByIdAndUpdate(request.params.id, payload, {
-      new: true,
-      runValidators: true,
-    });
+    const booking = await Booking.findByIdAndUpdate(
+      request.params.id,
+      updatePayload,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
 
     if (!booking) {
       throw new HttpError(404, "Booking not found");

@@ -11,6 +11,7 @@ export interface ITour {
   tourName: string;
   tourType: string;
   destinationId: string;
+  destinationIds: string[];
   durationDn: string;
   category: string;
   difficulty: string;
@@ -20,6 +21,9 @@ export interface ITour {
   exclusions: string[];
   expertId: string;
   notes: string;
+  bannerImage: string;
+  galleryImages: string[];
+  video: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,6 +49,19 @@ const trimmedStringList = {
     Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))),
 };
 
+const codeStringList = {
+  type: [String],
+  default: [],
+  set: (values: string[] = []) =>
+    Array.from(
+      new Set(
+        values
+          .map((value) => value.trim().toUpperCase())
+          .filter(Boolean)
+      )
+    ),
+};
+
 const tourSchema = new Schema<ITour>(
   {
     tourId: {
@@ -65,6 +82,7 @@ const tourSchema = new Schema<ITour>(
       uppercase: true,
       maxlength: 40,
     },
+    destinationIds: codeStringList,
     durationDn: {
       ...requiredTrimmedString,
       maxlength: 40,
@@ -96,6 +114,15 @@ const tourSchema = new Schema<ITour>(
       ...trimmedString,
       maxlength: 1000,
     },
+    bannerImage: {
+      ...trimmedString,
+      maxlength: 500,
+    },
+    galleryImages: trimmedStringList,
+    video: {
+      ...trimmedString,
+      maxlength: 500,
+    },
   },
   {
     timestamps: true,
@@ -107,12 +134,30 @@ tourSchema.index({
   tourName: "text",
   tourType: "text",
   destinationId: "text",
+  destinationIds: "text",
   category: "text",
   difficulty: "text",
   expertId: "text",
 });
 tourSchema.index({ destinationId: 1 });
+tourSchema.index({ destinationIds: 1 });
 tourSchema.index({ expertId: 1 });
+
+tourSchema.pre("validate", function syncDestinationIds() {
+  const destinationIds = Array.from(
+    new Set(
+      [this.destinationId, ...(this.destinationIds || [])]
+        .map((destinationId) => destinationId.trim().toUpperCase())
+        .filter(Boolean)
+    )
+  );
+
+  this.destinationIds = destinationIds;
+
+  if (destinationIds[0]) {
+    this.destinationId = destinationIds[0];
+  }
+});
 
 tourSchema.virtual("destination", {
   ref: "Destination",
@@ -125,6 +170,13 @@ tourSchema.virtual("departures", {
   ref: "TourDeparture",
   localField: "tourId",
   foreignField: "tourId",
+});
+
+tourSchema.virtual("itinerary", {
+  ref: "TourItinerary",
+  localField: "tourId",
+  foreignField: "tourId",
+  justOne: true,
 });
 
 tourSchema.virtual("bookings", {

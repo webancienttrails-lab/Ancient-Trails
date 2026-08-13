@@ -6,6 +6,8 @@ import {
   type Model,
 } from "mongoose";
 
+import type { PricingSnapshot } from "../services/booking/booking.snapshot";
+
 export interface IBookingGuestDetails {
   title: string;
   firstName: string;
@@ -30,14 +32,34 @@ export interface IBookingAccommodationDetails {
   tripleOccupancy: number;
 }
 
+export interface IBookingTraveller {
+  id: string;
+  type: "adult" | "child";
+  firstName?: string;
+  lastName?: string;
+  dateOfBirth?: Date;
+  ageOnDeparture?: number;
+}
+
 export interface IBooking {
   tourId: string;
+  departureId?: string;
+  selectedAccommodationOptionId?: string;
   totalGuest: number;
   adultCount: number;
   childCount: number;
   childDetails: IBookingChildDetails[];
   guestDetails: IBookingGuestDetails[];
+  travellers: IBookingTraveller[];
   accommodationDetails: IBookingAccommodationDetails;
+  pricingSnapshot?: PricingSnapshot;
+  subtotal?: number;
+  gstPercentage?: number;
+  gstAmount?: number;
+  grandTotal?: number;
+  depositAmount?: number;
+  balanceAmount?: number;
+  balanceDueDate?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -121,6 +143,39 @@ const childDetailsSchema = new Schema<IBookingChildDetails>(
   }
 );
 
+const travellerSchema = new Schema<IBookingTraveller>(
+  {
+    id: {
+      ...requiredTrimmedString,
+      maxlength: 80,
+    },
+    type: {
+      type: String,
+      enum: ["adult", "child"],
+      required: true,
+    },
+    firstName: {
+      ...trimmedString,
+      maxlength: 80,
+    },
+    lastName: {
+      ...trimmedString,
+      maxlength: 80,
+    },
+    dateOfBirth: {
+      type: Date,
+      default: null,
+    },
+    ageOnDeparture: {
+      ...nonNegativeNumber,
+      max: 120,
+    },
+  },
+  {
+    _id: false,
+  }
+);
+
 const accommodationDetailsSchema = new Schema<IBookingAccommodationDetails>(
   {
     singleOccupancyOneRoom: {
@@ -156,6 +211,15 @@ const bookingSchema = new Schema<IBooking>(
       uppercase: true,
       maxlength: 40,
     },
+    departureId: {
+      ...trimmedString,
+      uppercase: true,
+      maxlength: 40,
+    },
+    selectedAccommodationOptionId: {
+      ...trimmedString,
+      maxlength: 200,
+    },
     totalGuest: {
       ...nonNegativeNumber,
       min: 1,
@@ -186,10 +250,46 @@ const bookingSchema = new Schema<IBooking>(
         message: "At least one guest detail is required",
       },
     },
+    travellers: {
+      type: [travellerSchema],
+      default: [],
+    },
     accommodationDetails: {
       type: accommodationDetailsSchema,
       required: true,
       default: {},
+    },
+    pricingSnapshot: {
+      type: Schema.Types.Mixed,
+      default: undefined,
+    },
+    subtotal: {
+      ...nonNegativeNumber,
+      max: 1000000000,
+    },
+    gstPercentage: {
+      ...nonNegativeNumber,
+      max: 100,
+    },
+    gstAmount: {
+      ...nonNegativeNumber,
+      max: 1000000000,
+    },
+    grandTotal: {
+      ...nonNegativeNumber,
+      max: 1000000000,
+    },
+    depositAmount: {
+      ...nonNegativeNumber,
+      max: 1000000000,
+    },
+    balanceAmount: {
+      ...nonNegativeNumber,
+      max: 1000000000,
+    },
+    balanceDueDate: {
+      type: Date,
+      default: null,
     },
   },
   {
@@ -198,6 +298,7 @@ const bookingSchema = new Schema<IBooking>(
 );
 
 bookingSchema.index({ tourId: 1 });
+bookingSchema.index({ departureId: 1 });
 bookingSchema.index({ "guestDetails.email": 1 });
 bookingSchema.index({
   tourId: "text",

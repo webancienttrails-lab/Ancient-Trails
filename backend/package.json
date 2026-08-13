@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
+    "test": "tsc --pretty false && node --test --experimental-test-isolation=none dist/services/booking-rules.test.js",
+    "migrate:departures": "tsx src/migrations/migrate-departure-pricing.ts",
     "start": "node dist/server.js"
   },
   "keywords": [],

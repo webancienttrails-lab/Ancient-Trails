@@ -9,6 +9,7 @@ import {
 export interface IExpert {
   expertId: string;
   fullName: string;
+  image: string;
   fullBiography: string;
   expertiseTags: string[];
   qualifications: string[];
@@ -49,6 +50,10 @@ const expertSchema = new Schema<IExpert>(
       ...requiredTrimmedString,
       maxlength: 120,
     },
+    image: {
+      ...trimmedString,
+      maxlength: 500,
+    },
     fullBiography: {
       ...trimmedString,
       maxlength: 3000,
@@ -65,6 +70,7 @@ const expertSchema = new Schema<IExpert>(
 expertSchema.index({ expertId: 1 }, { unique: true });
 expertSchema.index({
   fullName: "text",
+  image: "text",
   fullBiography: "text",
   expertiseTags: "text",
   qualifications: "text",

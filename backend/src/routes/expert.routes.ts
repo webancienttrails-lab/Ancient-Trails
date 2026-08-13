@@ -3,18 +3,24 @@ import { Router } from "express";
 import {
   createExpert,
   deleteExpert,
+  expertImageUpload,
   listExperts,
+  uploadExpertImage,
   updateExpert,
 } from "../controllers/expert.controller";
 import { requireAdmin } from "../middleware/adminAuth";
 
-const router = Router();
+export const publicExpertRoutes = Router();
+const adminExpertRoutes = Router();
 
-router.use(requireAdmin);
+publicExpertRoutes.get("/", listExperts);
 
-router.get("/", listExperts);
-router.patch("/:id", updateExpert);
-router.delete("/:id", deleteExpert);
-router.post("/", createExpert);
+adminExpertRoutes.use(requireAdmin);
 
-export default router;
+adminExpertRoutes.get("/", listExperts);
+adminExpertRoutes.post("/upload", expertImageUpload.single("image"), uploadExpertImage);
+adminExpertRoutes.patch("/:id", updateExpert);
+adminExpertRoutes.delete("/:id", deleteExpert);
+adminExpertRoutes.post("/", createExpert);
+
+export default adminExpertRoutes;

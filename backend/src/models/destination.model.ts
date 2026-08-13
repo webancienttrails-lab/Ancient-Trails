@@ -154,7 +154,7 @@ destinationSchema.index({ countryRegion: 1 });
 destinationSchema.virtual("tours", {
   ref: "Tour",
   localField: "destinationId",
-  foreignField: "destinationId",
+  foreignField: "destinationIds",
 });
 
 destinationSchema.set("toJSON", { virtuals: true });
