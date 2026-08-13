@@ -62,8 +62,8 @@ function BenefitCard({ benefit }: { benefit: (typeof giftBenefits)[number] }) {
 function GiftCardArtwork() {
   return (
     <div className="relative mx-auto h-[150px] w-[280px] max-w-full">
-      <div className="absolute left-1/2 top-0 h-[92px] w-[150px] -translate-x-1/2 rounded-[12px] border border-[#d8bda5] bg-[#f8efe6] shadow-[0_18px_40px_rgba(50,50,50,0.1)]">
-        <span className="absolute -top-5 left-1/2 h-8 w-16 -translate-x-1/2 rounded-t-[14px] border-4 border-[#d8bda5] border-b-0" />
+      <div className="absolute left-1/2 top-0 h-[92px] w-[150px] -translate-x-1/2 rounded-[12px] border border-border bg-primary/5 shadow-[0_18px_40px_rgba(50,50,50,0.1)]">
+        <span className="absolute -top-5 left-1/2 h-8 w-16 -translate-x-1/2 rounded-t-[14px] border-4 border-border border-b-0" />
       </div>
       <div className="absolute bottom-3 left-1/2 h-[92px] w-[205px] -translate-x-1/2 overflow-hidden rounded-[8px] bg-primary shadow-[0_18px_40px_rgba(212,114,32,0.28)]">
         <Image
@@ -84,7 +84,7 @@ function GiftCardArtwork() {
 
 export default function GiftCardsPage() {
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#fbf8f4] text-secondary lg:overflow-x-visible">
+    <main className="min-h-screen overflow-x-hidden bg-[#fff8f0] text-secondary lg:overflow-x-visible">
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <UserSidebar activeLabel="Gift Cards" />
 
@@ -101,7 +101,7 @@ export default function GiftCardsPage() {
                 priority
                 className="pointer-events-none object-cover object-right-top opacity-[0.22] mix-blend-multiply"
               />
-              <div className="absolute inset-0 bg-[linear-gradient(90deg,#fbf8f4_0%,#fbf8f4_46%,rgba(251,248,244,0.78)_68%,rgba(251,248,244,0.58)_100%)]" />
+              <div className="absolute inset-0 bg-[linear-gradient(90deg,#fff8f0_0%,#fff8f0_46%,rgba(255,248,240,0.78)_68%,rgba(255,248,240,0.58)_100%)]" />
               <div className="relative">
                 <h1 className="font-heading text-[30px] font-bold leading-none text-secondary sm:text-[34px]">
                   Gift Cards

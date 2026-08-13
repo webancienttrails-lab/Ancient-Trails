@@ -1,4 +1,4 @@
-const apiBaseUrl = (
+export const apiBaseUrl = (
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
 ).replace(/\/$/, "");
 
@@ -38,12 +38,15 @@ export async function apiRequest<TData>(
   path: string,
   options: RequestInit = {}
 ): Promise<ApiResponse<TData>> {
+  const headers = new Headers(options.headers);
+
+  if (options.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
+    headers,
     credentials: "include",
   });
   const body = (await readResponse(response)) as Partial<ApiResponse<TData>> | null;

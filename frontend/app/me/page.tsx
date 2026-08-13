@@ -5,11 +5,8 @@ import {
   BriefcaseBusiness,
   ChevronDown,
   ClipboardCheck,
-  Mail,
   MapPin,
-  Phone,
   Play,
-  Sparkles,
   XCircle,
 } from "lucide-react";
 
@@ -34,14 +31,14 @@ const dashboardStats = [
     description: "Trips completed",
     value: "0",
     icon: ClipboardCheck,
-    tone: "bg-[#eaf5ec] text-[#3f944c]",
+    tone: "bg-accent/10 text-accent",
   },
   {
     label: "Cancelled",
     description: "Trips cancelled",
     value: "0",
     icon: XCircle,
-    tone: "bg-[#fde8ea] text-[#d5161d]",
+    tone: "bg-secondary/10 text-secondary/70",
   },
   {
     label: "Wishlist",
@@ -140,35 +137,9 @@ function DestinationCard({
   );
 }
 
-function ContactStripItem({
-  icon: Icon,
-  eyebrow,
-  value,
-}: {
-  icon: typeof Phone;
-  eyebrow: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-3">
-      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/12 text-primary">
-        <Icon className="size-4" strokeWidth={1.9} />
-      </span>
-      <span className="min-w-0">
-        <span className="block truncate font-sans text-[11px] text-secondary/70">
-          {eyebrow}
-        </span>
-        <span className="block truncate font-sans text-[13px] font-semibold text-secondary">
-          {value}
-        </span>
-      </span>
-    </div>
-  );
-}
-
 export default function MePage() {
   return (
-    <main className="min-h-screen overflow-x-clip bg-[#fbf7f3] text-secondary lg:overflow-x-visible">
+    <main className="min-h-screen overflow-x-clip bg-[#fff8f0] text-secondary lg:overflow-x-visible">
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <UserSidebar />
 
@@ -199,7 +170,7 @@ export default function MePage() {
                 </a>
               </div>
 
-              <div className="relative mt-4 overflow-hidden rounded-[7px] bg-[#fff6ef] px-4 py-6 sm:mt-5 sm:px-5 sm:py-7">
+              <div className="relative mt-4 overflow-hidden rounded-[7px] bg-primary/5 px-4 py-6 sm:mt-5 sm:px-5 sm:py-7">
                 <Image
                   src="/home assets/Heritage Banner.webp"
                   alt=""
@@ -328,47 +299,6 @@ export default function MePage() {
             </div>
           </div>
 
-          <footer className="mt-4 border-t border-border bg-[#fff4ea]">
-            <div className="mx-auto grid w-full max-w-[1380px] gap-5 px-4 py-5 sm:px-6 md:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto] lg:px-8">
-              <ContactStripItem
-                icon={Sparkles}
-                eyebrow="150+ Ancient Trails Offices"
-                value="Locate Us"
-              />
-              <ContactStripItem
-                icon={Phone}
-                eyebrow="Request a Quote"
-                value="1800 313 5555"
-              />
-              <ContactStripItem
-                icon={Mail}
-                eyebrow="For Feedback"
-                value="feedback@ancienttrails.com"
-              />
-              <ContactStripItem
-                icon={Mail}
-                eyebrow="For Enquiries"
-                value="travel@ancienttrails.com"
-              />
-              <div className="min-w-[180px]">
-                <p className="font-sans text-[11px] text-secondary/70">
-                  Connect with us
-                </p>
-                <div className="mt-2 flex gap-3">
-                  {["f", "ig", "yt", "in", "x"].map((item) => (
-                    <a
-                      key={item}
-                      href="#"
-                      aria-label={`Social link ${item}`}
-                      className="grid size-8 place-items-center rounded-full bg-secondary text-[11px] font-semibold uppercase text-white transition-colors hover:bg-primary"
-                    >
-                      {item}
-                    </a>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </footer>
         </section>
       </div>
     </main>

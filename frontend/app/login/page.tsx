@@ -34,8 +34,8 @@ const journeyHighlights = [
 
 export default function LoginPage() {
   return (
-    <main className="h-[100dvh] overflow-hidden bg-[#f4eee6] text-secondary">
-      <section className="relative h-full overflow-hidden">
+    <main className="min-h-[100dvh] overflow-x-hidden bg-[#fff8f0] text-secondary lg:h-[100dvh] lg:overflow-hidden">
+      <section className="relative min-h-[100dvh] overflow-hidden lg:h-full">
         <Image
           src="/home assets/Caves.webp"
           alt="Heritage caves and landscape"
@@ -44,8 +44,9 @@ export default function LoginPage() {
           sizes="100vw"
           className="object-cover object-center"
         />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(16,11,8,0.45)_0%,rgba(16,11,8,0.72)_48%,rgba(16,11,8,0.86)_100%)] lg:hidden" />
         <div className="absolute inset-x-0 bottom-0 h-[56%] bg-[linear-gradient(180deg,rgba(16,11,8,0)_0%,rgba(16,11,8,0.66)_100%)]" />
-        <div className="absolute right-0 top-1/2 h-full w-[46vw] -translate-y-1/2 bg-[radial-gradient(ellipse_88%_92%_at_82%_50%,rgba(255,255,255,1)_0%,rgba(255,255,255,0.98)_50%,rgba(255,255,255,0.82)_68%,rgba(255,255,255,0.36)_84%,rgba(255,255,255,0)_100%)]" />
+        <div className="absolute right-0 top-1/2 hidden h-full w-[46vw] -translate-y-1/2 bg-[radial-gradient(ellipse_88%_92%_at_82%_50%,rgba(255,255,255,1)_0%,rgba(255,255,255,0.98)_50%,rgba(255,255,255,0.82)_68%,rgba(255,255,255,0.36)_84%,rgba(255,255,255,0)_100%)] lg:block" />
         
 
 
@@ -53,21 +54,21 @@ export default function LoginPage() {
           <Header />
         </div>
 
-        <div className="relative z-10 mx-auto grid h-full w-full max-w-[1300px] items-center gap-7 px-5 pb-[clamp(0.75rem,2vh,1.5rem)] pt-[clamp(6.25rem,14vh,8rem)] sm:px-8 lg:grid-cols-[1fr_560px] lg:px-12">
-          <section className="flex min-h-0 flex-col justify-center gap-[clamp(1.1rem,3vh,2.25rem)]">
+        <div className="relative z-10 mx-auto grid min-h-[100dvh] w-full max-w-[1300px] items-start gap-5 px-4 pb-6 pt-[5.75rem] sm:px-8 sm:pb-8 sm:pt-[6.5rem] lg:h-full lg:grid-cols-[1fr_560px] lg:items-center lg:gap-7 lg:px-12 lg:pb-[clamp(0.75rem,2vh,1.5rem)] lg:pt-[clamp(6.25rem,14vh,8rem)]">
+          <section className="flex min-h-0 flex-col justify-center gap-4 lg:gap-[clamp(1.1rem,3vh,2.25rem)]">
             <div className="max-w-[390px]">
-              <h1 className="font-heading text-[clamp(2.35rem,4.5vw,3.8rem)] font-bold leading-[0.96] text-secondary">
+              <h1 className="font-heading text-[2.1rem] font-bold leading-[0.98] text-white sm:text-[2.45rem] lg:text-[clamp(2.35rem,4.5vw,3.8rem)] lg:text-secondary">
                 Your Journey
                 <span className="block text-primary">Starts Here</span>
               </h1>
              
-              <p className="mt-[clamp(0.75rem,2vh,1.25rem)] max-w-[345px] font-sans text-[clamp(0.88rem,1.2vw,1rem)] leading-[1.55]  mb-2 text-black">
+              <p className="mb-1 mt-3 max-w-[345px] font-sans text-[0.9rem] leading-[1.55] text-white/90 sm:text-[clamp(0.88rem,1.2vw,1rem)] lg:mb-2 lg:mt-[clamp(0.75rem,2vh,1.25rem)] lg:text-secondary">
                 Sign in to your account and explore amazing destinations,
                 personalized itineraries and exclusive offers.
               </p>
             </div>
 
-            <div>
+            <div className="hidden md:block">
               <div className="space-y-[clamp(0.75rem,1.8vh,1.15rem)]">
                 {journeyHighlights.map(({ title, description, icon: Icon }) => (
                   <div key={title} className="flex max-w-[360px] items-start gap-4">

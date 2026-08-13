@@ -301,7 +301,7 @@ function MobileDashboardDrawer({
         </nav>
 
         <div className="mt-auto px-5 pb-3">
-          <div className="rounded-[8px] border border-border bg-[#fffaf5] p-3">
+          <div className="rounded-[8px] border border-border bg-[#fff8f0] p-3">
             <p className="font-heading text-[14px] font-bold leading-snug text-secondary">
               Need help with your trips?
             </p>

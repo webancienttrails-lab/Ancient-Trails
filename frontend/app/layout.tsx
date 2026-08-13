@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Playfair_Display, Poppins } from "next/font/google";
+import { SiteFooter } from "@/components/layout/footer";
 import { ToastProvider } from "@/components/ui/toast";
 import { SiteLoader } from "@/components/layout/site-loader";
 import "./globals.css";
@@ -39,6 +40,7 @@ export default function RootLayout({
         <ToastProvider>
           <SiteLoader />
           {children}
+          <SiteFooter />
         </ToastProvider>
       </body>
     </html>

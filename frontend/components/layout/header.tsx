@@ -39,12 +39,12 @@ import {
 } from "@/lib/auth";
 
 const navItems = [
-  "Home",
-  "About",
-  "Tours",
-  "Destinations",
-  "Experiences",
-  "Tour Calendar",
+  { label: "Home", href: "/" },
+  { label: "About", href: "/about" },
+  { label: "Tours", href: "/#upcoming-tours" },
+  { label: "Destinations", href: "/destinations" },
+  { label: "Experiences", href: "/experiences" },
+  { label: "Tour Calendar", href: "/tour-calendar" },
 ];
 
 const headerLayerStyle: CSSProperties = {
@@ -777,8 +777,16 @@ function AccountMenu({
 }
 
 export function Header() {
-  const activeItem = "Home";
   const pathname = usePathname();
+  const activeItem = pathname?.startsWith("/about")
+    ? "About"
+    : pathname?.startsWith("/experiences")
+      ? "Experiences"
+    : pathname?.startsWith("/destinations")
+      ? "Destinations"
+    : pathname?.startsWith("/tour-calendar")
+      ? "Tour Calendar"
+      : "Home";
   const router = useRouter();
   const toast = useToast();
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
@@ -836,7 +844,7 @@ export function Header() {
         });
       });
     });
-  }, [hoveredItem]);
+  }, [activeItem, hoveredItem]);
 
   useLayoutEffect(() => {
     updateUnderline();
@@ -966,18 +974,18 @@ export function Header() {
           className="relative flex items-center gap-8 text-header font-medium text-accent"
         >
           {navItems.map((item) => (
-            <li key={item}>
+            <li key={item.label}>
               <a
-                href={item === "Home" ? "/" : "#"}
+                href={item.href}
                 ref={(node) => {
-                  linkRefs.current[item] = node;
+                  linkRefs.current[item.label] = node;
                 }}
-                onMouseEnter={() => setHoveredItem(item)}
+                onMouseEnter={() => setHoveredItem(item.label)}
                 className={`relative transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-primary ${
-                  item === (hoveredItem ?? activeItem) ? "text-primary" : ""
+                  item.label === (hoveredItem ?? activeItem) ? "text-primary" : ""
                 }`}
               >
-                {item}
+                {item.label}
               </a>
             </li>
           ))}

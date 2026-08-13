@@ -28,7 +28,7 @@ const wishlistTours = [
     code: "AKTP",
     tone: "bg-[#fff2e9] text-primary border-primary/35",
     tag: "Popular",
-    tagTone: "border-[#f1a7b9] bg-[#fff2f6] text-[#d34f75]",
+    tagTone: "border-primary/35 bg-primary/10 text-primary",
     days: "4 Days",
     countries: "1 Country",
     cities: "2 Cities",
@@ -43,7 +43,7 @@ const wishlistTours = [
     code: "EURP",
     tone: "bg-[#fff2e9] text-primary border-primary/35",
     tag: "Bestseller",
-    tagTone: "border-[#9fca72] bg-[#f2faeb] text-[#5d9a2e]",
+    tagTone: "border-accent/35 bg-accent/10 text-accent",
     days: "8 Days",
     countries: "3 Countries",
     cities: "5 Cities",
@@ -58,7 +58,7 @@ const wishlistTours = [
     code: "EGYP",
     tone: "bg-[#fff2e9] text-primary border-primary/35",
     tag: "New",
-    tagTone: "border-[#c5a4ef] bg-[#f8f1ff] text-[#8e54d1]",
+    tagTone: "border-primary/35 bg-primary/10 text-primary",
     days: "6 Days",
     countries: "1 Country",
     cities: "3 Cities",
@@ -152,7 +152,7 @@ function WishlistCard({ tour }: { tour: (typeof wishlistTours)[number] }) {
         </div>
 
         <div className="mt-5">
-          <p className="font-sans text-[12px] font-bold text-[#329348]">
+          <p className="font-sans text-[12px] font-bold text-primary">
             Tour Highlights
           </p>
           <p className="mt-2 line-clamp-2 font-sans text-[12px] leading-[1.55] text-secondary/75">
@@ -167,7 +167,7 @@ function WishlistCard({ tour }: { tour: (typeof wishlistTours)[number] }) {
         </div>
       </div>
 
-      <aside className="flex flex-col justify-between rounded-[7px] bg-[#f8fafc] p-4 sm:p-5">
+      <aside className="flex flex-col justify-between rounded-[7px] bg-primary/5 p-4 sm:p-5">
         <div>
           <p className="font-sans text-[11px] font-medium text-secondary/60">
             Starting price per person
@@ -211,7 +211,7 @@ function WishlistCard({ tour }: { tour: (typeof wishlistTours)[number] }) {
 
 export default function WishlistPage() {
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#fbf8f4] text-secondary lg:overflow-x-visible">
+    <main className="min-h-screen overflow-x-hidden bg-[#fff8f0] text-secondary lg:overflow-x-visible">
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <UserSidebar activeLabel="Wishlist" />
 
@@ -228,7 +228,7 @@ export default function WishlistPage() {
                 priority
                 className="pointer-events-none object-cover object-right-top opacity-[0.22] mix-blend-multiply"
               />
-              <div className="absolute inset-0 bg-[linear-gradient(90deg,#fbf8f4_0%,#fbf8f4_46%,rgba(251,248,244,0.78)_68%,rgba(251,248,244,0.58)_100%)]" />
+              <div className="absolute inset-0 bg-[linear-gradient(90deg,#fff8f0_0%,#fff8f0_46%,rgba(255,248,240,0.78)_68%,rgba(255,248,240,0.58)_100%)]" />
               <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <h1 className="font-heading text-[30px] font-bold leading-none text-secondary sm:text-[34px]">

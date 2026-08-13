@@ -730,7 +730,7 @@ export function AccountPageContent() {
 
   return (
     <>
-      <main className="min-h-screen overflow-x-hidden bg-[#fbf8f4] text-secondary lg:overflow-x-visible">
+      <main className="min-h-screen overflow-x-hidden bg-[#fff8f0] text-secondary lg:overflow-x-visible">
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <UserSidebar activeLabel="My Account" />
 
@@ -747,7 +747,7 @@ export function AccountPageContent() {
                 priority
                 className="pointer-events-none object-cover object-right-top opacity-[0.22] mix-blend-multiply"
               />
-              <div className="absolute inset-0 bg-[linear-gradient(90deg,#fbf8f4_0%,#fbf8f4_46%,rgba(251,248,244,0.78)_68%,rgba(251,248,244,0.58)_100%)]" />
+              <div className="absolute inset-0 bg-[linear-gradient(90deg,#fff8f0_0%,#fff8f0_46%,rgba(255,248,240,0.78)_68%,rgba(255,248,240,0.58)_100%)]" />
               <div className="relative">
                 <h1 className="font-heading text-[30px] font-bold leading-none text-secondary sm:text-[34px]">
                   My Account
@@ -781,7 +781,7 @@ export function AccountPageContent() {
                     </div>
                   ) : null}
 
-                  <div className="rounded-[8px] border border-border/80 bg-[#fffdfb] p-4 sm:p-5">
+                  <div className="rounded-[8px] border border-border/80 bg-white p-4 sm:p-5">
                     <h3 className="font-heading text-[15px] font-bold text-secondary">
                       Basic Details
                     </h3>
@@ -927,7 +927,7 @@ export function AccountPageContent() {
                     </div>
                   </div>
 
-                  <div className="rounded-[8px] border border-border/80 bg-[#fffdfb] p-4 sm:p-5">
+                  <div className="rounded-[8px] border border-border/80 bg-white p-4 sm:p-5">
                     <h3 className="font-heading text-[15px] font-bold text-secondary">
                       Traveller Details
                     </h3>
@@ -1059,7 +1059,7 @@ export function AccountPageContent() {
                   ) : null}
                 </div>
 
-                <aside className="rounded-[8px] border border-border bg-[#fffaf5] p-5">
+                <aside className="rounded-[8px] border border-border bg-primary/5 p-5">
                   <p className="font-heading text-[16px] font-bold text-secondary">
                     Profile Photo
                   </p>
@@ -1080,7 +1080,7 @@ export function AccountPageContent() {
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="absolute bottom-2 right-2 z-10 grid size-9 place-items-center rounded-full border-[3px] border-[#fffaf5] bg-primary text-white shadow-[0_8px_18px_rgba(50,50,50,0.16)] transition-colors hover:bg-accent focus-visible:ring-3 focus-visible:ring-primary/25"
+                        className="absolute bottom-2 right-2 z-10 grid size-9 place-items-center rounded-full border-[3px] border-[#fff8f0] bg-primary text-white shadow-[0_8px_18px_rgba(50,50,50,0.16)] transition-colors hover:bg-accent focus-visible:ring-3 focus-visible:ring-primary/25"
                         aria-label="Upload profile photo"
                       >
                         <Camera className="size-4" strokeWidth={2.2} />

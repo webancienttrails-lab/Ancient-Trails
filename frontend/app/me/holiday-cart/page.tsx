@@ -105,7 +105,7 @@ function SuggestionCard({ tour }: { tour: (typeof suggestions)[number] }) {
 
 export default function HolidayCartPage() {
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#fbf8f4] text-secondary lg:overflow-x-visible">
+    <main className="min-h-screen overflow-x-hidden bg-[#fff8f0] text-secondary lg:overflow-x-visible">
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <UserSidebar activeLabel="My Holiday Cart" />
 
@@ -122,7 +122,7 @@ export default function HolidayCartPage() {
                 priority
                 className="pointer-events-none object-cover object-right-top opacity-[0.22] mix-blend-multiply"
               />
-              <div className="absolute inset-0 bg-[linear-gradient(90deg,#fbf8f4_0%,#fbf8f4_46%,rgba(251,248,244,0.78)_68%,rgba(251,248,244,0.58)_100%)]" />
+              <div className="absolute inset-0 bg-[linear-gradient(90deg,#fff8f0_0%,#fff8f0_46%,rgba(255,248,240,0.78)_68%,rgba(255,248,240,0.58)_100%)]" />
               <div className="relative">
                 <h1 className="font-heading text-[30px] font-bold leading-none text-secondary sm:text-[34px]">
                   My Holiday Cart
@@ -133,7 +133,7 @@ export default function HolidayCartPage() {
               </div>
             </section>
 
-            <section className="rounded-[8px] border border-[#eadfd6] bg-white p-4 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:p-7">
+            <section className="rounded-[8px] border border-border bg-white p-4 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:p-7">
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-end">
                 <div className="min-w-0">
                   <div className="flex flex-wrap gap-2">
@@ -200,7 +200,7 @@ export default function HolidayCartPage() {
               </div>
             </section>
 
-            <section className="relative mt-4 overflow-hidden rounded-[8px] border border-[#eadfd6] bg-[#fff7ef] px-4 py-4 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:mt-5 sm:px-7 sm:py-5">
+            <section className="relative mt-4 overflow-hidden rounded-[8px] border border-border bg-primary/5 px-4 py-4 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:mt-5 sm:px-7 sm:py-5">
               <Image
                 src="/home assets/Heritage Banner.webp"
                 alt=""
@@ -223,7 +223,7 @@ export default function HolidayCartPage() {
               </div>
             </section>
 
-            <section className="mt-4 rounded-[8px] border border-[#eadfd6] bg-white p-4 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:mt-5 sm:p-6">
+            <section className="mt-4 rounded-[8px] border border-border bg-white p-4 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:mt-5 sm:p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <h2 className="font-heading text-[18px] font-bold text-secondary">

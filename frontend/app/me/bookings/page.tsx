@@ -77,9 +77,9 @@ const bookings = [
 ];
 
 const statusClass: Record<string, string> = {
-  Upcoming: "bg-[#e9f8ee] text-[#2d9a45]",
-  Completed: "bg-[#e9f8ee] text-[#2d9a45]",
-  Cancelled: "bg-[#ffe8e8] text-[#df2e2e]",
+  Upcoming: "bg-primary/10 text-primary",
+  Completed: "bg-accent/10 text-accent",
+  Cancelled: "bg-secondary/10 text-secondary/70",
 };
 
 function BookingMeta({
@@ -112,7 +112,7 @@ function BookingFact({ label, value }: { label: string; value: string }) {
 
 function BookingCard({ booking }: { booking: (typeof bookings)[number] }) {
   return (
-    <article className="grid gap-4 rounded-[7px] border border-[#eadfd6] bg-white p-3 shadow-[0_8px_22px_rgba(50,50,50,0.025)] sm:grid-cols-[190px_minmax(0,1fr)] lg:grid-cols-[220px_minmax(250px,1fr)_170px_118px_175px] lg:items-center">
+    <article className="grid gap-4 rounded-[7px] border border-border bg-white p-3 shadow-[0_8px_22px_rgba(50,50,50,0.025)] sm:grid-cols-[190px_minmax(0,1fr)] lg:grid-cols-[220px_minmax(250px,1fr)_170px_118px_175px] lg:items-center">
       <div className="relative h-[148px] overflow-hidden rounded-[7px] bg-muted sm:h-full lg:h-[126px]">
         <Image
           src={booking.image}
@@ -162,7 +162,7 @@ function BookingCard({ booking }: { booking: (typeof bookings)[number] }) {
           </p>
           <p
             className={`mt-2 font-sans text-[11px] font-semibold ${
-              booking.payment === "Refunded" ? "text-[#df2e2e]" : "text-[#2d9a45]"
+            booking.payment === "Refunded" ? "text-accent" : "text-primary"
             }`}
           >
             {booking.payment}
@@ -185,7 +185,7 @@ function BookingCard({ booking }: { booking: (typeof bookings)[number] }) {
 
 export default function MyBookingsPage() {
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#fbf8f4] text-secondary lg:overflow-x-visible">
+    <main className="min-h-screen overflow-x-hidden bg-[#fff8f0] text-secondary lg:overflow-x-visible">
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <UserSidebar activeLabel="My Bookings" />
 
@@ -193,7 +193,7 @@ export default function MyBookingsPage() {
           <DashboardTopBar />
 
           <div className="mx-auto w-full max-w-[1230px] px-3 py-4 sm:px-6 sm:py-5 lg:px-8">
-            <section className="relative overflow-hidden rounded-[8px] border border-[#eadfd6] bg-white px-4 py-5 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:px-7 sm:py-7 lg:min-h-[128px]">
+            <section className="relative overflow-hidden rounded-[8px] border border-border bg-white px-4 py-5 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:px-7 sm:py-7 lg:min-h-[128px]">
               <Image
                 src="/home assets/About_trails.webp"
                 alt=""
@@ -213,7 +213,7 @@ export default function MyBookingsPage() {
               </div>
             </section>
 
-            <section className="mt-3 rounded-[8px] border border-[#eadfd6] bg-white p-2.5 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:mt-4 sm:p-4">
+            <section className="mt-3 rounded-[8px] border border-border bg-white p-2.5 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:mt-4 sm:p-4">
               <div className="grid grid-cols-2 gap-2 pb-2 sm:flex sm:gap-3 sm:overflow-x-auto sm:pb-3 sm:[scrollbar-width:none] sm:[&::-webkit-scrollbar]:hidden">
                 {bookingTabs.map((tab) => {
                   const active = tab === "All Bookings";
