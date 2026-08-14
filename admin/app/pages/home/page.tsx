@@ -39,7 +39,6 @@ import {
 import {
   getAdminHomePage,
   getDefaultDestinationMarker,
-  isLegacyDestinationMarker,
   updateAdminHomePage,
   type HomePageContent,
   type HomePagePayload,
@@ -83,13 +82,8 @@ function getErrorMessage(error: unknown): string {
 }
 
 function createFormState(
-  content: HomePageContent,
-  destinations: AdminDestination[] = []
+  content: HomePageContent
 ): HomeFormState {
-  const destinationById = new Map(
-    destinations.map((destination) => [destination.destinationId, destination])
-  );
-
   return {
     upcomingTours: [...content.upcomingTours]
       .sort((left, right) => left.sortOrder - right.sortOrder)
@@ -100,22 +94,12 @@ function createFormState(
       })),
     trendingDestinations: [...content.trendingDestinations]
       .sort((left, right) => left.sortOrder - right.sortOrder)
-      .map(({ destinationId, markerX, markerY, sortOrder }, index) => {
-        const destination = destinationById.get(destinationId);
-        const autoMarker = destination
-          ? getDefaultDestinationMarker(destination, index)
-          : { markerX, markerY };
-        const useAutoMarker =
-          isLegacyDestinationMarker(markerX, markerY, index) ||
-          (markerX === 50 && markerY === 50);
-
-        return {
-          destinationId,
-          markerX: useAutoMarker ? autoMarker.markerX : markerX,
-          markerY: useAutoMarker ? autoMarker.markerY : markerY,
-          sortOrder,
-        };
-      }),
+      .map(({ destinationId, markerX, markerY, sortOrder }) => ({
+        destinationId,
+        markerX,
+        markerY,
+        sortOrder,
+      })),
   };
 }
 
@@ -187,12 +171,7 @@ export default function PagesHomePage() {
           return;
         }
 
-        setForm(
-          createFormState(
-            homeResponse.data.home,
-            destinationsResponse.data.destinations
-          )
-        );
+        setForm(createFormState(homeResponse.data.home));
         setTours(toursResponse.data.tours);
         setDepartures(departuresResponse.data.departures);
         setDestinations(destinationsResponse.data.destinations);
@@ -420,7 +399,7 @@ export default function PagesHomePage() {
     try {
       const response = await updateAdminHomePage(createPayload(form));
 
-      setForm(createFormState(response.data.home, destinations));
+      setForm(createFormState(response.data.home));
       toast.success("Home page saved", response.message);
     } catch (error) {
       toast.error("Home page not saved", getErrorMessage(error));
@@ -823,6 +802,7 @@ function TrendingDestinationEditor({
           <input
             min={0}
             max={100}
+            step="any"
             type="number"
             value={destination.markerX}
             onChange={(event) =>
@@ -835,6 +815,7 @@ function TrendingDestinationEditor({
           <input
             min={0}
             max={100}
+            step="any"
             type="number"
             value={destination.markerY}
             onChange={(event) =>
@@ -903,10 +884,10 @@ function MapPositionPreview({
     <div
       ref={previewRef}
       onClick={handlePreviewClick}
-      className="relative aspect-[900/535] overflow-hidden rounded-sm border border-border bg-white"
+      className="relative mx-auto h-[330px] w-full max-w-[700px] overflow-hidden rounded-sm border border-border bg-white sm:h-[430px] lg:h-[535px]"
     >
       <img
-        src="/home-assets/map.webp"
+        src="/home-assets/home-map.webp"
         alt="India map preview"
         className="absolute inset-0 size-full object-contain"
       />
@@ -926,10 +907,8 @@ function MapPositionPreview({
               onActivate(index);
             }}
             className={cn(
-              "absolute z-10 grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border text-xs font-bold shadow-sm transition-transform",
-              isActive
-                ? "scale-110 border-primary bg-primary text-white"
-                : "border-white bg-white text-primary hover:scale-105"
+              "group absolute z-10 grid h-8 w-5 -translate-x-1/2 -translate-y-full origin-bottom place-items-end transition-transform",
+              isActive ? "scale-110" : "hover:scale-105"
             )}
             style={{
               left: `${destination.markerX}%`,
@@ -937,7 +916,11 @@ function MapPositionPreview({
             }}
             aria-label={`Select ${selectedDestination?.destinationName || destination.destinationId}`}
           >
-            {index + 1}
+            <MapPushPin active={isActive} />
+            <span className="pointer-events-none absolute left-1/2 top-full mt-1 max-w-[130px] -translate-x-1/2 rounded-sm bg-white px-2 py-1 text-[10px] font-bold text-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+              {selectedDestination?.destinationName ||
+                destination.destinationId}
+            </span>
           </button>
         );
       })}
@@ -945,6 +928,24 @@ function MapPositionPreview({
         Pins are auto-placed from destination and state. Select a row, then click the map to fine tune.
       </p>
     </div>
+  );
+}
+
+function MapPushPin({ active }: { active?: boolean }) {
+  return (
+    <span className="pointer-events-none relative block h-8 w-5">
+      <span
+        className={cn(
+          "absolute left-1/2 top-0 z-10 size-4 -translate-x-1/2 rounded-full shadow-[0_4px_8px_rgba(155,59,19,0.26)]",
+          active
+            ? "bg-[radial-gradient(circle_at_68%_24%,#ffffff_0_7%,#f7b56c_16%,#d47220_52%,#9b3b13_100%)]"
+            : "bg-[radial-gradient(circle_at_68%_24%,#ffffff_0_7%,#f4a15a_16%,#d47220_54%,#9b3b13_100%)]"
+        )}
+      >
+        <span className="absolute right-1 top-0.5 size-1.5 rounded-full bg-white/80 blur-[0.5px]" />
+      </span>
+      <span className="absolute left-1/2 top-[15px] h-[17px] w-[1.5px] -translate-x-1/2 rounded-full bg-gradient-to-b from-stone-300 via-stone-500 to-stone-700 shadow-[1px_2px_3px_rgba(50,50,50,0.22)]" />
+    </span>
   );
 }
 

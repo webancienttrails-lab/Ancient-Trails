@@ -14,6 +14,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Star,
   Trash2,
   Upload,
   X,
@@ -59,6 +60,13 @@ import {
   type DestinationPayload,
   type DestinationType,
 } from "@/lib/destinations";
+import {
+  getAdminHomePage,
+  getDefaultDestinationMarker,
+  updateAdminHomePage,
+  type HomePageContent,
+  type HomePagePayload,
+} from "@/lib/home";
 import { cn } from "@/lib/utils";
 
 type DestinationMetric = {
@@ -178,6 +186,38 @@ function createDestinationPayload(
   };
 }
 
+function sortBySortOrder<TItem extends { sortOrder: number }>(items: TItem[]) {
+  return [...items].sort((left, right) => left.sortOrder - right.sortOrder);
+}
+
+type HomeTrendingDestinationInput = Pick<
+  HomePageContent["trendingDestinations"][number],
+  "destinationId" | "markerX" | "markerY" | "sortOrder"
+>;
+
+function createHomePagePayload(
+  content: HomePageContent,
+  trendingDestinations: HomeTrendingDestinationInput[]
+): HomePagePayload {
+  return {
+    upcomingTours: sortBySortOrder(content.upcomingTours).map(
+      ({ departureId, tourId }, index) => ({
+        departureId,
+        sortOrder: index,
+        tourId,
+      })
+    ),
+    trendingDestinations: trendingDestinations.map(
+      ({ destinationId, markerX, markerY }, index) => ({
+        destinationId,
+        markerX,
+        markerY,
+        sortOrder: index,
+      })
+    ),
+  };
+}
+
 function formatDate(value: string): string {
   const date = new Date(value);
 
@@ -193,7 +233,8 @@ function formatDate(value: string): string {
 }
 
 function createDestinationMetrics(
-  destinations: AdminDestination[]
+  destinations: AdminDestination[],
+  topDestinationCount: number
 ): DestinationMetric[] {
   const domesticCount = destinations.filter(
     (destination) => destination.destinationType === "Domestic"
@@ -238,14 +279,25 @@ function createDestinationMetrics(
       tone: "bg-violet-100 text-violet-700",
       trendTone: "text-violet-600",
     },
+    {
+      label: "Top Destinations",
+      value: `${topDestinationCount}/8`,
+      trend: "Homepage destination cards",
+      icon: Star,
+      tone: "bg-sky-100 text-sky-700",
+      trendTone: "text-sky-600",
+    },
   ];
 }
 
 export default function DestinationsPage() {
   const toast = useToast();
   const [destinations, setDestinations] = useState<AdminDestination[]>([]);
+  const [homePageContent, setHomePageContent] =
+    useState<HomePageContent | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoadingDestinations, setIsLoadingDestinations] = useState(true);
+  const [isLoadingHomePage, setIsLoadingHomePage] = useState(true);
   const [destinationSheetMode, setDestinationSheetMode] =
     useState<DestinationSheetMode | null>(null);
   const [selectedDestination, setSelectedDestination] =
@@ -254,29 +306,47 @@ export default function DestinationsPage() {
   const [isUploadingBannerImage, setIsUploadingBannerImage] = useState(false);
   const [isUploadingGalleryImages, setIsUploadingGalleryImages] =
     useState(false);
+  const [savingTopDestinationId, setSavingTopDestinationId] =
+    useState<string | null>(null);
   const [destinationForm, setDestinationForm] =
     useState<DestinationFormState>(emptyDestinationForm);
 
   useEffect(() => {
     let isMounted = true;
 
-    async function loadDestinations() {
-      try {
-        const response = await listAdminDestinations();
+    async function loadDestinationAdmin() {
+      const [destinationsResult, homeResult] = await Promise.allSettled([
+        listAdminDestinations(),
+        getAdminHomePage(),
+      ]);
 
-        if (isMounted) {
-          setDestinations(response.data.destinations);
-        }
-      } catch (error) {
-        toast.error("Unable to load destinations", getErrorMessage(error));
-      } finally {
-        if (isMounted) {
-          setIsLoadingDestinations(false);
-        }
+      if (!isMounted) {
+        return;
       }
+
+      if (destinationsResult.status === "fulfilled") {
+        setDestinations(destinationsResult.value.data.destinations);
+      } else {
+        toast.error(
+          "Unable to load destinations",
+          getErrorMessage(destinationsResult.reason)
+        );
+      }
+
+      if (homeResult.status === "fulfilled") {
+        setHomePageContent(homeResult.value.data.home);
+      } else {
+        toast.error(
+          "Unable to load top destinations",
+          getErrorMessage(homeResult.reason)
+        );
+      }
+
+      setIsLoadingDestinations(false);
+      setIsLoadingHomePage(false);
     }
 
-    loadDestinations();
+    loadDestinationAdmin();
 
     return () => {
       isMounted = false;
@@ -306,9 +376,21 @@ export default function DestinationsPage() {
     );
   }, [destinations, searchQuery]);
 
+  const topDestinationSettings = useMemo(
+    () =>
+      sortBySortOrder(homePageContent?.trendingDestinations || []).slice(0, 8),
+    [homePageContent?.trendingDestinations]
+  );
+  const topDestinationIds = useMemo(
+    () =>
+      new Set(
+        topDestinationSettings.map((destination) => destination.destinationId)
+      ),
+    [topDestinationSettings]
+  );
   const destinationMetrics = useMemo(
-    () => createDestinationMetrics(destinations),
-    [destinations]
+    () => createDestinationMetrics(destinations, topDestinationSettings.length),
+    [destinations, topDestinationSettings.length]
   );
   const isDestinationFormBusy =
     isSavingDestination || isUploadingBannerImage || isUploadingGalleryImages;
@@ -423,6 +505,78 @@ export default function DestinationsPage() {
     );
   }
 
+  async function handleToggleTopDestination(
+    destination: AdminDestination,
+    isSelected: boolean
+  ) {
+    if (!homePageContent) {
+      toast.error(
+        "Top destinations unavailable",
+        "Please wait for the home page settings to finish loading."
+      );
+      return;
+    }
+
+    const currentTopDestinations = sortBySortOrder(
+      homePageContent.trendingDestinations
+    );
+    const isAlreadySelected = currentTopDestinations.some(
+      (item) => item.destinationId === destination.destinationId
+    );
+
+    if (isSelected && isAlreadySelected) {
+      return;
+    }
+
+    if (!isSelected && !isAlreadySelected) {
+      return;
+    }
+
+    if (isSelected && currentTopDestinations.length >= 8) {
+      toast.error(
+        "Limit reached",
+        "Top Destinations can show up to 8 cards."
+      );
+      return;
+    }
+
+    const nextTopDestinations = isSelected
+      ? [
+          ...currentTopDestinations,
+          {
+            destinationId: destination.destinationId,
+            ...getDefaultDestinationMarker(
+              destination,
+              currentTopDestinations.length
+            ),
+            sortOrder: currentTopDestinations.length,
+          },
+        ]
+      : currentTopDestinations.filter(
+          (item) => item.destinationId !== destination.destinationId
+        );
+
+    setSavingTopDestinationId(destination.destinationId);
+
+    try {
+      const response = await updateAdminHomePage(
+        createHomePagePayload(homePageContent, nextTopDestinations)
+      );
+
+      setHomePageContent(response.data.home);
+      toast.success(
+        isSelected ? "Top destination added" : "Top destination removed",
+        `${destination.destinationName} has been ${
+          isSelected ? "added to" : "removed from"
+        } the home page.`
+      );
+    } catch (error) {
+      toast.error("Top destination not updated", getErrorMessage(error));
+    } finally {
+      setSavingTopDestinationId(null);
+    }
+  }
+
   async function handleSaveDestination(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -511,7 +665,7 @@ export default function DestinationsPage() {
 
         <section
           data-admin-metric-grid
-          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"
         >
           {destinationMetrics.map((metric) => (
             <DestinationMetricCard key={metric.label} metric={metric} />
@@ -526,9 +680,14 @@ export default function DestinationsPage() {
           <DestinationTable
             destinations={filteredDestinations}
             isLoading={isLoadingDestinations}
+            isTopDestinationLoading={isLoadingHomePage}
             onDelete={handleDeleteDestination}
             onEdit={openEditDestinationSheet}
+            onToggleTopDestination={handleToggleTopDestination}
             onView={openViewDestinationSheet}
+            savingTopDestinationId={savingTopDestinationId}
+            topDestinationCount={topDestinationSettings.length}
+            topDestinationIds={topDestinationIds}
             totalCount={destinations.length}
           />
         </section>
@@ -684,16 +843,29 @@ function DestinationFilters({
 function DestinationTable({
   destinations,
   isLoading,
+  isTopDestinationLoading,
   onDelete,
   onEdit,
+  onToggleTopDestination,
   onView,
+  savingTopDestinationId,
+  topDestinationCount,
+  topDestinationIds,
   totalCount,
 }: {
   destinations: AdminDestination[];
   isLoading: boolean;
+  isTopDestinationLoading: boolean;
   onDelete: (destination: AdminDestination) => void;
   onEdit: (destination: AdminDestination) => void;
+  onToggleTopDestination: (
+    destination: AdminDestination,
+    isSelected: boolean
+  ) => void;
   onView: (destination: AdminDestination) => void;
+  savingTopDestinationId: string | null;
+  topDestinationCount: number;
+  topDestinationIds: Set<string>;
   totalCount: number;
 }) {
   return (
@@ -702,13 +874,14 @@ function DestinationTable({
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <colgroup>
             <col className="w-[12%]" />
-            <col className="w-[28%]" />
-            <col className="w-[10%]" />
-            <col className="w-[16%]" />
+            <col className="w-[24%]" />
+            <col className="w-[9%]" />
             <col className="w-[14%]" />
-            <col className="w-[8%]" />
+            <col className="w-[12%]" />
             <col className="w-[6%]" />
+            <col className="w-[10%]" />
             <col className="w-[6%]" />
+            <col className="w-[7%]" />
           </colgroup>
           <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
             <tr>
@@ -718,6 +891,9 @@ function DestinationTable({
               <th className="px-2.5 py-3 font-bold">Country / Region</th>
               <th className="px-2.5 py-3 font-bold">State / City</th>
               <th className="px-2.5 py-3 font-bold">UNESCO</th>
+              <th className="px-2.5 py-3 text-center font-bold">
+                Top Destination
+              </th>
               <th className="px-2.5 py-3 font-bold">Days</th>
               <th className="px-2.5 py-3 text-right font-bold">Actions</th>
             </tr>
@@ -725,7 +901,7 @@ function DestinationTable({
           <tbody>
             {isLoading ? (
               <tr>
-                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={8}>
+                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={9}>
                   Loading destinations...
                 </td>
               </tr>
@@ -733,7 +909,7 @@ function DestinationTable({
 
             {!isLoading && destinations.length === 0 ? (
               <tr>
-                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={8}>
+                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={9}>
                   No destinations added yet.
                 </td>
               </tr>
@@ -813,6 +989,25 @@ function DestinationTable({
                     >
                       {destination.unescoSite ? "Yes" : "No"}
                     </td>
+                    <td
+                      data-label="Top Destination"
+                      className="px-2.5 py-3 text-center"
+                    >
+                      <TopDestinationToggle
+                        destination={destination}
+                        isChecked={topDestinationIds.has(
+                          destination.destinationId
+                        )}
+                        isLoading={isTopDestinationLoading}
+                        isSaving={
+                          savingTopDestinationId ===
+                          destination.destinationId
+                        }
+                        isTemporarilyLocked={savingTopDestinationId !== null}
+                        limitReached={topDestinationCount >= 8}
+                        onToggle={onToggleTopDestination}
+                      />
+                    </td>
                     <td data-label="Days" className="px-2.5 py-3">
                       <span className="inline-flex items-center gap-1 text-xs text-foreground/65">
                         <CalendarDays className="size-3.5 shrink-0" />
@@ -856,6 +1051,54 @@ function DestinationTable({
         </div>
       </div>
     </>
+  );
+}
+
+function TopDestinationToggle({
+  destination,
+  isChecked,
+  isLoading,
+  isSaving,
+  isTemporarilyLocked,
+  limitReached,
+  onToggle,
+}: {
+  destination: AdminDestination;
+  isChecked: boolean;
+  isLoading: boolean;
+  isSaving: boolean;
+  isTemporarilyLocked: boolean;
+  limitReached: boolean;
+  onToggle: (destination: AdminDestination, isSelected: boolean) => void;
+}) {
+  const isLimitDisabled = !isChecked && limitReached;
+  const isDisabled =
+    isLoading || isSaving || isTemporarilyLocked || isLimitDisabled;
+
+  return (
+    <label
+      className={cn(
+        "inline-grid size-9 place-items-center rounded-sm border border-border bg-white transition-colors",
+        isChecked && "border-primary bg-primary/10",
+        isLimitDisabled && "cursor-not-allowed opacity-45",
+        isSaving && "opacity-60",
+        !isDisabled && "cursor-pointer hover:border-primary"
+      )}
+      title={
+        isLimitDisabled
+          ? "Top Destinations can show up to 8 cards."
+          : undefined
+      }
+    >
+      <input
+        checked={isChecked}
+        disabled={isDisabled}
+        onChange={(event) => onToggle(destination, event.target.checked)}
+        type="checkbox"
+        className="size-4 accent-primary disabled:cursor-not-allowed"
+        aria-label={`Mark ${destination.destinationName} as a top destination`}
+      />
+    </label>
   );
 }
 
