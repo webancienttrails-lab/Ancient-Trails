@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import type { Metadata } from "next";
 import {
   BedDouble,
@@ -187,15 +188,15 @@ export default function HolidayCartPage() {
                     </p>
                   </div>
 
-                  <a
-                    href="#"
+                  <Link
+                    href="/tour-calendar"
                     className={buttonVariants({
                       className: "w-full justify-between gap-4 px-6 font-normal sm:w-[255px]",
                     })}
                   >
                     Continue Booking
                     <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
-                  </a>
+                  </Link>
                 </div>
               </div>
             </section>
@@ -233,8 +234,8 @@ export default function HolidayCartPage() {
                     Handpicked experiences for your next adventure.
                   </p>
                 </div>
-                <a
-                  href="#"
+                <Link
+                  href="/tour-calendar"
                   className={buttonVariants({
                     variant: "link",
                     className: "h-auto gap-2 p-0 font-medium",
@@ -242,7 +243,7 @@ export default function HolidayCartPage() {
                 >
                   View All Tours
                   <ButtonArrow className="h-2.5 w-5 group-hover/button:translate-x-0.5" />
-                </a>
+                </Link>
               </div>
 
               <div className="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">

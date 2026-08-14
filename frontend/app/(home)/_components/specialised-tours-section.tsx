@@ -1,11 +1,13 @@
 import Image from "next/image";
+import Link from "next/link";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
+import { getTourCalendarHref } from "@/lib/routes";
 import { TextReveal } from "./reveal-on-view";
 
 export function SpecialisedToursSection() {
   return (
-    <section className="bg-background py-14 lg:py-16">
+    <section id="specialised-tours" className="bg-background py-14 lg:py-16">
       <div className="mx-auto grid w-full max-w-[1300px] items-center gap-10 px-5 sm:px-0 md:grid-cols-[minmax(300px,420px)_minmax(0,1fr)] md:gap-12 lg:grid-cols-[540px_minmax(0,1fr)] lg:gap-16">
         <div className="grid w-full max-w-[540px] gap-7 sm:grid-cols-[1fr_1fr] lg:grid-cols-[240px_265px]">
           <div className="grid gap-7">
@@ -70,7 +72,11 @@ export function SpecialisedToursSection() {
             </p>
           </TextReveal>
 
-          <Button className="mt-10 h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:mt-14 lg:min-w-[250px]">
+          <Button
+            nativeButton={false}
+            render={<Link href={getTourCalendarHref()} />}
+            className="mt-10 h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:mt-14 lg:min-w-[250px]"
+          >
             View all specialised tours
             <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
           </Button>

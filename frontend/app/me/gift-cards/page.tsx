@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import type { Metadata } from "next";
 import {
   CreditCard,
@@ -121,15 +122,15 @@ export default function GiftCardsPage() {
                 You do not have any gift cards linked to your account at the moment.
                 Explore our gift cards and surprise your loved ones.
               </p>
-              <a
-                href="#"
+              <Link
+                href="/me/gift-cards"
                 className={buttonVariants({
                   className: "mt-7 w-full justify-between gap-4 px-6 font-normal sm:w-auto sm:min-w-[205px]",
                 })}
               >
                 Explore Gift Cards
                 <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
-              </a>
+              </Link>
             </section>
 
             <section className="mt-4 rounded-[8px] border border-border bg-white p-4 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:mt-6 sm:p-6">
@@ -170,15 +171,15 @@ export default function GiftCardsPage() {
                     the door to unforgettable journeys.
                   </p>
                 </div>
-                <a
-                  href="#"
+                <Link
+                  href="/me/gift-cards"
                   className={buttonVariants({
                     className: "w-full justify-between gap-4 px-6 font-normal md:w-[190px]",
                   })}
                 >
                   Buy Gift Card
                   <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
-                </a>
+                </Link>
               </div>
             </section>
           </div>

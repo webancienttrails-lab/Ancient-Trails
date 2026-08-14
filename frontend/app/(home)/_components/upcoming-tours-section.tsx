@@ -10,6 +10,7 @@ import {
   getHomeUpcomingTours,
   type HomeTourCard,
 } from "@/lib/home-travel";
+import { getTourHref } from "@/lib/routes";
 import { RevealOnView, TextReveal } from "./reveal-on-view";
 
 type TourCardProps = {
@@ -39,7 +40,7 @@ function mergeWithFallbackTours(tours: HomeTourCard[]) {
 function TourCard({ tour, className, sizes }: TourCardProps) {
   return (
     <Link
-      href={`/tours/${encodeURIComponent(tour.tourId)}`}
+      href={getTourHref(tour)}
       className={`group relative block overflow-hidden rounded-[6px] ${className}`}
     >
       <Image

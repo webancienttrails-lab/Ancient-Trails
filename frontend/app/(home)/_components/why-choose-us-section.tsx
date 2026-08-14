@@ -37,7 +37,10 @@ const whyChooseUsFeatures = [
 
 export function WhyChooseUsSection() {
   return (
-    <section className="relative overflow-hidden bg-background pb-16 pt-14 lg:pb-24 lg:pt-16">
+    <section
+      id="why-choose-us"
+      className="relative overflow-hidden bg-background pb-16 pt-14 lg:pb-24 lg:pt-16"
+    >
       <div className="pointer-events-none absolute -right-3 top-[58px] hidden h-[255px] w-[175px] overflow-hidden lg:block">
         <Image
           src="/home assets/Heritage Banner.webp"

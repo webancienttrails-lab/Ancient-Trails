@@ -20,6 +20,7 @@ import {
 
 import { Header } from "@/components/layout/header";
 import { getHomeMediaUrl, listPublicDestinations, type PublicDestination } from "@/lib/home-travel";
+import { getDestinationHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
 type CategoryFilter = "all" | "india" | "international" | "popular-states";
@@ -310,9 +311,13 @@ function createPaginationPages(currentPage: number, totalPages: number) {
   return Array.from(pages).sort((left, right) => left - right);
 }
 
-export function DestinationsPage() {
+export function DestinationsPage({
+  initialSearchQuery = "",
+}: {
+  initialSearchQuery?: string;
+}) {
   const [destinations, setDestinations] = useState<PublicDestination[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>("all");
   const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
   const [selectedStates, setSelectedStates] = useState<string[]>([]);
@@ -990,10 +995,10 @@ function DestinationCard({
 
         <div className="mt-3 flex items-center justify-between border-t border-[#ead8c5] pt-2.5">
           <span className="font-sans text-[10px] font-semibold text-secondary/48">
-            {destination.destinationId}
+            {destination.destinationType}
           </span>
           <Link
-            href={`/destinations/${encodeURIComponent(destination.destinationId)}`}
+            href={getDestinationHref(destination)}
             aria-label={`Explore ${destination.destinationName}`}
             className="grid size-7 shrink-0 place-items-center rounded-full border border-primary bg-white text-primary transition-colors hover:bg-primary hover:text-white"
           >

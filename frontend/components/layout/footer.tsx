@@ -61,10 +61,10 @@ const footerColumns: Array<{
 ];
 
 const socialLinks = [
-  { label: "Facebook", text: "f" },
-  { label: "Instagram", text: "ig" },
-  { label: "YouTube", icon: Play },
-  { label: "WhatsApp", icon: MessageCircle },
+  { label: "Facebook", href: "https://www.facebook.com/", text: "f" },
+  { label: "Instagram", href: "https://www.instagram.com/", text: "ig" },
+  { label: "YouTube", href: "https://www.youtube.com/", icon: Play },
+  { label: "WhatsApp", href: "https://www.whatsapp.com/", icon: MessageCircle },
 ];
 
 const trustItems: Array<{
@@ -192,7 +192,9 @@ export function SiteFooter() {
                   return (
                     <Link
                     key={item.label}
-                    href="#"
+                    href={item.href}
+                    target="_blank"
+                    rel="noreferrer"
                     aria-label={item.label}
                     className="grid size-8 place-items-center rounded-full border border-[#9b673b]/70 bg-[#221811]/80 font-sans text-[10px] font-bold uppercase text-[#ead8c3] transition-colors hover:border-primary hover:bg-primary hover:text-white lg:size-10 lg:text-[12px]"
                   >

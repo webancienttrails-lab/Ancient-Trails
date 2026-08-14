@@ -2,6 +2,7 @@ import Image from "next/image";
 
 import { Header } from "@/components/layout/header";
 import { PlanTripLauncher } from "@/components/plan-trip-launcher";
+import type { HomeDestinationCard } from "@/lib/home-travel";
 import { AboutSection } from "./about-section";
 import { CustomisedToursSection } from "./customised-tours-section";
 import { EgyptExperiencesSection } from "./egypt-experiences-section";
@@ -12,7 +13,11 @@ import { TopDestinationsSection } from "./top-destinations-section";
 import { UpcomingToursSection } from "./upcoming-tours-section";
 import { WhyChooseUsSection } from "./why-choose-us-section";
 
-export function HomePage() {
+export function HomePage({
+  topDestinations,
+}: {
+  topDestinations?: HomeDestinationCard[];
+}) {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <section className="relative h-[100svh] min-h-[560px] overflow-visible lg:h-[80vh] lg:min-h-0">
@@ -67,7 +72,7 @@ export function HomePage() {
 
       <AboutSection />
 
-      <TopDestinationsSection />
+      <TopDestinationsSection destinations={topDestinations} />
 
       <EgyptExperiencesSection />
 

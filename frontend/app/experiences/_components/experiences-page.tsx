@@ -635,7 +635,9 @@ function InstagramSection() {
         <div className="flex items-center gap-4 font-sans text-[12px] font-semibold text-secondary/76">
           <span>@ancienttrailsindia</span>
           <Link
-            href="#"
+            href="https://www.instagram.com/"
+            target="_blank"
+            rel="noreferrer"
             className="inline-flex h-9 items-center gap-3 rounded-[8px] border border-primary bg-white px-4 text-primary transition-colors hover:bg-primary hover:text-white"
           >
             Follow Us

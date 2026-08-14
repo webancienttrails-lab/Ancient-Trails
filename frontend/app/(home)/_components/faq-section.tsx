@@ -45,7 +45,7 @@ const faqItems = [
 
 export function FaqSection() {
   return (
-    <section className="bg-background pb-16">
+    <section id="faqs" className="bg-background pb-16">
       <div className="bg-[#fbf0e8]">
         <div className="mx-auto grid w-full max-w-[1300px] content-center gap-6 px-5 py-8 sm:px-0 lg:grid-cols-[330px_580px] lg:items-start lg:gap-[68px]">
           <TextReveal>

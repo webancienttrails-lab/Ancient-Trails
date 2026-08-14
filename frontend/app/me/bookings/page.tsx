@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import {
@@ -168,8 +169,8 @@ function BookingCard({ booking }: { booking: (typeof bookings)[number] }) {
             {booking.payment}
           </p>
         </div>
-        <a
-          href="#"
+        <Link
+          href="/me/bookings"
           className={buttonVariants({
             variant: "outline",
             className: "w-full gap-3 px-5 font-normal sm:w-[165px] lg:mt-4",
@@ -177,7 +178,7 @@ function BookingCard({ booking }: { booking: (typeof bookings)[number] }) {
         >
           View Details
           <ButtonArrow className="h-2.5 w-5 group-hover/button:brightness-0 group-hover/button:invert" />
-        </a>
+        </Link>
       </div>
     </article>
   );

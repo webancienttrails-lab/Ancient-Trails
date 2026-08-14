@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import type { Metadata } from "next";
 import {
   Bookmark,
@@ -13,6 +14,7 @@ import {
 import { Button, ButtonArrow, buttonVariants } from "@/components/ui/button";
 import { DashboardTopBar } from "@/components/user-dashboard/dashboard-top-bar";
 import { UserSidebar } from "@/components/user-dashboard/user-sidebar";
+import { getDestinationsHref } from "@/lib/routes";
 
 export const metadata: Metadata = {
   title: "My Dashboard",
@@ -116,7 +118,10 @@ function DestinationCard({
   destination: (typeof exploreDestinations)[number];
 }) {
   return (
-    <article className="w-[126px] shrink-0 min-w-0 snap-start sm:w-auto sm:shrink">
+    <Link
+      href={getDestinationsHref(destination.title)}
+      className="w-[126px] shrink-0 min-w-0 snap-start sm:w-auto sm:shrink"
+    >
       <div className="relative h-[62px] overflow-hidden rounded-[7px] sm:h-[68px]">
         <Image
           src={destination.image}
@@ -133,7 +138,7 @@ function DestinationCard({
       <p className="mt-1 truncate font-sans text-[10px] leading-none text-secondary/65 sm:text-[11px]">
         {destination.subtitle}
       </p>
-    </article>
+    </Link>
   );
 }
 
@@ -158,8 +163,8 @@ export default function MePage() {
                 <h2 className="font-heading text-[18px] font-bold leading-tight text-secondary">
                   My Upcoming Tours
                 </h2>
-                <a
-                  href="#"
+                <Link
+                  href="/me/bookings"
                   className={buttonVariants({
                     variant: "link",
                     className: "h-auto gap-2 p-0 font-medium",
@@ -167,7 +172,7 @@ export default function MePage() {
                 >
                   View All Bookings
                   <ButtonArrow className="h-2.5 w-5 group-hover/button:translate-x-0.5" />
-                </a>
+                </Link>
               </div>
 
               <div className="relative mt-4 overflow-hidden rounded-[7px] bg-primary/5 px-4 py-6 sm:mt-5 sm:px-5 sm:py-7">
@@ -190,6 +195,8 @@ export default function MePage() {
                       Plan your next adventure with us!
                     </p>
                     <Button
+                      nativeButton={false}
+                      render={<Link href="/tour-calendar" />}
                       variant="outline"
                       className="mt-4 w-full justify-between gap-4 px-5 font-normal sm:w-auto sm:min-w-[170px] sm:px-6"
                     >
@@ -218,7 +225,11 @@ export default function MePage() {
                   <p className="mt-4 font-sans text-[15px] text-secondary/80">
                     You have 0 booking with us. Let&apos;s break the ice.
                   </p>
-                  <Button className="mt-7 w-full justify-between gap-4 px-5 font-normal sm:w-auto sm:min-w-[170px] sm:px-6">
+                  <Button
+                    nativeButton={false}
+                    render={<Link href="/tour-calendar" />}
+                    className="mt-7 w-full justify-between gap-4 px-5 font-normal sm:w-auto sm:min-w-[170px] sm:px-6"
+                  >
                     Explore Tours
                     <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
                   </Button>
@@ -281,7 +292,11 @@ export default function MePage() {
                     Get travel tips, destination guides and expert advice for a
                     memorable journey.
                   </p>
-                  <Button className="mt-6 h-10 w-[calc(100%-54px)] justify-between gap-2 px-4 text-[12px] font-normal sm:mt-7 sm:h-11 sm:w-auto sm:min-w-[270px] sm:gap-4 sm:px-6 sm:text-[14px]">
+                  <Button
+                    nativeButton={false}
+                    render={<Link href="/experiences" />}
+                    className="mt-6 h-10 w-[calc(100%-54px)] justify-between gap-2 px-4 text-[12px] font-normal sm:mt-7 sm:h-11 sm:w-auto sm:min-w-[270px] sm:gap-4 sm:px-6 sm:text-[14px]"
+                  >
                     Watch Pre-departure Videos
                     <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
                   </Button>

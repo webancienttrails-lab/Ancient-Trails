@@ -1,10 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, MapPin, Minus, Plus, X } from "lucide-react";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
+import { getDestinationHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { TextReveal } from "./reveal-on-view";
 
@@ -166,9 +168,48 @@ function getDestinationHighlights(destination: TopDestination) {
   ];
 }
 
-export function TopDestinationsSection() {
+function MapPushPin({ active }: { active?: boolean }) {
+  return (
+    <span className="pointer-events-none relative block h-8 w-5">
+      <span
+        className={cn(
+          "absolute left-1/2 top-0 z-10 size-4 -translate-x-1/2 rounded-full shadow-[0_4px_8px_rgba(155,59,19,0.26)]",
+          active
+            ? "bg-[radial-gradient(circle_at_68%_24%,#ffffff_0_7%,#f7b56c_16%,#d47220_52%,#9b3b13_100%)]"
+            : "bg-[radial-gradient(circle_at_68%_24%,#ffffff_0_7%,#f4a15a_16%,#d47220_54%,#9b3b13_100%)]"
+        )}
+      >
+        <span className="absolute right-1 top-0.5 size-1.5 rounded-full bg-white/80 blur-[0.5px]" />
+      </span>
+      <span className="absolute left-1/2 top-[15px] h-[17px] w-[1.5px] -translate-x-1/2 rounded-full bg-gradient-to-b from-stone-300 via-stone-500 to-stone-700 shadow-[1px_2px_3px_rgba(50,50,50,0.22)]" />
+      <span
+        className={cn(
+          "absolute left-1/2 top-[13px] -z-10 size-6 -translate-x-1/2 rounded-full bg-primary/15 transition-transform duration-500",
+          active ? "scale-125 opacity-100" : "scale-75 opacity-0"
+        )}
+      />
+    </span>
+  );
+}
+
+export function TopDestinationsSection({
+  destinations = topDestinations,
+}: {
+  destinations?: TopDestination[];
+}) {
+  const displayedDestinations = useMemo(() => {
+    const sourceDestinations =
+      destinations.length > 0 ? destinations : topDestinations;
+
+    return sourceDestinations.slice(0, 8);
+  }, [destinations]);
+  const initialDestinationId = displayedDestinations.some(
+    (destination) => destination.destinationId === defaultDestinationId
+  )
+    ? defaultDestinationId
+    : displayedDestinations[0]?.destinationId || topDestinations[0].destinationId;
   const [activeDestinationId, setActiveDestinationId] =
-    useState(defaultDestinationId);
+    useState(initialDestinationId);
   const [isCardChanging, setIsCardChanging] = useState(false);
   const transitionTimeoutRef = useRef<number | null>(null);
 
@@ -181,9 +222,9 @@ export function TopDestinationsSection() {
   }, []);
 
   const activeDestination =
-    topDestinations.find(
+    displayedDestinations.find(
       (destination) => destination.destinationId === activeDestinationId
-    ) || topDestinations[0];
+    ) || displayedDestinations[0] || topDestinations[0];
   const activeHighlights = getDestinationHighlights(activeDestination);
 
   function selectDestination(destinationId: string) {
@@ -203,7 +244,7 @@ export function TopDestinationsSection() {
   }
 
   function resetDestinationCard() {
-    setActiveDestinationId(defaultDestinationId);
+    setActiveDestinationId(initialDestinationId);
   }
 
   return (
@@ -243,7 +284,11 @@ export function TopDestinationsSection() {
             </p>
           </TextReveal>
 
-          <Button className="h-11 w-full min-w-0 justify-center gap-3 px-5 text-[15px] font-normal sm:w-auto sm:px-6 sm:text-button lg:min-w-[230px]">
+          <Button
+            nativeButton={false}
+            render={<Link href="/destinations" />}
+            className="h-11 w-full min-w-0 justify-center gap-3 px-5 text-[15px] font-normal sm:w-auto sm:px-6 sm:text-button lg:min-w-[230px]"
+          >
             View all destinations
             <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
           </Button>
@@ -259,7 +304,7 @@ export function TopDestinationsSection() {
             </div>
 
             <div className="grid gap-2">
-              {topDestinations.map((destination, index) => {
+              {displayedDestinations.map((destination, index) => {
                 const isActive =
                   destination.destinationId === activeDestination.destinationId;
 
@@ -311,12 +356,15 @@ export function TopDestinationsSection() {
               alt="Top destinations map of India"
               fill
               sizes="(min-width: 1024px) 700px, 100vw"
-              className="object-contain object-center mix-blend-multiply transition-transform duration-[1200ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:scale-[1.015]"
+              className="object-contain object-center mix-blend-multiply"
             />
 
-            {topDestinations.map((destination, index) => {
+            {displayedDestinations.map((destination, index) => {
               const isActive =
                 destination.destinationId === activeDestination.destinationId;
+              const showBelow = destination.markerY < 24;
+              const alignLeft = destination.markerX < 28;
+              const alignRight = destination.markerX > 72;
 
               return (
                 <button
@@ -327,23 +375,56 @@ export function TopDestinationsSection() {
                   onFocus={() => selectDestination(destination.destinationId)}
                   onMouseEnter={() => selectDestination(destination.destinationId)}
                   className={cn(
-                    "group absolute z-10 grid -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white bg-primary text-white shadow-[0_8px_18px_rgba(212,114,32,0.32)] transition-[transform,box-shadow,background-color] duration-300 hover:scale-110 hover:shadow-[0_12px_24px_rgba(212,114,32,0.42)] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25",
-                    isActive ? "size-9" : "size-7"
+                    "group absolute grid h-8 w-5 -translate-x-1/2 -translate-y-full origin-bottom place-items-end transition-transform duration-300 hover:z-40 hover:scale-110 focus-visible:z-40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25",
+                    isActive ? "z-40 scale-110" : "z-10"
                   )}
                   style={{
                     left: `${destination.markerX}%`,
                     top: `${destination.markerY}%`,
                   }}
                 >
+                  <MapPushPin active={isActive} />
                   <span
                     className={cn(
-                      "absolute inset-0 -z-10 rounded-full bg-secondary/18 transition-transform duration-500",
-                      isActive ? "scale-[2.1] opacity-100" : "scale-100 opacity-0"
+                      "pointer-events-none absolute z-30 w-[160px] translate-y-0 rounded-[14px] border border-primary/15 bg-white p-2 text-center opacity-0 shadow-[0_16px_34px_rgba(50,50,50,0.16)] transition-[opacity,transform] duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100",
+                      showBelow ? "top-full mt-3" : "bottom-full mb-3",
+                      !isActive && (showBelow ? "translate-y-1" : "-translate-y-1"),
+                      isActive && "opacity-100",
+                      alignLeft
+                        ? "left-0"
+                        : alignRight
+                          ? "right-0"
+                          : "left-1/2 -translate-x-1/2"
                     )}
-                  />
-                  <MapPin className={cn("relative", isActive ? "size-5" : "size-4")} />
-                  <span className="pointer-events-none absolute left-1/2 top-full mt-1 max-w-[120px] -translate-x-1/2 rounded-full bg-white px-2.5 py-1 font-sans text-[10px] font-bold text-secondary opacity-0 shadow-[0_6px_16px_rgba(50,50,50,0.16)] transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
-                    {destination.name}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "absolute size-3 rotate-45 border-primary/15 bg-white",
+                        showBelow
+                          ? "-top-[7px] border-l border-t"
+                          : "-bottom-[7px] border-b border-r",
+                        alignLeft
+                          ? "left-5"
+                          : alignRight
+                            ? "right-5"
+                            : "left-1/2 -translate-x-1/2"
+                      )}
+                    />
+                    <span className="relative z-10 block min-w-0">
+                      <span className="relative mx-auto block aspect-[4/3] w-[90%] overflow-hidden rounded-[10px] bg-muted shadow-sm">
+                        <Image
+                          src={destination.image}
+                          alt=""
+                          fill
+                          sizes="144px"
+                          className="object-cover"
+                        />
+                      </span>
+                      <span className="mt-2 block truncate font-sans text-[13px] font-bold leading-tight text-secondary">
+                        {destination.name}
+                      </span>
+                    </span>
                   </span>
                 </button>
               );
@@ -409,7 +490,11 @@ export function TopDestinationsSection() {
                   ))}
                 </div>
 
-                <Button className="mt-4 h-10 w-full justify-between px-5 text-[13px] font-normal">
+                <Button
+                  nativeButton={false}
+                  render={<Link href={getDestinationHref(activeDestination)} />}
+                  className="mt-4 h-10 w-full justify-between px-5 text-[13px] font-normal"
+                >
                   Explore {activeDestination.name}
                   <ButtonArrow className="h-3 w-6 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
                 </Button>

@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import {
   ChevronLeft,
   ChevronRight,
@@ -49,16 +50,18 @@ const egyptThumbnails = [
 
 type ExperienceCardProps = {
   card: (typeof egyptCards)[number];
+  className?: string;
 };
 
-function ExperienceCard({ card }: ExperienceCardProps) {
+function ExperienceCard({ card, className = "" }: ExperienceCardProps) {
   return (
-    <article
-      className={`group relative overflow-hidden rounded-[8px] ${
+    <Link
+      href="/experiences"
+      className={`group relative block overflow-hidden rounded-[8px] ${
         card.featured
-          ? "min-h-[320px] sm:min-h-[380px] lg:min-h-[452px]"
-          : "min-h-[220px]"
-      }`}
+          ? "aspect-[356/452]"
+          : "aspect-[240/220]"
+      } ${className}`}
     >
       <Image
         src={card.image}
@@ -66,8 +69,8 @@ function ExperienceCard({ card }: ExperienceCardProps) {
         fill
         sizes={
           card.featured
-            ? "(min-width: 1024px) 356px, 100vw"
-            : "(min-width: 1024px) 240px, 50vw"
+            ? "(min-width: 1280px) 356px, (min-width: 1024px) 42vw, 100vw"
+            : "(min-width: 1280px) 240px, (min-width: 1024px) 26vw, (min-width: 640px) 50vw, 100vw"
         }
         className="object-cover transition-transform duration-[720ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-105"
       />
@@ -88,14 +91,14 @@ function ExperienceCard({ card }: ExperienceCardProps) {
           <ButtonArrow className="h-3 w-4 brightness-0 invert group-hover:brightness-100 group-hover:invert-0" />
         </span>
       </div>
-    </article>
+    </Link>
   );
 }
 
 export function EgyptExperiencesSection() {
   return (
-    <section className="relative overflow-hidden bg-background py-20">
-      <div className="mx-auto grid w-full max-w-[1300px] gap-8 px-5 sm:px-0 lg:grid-cols-[848px_minmax(0,1fr)]">
+    <section className="relative overflow-hidden bg-background py-10 lg:py-14">
+      <div className="mx-auto grid w-full max-w-[1300px] gap-8 px-5 sm:px-0 lg:grid-cols-[minmax(0,1fr)_minmax(300px,356px)] lg:gap-8 [@media(min-width:1320px)]:grid-cols-[848px_356px] [@media(min-width:1320px)]:gap-[96px]">
         <div>
           <TextReveal>
             <p className="text-description font-medium uppercase text-primary">
@@ -115,25 +118,26 @@ export function EgyptExperiencesSection() {
             </TextReveal>
           </div>
 
-          <div className="mt-5 grid gap-3 lg:grid-cols-[356px_480px]">
-            <RevealOnView motion="scale" replay>
-              <ExperienceCard card={egyptCards[0]} />
+          <div className="mt-5 grid items-stretch gap-3 lg:grid-cols-[minmax(280px,356px)_minmax(0,480px)]">
+            <RevealOnView className="h-full" motion="scale" replay>
+              <ExperienceCard card={egyptCards[0]} className="h-full" />
             </RevealOnView>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 lg:h-full lg:grid-rows-2">
               {egyptCards.slice(1).map((card, index) => (
                 <RevealOnView
                   key={card.title}
+                  className="h-full"
                   delay={80 + index * 90}
                   motion="scale"
                   replay
                 >
-                  <ExperienceCard card={card} />
+                  <ExperienceCard card={card} className="lg:aspect-auto lg:h-full" />
                 </RevealOnView>
               ))}
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-2 items-center gap-3 sm:grid-cols-4 lg:grid-cols-[repeat(4,150px)_176px]">
+          <div className="mt-5 grid grid-cols-2 items-center gap-3 sm:grid-cols-4 lg:grid-cols-[repeat(4,minmax(0,1fr))_176px] [@media(min-width:1320px)]:grid-cols-[repeat(4,150px)_176px]">
             {egyptThumbnails.map((thumbnail) => (
               <div
                 key={thumbnail}
@@ -143,13 +147,13 @@ export function EgyptExperiencesSection() {
                   src={thumbnail}
                   alt="Egypt traveller memory"
                   fill
-                  sizes="(min-width: 1024px) 150px, (min-width: 640px) 25vw, 50vw"
+                  sizes="(min-width: 1280px) 150px, (min-width: 1024px) 12vw, (min-width: 640px) 25vw, 50vw"
                   className="object-cover"
                 />
               </div>
             ))}
-            <button
-              type="button"
+            <Link
+              href="/experiences"
               className="col-span-2 flex h-[92px] items-center justify-center gap-4 rounded-[7px] bg-white px-0 text-description transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-primary cursor-pointer sm:col-span-4 lg:col-span-1"
             >
               <span className="grid size-8 shrink-0 place-items-center rounded-full border-[2px] border-secondary">
@@ -161,12 +165,16 @@ export function EgyptExperiencesSection() {
                 photos
               </span>
               <ButtonArrow className="h-4 w-6" />
-            </button>
+            </Link>
           </div>
         </div>
 
         <aside className="flex h-full flex-col items-center justify-between text-center lg:w-full lg:max-w-[356px] lg:justify-self-end">
-          <Button className="mb-8 h-11 w-full min-w-0 justify-between gap-3 px-5 text-[14px] font-normal sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:mb-14 lg:min-w-[270px]">
+          <Button
+            nativeButton={false}
+            render={<Link href="/experiences" />}
+            className="mb-8 h-11 w-full min-w-0 justify-between gap-3 px-5 text-[14px] font-normal sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:mb-14 lg:min-w-[270px]"
+          >
             View All Traveller Experiences
             <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
           </Button>

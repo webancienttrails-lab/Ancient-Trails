@@ -8,6 +8,23 @@ export const metadata: Metadata = {
     "Browse Ancient Trails destinations by country, state, heritage focus and UNESCO status.",
 };
 
-export default function DestinationsRoute() {
-  return <DestinationsPage />;
+type DestinationsRouteProps = {
+  searchParams?: Promise<{
+    search?: string;
+  }>;
+};
+
+export default async function DestinationsRoute({
+  searchParams,
+}: DestinationsRouteProps) {
+  const params = await searchParams;
+
+  const initialSearchQuery = params?.search || "";
+
+  return (
+    <DestinationsPage
+      key={initialSearchQuery}
+      initialSearchQuery={initialSearchQuery}
+    />
+  );
 }

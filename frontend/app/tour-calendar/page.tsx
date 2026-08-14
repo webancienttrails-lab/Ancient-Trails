@@ -8,6 +8,23 @@ export const metadata: Metadata = {
     "Browse Ancient Trails tour departures by month and plan upcoming heritage journeys.",
 };
 
-export default function TourCalendarRoute() {
-  return <TourCalendarPage />;
+type TourCalendarRouteProps = {
+  searchParams?: Promise<{
+    destination?: string;
+    tour?: string;
+  }>;
+};
+
+export default async function TourCalendarRoute({
+  searchParams,
+}: TourCalendarRouteProps) {
+  const params = await searchParams;
+
+  return (
+    <TourCalendarPage
+      key={`${params?.destination || ""}:${params?.tour || ""}`}
+      initialDestinationQuery={params?.destination || ""}
+      initialTourQuery={params?.tour || ""}
+    />
+  );
 }

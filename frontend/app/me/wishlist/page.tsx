@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import type { Metadata } from "next";
 import {
   Building2,
@@ -16,6 +17,7 @@ import {
 import { Button, ButtonArrow, buttonVariants } from "@/components/ui/button";
 import { DashboardTopBar } from "@/components/user-dashboard/dashboard-top-bar";
 import { UserSidebar } from "@/components/user-dashboard/user-sidebar";
+import { getTourCalendarHref } from "@/lib/routes";
 
 export const metadata: Metadata = {
   title: "My Wishlist",
@@ -92,6 +94,8 @@ function MetaItem({
 }
 
 function WishlistCard({ tour }: { tour: (typeof wishlistTours)[number] }) {
+  const tourHref = getTourCalendarHref({ tour: { title: tour.title } });
+
   return (
     <article className="grid gap-4 rounded-[8px] border border-border bg-white p-3 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:gap-5 sm:p-4 lg:grid-cols-[310px_minmax(0,1fr)_245px]">
       <div className="relative min-h-[190px] overflow-hidden rounded-[7px] bg-muted sm:min-h-[220px] lg:min-h-0">
@@ -134,13 +138,13 @@ function WishlistCard({ tour }: { tour: (typeof wishlistTours)[number] }) {
           {tour.title}
         </h2>
 
-        <a
-          href="#"
+        <Link
+          href={tourHref}
           className="mt-3 inline-flex items-center gap-1.5 font-sans text-[12px] font-bold text-primary underline-offset-4 hover:underline"
         >
           All Inclusive
           <Info className="size-3.5" strokeWidth={1.9} />
-        </a>
+        </Link>
 
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
           {tourMeta.map((item) => (
@@ -158,12 +162,12 @@ function WishlistCard({ tour }: { tour: (typeof wishlistTours)[number] }) {
           <p className="mt-2 line-clamp-2 font-sans text-[12px] leading-[1.55] text-secondary/75">
             {tour.highlights}
           </p>
-          <a
-            href="#"
+          <Link
+            href={tourHref}
             className="mt-1 inline-flex font-sans text-[12px] font-semibold text-secondary underline-offset-4 hover:text-primary hover:underline"
           >
             More
-          </a>
+          </Link>
         </div>
       </div>
 
@@ -187,15 +191,15 @@ function WishlistCard({ tour }: { tour: (typeof wishlistTours)[number] }) {
         </div>
 
         <div className="mt-6">
-          <a
-            href="#"
+          <Link
+            href={tourHref}
             className={buttonVariants({
               className: "w-full justify-between gap-4 px-6 font-normal",
             })}
           >
             View Details
             <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
-          </a>
+          </Link>
           <button
             type="button"
             className="mx-auto mt-4 flex items-center justify-center gap-2 font-sans text-[12px] font-medium text-secondary/60 transition-colors hover:text-primary"

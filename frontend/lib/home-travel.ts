@@ -344,17 +344,6 @@ export const fallbackTrendingDestinations: HomeDestinationCard[] = [
   },
 ];
 
-const legacyMarkerPositions = [
-  { markerX: 36, markerY: 34 },
-  { markerX: 42, markerY: 45 },
-  { markerX: 57, markerY: 38 },
-  { markerX: 49, markerY: 61 },
-  { markerX: 54, markerY: 50 },
-  { markerX: 32, markerY: 24 },
-  { markerX: 51, markerY: 69 },
-  { markerX: 61, markerY: 57 },
-];
-
 const keywordMarkerPositions: Array<{
   keywords: string[];
   markerX: number;
@@ -420,19 +409,6 @@ function getMarkerSearchText(destination: PublicDestination) {
   ]
     .join(" ")
     .toLowerCase();
-}
-
-function isLegacyMarkerPosition(markerX: number, markerY: number, index: number) {
-  const legacyPosition = legacyMarkerPositions[index];
-
-  if (!legacyPosition) {
-    return false;
-  }
-
-  return (
-    Math.abs(markerX - legacyPosition.markerX) < 0.2 &&
-    Math.abs(markerY - legacyPosition.markerY) < 0.2
-  );
 }
 
 export function getDefaultDestinationMarker(
@@ -695,17 +671,11 @@ export function buildTrendingDestinationCards(
           .sort((left, right) => left.sortOrder - right.sortOrder)
           .map((selection, index) => {
             const destination = destinationById.get(selection.destinationId);
-            const autoMarker = destination
-              ? getDefaultDestinationMarker(destination, index)
-              : { markerX: selection.markerX, markerY: selection.markerY };
-            const useAutoMarker =
-              isLegacyMarkerPosition(selection.markerX, selection.markerY, index) ||
-              (selection.markerX === 50 && selection.markerY === 50);
 
             return {
               destination,
-              markerX: useAutoMarker ? autoMarker.markerX : selection.markerX,
-              markerY: useAutoMarker ? autoMarker.markerY : selection.markerY,
+              markerX: selection.markerX,
+              markerY: selection.markerY,
               sourceIndex: index,
             };
           })

@@ -29,6 +29,7 @@ import {
   type PublicTour,
   type PublicTourDeparture,
 } from "@/lib/home-travel";
+import { getTourCalendarHref, getTourHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
 type DetailFact = {
@@ -765,7 +766,7 @@ function ToursSection({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <SectionTitle title={`Tours in ${destination.destinationName}`} />
         <Link
-          href={`/tour-calendar?destination=${encodeURIComponent(destination.destinationId)}`}
+          href={getTourCalendarHref({ destination })}
           className="inline-flex w-fit items-center gap-3 font-sans text-[13px] font-bold text-primary transition-colors hover:text-accent"
         >
           View All Tours
@@ -843,7 +844,7 @@ function TourCard({
             )}
           </span>
           <Link
-            href={`/tours/${encodeURIComponent(tour.tourId)}`}
+            href={getTourHref(tour)}
             aria-label={`View ${tour.tourName}`}
             className="grid size-9 place-items-center rounded-full border border-primary bg-white text-primary transition-colors hover:bg-primary hover:text-white"
           >

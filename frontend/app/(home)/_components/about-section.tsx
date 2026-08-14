@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { Pause, Play, Volume2, VolumeX, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -94,7 +95,7 @@ export function AboutSection() {
   };
 
   return (
-    <section className="relative bg-background pb-16 pt-4 lg:pb-20">
+    <section id="about" className="relative bg-background pb-16 pt-4 lg:pb-20">
       <div className="relative h-[320px] overflow-hidden sm:h-[380px]">
         <video
           className="h-full w-full object-cover"
@@ -164,7 +165,11 @@ export function AboutSection() {
                 </p>
               </TextReveal>
               <div className="mt-7">
-                <Button className="h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:min-w-[190px]">
+                <Button
+                  nativeButton={false}
+                  render={<Link href="/about" />}
+                  className="h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:min-w-[190px]"
+                >
                   Know About Us
                   <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
                 </Button>

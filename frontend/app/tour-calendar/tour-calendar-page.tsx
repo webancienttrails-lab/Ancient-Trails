@@ -41,6 +41,7 @@ import {
   type PublicTour,
   type PublicTourDeparture,
 } from "@/lib/home-travel";
+import { getTourHref, matchesRouteValue } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
 type CalendarDay = {
@@ -366,6 +367,8 @@ function getLocationLabel(item?: EnrichedDeparture) {
 
   return (
     parts.join(", ") ||
+    tour.tourName ||
+    item.destination?.destinationName ||
     getTourDestinationIds(tour)[0] ||
     tour.destinationId ||
     "Ancient Trails"
@@ -375,9 +378,41 @@ function getLocationLabel(item?: EnrichedDeparture) {
 function getDestinationName(item?: EnrichedDeparture) {
   return (
     item?.destination?.destinationName ||
+    item?.tour.tourName ||
     (item?.tour ? getTourDestinationIds(item.tour)[0] : "") ||
     item?.tour.destinationId ||
     "India"
+  );
+}
+
+function resolveTourFilter(routeValue: string, tours: PublicTour[]) {
+  if (!routeValue.trim()) {
+    return "all";
+  }
+
+  return (
+    tours.find((tour) =>
+      matchesRouteValue(routeValue, tour.tourId, tour.tourName)
+    )?.tourId || "all"
+  );
+}
+
+function resolveDestinationFilter(
+  routeValue: string,
+  destinations: PublicDestination[]
+) {
+  if (!routeValue.trim()) {
+    return "all";
+  }
+
+  return (
+    destinations.find((destination) =>
+      matchesRouteValue(
+        routeValue,
+        destination.destinationId,
+        destination.destinationName
+      )
+    )?.destinationId || "all"
   );
 }
 
@@ -673,24 +708,40 @@ function getUniqueExperts(
   return Array.from(expertById.values());
 }
 
-export function TourCalendarPage() {
+export function TourCalendarPage({
+  initialDestinationQuery = "",
+  initialTourQuery = "",
+}: {
+  initialDestinationQuery?: string;
+  initialTourQuery?: string;
+}) {
   const fallbackData = useMemo(() => createFallbackData(), []);
   const fallbackExperts = useMemo(() => createFallbackExperts(), []);
+  const fallbackTours = useMemo(
+    () => fallbackData.map(({ tour }) => tour),
+    [fallbackData]
+  );
+  const fallbackDestinations = useMemo(
+    () =>
+      fallbackData
+        .map(({ destination }) => destination)
+        .filter((destination): destination is PublicDestination =>
+          Boolean(destination)
+        ),
+    [fallbackData]
+  );
   const [enrichedDepartures, setEnrichedDepartures] =
     useState<EnrichedDeparture[]>(fallbackData);
-  const [tours, setTours] = useState<PublicTour[]>(() =>
-    fallbackData.map(({ tour }) => tour)
-  );
-  const [destinations, setDestinations] = useState<PublicDestination[]>(() =>
-    fallbackData
-      .map(({ destination }) => destination)
-      .filter((destination): destination is PublicDestination =>
-        Boolean(destination)
-      )
-  );
+  const [tours, setTours] = useState<PublicTour[]>(fallbackTours);
+  const [destinations, setDestinations] =
+    useState<PublicDestination[]>(fallbackDestinations);
   const [experts, setExperts] = useState<PublicExpert[]>(fallbackExperts);
-  const [selectedTourId, setSelectedTourId] = useState("all");
-  const [selectedDestinationId, setSelectedDestinationId] = useState("all");
+  const [selectedTourId, setSelectedTourId] = useState(() =>
+    resolveTourFilter(initialTourQuery, fallbackTours)
+  );
+  const [selectedDestinationId, setSelectedDestinationId] = useState(() =>
+    resolveDestinationFilter(initialDestinationQuery, fallbackDestinations)
+  );
   const [selectedMonth, setSelectedMonth] = useState("all");
   const [selectedDateKey, setSelectedDateKey] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("earliest");
@@ -727,45 +778,55 @@ export function TourCalendarPage() {
         );
         const sourceDepartures =
           nextDepartures.length > 0 ? nextDepartures : createFallbackData();
+        const nextTours =
+          toursResponse.data.tours.length > 0
+            ? toursResponse.data.tours
+            : sourceDepartures.map(({ tour }) => tour);
+        const nextDestinations =
+          destinationsResponse.data.destinations.length > 0
+            ? destinationsResponse.data.destinations
+            : sourceDepartures
+                .map(({ destination }) => destination)
+                .filter((destination): destination is PublicDestination =>
+                  Boolean(destination)
+                );
 
         if (isMounted) {
-          setTours(
-            toursResponse.data.tours.length > 0
-              ? toursResponse.data.tours
-              : sourceDepartures.map(({ tour }) => tour)
-          );
-          setDestinations(
-            destinationsResponse.data.destinations.length > 0
-              ? destinationsResponse.data.destinations
-              : sourceDepartures
-                  .map(({ destination }) => destination)
-                  .filter((destination): destination is PublicDestination =>
-                    Boolean(destination)
-                  )
-          );
+          setTours(nextTours);
+          setDestinations(nextDestinations);
           setExperts(
             expertsResponse.data.experts.length > 0
               ? expertsResponse.data.experts
               : createFallbackExperts()
           );
           setEnrichedDepartures(sourceDepartures);
+          setSelectedTourId(resolveTourFilter(initialTourQuery, nextTours));
+          setSelectedDestinationId(
+            resolveDestinationFilter(initialDestinationQuery, nextDestinations)
+          );
+          setSelectedDateKey("");
           setVisibleMonth(getPreferredMonth(sourceDepartures));
         }
       } catch {
         if (isMounted) {
           const fallbackDepartures = createFallbackData();
+          const nextTours = fallbackDepartures.map(({ tour }) => tour);
+          const nextDestinations = fallbackDepartures
+            .map(({ destination }) => destination)
+            .filter((destination): destination is PublicDestination =>
+              Boolean(destination)
+            );
 
           setLoadError("Live tour calendar is temporarily unavailable.");
-          setTours(fallbackDepartures.map(({ tour }) => tour));
-          setDestinations(
-            fallbackDepartures
-              .map(({ destination }) => destination)
-              .filter((destination): destination is PublicDestination =>
-                Boolean(destination)
-              )
-          );
+          setTours(nextTours);
+          setDestinations(nextDestinations);
           setExperts(createFallbackExperts());
           setEnrichedDepartures(fallbackDepartures);
+          setSelectedTourId(resolveTourFilter(initialTourQuery, nextTours));
+          setSelectedDestinationId(
+            resolveDestinationFilter(initialDestinationQuery, nextDestinations)
+          );
+          setSelectedDateKey("");
           setVisibleMonth(getPreferredMonth(fallbackDepartures));
         }
       } finally {
@@ -780,7 +841,7 @@ export function TourCalendarPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [initialDestinationQuery, initialTourQuery]);
 
   const monthOptions = useMemo(() => {
     const keyedMonths = enrichedDepartures
@@ -1393,7 +1454,7 @@ function DepartureRow({ index, item }: { index: number; item: EnrichedDeparture 
 
       <div className="grid gap-2 xl:justify-items-end">
         <Link
-          href={`/tours/${encodeURIComponent(item.tour.tourId)}`}
+          href={getTourHref(item.tour)}
           className="inline-flex h-8 items-center justify-center gap-2 rounded-[6px] border border-primary bg-white px-3 font-sans text-[11px] font-bold text-primary shadow-[0_6px_14px_rgba(212,114,32,0.08)] transition-all hover:bg-primary hover:text-white hover:shadow-[0_10px_18px_rgba(212,114,32,0.22)] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
         >
           View Details
@@ -1469,7 +1530,7 @@ function ScheduledTourCard({ item }: { item: EnrichedDeparture }) {
             per person
           </span>
           <Link
-            href={`/tours/${encodeURIComponent(item.tour.tourId)}`}
+            href={getTourHref(item.tour)}
             aria-label={`View ${item.tour.tourName}`}
             className="grid size-9 shrink-0 place-items-center rounded-full border border-primary bg-white text-primary shadow-[0_6px_14px_rgba(212,114,32,0.08)] transition-all hover:bg-primary hover:text-white hover:shadow-[0_10px_18px_rgba(212,114,32,0.22)] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
           >

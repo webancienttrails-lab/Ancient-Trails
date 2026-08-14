@@ -37,6 +37,7 @@ import {
   listenForTravellerSessionChanges,
   type TravellerUser,
 } from "@/lib/auth";
+import { getDestinationsHref, getTourCalendarHref } from "@/lib/routes";
 
 const navItems = [
   { label: "Home", href: "/" },
@@ -79,7 +80,7 @@ const accountMenuItems = [
   {
     title: "Pre-departure Videos",
     description: "Key tips for a smooth journey",
-    href: "#",
+    href: "/experiences",
     icon: PlayCircle,
   },
 ];
@@ -89,20 +90,20 @@ const tourColumns = [
     title: "Heritage Tours",
     icon: Landmark,
     items: [
-      { title: "Kerala Tour", image: "/home assets/Khajuraho.webp" },
-      { title: "Vaishnavdevi", image: "/home assets/destination/Varanasi.webp" },
-      { title: "White Spiti", image: "/home assets/destination/North_d.webp" },
-      { title: "Kashmir", image: "/home assets/Haridwar.webp" },
+      { title: "Kerala Tour", image: "/home assets/Khajuraho.webp", href: getTourCalendarHref({ tour: { title: "Kerala Tour" } }) },
+      { title: "Vaishnavdevi", image: "/home assets/destination/Varanasi.webp", href: getTourCalendarHref({ tour: { title: "Vaishnavdevi" } }) },
+      { title: "White Spiti", image: "/home assets/destination/North_d.webp", href: getTourCalendarHref({ tour: { title: "White Spiti" } }) },
+      { title: "Kashmir", image: "/home assets/Haridwar.webp", href: getTourCalendarHref({ destination: { name: "Kashmir" } }) },
     ],
   },
   {
     title: "Short Trails",
     icon: Mountain,
     items: [
-      { title: "Kerala Tour", image: "/home assets/destination/Hampi.webp" },
-      { title: "Vaishnavdevi", image: "/home assets/destination/Udaipur.webp" },
-      { title: "White Spiti", image: "/home assets/destination/North_d.webp" },
-      { title: "Kashmir", image: "/home assets/Haridwar.webp" },
+      { title: "Kerala Tour", image: "/home assets/destination/Hampi.webp", href: getTourCalendarHref({ tour: { title: "Kerala Tour" } }) },
+      { title: "Vaishnavdevi", image: "/home assets/destination/Udaipur.webp", href: getTourCalendarHref({ tour: { title: "Vaishnavdevi" } }) },
+      { title: "White Spiti", image: "/home assets/destination/North_d.webp", href: getTourCalendarHref({ tour: { title: "White Spiti" } }) },
+      { title: "Kashmir", image: "/home assets/Haridwar.webp", href: getTourCalendarHref({ destination: { name: "Kashmir" } }) },
     ],
   },
 ];
@@ -113,12 +114,14 @@ const featuredTours = [
     subtitle: "Explore Heritage Beyond Borders",
     image: "/home assets/destination/hawa-mahal.webp",
     icon: Route,
+    href: "/#customised-tours",
   },
   {
     title: "Specialised Tours",
     subtitle: "Designed Around Your Interests",
     image: "/home assets/Special_Tour/Assam.png",
     icon: Binoculars,
+    href: "/#specialised-tours",
   },
 ];
 
@@ -127,26 +130,31 @@ const indianDestinations = [
     title: "North India",
     description: "Jammu & Kashmir, Himachal Pradesh, Uttarakhand, Punjab...",
     image: "/home assets/destination/North_d.webp",
+    href: getDestinationsHref("North India"),
   },
   {
     title: "West India",
     description: "Rajasthan, Gujarat, Maharashtra, Goa...",
     image: "/home assets/destination/hawa-mahal.webp",
+    href: getDestinationsHref("West India"),
   },
   {
     title: "South India",
     description: "Kerala, Tamil Nadu, Karnataka, Andhra Pradesh...",
     image: "/home assets/destination/Hampi.webp",
+    href: getDestinationsHref("South India"),
   },
   {
     title: "East India",
     description: "West Bengal, Odisha, Assam, Sikkim...",
     image: "/home assets/destination/Amritsar.webp",
+    href: getDestinationsHref("East India"),
   },
   {
     title: "Central India",
     description: "Madhya Pradesh, Chhattisgarh, Jharkhand...",
     image: "/home assets/Khajuraho.webp",
+    href: getDestinationsHref("Central India"),
   },
 ];
 
@@ -155,26 +163,31 @@ const internationalDestinations = [
     title: "Asia",
     description: "Nepal, Bhutan, Sri Lanka, Thailand, Japan...",
     image: "/home assets/Vietnam.webp",
+    href: getDestinationsHref("Asia"),
   },
   {
     title: "Europe",
     description: "France, Italy, Greece, Spain, Switzerland...",
     image: "/home assets/Indonesia.webp",
+    href: getDestinationsHref("Europe"),
   },
   {
     title: "Middle East",
     description: "UAE, Jordan, Egypt, Oman, Turkey...",
     image: "/home assets/Egypt.webp",
+    href: getDestinationsHref("Middle East"),
   },
   {
     title: "Africa",
     description: "Morocco, South Africa, Kenya, Tanzania...",
     image: "/home assets/Special_Tour/Assam.png",
+    href: getDestinationsHref("Africa"),
   },
   {
     title: "Americas",
     description: "USA, Canada, Brazil, Peru, Mexico...",
     image: "/home assets/Combodia.webp",
+    href: getDestinationsHref("Americas"),
   },
 ];
 
@@ -182,34 +195,42 @@ const topCities = [
   {
     title: "Delhi",
     image: "/home assets/destination/Amritsar.webp",
+    href: getDestinationsHref("Delhi"),
   },
   {
     title: "Jaipur",
     image: "/home assets/destination/hawa-mahal.webp",
+    href: getDestinationsHref("Jaipur"),
   },
   {
     title: "Varanasi",
     image: "/home assets/destination/Varanasi.webp",
+    href: getDestinationsHref("Varanasi"),
   },
   {
     title: "Agra",
     image: "/home assets/Khajuraho.webp",
+    href: getDestinationsHref("Agra"),
   },
   {
     title: "Dubai",
     image: "/home assets/Egypt.webp",
+    href: getDestinationsHref("Dubai"),
   },
   {
     title: "Paris",
     image: "/home assets/Indonesia.webp",
+    href: getDestinationsHref("Paris"),
   },
   {
     title: "Cairo",
     image: "/home assets/Egypt.webp",
+    href: getDestinationsHref("Cairo"),
   },
   {
     title: "Rome",
     image: "/home assets/destination/Hampi.webp",
+    href: getDestinationsHref("Rome"),
   },
 ];
 
@@ -230,6 +251,7 @@ function megaTextRevealStyle(isOpen: boolean, delay = 0): CSSProperties {
 type DestinationLink = {
   title: string;
   description: string;
+  href: string;
   image: string;
 };
 
@@ -244,8 +266,8 @@ function DestinationListItem({
 }) {
   return (
     <li>
-      <a
-        href="#"
+      <Link
+        href={item.href}
         className="group/destination grid grid-cols-[72px_minmax(0,1fr)] items-center gap-3 rounded-[5px] py-1 pr-1 text-secondary transition-colors hover:text-primary"
       >
         <span className="relative h-[54px] overflow-hidden rounded-[5px] bg-muted ring-1 ring-primary/10">
@@ -268,7 +290,7 @@ function DestinationListItem({
             {item.description}
           </span>
         </span>
-      </a>
+      </Link>
     </li>
   );
 }
@@ -279,6 +301,7 @@ function DestinationSection({
   subtitle,
   items,
   footer,
+  footerHref,
   isOpen,
   baseDelay = 0,
 }: {
@@ -287,6 +310,7 @@ function DestinationSection({
   subtitle: string;
   items: DestinationLink[];
   footer: string;
+  footerHref: string;
   isOpen: boolean;
   baseDelay?: number;
 }) {
@@ -329,8 +353,8 @@ function DestinationSection({
         ))}
       </ul>
 
-      <a
-        href="#"
+      <Link
+        href={footerHref}
         className={megaTextRevealClass(
           isOpen,
           "mt-4 flex items-center justify-between font-sans text-[14px] font-bold text-primary"
@@ -339,7 +363,7 @@ function DestinationSection({
       >
         {footer}
         <MenuArrow />
-      </a>
+      </Link>
     </div>
   );
 }
@@ -354,8 +378,8 @@ function CityTile({
   delay: number;
 }) {
   return (
-    <a
-      href="#"
+    <Link
+      href={city.href}
       className="group/city relative h-[72px] overflow-hidden rounded-[7px] bg-muted shadow-[0_8px_18px_rgba(50,50,50,0.1)]"
     >
       <Image
@@ -375,7 +399,7 @@ function CityTile({
       >
         {city.title}
       </span>
-    </a>
+    </Link>
   );
 }
 
@@ -420,8 +444,8 @@ export function DestinationsMegaMenu({ isOpen }: { isOpen: boolean }) {
               aria-hidden="true"
               className="pointer-events-none translate-y-24 object-cover object-left-bottom opacity-10 mix-blend-multiply"
             />
-            <button
-              type="button"
+            <Link
+              href="/destinations"
               className="group/button relative mt-[210px] flex h-9 w-[192px] items-center justify-between gap-2 rounded-full border border-primary bg-white px-3 font-sans text-[12px] font-semibold text-primary shadow-[0_8px_18px_rgba(212,114,32,0.16)] transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-white"
             >
               <span
@@ -431,7 +455,7 @@ export function DestinationsMegaMenu({ isOpen }: { isOpen: boolean }) {
                 View all Destinations
               </span>
               <ButtonArrow className="h-2.5 w-6 shrink-0 group-hover/button:brightness-0 group-hover/button:invert" />
-            </button>
+            </Link>
           </div>
 
           <DestinationSection
@@ -440,6 +464,7 @@ export function DestinationsMegaMenu({ isOpen }: { isOpen: boolean }) {
             subtitle="Explore Incredible India"
             items={indianDestinations}
             footer="View all Indian states"
+            footerHref={getDestinationsHref("India")}
             isOpen={isOpen}
             baseDelay={110}
           />
@@ -451,6 +476,7 @@ export function DestinationsMegaMenu({ isOpen }: { isOpen: boolean }) {
               subtitle="Discover the World"
               items={internationalDestinations}
               footer="View all countries"
+              footerHref={getDestinationsHref("International")}
               isOpen={isOpen}
               baseDelay={170}
             />
@@ -494,8 +520,8 @@ export function DestinationsMegaMenu({ isOpen }: { isOpen: boolean }) {
               ))}
             </div>
 
-            <a
-              href="#"
+            <Link
+              href="/destinations"
               className={megaTextRevealClass(
                 isOpen,
                 "mt-4 flex items-center justify-between font-sans text-[14px] font-bold text-primary"
@@ -504,7 +530,7 @@ export function DestinationsMegaMenu({ isOpen }: { isOpen: boolean }) {
             >
               View all cities
               <MenuArrow />
-            </a>
+            </Link>
           </div>
         </div>
       </div>
@@ -562,8 +588,8 @@ export function ToursMegaMenu({ isOpen }: { isOpen: boolean }) {
             aria-hidden="true"
             className="pointer-events-none object-cover object-left-bottom opacity-10 mix-blend-multiply"
           />
-          <button
-            type="button"
+          <Link
+            href="/tour-calendar"
             className="group/button relative mt-8 flex h-9 w-full max-w-[170px] items-center justify-between gap-4 rounded-full border border-primary bg-white px-5 font-sans text-[13px] font-semibold text-primary shadow-[0_8px_18px_rgba(212,114,32,0.16)] transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-white"
           >
             <span
@@ -573,7 +599,7 @@ export function ToursMegaMenu({ isOpen }: { isOpen: boolean }) {
               Plan your trip
             </span>
             <ButtonArrow className="h-2.5 w-7 shrink-0 group-hover/button:brightness-0 group-hover/button:invert" />
-          </button>
+          </Link>
         </div>
 
         {tourColumns.map(({ title, icon: Icon, items }, columnIndex) => {
@@ -602,8 +628,8 @@ export function ToursMegaMenu({ isOpen }: { isOpen: boolean }) {
             <ul className="mt-5 space-y-4">
               {items.map((item, index) => (
                 <li key={`${title}-${item.title}`}>
-                  <a
-                    href="#"
+                  <Link
+                    href={item.href}
                     className="group/tour grid grid-cols-[52px_minmax(0,1fr)] items-center gap-3 font-sans text-description font-medium leading-[1.25] text-secondary transition-colors hover:text-primary"
                   >
                     <span className="relative size-[52px] shrink-0 overflow-hidden rounded-[5px] bg-muted ring-1 ring-primary/10">
@@ -624,13 +650,13 @@ export function ToursMegaMenu({ isOpen }: { isOpen: boolean }) {
                     >
                       {item.title}
                     </span>
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
 
-            <a
-              href="#"
+            <Link
+              href="/tour-calendar"
               className={megaTextRevealClass(
                 isOpen,
                 "mt-8 inline-flex flex-col font-sans text-[14px] font-bold text-primary"
@@ -639,12 +665,12 @@ export function ToursMegaMenu({ isOpen }: { isOpen: boolean }) {
             >
               And more +
               <span className="mt-2 h-px w-8 bg-primary" />
-            </a>
+            </Link>
           </div>
           );
         })}
 
-        {featuredTours.map(({ title, subtitle, image, icon: Icon }, columnIndex) => {
+        {featuredTours.map(({ title, subtitle, image, icon: Icon, href }, columnIndex) => {
           const baseDelay = 260 + columnIndex * 70;
 
           return (
@@ -667,8 +693,8 @@ export function ToursMegaMenu({ isOpen }: { isOpen: boolean }) {
               </h3>
             </div>
 
-            <a
-              href="#"
+            <Link
+              href={href}
               className="group/feature mt-5 block"
             >
               <span className="relative block h-[180px] overflow-hidden rounded-[7px] bg-muted ring-1 ring-primary/10 xl:h-[190px]">
@@ -706,7 +732,7 @@ export function ToursMegaMenu({ isOpen }: { isOpen: boolean }) {
                   <ArrowRight className="size-4" strokeWidth={2} />
                 </span>
               </span>
-            </a>
+            </Link>
           </div>
           );
         })}

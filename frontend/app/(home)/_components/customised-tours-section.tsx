@@ -1,9 +1,11 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
+import { getTourCalendarHref } from "@/lib/routes";
 import { RevealOnView, TextReveal } from "./reveal-on-view";
 
 const customisedTours = [
@@ -12,21 +14,21 @@ const customisedTours = [
     image: "/home assets/Haridwar.webp",
     tags: ["Spiritual", "Nature"],
     className: "lg:h-[285px]",
-    sizes: "(min-width: 1024px) 235px, (min-width: 768px) 33vw, 100vw",
+    sizes: "(min-width: 1280px) 250px, (min-width: 1024px) 23vw, (min-width: 768px) 50vw, 100vw",
   },
   {
     title: "Rajasthan",
     image: "/home assets/destination/hawa-mahal.webp",
     tags: ["Heritage", "Architecture"],
     className: "lg:h-[330px]",
-    sizes: "(min-width: 1024px) 260px, (min-width: 768px) 33vw, 100vw",
+    sizes: "(min-width: 1280px) 260px, (min-width: 1024px) 23vw, (min-width: 768px) 50vw, 100vw",
   },
   {
     title: "Shimla",
     image: "/home assets/destination/Amritsar.webp",
     tags: ["Winters", "Honeymoon"],
     className: "lg:h-[250px]",
-    sizes: "(min-width: 1024px) 205px, (min-width: 768px) 33vw, 100vw",
+    sizes: "(min-width: 1280px) 220px, (min-width: 1024px) 23vw, (min-width: 768px) 50vw, 100vw",
   },
 ];
 
@@ -36,8 +38,9 @@ type CustomisedTourCardProps = {
 
 function CustomisedTourCard({ tour }: CustomisedTourCardProps) {
   return (
-    <article
-      className={`relative min-h-[260px] overflow-hidden rounded-[10px] lg:min-h-0 ${tour.className}`}
+    <Link
+      href={getTourCalendarHref({ destination: { name: tour.title } })}
+      className={`relative block min-h-[260px] w-full overflow-hidden rounded-[10px] lg:min-h-0 ${tour.className}`}
     >
       <Image
         src={tour.image}
@@ -46,7 +49,7 @@ function CustomisedTourCard({ tour }: CustomisedTourCardProps) {
         sizes={tour.sizes}
         className="object-cover"
       />
-      <div className="absolute inset-0 bg-gradient-to-b from-secondary/35 via-transparent to-secondary/10" />
+      <div className="absolute inset-0 bg-gradient-to-b from-secondary/20 via-transparent to-secondary/10" />
       <h3 className="absolute left-4 top-4 font-sans text-description font-bold uppercase leading-none text-white">
         {tour.title}
       </h3>
@@ -60,7 +63,7 @@ function CustomisedTourCard({ tour }: CustomisedTourCardProps) {
           </span>
         ))}
       </div>
-    </article>
+    </Link>
   );
 }
 
@@ -104,11 +107,12 @@ export function CustomisedToursSection() {
 
   return (
     <section
+      id="customised-tours"
       ref={sectionRef}
       className="overflow-hidden bg-[#fbf0e8] py-14 lg:py-16"
     >
       <div className="relative mx-auto w-full max-w-[1300px] px-5 sm:px-0">
-        <div className="relative z-10 grid gap-10 lg:grid-cols-[330px_250px_260px_220px] lg:items-start lg:justify-between lg:gap-x-[44px]">
+        <div className="relative z-10 grid gap-10 md:grid-cols-2 lg:grid-cols-[minmax(250px,330px)_repeat(3,minmax(0,1fr))] lg:items-start lg:gap-x-8 xl:grid-cols-[330px_250px_260px_220px] xl:justify-between xl:gap-x-[44px]">
           <div className="lg:pt-1">
             <TextReveal visible={isSectionReady}>
               <p className="text-description font-medium uppercase text-primary">
@@ -147,7 +151,11 @@ export function CustomisedToursSection() {
               </TextReveal>
             </div>
 
-            <Button className="mt-11 h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:px-6 sm:text-button lg:min-w-[200px]">
+            <Button
+              nativeButton={false}
+              render={<Link href={getTourCalendarHref()} />}
+              className="mt-11 h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:px-6 sm:text-button lg:min-w-[200px]"
+            >
               Customise your tour
               <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
             </Button>
