@@ -67,34 +67,63 @@ const defaultStats: IAboutStat[] = [
   },
 ];
 
+const defaultTeamImages = [
+  "/about-assets/team-girinath.png",
+  "/about-assets/team-ankita.png",
+  "/about-assets/team-vikram.png",
+  "/about-assets/team-pooja.png",
+  "/about-assets/team-rohan.png",
+  "/about-assets/team-meera.png",
+];
+const legacyScenicTeamImages = new Set([
+  "/home assets/Khajuraho.webp",
+  "/home assets/destination/Udaipur.webp",
+  "/home assets/destination/Hampi.webp",
+  "/home assets/destination/Varanasi.webp",
+]);
+
 const defaultTeamMembers: IAboutTeamMember[] = [
   {
     name: "Girinath Bharade",
     role: "Founder & Heritage Expert",
     bio: "Indologist and cultural storyteller with deep expertise in temple architecture and iconography.",
-    image: "/home assets/Khajuraho.webp",
+    image: defaultTeamImages[0],
     sortOrder: 0,
   },
   {
     name: "Ankita Deshpande",
     role: "Travel Curator",
     bio: "Passionate about art, culture and curating purposeful travel experiences.",
-    image: "/home assets/destination/Udaipur.webp",
+    image: defaultTeamImages[1],
     sortOrder: 1,
   },
   {
     name: "Vikram Hegde",
     role: "Heritage Researcher",
     bio: "Researcher and photographer specialising in history, folklore and traditions.",
-    image: "/home assets/destination/Hampi.webp",
+    image: defaultTeamImages[2],
     sortOrder: 2,
   },
   {
     name: "Pooja Menon",
     role: "Operations Lead",
     bio: "Ensures seamless travel experiences with attention to every little detail.",
-    image: "/home assets/destination/Varanasi.webp",
+    image: defaultTeamImages[3],
     sortOrder: 3,
+  },
+  {
+    name: "Rohan Kulkarni",
+    role: "Experience Manager",
+    bio: "Creates smooth on-ground experiences for travellers, hosts and local partners.",
+    image: defaultTeamImages[4],
+    sortOrder: 4,
+  },
+  {
+    name: "Meera Nair",
+    role: "Guest Relations",
+    bio: "Helps travellers feel cared for before, during and after every journey.",
+    image: defaultTeamImages[5],
+    sortOrder: 5,
   },
 ];
 
@@ -211,7 +240,36 @@ function getSubdocumentId(item: unknown, fallback: string) {
   return fallback;
 }
 
+function getTeamMemberImage(member: IAboutTeamMember, index: number) {
+  const image = member.image.trim();
+
+  if (image && !legacyScenicTeamImages.has(image)) {
+    return image;
+  }
+
+  return defaultTeamImages[index % defaultTeamImages.length] || image;
+}
+
+function getTeamMembersWithDefaults(teamMembers: IAboutTeamMember[]) {
+  const sortedTeamMembers = sortBySortOrder(teamMembers);
+  const existingSortOrders = new Set(
+    sortedTeamMembers.map((member) => member.sortOrder)
+  );
+  const mergedTeamMembers = [...sortedTeamMembers];
+
+  defaultTeamMembers.forEach((defaultMember) => {
+    if (!existingSortOrders.has(defaultMember.sortOrder)) {
+      mergedTeamMembers.push({ ...defaultMember });
+      existingSortOrders.add(defaultMember.sortOrder);
+    }
+  });
+
+  return sortBySortOrder(mergedTeamMembers);
+}
+
 function formatAboutPage(page: AboutPageDocument) {
+  const teamMembers = getTeamMembersWithDefaults(page.teamMembers);
+
   return {
     id: page._id.toString(),
     stats: sortBySortOrder(page.stats).map((stat, index) => ({
@@ -221,12 +279,12 @@ function formatAboutPage(page: AboutPageDocument) {
       icon: stat.icon,
       sortOrder: stat.sortOrder,
     })),
-    teamMembers: sortBySortOrder(page.teamMembers).map((member, index) => ({
+    teamMembers: teamMembers.map((member, index) => ({
       id: getSubdocumentId(member, `team-${index}`),
       name: member.name,
       role: member.role,
       bio: member.bio,
-      image: member.image,
+      image: getTeamMemberImage(member, index),
       sortOrder: member.sortOrder,
     })),
     createdAt: page.createdAt,
