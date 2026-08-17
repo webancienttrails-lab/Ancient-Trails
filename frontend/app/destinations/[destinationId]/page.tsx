@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { SingleDestinationPage } from "./_components/single-destination-page";
+import { SingleDestinationPage } from "../_components/single-destination-page";
 
 type DestinationDetailRouteProps = {
   params: Promise<{

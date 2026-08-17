@@ -7,9 +7,7 @@ import {
   ArrowRight,
   BadgeCheck,
   ChevronDown,
-  Clock3,
   Globe2,
-  Heart,
   Landmark,
   MapPin,
   Search,
@@ -23,18 +21,13 @@ import { getHomeMediaUrl, listPublicDestinations, type PublicDestination } from 
 import { getDestinationHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
-type CategoryFilter = "all" | "india" | "international" | "popular-states";
+type CategoryFilter = "all" | "india" | "international" | "unesco-site";
 type SortMode = "recommended" | "newest" | "name" | "duration";
 
 type CountOption = {
   count: number;
   label: string;
   value: string;
-};
-
-type DurationOption = CountOption & {
-  max?: number;
-  min: number;
 };
 
 const pageSize = 12;
@@ -46,12 +39,6 @@ const fallbackImages = [
   "/home assets/destination/Udaipur.webp",
   "/home assets/destination/Varanasi.webp",
   "/home assets/destination/Hoysalas.webp",
-];
-
-const durationRanges: Array<Omit<DurationOption, "count">> = [
-  { label: "1-3 Days", max: 3, min: 1, value: "short" },
-  { label: "4-7 Days", max: 7, min: 4, value: "classic" },
-  { label: "8+ Days", min: 8, value: "long" },
 ];
 
 const sortOptions: Array<{ label: string; value: SortMode }> = [
@@ -88,10 +75,6 @@ function getFocusLabels(destination: PublicDestination) {
   return splitLabels(destination.primaryHeritageFocus);
 }
 
-function getPrimaryFocus(destination: PublicDestination) {
-  return getFocusLabels(destination)[0] || destination.primaryHeritageFocus || "Heritage";
-}
-
 function isIndiaDestination(destination: PublicDestination) {
   return (
     destination.destinationType === "Domestic" ||
@@ -106,18 +89,6 @@ function getDestinationImage(destination: PublicDestination, index: number) {
       fallbackImages[index % fallbackImages.length] ||
       fallbackImages[0]
   );
-}
-
-function getLocationLabel(destination: PublicDestination) {
-  return [
-    destination.city,
-    destination.state,
-    destination.countryRegion,
-  ]
-    .map(normalizeValue)
-    .filter(Boolean)
-    .filter((part, index, source) => source.indexOf(part) === index)
-    .join(", ");
 }
 
 function getDestinationSearchText(destination: PublicDestination) {
@@ -139,14 +110,6 @@ function getDestinationSearchText(destination: PublicDestination) {
   ]
     .join(" ")
     .toLowerCase();
-}
-
-function getDurationRange(destination: PublicDestination) {
-  const days = destination.recommendedDurationDays || 1;
-
-  return durationRanges.find(
-    (range) => days >= range.min && (range.max === undefined || days <= range.max)
-  );
 }
 
 function createCountOptions(
@@ -179,25 +142,6 @@ function createCountOptions(
   );
 }
 
-function getDurationOptions(destinations: PublicDestination[]) {
-  return durationRanges
-    .map((range) => ({
-      ...range,
-      count: destinations.filter((destination) => {
-        const matchedRange = getDurationRange(destination);
-
-        return matchedRange?.value === range.value;
-      }).length,
-    }))
-    .filter((option) => option.count > 0);
-}
-
-function getTypeOptions(destinations: PublicDestination[]) {
-  return createCountOptions(destinations, (destination) => [
-    destination.destinationType === "Domestic" ? "India" : "International",
-  ]);
-}
-
 function getCategoryCount(
   destinations: PublicDestination[],
   category: CategoryFilter
@@ -216,8 +160,8 @@ function matchesCategory(
       return isIndiaDestination(destination);
     case "international":
       return !isIndiaDestination(destination);
-    case "popular-states":
-      return Boolean(normalizeValue(destination.state));
+    case "unesco-site":
+      return destination.unescoSite;
     case "all":
       return true;
   }
@@ -319,12 +263,8 @@ export function DestinationsPage({
   const [destinations, setDestinations] = useState<PublicDestination[]>([]);
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>("all");
-  const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
   const [selectedStates, setSelectedStates] = useState<string[]>([]);
-  const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [selectedFocuses, setSelectedFocuses] = useState<string[]>([]);
-  const [selectedDurations, setSelectedDurations] = useState<string[]>([]);
-  const [unescoOnly, setUnescoOnly] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("recommended");
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
@@ -361,25 +301,12 @@ export function DestinationsPage({
     };
   }, []);
 
-  const regionOptions = useMemo(
-    () => createCountOptions(destinations, (destination) => [destination.countryRegion]),
-    [destinations]
-  );
   const stateOptions = useMemo(
     () => createCountOptions(destinations, (destination) => [destination.state]),
     [destinations]
   );
-  const typeOptions = useMemo(() => getTypeOptions(destinations), [destinations]);
   const focusOptions = useMemo(
     () => createCountOptions(destinations, getFocusLabels),
-    [destinations]
-  );
-  const durationOptions = useMemo(
-    () => getDurationOptions(destinations),
-    [destinations]
-  );
-  const unescoCount = useMemo(
-    () => destinations.filter((destination) => destination.unescoSite).length,
     [destinations]
   );
 
@@ -404,10 +331,10 @@ export function DestinationsPage({
         count: getCategoryCount(destinations, "international"),
       },
       {
-        icon: Landmark,
-        id: "popular-states" as const,
-        label: "Popular States",
-        count: getCategoryCount(destinations, "popular-states"),
+        icon: BadgeCheck,
+        id: "unesco-site" as const,
+        label: "UNESCO Site",
+        count: getCategoryCount(destinations, "unesco-site"),
       },
     ],
     [destinations]
@@ -418,32 +345,17 @@ export function DestinationsPage({
     const filtered = destinations.filter((destination) => {
       const matchesSearch =
         !query || getDestinationSearchText(destination).includes(query);
-      const matchesRegion = matchesOption(selectedRegions, [
-        destination.countryRegion,
-      ]);
       const matchesState = matchesOption(selectedStates, [destination.state]);
-      const matchesType = matchesOption(selectedTypes, [
-        destination.destinationType === "Domestic" ? "India" : "International",
-      ]);
       const matchesFocus = matchesOption(
         selectedFocuses,
         getFocusLabels(destination)
       );
-      const durationRange = getDurationRange(destination);
-      const matchesDuration =
-        selectedDurations.length === 0 ||
-        (durationRange ? selectedDurations.includes(durationRange.value) : false);
-      const matchesUnesco = !unescoOnly || destination.unescoSite;
 
       return (
         matchesCategory(destination, activeCategory) &&
         matchesSearch &&
-        matchesRegion &&
         matchesState &&
-        matchesType &&
-        matchesFocus &&
-        matchesDuration &&
-        matchesUnesco
+        matchesFocus
       );
     });
 
@@ -452,13 +364,9 @@ export function DestinationsPage({
     activeCategory,
     destinations,
     searchQuery,
-    selectedDurations,
     selectedFocuses,
-    selectedRegions,
     selectedStates,
-    selectedTypes,
     sortMode,
-    unescoOnly,
   ]);
 
   const totalPages = Math.max(1, Math.ceil(filteredDestinations.length / pageSize));
@@ -467,25 +375,15 @@ export function DestinationsPage({
     (activePage - 1) * pageSize,
     activePage * pageSize
   );
-  const activeFilterCount =
-    selectedRegions.length +
-    selectedStates.length +
-    selectedTypes.length +
-    selectedFocuses.length +
-    selectedDurations.length +
-    (unescoOnly ? 1 : 0);
+  const activeFilterCount = selectedStates.length + selectedFocuses.length;
 
   function clearFilters() {
-    setSelectedRegions([]);
     setSelectedStates([]);
-    setSelectedTypes([]);
     setSelectedFocuses([]);
-    setSelectedDurations([]);
-    setUnescoOnly(false);
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#fff8f0] text-secondary">
+    <main className="min-h-screen bg-[#fff8f0] text-secondary">
       <HeroSection
         categoryTabs={categoryTabs}
         activeCategory={activeCategory}
@@ -494,38 +392,20 @@ export function DestinationsPage({
         onSearchQueryChange={setSearchQuery}
       />
 
-      <section className="mx-auto grid w-full max-w-[1300px] gap-6 px-5 pb-12 pt-8 sm:px-8 lg:grid-cols-[270px_minmax(0,1fr)] lg:px-0 xl:grid-cols-[280px_minmax(0,1fr)]">
+      <section className="mx-auto grid w-full max-w-[1300px] items-start gap-6 px-5 pb-12 pt-8 sm:px-8 lg:grid-cols-[270px_minmax(0,1fr)] lg:px-0 xl:grid-cols-[280px_minmax(0,1fr)]">
         <DestinationSidebar
           activeFilterCount={activeFilterCount}
-          durationOptions={durationOptions}
           focusOptions={focusOptions}
-          regionOptions={regionOptions}
-          selectedDurations={selectedDurations}
           selectedFocuses={selectedFocuses}
-          selectedRegions={selectedRegions}
           selectedStates={selectedStates}
-          selectedTypes={selectedTypes}
           stateOptions={stateOptions}
-          typeOptions={typeOptions}
-          unescoCount={unescoCount}
-          unescoOnly={unescoOnly}
           onClearFilters={clearFilters}
-          onDurationToggle={(value) =>
-            setSelectedDurations((current) => toggleSelection(current, value))
-          }
           onFocusToggle={(value) =>
             setSelectedFocuses((current) => toggleSelection(current, value))
-          }
-          onRegionToggle={(value) =>
-            setSelectedRegions((current) => toggleSelection(current, value))
           }
           onStateToggle={(value) =>
             setSelectedStates((current) => toggleSelection(current, value))
           }
-          onTypeToggle={(value) =>
-            setSelectedTypes((current) => toggleSelection(current, value))
-          }
-          onUnescoOnlyChange={setUnescoOnly}
         />
 
         <section className="min-w-0">
@@ -672,50 +552,26 @@ function HeroSection({
 
 function DestinationSidebar({
   activeFilterCount,
-  durationOptions,
   focusOptions,
   onClearFilters,
-  onDurationToggle,
   onFocusToggle,
-  onRegionToggle,
   onStateToggle,
-  onTypeToggle,
-  onUnescoOnlyChange,
-  regionOptions,
-  selectedDurations,
   selectedFocuses,
-  selectedRegions,
   selectedStates,
-  selectedTypes,
   stateOptions,
-  typeOptions,
-  unescoCount,
-  unescoOnly,
 }: {
   activeFilterCount: number;
-  durationOptions: DurationOption[];
   focusOptions: CountOption[];
-  regionOptions: CountOption[];
-  selectedDurations: string[];
   selectedFocuses: string[];
-  selectedRegions: string[];
   selectedStates: string[];
-  selectedTypes: string[];
   stateOptions: CountOption[];
-  typeOptions: CountOption[];
-  unescoCount: number;
-  unescoOnly: boolean;
   onClearFilters: () => void;
-  onDurationToggle: (value: string) => void;
   onFocusToggle: (value: string) => void;
-  onRegionToggle: (value: string) => void;
   onStateToggle: (value: string) => void;
-  onTypeToggle: (value: string) => void;
-  onUnescoOnlyChange: (checked: boolean) => void;
 }) {
   return (
-    <aside className="lg:sticky lg:top-[108px] lg:max-h-[calc(100vh-124px)] lg:self-start lg:overflow-y-auto lg:pr-1">
-      <div className="rounded-[8px] border border-[#ead8c5] bg-white p-4 shadow-[0_12px_32px_rgba(67,43,27,0.07)]">
+    <aside className="space-y-3 lg:sticky lg:top-5 lg:z-20 lg:self-start">
+      <div className="rounded-[8px] border border-[#ead8c5] bg-white p-4 shadow-[0_12px_32px_rgba(67,43,27,0.07)] transition-[box-shadow,transform] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]">
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-sans text-[14px] font-bold text-secondary">
             Filter Destinations
@@ -732,20 +588,6 @@ function DestinationSidebar({
 
         <div className="mt-4 space-y-5">
           <FilterOptionGroup
-            icon={Globe2}
-            options={typeOptions}
-            selectedValues={selectedTypes}
-            title="By Type"
-            onToggle={onTypeToggle}
-          />
-          <FilterOptionGroup
-            icon={MapPin}
-            options={regionOptions}
-            selectedValues={selectedRegions}
-            title="By Country / Region"
-            onToggle={onRegionToggle}
-          />
-          <FilterOptionGroup
             icon={Landmark}
             options={stateOptions}
             selectedValues={selectedStates}
@@ -759,32 +601,6 @@ function DestinationSidebar({
             title="Heritage Focus"
             onToggle={onFocusToggle}
           />
-          <FilterOptionGroup
-            icon={Clock3}
-            options={durationOptions}
-            selectedValues={selectedDurations}
-            title="Duration"
-            onToggle={onDurationToggle}
-          />
-
-          {unescoCount > 0 ? (
-            <section>
-              <h3 className="flex items-center gap-2 font-sans text-[12px] font-bold text-secondary">
-                <BadgeCheck className="size-4 text-primary" strokeWidth={1.8} />
-                UNESCO Heritage
-              </h3>
-              <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-[6px] px-1 py-1 font-sans text-[11px] font-semibold text-secondary/72 transition-colors hover:text-primary">
-                <input
-                  checked={unescoOnly}
-                  onChange={(event) => onUnescoOnlyChange(event.target.checked)}
-                  type="checkbox"
-                  className="size-4 rounded border-[#d7b89a] accent-primary"
-                />
-                <span className="min-w-0 flex-1">UNESCO World Heritage</span>
-                <span className="text-secondary/42">{unescoCount}</span>
-              </label>
-            </section>
-          ) : null}
         </div>
 
         <button
@@ -822,7 +638,7 @@ function FilterOptionGroup({
         <Icon className="size-4 text-primary" strokeWidth={1.8} />
         {title}
       </h3>
-      <div className="mt-3 max-h-[132px] space-y-1.5 overflow-y-auto pr-1">
+      <div className="mt-3 space-y-1.5">
         {options.map((option) => (
           <label
             key={option.value}
@@ -900,20 +716,12 @@ function DestinationGrid({
 }) {
   if (isLoading) {
     return (
-      <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
         {Array.from({ length: 8 }).map((_item, index) => (
           <div
             key={index}
-            className="h-[268px] animate-pulse rounded-[8px] border border-[#ead8c5] bg-white"
-          >
-            <div className="h-[134px] rounded-t-[8px] bg-[#ead8c5]/65" />
-            <div className="space-y-2.5 p-3.5">
-              <div className="h-3 w-24 rounded bg-[#ead8c5]/65" />
-              <div className="h-5 w-3/4 rounded bg-[#ead8c5]/65" />
-              <div className="h-3 w-full rounded bg-[#ead8c5]/65" />
-              <div className="h-3 w-2/3 rounded bg-[#ead8c5]/65" />
-            </div>
-          </div>
+            className="h-[260px] animate-pulse rounded-[8px] bg-[#ead8c5]/65 sm:h-[272px] lg:h-[292px]"
+          />
         ))}
       </div>
     );
@@ -924,7 +732,7 @@ function DestinationGrid({
   }
 
   return (
-    <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
       {destinations.map((destination, index) => (
         <DestinationCard
           key={destination.id || destination.destinationId}
@@ -943,85 +751,40 @@ function DestinationCard({
   destination: PublicDestination;
   image: string;
 }) {
-  const focus = getPrimaryFocus(destination);
-  const locationLabel = getLocationLabel(destination) || destination.countryRegion;
+  const title = destination.destinationName;
 
   return (
-    <article className="group overflow-hidden rounded-[8px] border border-[#ead8c5] bg-white shadow-[0_14px_34px_rgba(67,43,27,0.07)] transition-all hover:-translate-y-1 hover:border-primary/45 hover:shadow-[0_20px_46px_rgba(67,43,27,0.12)]">
-      <div className="relative h-[136px] overflow-hidden bg-muted">
-        <Image
-          src={image}
-          alt={destination.destinationName}
-          fill
-          sizes="(min-width: 1280px) 305px, (min-width: 640px) 50vw, 100vw"
-          className="object-cover transition-transform duration-700 group-hover:scale-105"
-        />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(22,14,8,0.04)_0%,rgba(22,14,8,0.36)_100%)]" />
-        <span className="absolute left-3 top-3 rounded-full bg-white/92 px-2.5 py-0.5 font-sans text-[9px] font-bold uppercase text-primary shadow-[0_8px_16px_rgba(35,23,15,0.12)]">
-          {destination.unescoSite ? "UNESCO" : destination.destinationType}
-        </span>
-        <button
-          type="button"
-          aria-label={`Save ${destination.destinationName}`}
-          className="absolute right-3 top-3 grid size-7 place-items-center rounded-full border border-white/60 bg-white/20 text-white backdrop-blur transition-colors hover:bg-primary"
-        >
-          <Heart className="size-3.5" strokeWidth={1.8} />
-        </button>
-      </div>
+    <article className="group relative h-[260px] overflow-hidden rounded-[8px] bg-secondary shadow-[0_16px_34px_rgba(67,43,27,0.11)] transition-all hover:-translate-y-1 hover:shadow-[0_22px_48px_rgba(67,43,27,0.16)] sm:h-[272px] lg:h-[292px]">
+      <Image
+        src={image}
+        alt={title}
+        fill
+        sizes="(min-width: 1280px) 310px, (min-width: 640px) 50vw, 100vw"
+        className="object-cover transition-transform duration-700 group-hover:scale-105"
+      />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.34)_0%,rgba(18,12,8,0.04)_42%,rgba(18,12,8,0.28)_100%)]" />
 
-      <div className="p-3.5">
-        <p className="flex min-h-[16px] items-center gap-1.5 font-sans text-[10px] font-semibold text-primary">
-          <MapPin className="size-3.5 shrink-0" strokeWidth={1.8} />
-          <span className="truncate">{locationLabel || "Ancient Trails"}</span>
-        </p>
-        <h3 className="mt-1.5 line-clamp-1 font-heading text-[18px] font-bold leading-tight text-secondary">
-          {destination.destinationName}
+      <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4">
+        <h3 className="min-w-0 truncate font-sans text-[18px] font-normal leading-none text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.26)]">
+          {title}
         </h3>
-        <p className="mt-2 line-clamp-2 min-h-[34px] font-sans text-[10.5px] leading-[1.6] text-secondary/68">
-          {destination.shortDescription ||
-            `${focus} destination with ${destination.recommendedDurationDays} day recommended stay.`}
-        </p>
-
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <InfoPill icon={Clock3} label={`${destination.recommendedDurationDays} Days`} />
-          <InfoPill icon={Landmark} label={focus} />
-        </div>
-
-        {destination.keyLandmarks.length > 0 ? (
-          <p className="mt-2 line-clamp-1 font-sans text-[9.5px] font-medium text-secondary/54">
-            {destination.keyLandmarks.slice(0, 2).join(" | ")}
-          </p>
-        ) : null}
-
-        <div className="mt-3 flex items-center justify-between border-t border-[#ead8c5] pt-2.5">
-          <span className="font-sans text-[10px] font-semibold text-secondary/48">
-            {destination.destinationType}
-          </span>
-          <Link
-            href={getDestinationHref(destination)}
-            aria-label={`Explore ${destination.destinationName}`}
-            className="grid size-7 shrink-0 place-items-center rounded-full border border-primary bg-white text-primary transition-colors hover:bg-primary hover:text-white"
-          >
-            <ArrowRight className="size-3.5" />
-          </Link>
-        </div>
+        <Link
+          href={getDestinationHref(destination)}
+          aria-label={`Explore ${title}`}
+          className="grid size-7 shrink-0 place-items-center text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.28)] transition-transform group-hover:translate-x-1"
+        >
+          <ArrowRight className="size-5" strokeWidth={1.8} />
+        </Link>
       </div>
-    </article>
-  );
-}
 
-function InfoPill({
-  icon: Icon,
-  label,
-}: {
-  icon: LucideIcon;
-  label: string;
-}) {
-  return (
-    <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-[#fff1e5] px-2 py-0.5 font-sans text-[9.5px] font-bold text-primary">
-      <Icon className="size-3 shrink-0" strokeWidth={1.8} />
-      <span className="truncate">{label}</span>
-    </span>
+      <Link
+        href={getDestinationHref(destination)}
+        aria-label={`View ${title}`}
+        className="absolute bottom-4 left-4 inline-flex h-7 items-center justify-center rounded-full bg-white px-5 font-sans text-[10px] font-medium leading-none text-primary shadow-[0_10px_22px_rgba(35,23,15,0.16)] transition-colors hover:bg-primary hover:text-white"
+      >
+        view
+      </Link>
+    </article>
   );
 }
 
