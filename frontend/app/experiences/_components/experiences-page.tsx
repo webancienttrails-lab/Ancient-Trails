@@ -169,7 +169,7 @@ const instagramImages = [
 
 export function ExperiencesPage() {
   return (
-    <main className="min-h-screen overflow-hidden bg-[#fff8f0] text-secondary">
+    <main className="min-h-screen overflow-hidden bg-background text-secondary">
       <HeroSection />
       <CategoryStrip />
       <TravellerStoriesSection />

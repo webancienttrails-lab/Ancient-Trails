@@ -106,7 +106,7 @@ function SuggestionCard({ tour }: { tour: (typeof suggestions)[number] }) {
 
 export default function HolidayCartPage() {
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#fff8f0] text-secondary lg:overflow-x-visible">
+    <main className="min-h-screen overflow-x-hidden bg-background text-secondary lg:overflow-x-visible">
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <UserSidebar activeLabel="My Holiday Cart" />
 

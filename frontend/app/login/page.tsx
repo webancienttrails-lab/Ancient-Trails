@@ -34,7 +34,7 @@ const journeyHighlights = [
 
 export default function LoginPage() {
   return (
-    <main className="min-h-[100dvh] overflow-x-hidden bg-[#fff8f0] text-secondary lg:h-[100dvh] lg:overflow-hidden">
+    <main className="min-h-[100dvh] overflow-x-hidden bg-background text-secondary lg:h-[100dvh] lg:overflow-hidden">
       <section className="relative min-h-[100dvh] overflow-hidden lg:h-full">
         <Image
           src="/home assets/Caves.webp"

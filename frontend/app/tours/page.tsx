@@ -10,17 +10,36 @@ export const metadata: Metadata = {
 
 type ToursRouteProps = {
   searchParams?: Promise<{
+    adults?: string;
+    children?: string;
+    month?: string;
     search?: string;
   }>;
 };
 
+function parseGuestCount(value: string | undefined, fallback: number, minimum: number) {
+  const parsedValue = Number(value);
+
+  if (!Number.isFinite(parsedValue)) {
+    return fallback;
+  }
+
+  return Math.min(12, Math.max(minimum, Math.floor(parsedValue)));
+}
+
 export default async function ToursRoute({ searchParams }: ToursRouteProps) {
   const params = await searchParams;
   const initialSearchQuery = params?.search || "";
+  const initialMonthValue = params?.month || "";
+  const initialAdultCount = parseGuestCount(params?.adults, 2, 1);
+  const initialChildCount = parseGuestCount(params?.children, 0, 0);
 
   return (
     <ToursListingPage
-      key={initialSearchQuery}
+      key={`${initialSearchQuery}-${initialMonthValue}-${initialAdultCount}-${initialChildCount}`}
+      initialAdultCount={initialAdultCount}
+      initialChildCount={initialChildCount}
+      initialMonthValue={initialMonthValue}
       initialSearchQuery={initialSearchQuery}
     />
   );

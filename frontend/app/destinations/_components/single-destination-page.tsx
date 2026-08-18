@@ -5,9 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
-  CalendarDays,
   ChevronRight,
-  Heart,
   ImageIcon,
   Landmark,
   MapPin,
@@ -18,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
+import { TourShowcaseCard } from "@/components/tours/tour-showcase-card";
 import { Button, ButtonArrow } from "@/components/ui/button";
 import {
   getHomeMediaUrl,
@@ -44,6 +43,12 @@ const currencyFormatter = new Intl.NumberFormat("en-IN", {
   currency: "INR",
   maximumFractionDigits: 0,
   style: "currency",
+});
+
+const shortDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
 });
 
 function getErrorMessage(error: unknown) {
@@ -101,6 +106,28 @@ function formatPrice(value: number) {
   return currencyFormatter.format(value || 0);
 }
 
+function formatDate(value: string | null | undefined) {
+  if (!value) {
+    return "Coming Soon";
+  }
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime())
+    ? "Coming Soon"
+    : shortDateFormatter.format(date).replace(",", "");
+}
+
+function getDateValue(value: string | null) {
+  if (!value) {
+    return 0;
+  }
+
+  const timestamp = new Date(value).getTime();
+
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
 function getLowestTourPrice(
   tour: PublicTour,
   departures: PublicTourDeparture[]
@@ -111,6 +138,26 @@ function getLowestTourPrice(
     .filter((price) => price > 0);
 
   return prices.length > 0 ? Math.min(...prices) : 0;
+}
+
+function getNextTourDeparture(
+  tour: PublicTour,
+  departures: PublicTourDeparture[]
+) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tourDepartures = departures
+    .filter((departure) => departure.tourId === tour.tourId)
+    .sort(
+      (left, right) =>
+        getDateValue(left.departureDate) - getDateValue(right.departureDate)
+    );
+
+  return (
+    tourDepartures.find(
+      (departure) => getDateValue(departure.departureDate) >= today.getTime()
+    ) || tourDepartures[0]
+  );
 }
 
 function getLandmarkDescription(landmark: string, destination: PublicDestination) {
@@ -712,6 +759,7 @@ function ToursSection({
           <TourCard
             key={tour.id || tour.tourId}
             fallbackImage={images[index % images.length] || fallbackImages[0]}
+            nextDeparture={getNextTourDeparture(tour, departures)}
             price={getLowestTourPrice(tour, departures)}
             tour={tour}
           />
@@ -723,72 +771,25 @@ function ToursSection({
 
 function TourCard({
   fallbackImage,
+  nextDeparture,
   price,
   tour,
 }: {
   fallbackImage: string;
+  nextDeparture?: PublicTourDeparture;
   price: number;
   tour: PublicTour;
 }) {
   return (
-    <article className="group overflow-hidden rounded-[8px] border border-primary/15 bg-white shadow-[0_16px_36px_rgba(50,50,50,0.08)] transition-all hover:-translate-y-1 hover:border-primary/45 hover:shadow-[0_22px_48px_rgba(50,50,50,0.14)]">
-      <div className="relative h-[160px] overflow-hidden bg-muted">
-        <Image
-          src={getTourImage(tour, fallbackImage)}
-          alt={tour.tourName}
-          fill
-          sizes="(min-width: 1280px) 305px, (min-width: 640px) 50vw, 100vw"
-          className="object-cover transition-transform duration-700 group-hover:scale-105"
-        />
-        <button
-          type="button"
-          aria-label={`Save ${tour.tourName}`}
-          className="absolute right-4 top-4 grid size-9 place-items-center rounded-full bg-white/18 text-white backdrop-blur transition-colors hover:bg-primary"
-        >
-          <Heart className="size-5" strokeWidth={1.9} />
-        </button>
-      </div>
-      <div className="p-5">
-        <h3 className="line-clamp-2 min-h-[46px] font-heading text-[18px] font-bold leading-tight text-secondary">
-          {tour.tourName}
-        </h3>
-        <div className="mt-3 grid gap-2 font-sans text-[11px] font-semibold text-secondary/62">
-          <span className="inline-flex items-center gap-2">
-            <CalendarDays className="size-3.5 text-primary" strokeWidth={1.8} />
-            {tour.durationDn || "Duration announced soon"}
-          </span>
-          <span className="inline-flex items-center gap-2">
-            <Landmark className="size-3.5 text-primary" strokeWidth={1.8} />
-            {tour.category || getPrimaryFocusFromTour(tour)}
-          </span>
-        </div>
-        <div className="mt-6 flex items-end justify-between">
-          <span className="font-sans text-[12px] font-semibold text-primary">
-            {price > 0 ? (
-              <>
-                From
-                <strong className="ml-1 text-[20px] leading-none">
-                  {formatPrice(price)}
-                </strong>
-                <span className="ml-1 text-[11px] text-secondary">/ person</span>
-              </>
-            ) : (
-              <strong className="text-[14px]">Price on request</strong>
-            )}
-          </span>
-          <Link
-            href={getTourHref(tour)}
-            aria-label={`View ${tour.tourName}`}
-            className="grid size-9 place-items-center text-primary transition-transform group-hover:translate-x-1"
-          >
-            <ArrowRight className="size-5" />
-          </Link>
-        </div>
-      </div>
-    </article>
+    <TourShowcaseCard
+      durationLabel={tour.durationDn || "Duration soon"}
+      favoriteLabel={`Save ${tour.tourName}`}
+      href={getTourHref(tour)}
+      image={getTourImage(tour, fallbackImage)}
+      imageSizes="(min-width: 1280px) 305px, (min-width: 640px) 50vw, 100vw"
+      nextDepartureLabel={formatDate(nextDeparture?.departureDate)}
+      priceLabel={price > 0 ? formatPrice(price) : "Price on request"}
+      title={tour.tourName}
+    />
   );
-}
-
-function getPrimaryFocusFromTour(tour: PublicTour) {
-  return tour.tourType || tour.difficulty || "Expert Guide";
 }

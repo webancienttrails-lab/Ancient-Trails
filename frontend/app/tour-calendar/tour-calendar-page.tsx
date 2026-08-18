@@ -7,13 +7,11 @@ import {
   ArrowRight,
   BadgeCheck,
   BookOpen,
-  Calendar,
   CalendarDays,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
-  Grid2X2,
   Landmark,
   MapPin,
   Sprout,
@@ -22,12 +20,8 @@ import {
 } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
+import { PlanTripInline } from "@/components/plan-trip-launcher";
+import { TourShowcaseCard } from "@/components/tours/tour-showcase-card";
 import {
   fallbackUpcomingTours,
   getHomeMediaUrl,
@@ -288,10 +282,6 @@ function statusBadgeClassName(status: DepartureStatus) {
   }
 }
 
-function getSeatLabel(seatsAvailable: number) {
-  return seatsAvailable > 0 ? `${seatsAvailable} Seats Left` : "Sold Out";
-}
-
 function getTourImage(tour?: PublicTour) {
   return getHomeMediaUrl(
     tour?.bannerImage ||
@@ -348,30 +338,6 @@ function getExpertBio(expert?: PublicExpert) {
   return (
     expert?.fullBiography ||
     "Indologist, researcher and storyteller with deep expertise in cultural heritage journeys."
-  );
-}
-
-function getLocationLabel(item?: EnrichedDeparture) {
-  if (!item) {
-    return "India";
-  }
-
-  const { destination, tour } = item;
-  const parts = [
-    destination?.city,
-    destination?.state,
-    destination?.countryRegion,
-  ]
-    .filter(Boolean)
-    .filter((part, index, source) => source.indexOf(part) === index);
-
-  return (
-    parts.join(", ") ||
-    tour.tourName ||
-    item.destination?.destinationName ||
-    getTourDestinationIds(tour)[0] ||
-    tour.destinationId ||
-    "Ancient Trails"
   );
 }
 
@@ -732,9 +698,6 @@ export function TourCalendarPage({
   );
   const [enrichedDepartures, setEnrichedDepartures] =
     useState<EnrichedDeparture[]>(fallbackData);
-  const [tours, setTours] = useState<PublicTour[]>(fallbackTours);
-  const [destinations, setDestinations] =
-    useState<PublicDestination[]>(fallbackDestinations);
   const [experts, setExperts] = useState<PublicExpert[]>(fallbackExperts);
   const [selectedTourId, setSelectedTourId] = useState(() =>
     resolveTourFilter(initialTourQuery, fallbackTours)
@@ -789,11 +752,9 @@ export function TourCalendarPage({
                 .map(({ destination }) => destination)
                 .filter((destination): destination is PublicDestination =>
                   Boolean(destination)
-                );
+        );
 
         if (isMounted) {
-          setTours(nextTours);
-          setDestinations(nextDestinations);
           setExperts(
             expertsResponse.data.experts.length > 0
               ? expertsResponse.data.experts
@@ -818,8 +779,6 @@ export function TourCalendarPage({
             );
 
           setLoadError("Live tour calendar is temporarily unavailable.");
-          setTours(nextTours);
-          setDestinations(nextDestinations);
           setExperts(createFallbackExperts());
           setEnrichedDepartures(fallbackDepartures);
           setSelectedTourId(resolveTourFilter(initialTourQuery, nextTours));
@@ -842,19 +801,6 @@ export function TourCalendarPage({
       isMounted = false;
     };
   }, [initialDestinationQuery, initialTourQuery]);
-
-  const monthOptions = useMemo(() => {
-    const keyedMonths = enrichedDepartures
-      .map(({ departure }) => getMonthKey(departure.departureDate))
-      .filter(Boolean);
-
-    return Array.from(new Set(keyedMonths))
-      .sort()
-      .map((monthKey) => ({
-        label: monthFormatter.format(getMonthDate(monthKey)),
-        value: monthKey,
-      }));
-  }, [enrichedDepartures]);
 
   const calendarFilteredDepartures = useMemo(() => {
     return enrichedDepartures.filter(({ departure, tour }) => {
@@ -948,52 +894,11 @@ export function TourCalendarPage({
     }
   }
 
-  function updateMonth(monthKey: string) {
-    setSelectedMonth(monthKey);
-    setSelectedDateKey("");
-
-    if (monthKey !== "all") {
-      setVisibleMonth(getMonthDate(monthKey));
-    }
-  }
-
-  function handleSearchTours() {
-    setSelectedDateKey("");
-
-    if (selectedMonth !== "all") {
-      setVisibleMonth(getMonthDate(selectedMonth));
-      return;
-    }
-
-    setVisibleMonth(getPreferredMonth(calendarFilteredDepartures));
-  }
-
   return (
-    <main className="min-h-screen overflow-hidden bg-[#fff8f0] text-secondary">
+    <main className="min-h-screen overflow-hidden bg-background text-secondary">
       <HeroSection />
 
-      <section className="relative z-20 mx-auto -mt-8 w-full max-w-[1300px] px-4 sm:px-6 lg:px-0">
-        <FilterBar
-          destinations={destinations}
-          monthOptions={monthOptions}
-          selectedDestinationId={selectedDestinationId}
-          selectedMonth={selectedMonth}
-          selectedTourId={selectedTourId}
-          tours={tours}
-          onDestinationChange={(value) => {
-            setSelectedDestinationId(value);
-            clearDateSelection();
-          }}
-          onMonthChange={updateMonth}
-          onSearch={handleSearchTours}
-          onTourChange={(value) => {
-            setSelectedTourId(value);
-            clearDateSelection();
-          }}
-        />
-      </section>
-
-      <section className="mx-auto grid w-full max-w-[1300px] items-start gap-5 px-4 pb-6 pt-5 sm:px-6 lg:grid-cols-[430px_minmax(0,1fr)] lg:px-0">
+      <section className="mx-auto grid w-full max-w-[1300px] items-start gap-5 px-4 pb-6 pt-8 sm:px-6 lg:grid-cols-[430px_minmax(0,1fr)] lg:px-0">
         <CalendarPanel
           calendarDays={calendarDays}
           departuresByDate={departuresByDate}
@@ -1094,7 +999,7 @@ export function TourCalendarPage({
 
 function HeroSection() {
   return (
-    <section className="relative min-h-[340px] overflow-hidden bg-[#fff8f0]">
+    <section className="relative overflow-visible bg-[#fff8f0]">
       <Image
         src="/home assets/Heritage Banner.webp"
         alt="Traveller overlooking ancient temple architecture"
@@ -1107,10 +1012,10 @@ function HeroSection() {
       
       <div className="absolute inset-x-0 bottom-0 h-20 bg-[linear-gradient(180deg,rgba(255,248,240,0)_0%,#fff8f0_100%)]" />
 
-      <div className="relative z-10 mx-auto flex min-h-[340px] w-full max-w-[1300px] flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0">
+      <div className="relative z-10 mx-auto flex min-h-[500px] w-full max-w-[1300px] flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0">
         <Header />
 
-        <div className="flex flex-1 items-center px-0 pb-12 pt-7 sm:px-8">
+        <div className="flex flex-1 items-center px-0 pb-6 pt-7 sm:px-8">
           <div className="max-w-[430px]">
             <p className="font-sans text-[11px] font-bold uppercase tracking-normal text-primary">
               Plan Your Journey
@@ -1124,143 +1029,10 @@ function HeroSection() {
             </p>
           </div>
         </div>
+
+        <PlanTripInline className="mb-8" />
       </div>
     </section>
-  );
-}
-
-function FilterBar({
-  destinations,
-  monthOptions,
-  selectedDestinationId,
-  selectedMonth,
-  selectedTourId,
-  tours,
-  onDestinationChange,
-  onMonthChange,
-  onSearch,
-  onTourChange,
-}: {
-  destinations: PublicDestination[];
-  monthOptions: Array<{ label: string; value: string }>;
-  selectedDestinationId: string;
-  selectedMonth: string;
-  selectedTourId: string;
-  tours: PublicTour[];
-  onDestinationChange: (value: string) => void;
-  onMonthChange: (value: string) => void;
-  onSearch: () => void;
-  onTourChange: (value: string) => void;
-}) {
-  const tourOptions = [
-    { label: "Select Tours", value: "all" },
-    ...tours.map((tour) => ({
-      label: tour.tourName,
-      value: tour.tourId,
-    })),
-  ];
-  const destinationOptions = [
-    { label: "Select Destination", value: "all" },
-    ...destinations.map((destination) => ({
-      label: destination.destinationName,
-      value: destination.destinationId,
-    })),
-  ];
-  const filterMonthOptions = [
-    { label: "Select Month", value: "all" },
-    ...monthOptions,
-  ];
-
-  return (
-    <div className="grid w-full min-w-0 gap-2 rounded-[24px] border border-[#ead8c5] bg-white/94 p-2 shadow-[0_20px_50px_rgba(67,43,27,0.14)] backdrop-blur-md sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,0.95fr)_150px] xl:gap-0 xl:rounded-full">
-      <FilterSelect
-        icon={Grid2X2}
-        label="Tours"
-        options={tourOptions}
-        value={selectedTourId}
-        onChange={onTourChange}
-      />
-      <FilterSelect
-        icon={MapPin}
-        label="Destinations"
-        hasDivider
-        options={destinationOptions}
-        value={selectedDestinationId}
-        onChange={onDestinationChange}
-      />
-      <FilterSelect
-        icon={Calendar}
-        label="Months"
-        hasDivider
-        options={filterMonthOptions}
-        value={selectedMonth}
-        onChange={onMonthChange}
-      />
-      <button
-        type="button"
-        onClick={onSearch}
-        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[16px] border border-primary bg-white px-4 font-sans text-[13px] font-semibold leading-tight text-primary shadow-[0_10px_22px_rgba(212,114,32,0.12)] transition-all hover:bg-primary hover:text-white hover:shadow-[0_15px_30px_rgba(212,114,32,0.24)] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25 sm:col-span-2 lg:col-span-1 xl:rounded-full"
-      >
-        <span className="whitespace-nowrap">Search Tours</span>
-        <ArrowRight className="size-4 shrink-0" strokeWidth={2} />
-      </button>
-    </div>
-  );
-}
-
-function FilterSelect({
-  hasDivider = false,
-  icon: Icon,
-  label,
-  onChange,
-  options,
-  value,
-}: {
-  hasDivider?: boolean;
-  icon: LucideIcon;
-  label: string;
-  onChange: (value: string) => void;
-  options: Array<{ label: string; value: string }>;
-  value: string;
-}) {
-  const selectedLabel =
-    options.find((option) => option.value === value)?.label || label;
-
-  return (
-    <div
-      className={cn(
-        "relative min-w-0 rounded-[18px] xl:rounded-none",
-        hasDivider && "xl:border-l xl:border-[#e8cbaa]"
-      )}
-    >
-      <Select
-        value={value}
-        onValueChange={(nextValue) => {
-          if (nextValue !== null) {
-            onChange(nextValue);
-          }
-        }}
-      >
-        <SelectTrigger
-          aria-label={label}
-          className="h-12 min-w-0 rounded-[18px] border-[#e8cbaa] bg-[#fffaf4] px-4 font-sans text-[14px] font-semibold text-secondary shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] hover:border-primary/55 hover:bg-white focus-visible:ring-primary/15 data-[popup-open]:border-primary data-[popup-open]:bg-white data-[popup-open]:ring-primary/15 xl:rounded-none xl:border-y-0 xl:border-l-0 xl:border-r-0 xl:bg-transparent xl:px-5 xl:shadow-none xl:focus-visible:ring-0 xl:data-[popup-open]:ring-0 [&_[data-slot=select-icon]]:text-primary"
-        >
-          <span className="flex min-w-0 items-center gap-3">
-            <Icon className="size-4 shrink-0 text-primary" strokeWidth={1.8} />
-            <span data-slot="select-value" className="min-w-0 truncate text-left">
-              {selectedLabel}
-            </span>
-          </span>
-        </SelectTrigger>
-        <SelectContent className="border-[#ead8c5] bg-[#fffaf4]">
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
   );
 }
 
@@ -1483,62 +1255,21 @@ function DepartureRow({ index, item }: { index: number; item: EnrichedDeparture 
 }
 
 function ScheduledTourCard({ item }: { item: EnrichedDeparture }) {
-  const status = getDepartureStatus([item]);
-
   return (
-    <article className="overflow-hidden rounded-[9px] border border-[#ead8c5] bg-white shadow-[0_14px_32px_rgba(67,43,27,0.08)] transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-[0_20px_42px_rgba(67,43,27,0.12)]">
-      <div className="relative h-[155px] bg-muted">
-        <Image
-          src={getTourImage(item.tour)}
-          alt={item.tour.tourName}
-          fill
-          sizes="(min-width: 1024px) 275px, (min-width: 640px) 50vw, 100vw"
-          className="object-cover"
-        />
-        <span
-          className={cn(
-            "absolute left-3 top-3 rounded-[5px] px-2 py-1 font-sans text-[10px] font-bold",
-            statusBadgeClassName(status)
-          )}
-        >
-          {getDurationBadge(item.tour)}
-        </span>
-      </div>
-      <div className="p-4">
-        <h3 className="line-clamp-2 min-h-[42px] font-heading text-[17px] font-bold leading-tight text-secondary">
-          {item.tour.tourName}
-        </h3>
-        <p className="mt-3 flex items-center gap-2 font-sans text-[11px] text-secondary/62">
-          <CalendarDays className="size-3.5 text-primary" />
-          {formatDateRange(item.departure)}
-        </p>
-        <p className="mt-1 flex items-center gap-2 font-sans text-[11px] text-secondary/62">
-          <MapPin className="size-3.5 text-primary" />
-          {getLocationLabel(item)}
-        </p>
-        <p className="mt-1 flex items-center gap-2 font-sans text-[11px] text-secondary/62">
-          <Users className="size-3.5 text-primary" />
-          {getSeatLabel(item.departure.seatsAvailable)}
-        </p>
-
-        <div className="mt-4 flex items-end justify-between gap-3 border-t border-[#ead8c5] pt-3">
-          <span className="font-sans text-[10px] text-secondary/58">
-            from
-            <strong className="block font-heading text-[18px] leading-none text-secondary">
-              {formatPrice(item.departure.priceAdult)}
-            </strong>
-            per person
-          </span>
-          <Link
-            href={getTourHref(item.tour)}
-            aria-label={`View ${item.tour.tourName}`}
-            className="grid size-9 shrink-0 place-items-center rounded-full border border-primary bg-white text-primary shadow-[0_6px_14px_rgba(212,114,32,0.08)] transition-all hover:bg-primary hover:text-white hover:shadow-[0_10px_18px_rgba(212,114,32,0.22)] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
-          >
-            <ArrowRight className="size-4" />
-          </Link>
-        </div>
-      </div>
-    </article>
+    <TourShowcaseCard
+      durationLabel={getDurationBadge(item.tour)}
+      favoriteLabel={`Save ${item.tour.tourName}`}
+      href={getTourHref(item.tour)}
+      image={getTourImage(item.tour)}
+      imageSizes="(min-width: 1024px) 275px, (min-width: 640px) 50vw, 100vw"
+      nextDepartureLabel={
+        item.departure.departureDate
+          ? formatFullDate(item.departure.departureDate)
+          : "Coming Soon"
+      }
+      priceLabel={formatPrice(item.departure.priceAdult)}
+      title={item.tour.tourName}
+    />
   );
 }
 

@@ -267,6 +267,7 @@ export function DestinationsPage({
   const [selectedFocuses, setSelectedFocuses] = useState<string[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>("recommended");
   const [currentPage, setCurrentPage] = useState(1);
+  const [isFilterCollapsed, setIsFilterCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -383,7 +384,7 @@ export function DestinationsPage({
   }
 
   return (
-    <main className="min-h-screen bg-[#fff8f0] text-secondary">
+    <main className="min-h-screen bg-background text-secondary">
       <HeroSection
         categoryTabs={categoryTabs}
         activeCategory={activeCategory}
@@ -392,14 +393,23 @@ export function DestinationsPage({
         onSearchQueryChange={setSearchQuery}
       />
 
-      <section className="mx-auto grid w-full max-w-[1300px] items-start gap-6 px-5 pb-12 pt-8 sm:px-8 lg:grid-cols-[270px_minmax(0,1fr)] lg:px-0 xl:grid-cols-[280px_minmax(0,1fr)]">
+      <section
+        className={cn(
+          "mx-auto grid w-full max-w-[1300px] items-start gap-6 px-5 pb-12 pt-8 transition-[grid-template-columns] duration-300 sm:px-8 lg:px-0",
+          isFilterCollapsed
+            ? "lg:grid-cols-[76px_minmax(0,1fr)] xl:grid-cols-[84px_minmax(0,1fr)]"
+            : "lg:grid-cols-[270px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]"
+        )}
+      >
         <DestinationSidebar
           activeFilterCount={activeFilterCount}
           focusOptions={focusOptions}
+          isCollapsed={isFilterCollapsed}
           selectedFocuses={selectedFocuses}
           selectedStates={selectedStates}
           stateOptions={stateOptions}
           onClearFilters={clearFilters}
+          onCollapsedChange={setIsFilterCollapsed}
           onFocusToggle={(value) =>
             setSelectedFocuses((current) => toggleSelection(current, value))
           }
@@ -553,7 +563,9 @@ function HeroSection({
 function DestinationSidebar({
   activeFilterCount,
   focusOptions,
+  isCollapsed,
   onClearFilters,
+  onCollapsedChange,
   onFocusToggle,
   onStateToggle,
   selectedFocuses,
@@ -562,13 +574,54 @@ function DestinationSidebar({
 }: {
   activeFilterCount: number;
   focusOptions: CountOption[];
+  isCollapsed: boolean;
   selectedFocuses: string[];
   selectedStates: string[];
   stateOptions: CountOption[];
   onClearFilters: () => void;
+  onCollapsedChange: (value: boolean) => void;
   onFocusToggle: (value: string) => void;
   onStateToggle: (value: string) => void;
 }) {
+  if (isCollapsed) {
+    return (
+      <aside className="lg:sticky lg:top-5 lg:z-20 lg:self-start">
+        <div className="flex items-center justify-center gap-2 rounded-[8px] border border-[#ead8c5] bg-white p-2 shadow-[0_12px_32px_rgba(67,43,27,0.07)] lg:flex-col">
+          <button
+            type="button"
+            aria-label="Maximize destination filters"
+            onClick={() => onCollapsedChange(false)}
+            className="grid size-10 place-items-center rounded-[7px] border border-primary/25 bg-primary/8 text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+          >
+            <SlidersHorizontal className="size-4" strokeWidth={1.9} />
+          </button>
+          <button
+            type="button"
+            aria-label="Open state filters"
+            onClick={() => onCollapsedChange(false)}
+            className="relative grid size-10 place-items-center rounded-[7px] text-secondary transition-colors hover:bg-primary/8 hover:text-primary"
+          >
+            <Landmark className="size-4" strokeWidth={1.8} />
+            {selectedStates.length > 0 ? (
+              <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" />
+            ) : null}
+          </button>
+          <button
+            type="button"
+            aria-label="Open heritage focus filters"
+            onClick={() => onCollapsedChange(false)}
+            className="relative grid size-10 place-items-center rounded-[7px] text-secondary transition-colors hover:bg-primary/8 hover:text-primary"
+          >
+            <Sparkles className="size-4" strokeWidth={1.8} />
+            {selectedFocuses.length > 0 ? (
+              <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" />
+            ) : null}
+          </button>
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside className="space-y-3 lg:sticky lg:top-5 lg:z-20 lg:self-start">
       <div className="rounded-[8px] border border-[#ead8c5] bg-white p-4 shadow-[0_12px_32px_rgba(67,43,27,0.07)] transition-[box-shadow,transform] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]">
@@ -576,40 +629,57 @@ function DestinationSidebar({
           <h2 className="font-sans text-[14px] font-bold text-secondary">
             Filter Destinations
           </h2>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClearFilters}
+              disabled={activeFilterCount === 0}
+              className="font-sans text-[11px] font-bold text-primary transition-colors hover:text-accent disabled:pointer-events-none disabled:text-secondary/35"
+            >
+              Reset All
+            </button>
+            <button
+              type="button"
+              aria-controls="destination-filter-panel"
+              aria-expanded={!isCollapsed}
+              onClick={() => onCollapsedChange(true)}
+              className="inline-flex h-7 items-center gap-1 rounded-[6px] border border-primary/25 bg-primary/5 px-2 font-sans text-[11px] font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+            >
+              Minimize
+              <ChevronDown
+                className="size-3.5 rotate-90 transition-transform"
+                strokeWidth={2}
+              />
+            </button>
+          </div>
+        </div>
+
+        <div id="destination-filter-panel">
+          <div className="mt-4 space-y-5">
+            <FilterOptionGroup
+              icon={Landmark}
+              options={stateOptions}
+              selectedValues={selectedStates}
+              title="By State"
+              onToggle={onStateToggle}
+            />
+            <FilterOptionGroup
+              icon={Sparkles}
+              options={focusOptions}
+              selectedValues={selectedFocuses}
+              title="Heritage Focus"
+              onToggle={onFocusToggle}
+            />
+          </div>
+
           <button
             type="button"
-            onClick={onClearFilters}
-            disabled={activeFilterCount === 0}
-            className="font-sans text-[11px] font-bold text-primary transition-colors hover:text-accent disabled:pointer-events-none disabled:text-secondary/35"
+            className="mt-5 inline-flex h-9 w-full items-center justify-center gap-2 rounded-[7px] border border-primary bg-white px-4 font-sans text-[11px] font-bold text-primary transition-colors hover:bg-primary hover:text-white"
           >
-            Reset All
+            <SlidersHorizontal className="size-4" />
+            Apply Filters
           </button>
         </div>
-
-        <div className="mt-4 space-y-5">
-          <FilterOptionGroup
-            icon={Landmark}
-            options={stateOptions}
-            selectedValues={selectedStates}
-            title="By State"
-            onToggle={onStateToggle}
-          />
-          <FilterOptionGroup
-            icon={Sparkles}
-            options={focusOptions}
-            selectedValues={selectedFocuses}
-            title="Heritage Focus"
-            onToggle={onFocusToggle}
-          />
-        </div>
-
-        <button
-          type="button"
-          className="mt-5 inline-flex h-9 w-full items-center justify-center gap-2 rounded-[7px] border border-primary bg-white px-4 font-sans text-[11px] font-bold text-primary transition-colors hover:bg-primary hover:text-white"
-        >
-          <SlidersHorizontal className="size-4" />
-          Apply Filters
-        </button>
       </div>
     </aside>
   );
@@ -720,7 +790,7 @@ function DestinationGrid({
         {Array.from({ length: 8 }).map((_item, index) => (
           <div
             key={index}
-            className="h-[260px] animate-pulse rounded-[8px] bg-[#ead8c5]/65 sm:h-[272px] lg:h-[292px]"
+            className="aspect-[1.04/1] min-h-[300px] animate-pulse rounded-[16px] bg-[#ead8c5]/65"
           />
         ))}
       </div>
@@ -754,35 +824,31 @@ function DestinationCard({
   const title = destination.destinationName;
 
   return (
-    <article className="group relative h-[260px] overflow-hidden rounded-[8px] bg-secondary shadow-[0_16px_34px_rgba(67,43,27,0.11)] transition-all hover:-translate-y-1 hover:shadow-[0_22px_48px_rgba(67,43,27,0.16)] sm:h-[272px] lg:h-[292px]">
+    <article className="group relative aspect-[1.04/1] min-h-[300px] overflow-hidden rounded-[16px] bg-secondary shadow-[0_16px_34px_rgba(67,43,27,0.11)]">
       <Image
         src={image}
         alt={title}
         fill
         sizes="(min-width: 1280px) 310px, (min-width: 640px) 50vw, 100vw"
-        className="object-cover transition-transform duration-700 group-hover:scale-105"
+        className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
       />
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.34)_0%,rgba(18,12,8,0.04)_42%,rgba(18,12,8,0.28)_100%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.46)_0%,rgba(18,12,8,0.08)_48%,rgba(18,12,8,0.44)_100%)]" />
 
-      <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4">
-        <h3 className="min-w-0 truncate font-sans text-[18px] font-normal leading-none text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.26)]">
+      <div className="absolute inset-x-0 top-0 p-6">
+        <h3 className="min-w-0 truncate font-sans text-[20px] font-semibold leading-none text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.3)]">
           {title}
         </h3>
-        <Link
-          href={getDestinationHref(destination)}
-          aria-label={`Explore ${title}`}
-          className="grid size-7 shrink-0 place-items-center text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.28)] transition-transform group-hover:translate-x-1"
-        >
-          <ArrowRight className="size-5" strokeWidth={1.8} />
-        </Link>
       </div>
 
       <Link
         href={getDestinationHref(destination)}
-        aria-label={`View ${title}`}
-        className="absolute bottom-4 left-4 inline-flex h-7 items-center justify-center rounded-full bg-white px-5 font-sans text-[10px] font-medium leading-none text-primary shadow-[0_10px_22px_rgba(35,23,15,0.16)] transition-colors hover:bg-primary hover:text-white"
+        aria-label={`Explore ${title}`}
+        className="absolute bottom-7 left-7 inline-flex h-12 items-center gap-2 rounded-full border border-white/30 bg-secondary/62 pl-5 pr-1.5 font-sans text-[14px] font-semibold text-white shadow-[0_14px_32px_rgba(35,23,15,0.24)] backdrop-blur transition-colors hover:bg-primary/90"
       >
-        view
+        Explore
+        <span className="grid size-9 place-items-center rounded-full bg-white text-secondary transition-transform duration-300 group-hover:translate-x-0.5">
+          <ArrowRight className="size-4 -rotate-45 transition-transform duration-300 group-hover:rotate-0" strokeWidth={2.2} />
+        </span>
       </Link>
     </article>
   );

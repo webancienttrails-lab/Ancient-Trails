@@ -28,7 +28,7 @@ function LoaderAnimation() {
 
 export function LoaderScreen() {
   return (
-    <main className="grid min-h-screen place-items-center bg-[#fff8f0]">
+    <main className="grid min-h-screen place-items-center bg-background">
       <span className="sr-only">Loading Ancient Trails</span>
       <LoaderAnimation />
     </main>
@@ -161,7 +161,7 @@ export function SiteLoader() {
     <div
       role="status"
       aria-live="polite"
-      className={`fixed inset-0 z-[2147483647] grid place-items-center bg-[#fff8f0] transition-opacity duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`fixed inset-0 z-[2147483647] grid place-items-center bg-background transition-opacity duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isLeaving ? "pointer-events-none opacity-0" : "opacity-100"
       }`}
     >

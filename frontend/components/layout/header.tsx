@@ -42,7 +42,7 @@ import { getDestinationsHref, getTourCalendarHref } from "@/lib/routes";
 const navItems = [
   { label: "Home", href: "/" },
   { label: "About", href: "/about" },
-  { label: "Tours", href: "/#upcoming-tours" },
+  { label: "Tours", href: "/tours" },
   { label: "Destinations", href: "/destinations" },
   { label: "Experiences", href: "/experiences" },
   { label: "Tour Calendar", href: "/tour-calendar" },
@@ -403,10 +403,20 @@ function CityTile({
   );
 }
 
-export function DestinationsMegaMenu({ isOpen }: { isOpen: boolean }) {
+export function DestinationsMegaMenu({
+  isOpen,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  isOpen: boolean;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
+}) {
   return (
     <div
       style={headerLayerStyle}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       className={`absolute left-0 right-0 top-[calc(100%+12px)] z-[2147483647] mx-auto w-full max-w-[1300px] origin-top transition-[opacity,transform,filter] duration-[650ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isOpen
           ? "pointer-events-auto translate-y-0 scale-100 opacity-100 blur-0"
@@ -538,10 +548,20 @@ export function DestinationsMegaMenu({ isOpen }: { isOpen: boolean }) {
   );
 }
 
-export function ToursMegaMenu({ isOpen }: { isOpen: boolean }) {
+export function ToursMegaMenu({
+  isOpen,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  isOpen: boolean;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
+}) {
   return (
     <div
       style={headerLayerStyle}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       className={`absolute left-0 right-0 top-[calc(100%+12px)] z-[2147483647] mx-auto w-full max-w-[1300px] origin-top transition-[opacity,transform,filter] duration-[650ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isOpen
           ? "pointer-events-auto translate-y-0 scale-100 opacity-100 blur-0"
@@ -810,6 +830,8 @@ export function Header() {
       ? "Experiences"
     : pathname?.startsWith("/destinations")
       ? "Destinations"
+    : pathname?.startsWith("/tours")
+      ? "Tours"
     : pathname?.startsWith("/tour-calendar")
       ? "Tour Calendar"
       : "Home";
@@ -833,6 +855,7 @@ export function Header() {
   const underlineFrameRef = useRef(0);
   const lastScrollYRef = useRef(0);
   const scrollFrameRef = useRef(0);
+  const megaMenuCloseTimeoutRef = useRef(0);
   const accountMenuCloseTimeoutRef = useRef(0);
 
   const updateUnderline = useCallback(() => {
@@ -879,6 +902,7 @@ export function Header() {
 
     return () => {
       window.cancelAnimationFrame(underlineFrameRef.current);
+      window.clearTimeout(megaMenuCloseTimeoutRef.current);
       window.clearTimeout(accountMenuCloseTimeoutRef.current);
       window.removeEventListener("resize", updateUnderline);
     };
@@ -947,7 +971,22 @@ export function Header() {
       router.push("/");
     }
   };
+  const keepMegaMenuOpen = () => {
+    window.clearTimeout(megaMenuCloseTimeoutRef.current);
+  };
+  const openMegaMenu = (label: string) => {
+    keepMegaMenuOpen();
+    setIsAccountMenuOpen(false);
+    setHoveredItem(label);
+  };
+  const closeMegaMenu = () => {
+    window.clearTimeout(megaMenuCloseTimeoutRef.current);
+    megaMenuCloseTimeoutRef.current = window.setTimeout(() => {
+      setHoveredItem(null);
+    }, 180);
+  };
   const openAccountMenu = () => {
+    window.clearTimeout(megaMenuCloseTimeoutRef.current);
     window.clearTimeout(accountMenuCloseTimeoutRef.current);
     setHoveredItem(null);
     setIsAccountMenuOpen(Boolean(travellerUser));
@@ -976,7 +1015,8 @@ export function Header() {
     >
     <header
       style={headerLayerStyle}
-      onMouseLeave={() => setHoveredItem(null)}
+      onMouseEnter={keepMegaMenuOpen}
+      onMouseLeave={closeMegaMenu}
       className={`fixed left-1/2 ${headerTopClass} isolate z-[2147483647] flex w-[calc(100%-2.5rem)] max-w-[1300px] -translate-x-1/2 items-center justify-between rounded-[18px] bg-white px-5 py-2 shadow-[0_18px_55px_rgba(50,50,50,0.18)] ring-1 ring-white transition-[top,translate] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] sm:py-3 md:px-6 [@media(max-height:600px)]:py-2 ${
         shouldShowHeader
           ? "translate-y-0 opacity-100"
@@ -1006,7 +1046,8 @@ export function Header() {
                 ref={(node) => {
                   linkRefs.current[item.label] = node;
                 }}
-                onMouseEnter={() => setHoveredItem(item.label)}
+                onFocus={() => openMegaMenu(item.label)}
+                onMouseEnter={() => openMegaMenu(item.label)}
                 className={`relative transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-primary ${
                   item.label === (hoveredItem ?? activeItem) ? "text-primary" : ""
                 }`}
@@ -1031,8 +1072,23 @@ export function Header() {
         </ul>
       </nav>
 
-      <ToursMegaMenu isOpen={hoveredItem === "Tours"} />
-      <DestinationsMegaMenu isOpen={hoveredItem === "Destinations"} />
+      {hoveredItem === "Tours" || hoveredItem === "Destinations" ? (
+        <span
+          aria-hidden="true"
+          className="absolute left-0 right-0 top-full h-[18px]"
+          onMouseEnter={keepMegaMenuOpen}
+        />
+      ) : null}
+      <ToursMegaMenu
+        isOpen={hoveredItem === "Tours"}
+        onMouseEnter={keepMegaMenuOpen}
+        onMouseLeave={closeMegaMenu}
+      />
+      <DestinationsMegaMenu
+        isOpen={hoveredItem === "Destinations"}
+        onMouseEnter={keepMegaMenuOpen}
+        onMouseLeave={closeMegaMenu}
+      />
 
       <div
         className="relative"

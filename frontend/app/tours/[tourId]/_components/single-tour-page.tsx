@@ -2,8 +2,19 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
+  type Dispatch,
+  type FormEvent,
+  type ReactNode,
+  type SetStateAction,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
+import {
+  ArrowRight,
   BarChart3,
   BedDouble,
   BookOpen,
@@ -12,14 +23,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Hourglass,
   Info,
   Landmark,
   Mail,
   Minus,
-  Mountain,
   PhoneCall,
   Plus,
-  Sun,
   TrendingUp,
   UserRound,
   Users,
@@ -58,7 +68,7 @@ import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
 import { Button, ButtonArrow } from "@/components/ui/button";
 
-type TourTab = "summary" | "itinerary" | "inclusions" | "pricing";
+type TourTab = "summary" | "itinerary" | "inclusions" | "pricing" | "expert";
 
 type TourDetailData = {
   departures: PublicTourDeparture[];
@@ -92,6 +102,27 @@ type TravellerCounts = {
 
 type TravellerCountKey = keyof TravellerCounts;
 
+type TravellerDetailForm = {
+  dateOfBirth: string;
+  email: string;
+  firstName: string;
+  gender: "" | "female" | "male";
+  lastName: string;
+  nationality: string;
+  panNumber: string;
+  phoneCountryCode: string;
+  title: string;
+};
+
+type TravellerDetailField = keyof TravellerDetailForm;
+
+type TravellerDetailTab = {
+  description: string;
+  heading: string;
+  id: string;
+  label: string;
+};
+
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
   currency: "INR",
   maximumFractionDigits: 0,
@@ -115,12 +146,34 @@ const fallbackGalleryImages = [
 const tabs: Array<{
   icon: LucideIcon;
   label: string;
+  sectionId: string;
   value: TourTab;
 }> = [
-  { value: "summary", label: "Summary", icon: BookOpen },
-  { value: "itinerary", label: "Itinerary", icon: CalendarDays },
-  { value: "inclusions", label: "Inclusions / Exclusions", icon: BedDouble },
-  { value: "pricing", label: "Departure & Pricing", icon: CalendarDays },
+  { value: "summary", label: "Summary", icon: BookOpen, sectionId: "summary" },
+  {
+    value: "itinerary",
+    label: "Itinerary",
+    icon: CalendarDays,
+    sectionId: "itinerary",
+  },
+  {
+    value: "inclusions",
+    label: "Inclusions / Exclusions",
+    icon: BedDouble,
+    sectionId: "inclusions",
+  },
+  {
+    value: "pricing",
+    label: "Departure & Pricing",
+    icon: CalendarDays,
+    sectionId: "departure-pricing",
+  },
+  {
+    value: "expert",
+    label: "Tour Expert",
+    icon: UserRound,
+    sectionId: "tour-expert",
+  },
 ];
 
 function normalizeCode(value: string) {
@@ -174,11 +227,64 @@ function getDateValue(value: string | null) {
 }
 
 function getDepartureIdentifier(departure: PublicTourDeparture) {
-  return departure.id || departure.departureId || departure.departureDate;
+  return departure.id || departure.departureId || departure.departureDate || "";
 }
 
 function getTotalTravellers(counts: TravellerCounts) {
   return counts.adults + counts.children;
+}
+
+const defaultTravellerDetailForm: TravellerDetailForm = {
+  dateOfBirth: "",
+  email: "",
+  firstName: "",
+  gender: "",
+  lastName: "",
+  nationality: "India",
+  panNumber: "",
+  phoneCountryCode: "India +91",
+  title: "Mr",
+};
+
+function formatOrdinal(value: number) {
+  const remainder = value % 100;
+
+  if (remainder >= 11 && remainder <= 13) {
+    return `${value}th`;
+  }
+
+  switch (value % 10) {
+    case 1:
+      return `${value}st`;
+    case 2:
+      return `${value}nd`;
+    case 3:
+      return `${value}rd`;
+    default:
+      return `${value}th`;
+  }
+}
+
+function createTravellerDetailTabs(
+  counts: TravellerCounts
+): TravellerDetailTab[] {
+  return Array.from({ length: counts.adults }, (_item, index) => {
+    const travellerNumber = index + 1;
+    const isLeadTraveller = index === 0;
+
+    return {
+      id: `adult-${travellerNumber}`,
+      label: isLeadTraveller
+        ? "Lead Traveller"
+        : `${formatOrdinal(travellerNumber)} Traveller`,
+      heading: isLeadTraveller
+        ? "Lead Traveller"
+        : `${formatOrdinal(travellerNumber)} Traveller`,
+      description: isLeadTraveller
+        ? "This traveller will serve as the contact person for the booking."
+        : "Add this traveller's details for the booking.",
+    };
+  });
 }
 
 function parseDurationDays(duration: string) {
@@ -519,47 +625,6 @@ function createFallbackDetail(requestedTourId: string): TourDetailData {
   };
 }
 
-function getItineraryHighlights(
-  tour: PublicTour,
-  destinations: PublicDestination[],
-  itinerary: PublicTourItinerary | null
-) {
-  const destination = destinations[0];
-  const itineraryHighlights = itinerary?.days.flatMap((day) => [
-    day.title ? `Day ${day.dayNumber}: ${day.title}` : undefined,
-    ...(day.placesVisited || []).slice(0, 2).map((place) => `Visit ${place}`),
-  ]) || [];
-  const itinerarySummaryHighlights =
-    itinerary?.itinerarySummary
-      .split(/[.!?]/)
-      .map((sentence) => sentence.trim())
-      .filter((sentence) => sentence.length > 34 && sentence.length < 130)
-      .slice(0, 2) || [];
-  const landmarkHighlights = uniqueValues(
-    destinations.flatMap((item) => item.keyLandmarks)
-  )
-    .slice(0, 3)
-    .map((landmark) => `Explore ${landmark}`);
-  const defaults = [
-    `Experience ${getDestinationTitle(destination)} with expert-led context`,
-    `Travel through ${getRouteLabel(tour, destinations, destination)}`,
-    "Enjoy local culture, cuisine and meaningful storytelling",
-    `Discover ${tour.category || destination.primaryHeritageFocus || "heritage"} landmarks and beautiful landscapes`,
-  ];
-
-  return uniqueValues([
-    ...itinerarySummaryHighlights,
-    ...itineraryHighlights,
-    ...landmarkHighlights,
-    ...tour.description
-      .split(/[.!?]/)
-      .map((sentence) => sentence.trim())
-      .filter((sentence) => sentence.length > 34 && sentence.length < 120)
-      .slice(0, 2),
-    ...defaults,
-  ]).slice(0, 5);
-}
-
 function createItineraryDays(
   tour: PublicTour,
   destinations: PublicDestination[],
@@ -680,9 +745,12 @@ function createFacts(
   primaryDestination: PublicDestination
 ): TourFact[] {
   const bestDeparture = getBestDeparture(departures);
-  const groupSize = bestDeparture?.seatsAvailable
-    ? `2 - ${Math.min(Math.max(bestDeparture.seatsAvailable, 2), 18)} People`
-    : "Small Group";
+  const seatCount = bestDeparture?.seatsAvailable || 0;
+  const seats = bestDeparture
+    ? seatCount > 0
+      ? `${seatCount} ${seatCount === 1 ? "Seat" : "Seats"}`
+      : "Sold Out"
+    : "Seats on Request";
 
   return [
     {
@@ -697,48 +765,13 @@ function createFacts(
     },
     {
       icon: Users,
-      label: "Group Size",
-      value: groupSize,
+      label: "Seats",
+      value: seats,
     },
     {
       icon: BarChart3,
       label: "Activity Level",
       value: getDifficultyLabel(tour),
-    },
-  ];
-}
-
-function createBottomFacts(
-  tour: PublicTour,
-  primaryDestination: PublicDestination
-): TourFact[] {
-  const averageElevation =
-    tour.tourId === "WALKING-AMALFI-COAST"
-      ? "450 - 650 m"
-      : primaryDestination.unescoSite
-        ? "UNESCO Route"
-        : primaryDestination.state || primaryDestination.countryRegion;
-
-  return [
-    {
-      icon: Sun,
-      label: "Best Time to Visit",
-      value: tour.bestSeason || "October to March",
-    },
-    {
-      icon: Users,
-      label: "Tour Type",
-      value: tour.tourType || tour.category || "Guided Tour",
-    },
-    {
-      icon: BarChart3,
-      label: "Activity Level",
-      value: getDifficultyLabel(tour),
-    },
-    {
-      icon: Mountain,
-      label: "Average Elevation",
-      value: averageElevation || "Site walks",
     },
   ];
 }
@@ -842,6 +875,14 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
   const [activeTab, setActiveTab] = useState<TourTab>("summary");
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedDepartureId, setSelectedDepartureId] = useState("");
+  const [travellerCounts, setTravellerCounts] = useState<TravellerCounts>({
+    adults: 1,
+    children: 0,
+  });
+  const [childBirthDates, setChildBirthDates] = useState<string[]>([]);
+  const [selectedAccommodationOptionId, setSelectedAccommodationOptionId] =
+    useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -905,6 +946,58 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
     [detail.departures]
   );
   const price = getLowestPrice(detail.departures);
+  const selectedDeparture =
+    detail.departures.find(
+      (departure) => getDepartureIdentifier(departure) === selectedDepartureId
+    ) || detail.departures[0];
+  const selectedPricedDeparture = useMemo(
+    () => (selectedDeparture ? toPricedDeparture(selectedDeparture) : null),
+    [selectedDeparture]
+  );
+  const selectedTravellers = useMemo(
+    () => createTravellers(travellerCounts, childBirthDates),
+    [childBirthDates, travellerCounts]
+  );
+  const totalTravellers = getTotalTravellers(travellerCounts);
+  const selectedAccommodationOption = useMemo(() => {
+    if (!selectedPricedDeparture) {
+      return undefined;
+    }
+
+    const departureValidationErrors = validateDepartureForBooking(
+      selectedPricedDeparture,
+      totalTravellers
+    );
+
+    if (departureValidationErrors.length > 0) {
+      return undefined;
+    }
+
+    try {
+      const accommodationOptions = generateAccommodationOptions({
+        travellers: selectedTravellers,
+        departure: selectedPricedDeparture,
+        childPricingRules: selectedPricedDeparture.childPricingRules,
+        roomPolicy: selectedPricedDeparture.roomPolicy,
+      });
+
+      return (
+        accommodationOptions.find(
+          (option) => option.id === selectedAccommodationOptionId
+        ) || accommodationOptions[0]
+      );
+    } catch {
+      return undefined;
+    }
+  }, [
+    selectedAccommodationOptionId,
+    selectedPricedDeparture,
+    selectedTravellers,
+    totalTravellers,
+  ]);
+  const bookingSubtotal =
+    selectedAccommodationOption?.totalPrice ??
+    (price > 0 ? price * totalTravellers : 0);
   const discountPercent = getDiscountPercent(bestDeparture);
   const oldPrice = getOldPrice(price, discountPercent);
   const facts = useMemo(
@@ -921,15 +1014,39 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
     () => createItineraryDays(detail.tour, detail.destinations, detail.itinerary),
     [detail]
   );
-  const highlights = useMemo(
-    () =>
-      getItineraryHighlights(detail.tour, detail.destinations, detail.itinerary),
-    [detail]
-  );
-  const bottomFacts = useMemo(
-    () => createBottomFacts(detail.tour, detail.primaryDestination),
-    [detail]
-  );
+  useEffect(() => {
+    const root = document.documentElement;
+    let frameId = 0;
+
+    const updateDockedState = () => {
+      frameId = 0;
+
+      const panel = document.getElementById("tour-detail-panel");
+      root.classList.toggle(
+        "tour-tabs-docked",
+        Boolean(panel && panel.getBoundingClientRect().top <= 132)
+      );
+    };
+
+    const scheduleUpdate = () => {
+      if (frameId) {
+        return;
+      }
+
+      frameId = window.requestAnimationFrame(updateDockedState);
+    };
+
+    updateDockedState();
+    window.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.addEventListener("resize", scheduleUpdate);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("resize", scheduleUpdate);
+      root.classList.remove("tour-tabs-docked");
+    };
+  }, []);
 
   function handleSelectDeparture() {
     setActiveTab("pricing");
@@ -942,9 +1059,18 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
 
   return (
     <main className="min-h-screen bg-background text-secondary">
+      <style>
+        {`
+          html.tour-tabs-docked body header {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            translate: -50% calc(-100% - 3rem) !important;
+          }
+        `}
+      </style>
       <Header />
 
-      <section className="mx-auto grid w-full max-w-[1300px] gap-5 px-5 pb-7 pt-5 lg:grid-cols-[minmax(0,1fr)_306px] lg:px-0">
+      <section className="mx-auto grid w-full max-w-[1300px] gap-5 px-5 pb-7 pt-10 sm:pt-12 lg:grid-cols-[minmax(0,1fr)_306px] lg:px-0">
         <div className="min-w-0">
           <Breadcrumbs tourName={detail.tour.tourName} />
 
@@ -975,30 +1101,42 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
 
           <TourTabs
             activeTab={activeTab}
+            childBirthDates={childBirthDates}
             departures={detail.departures}
             facts={facts}
-            highlights={highlights}
             itineraryDays={itineraryDays}
             onTabChange={setActiveTab}
-            price={price}
             itinerary={detail.itinerary}
             primaryDestination={detail.primaryDestination}
+            expert={detail.expert}
+            selectedAccommodationOptionId={selectedAccommodationOptionId}
+            selectedDepartureId={selectedDepartureId}
+            setChildBirthDates={setChildBirthDates}
+            setSelectedAccommodationOptionId={setSelectedAccommodationOptionId}
+            setSelectedDepartureId={setSelectedDepartureId}
+            setTravellerCounts={setTravellerCounts}
             tour={detail.tour}
+            travellerCounts={travellerCounts}
           />
-
-          <BottomFacts facts={bottomFacts} />
         </div>
 
-        <aside className="space-y-3 lg:sticky lg:top-5 lg:self-start">
+        <aside className="space-y-2.5 lg:sticky lg:top-3 lg:self-start">
           <PriceCard
             bestDeparture={bestDeparture}
             discountPercent={discountPercent}
             oldPrice={oldPrice}
             price={price}
             onSelectDeparture={handleSelectDeparture}
+            tour={detail.tour}
+          />
+          <SidebarBookingSummary
+            selectedAccommodationOption={selectedAccommodationOption}
+            selectedDeparture={selectedDeparture}
+            subtotal={bookingSubtotal}
+            tour={detail.tour}
+            travellerCounts={travellerCounts}
           />
           <HelpCard />
-          <ExpertCard expert={detail.expert} />
         </aside>
       </section>
     </main>
@@ -1007,7 +1145,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
 
 function Breadcrumbs({ tourName }: { tourName: string }) {
   return (
-    <nav className="flex flex-wrap items-center gap-2.5 font-sans text-[12px] font-medium text-accent">
+    <nav className="flex flex-wrap items-center gap-2.5 font-sans text-[14px] font-medium text-accent">
       <Link href="/" className="transition-colors hover:text-primary">
         Home
       </Link>
@@ -1031,7 +1169,7 @@ function TourMeta({
   tour: PublicTour;
 }) {
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 font-sans text-[13px] font-semibold text-secondary">
+    <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 font-sans text-[14px] font-semibold text-secondary">
       <MetaItem icon={Clock3} label={getDurationLabel(tour)} />
       <MetaItem
         icon={Users}
@@ -1093,7 +1231,7 @@ function TourGallery({
           className="object-cover"
         />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0)_58%,rgba(0,0,0,0.42)_100%)]" />
-        <span className="absolute bottom-4 left-4 inline-flex items-center gap-2 rounded-[6px] border border-white/45 bg-secondary/75 px-3 py-2 font-sans text-[12px] font-bold text-white shadow-[0_10px_20px_rgba(0,0,0,0.18)] backdrop-blur-sm">
+        <span className="absolute bottom-4 left-4 inline-flex items-center gap-2 rounded-[6px] border border-white/45 bg-secondary/75 px-3 py-2 font-sans text-[14px] font-bold text-white shadow-[0_10px_20px_rgba(0,0,0,0.18)] backdrop-blur-sm">
           <Landmark className="size-4" strokeWidth={1.7} />
           {tourType || "Heritage Walk"}
         </span>
@@ -1147,82 +1285,197 @@ function TourGallery({
 
 function TourTabs({
   activeTab,
+  childBirthDates,
   departures,
+  expert,
   facts,
-  highlights,
   itinerary,
   itineraryDays,
   onTabChange,
-  price,
   primaryDestination,
+  selectedAccommodationOptionId,
+  selectedDepartureId,
+  setChildBirthDates,
+  setSelectedAccommodationOptionId,
+  setSelectedDepartureId,
+  setTravellerCounts,
   tour,
+  travellerCounts,
 }: {
   activeTab: TourTab;
+  childBirthDates: string[];
   departures: PublicTourDeparture[];
+  expert: PublicExpert;
   facts: TourFact[];
-  highlights: string[];
   itinerary: PublicTourItinerary | null;
   itineraryDays: ItineraryDay[];
   onTabChange: (tab: TourTab) => void;
-  price: number;
   primaryDestination: PublicDestination;
+  selectedAccommodationOptionId: string;
+  selectedDepartureId: string;
+  setChildBirthDates: Dispatch<SetStateAction<string[]>>;
+  setSelectedAccommodationOptionId: Dispatch<SetStateAction<string>>;
+  setSelectedDepartureId: Dispatch<SetStateAction<string>>;
+  setTravellerCounts: Dispatch<SetStateAction<TravellerCounts>>;
   tour: PublicTour;
+  travellerCounts: TravellerCounts;
 }) {
+  useEffect(() => {
+    let frameId = 0;
+
+    const updateActiveTab = () => {
+      frameId = 0;
+
+      const observedSections = tabs
+        .map((tab) => ({
+          tab,
+          element: document.getElementById(tab.sectionId),
+        }))
+        .filter(
+          (item): item is {
+            tab: (typeof tabs)[number];
+            element: HTMLElement;
+          } => Boolean(item.element)
+        );
+
+      if (observedSections.length === 0) {
+        return;
+      }
+
+      const tabBar = document.querySelector<HTMLElement>("[data-tour-tabs]");
+      const activationLine =
+        (tabBar?.getBoundingClientRect().height || 56) + 40;
+      const activeSection = observedSections.reduce(
+        (current, section) =>
+          section.element.getBoundingClientRect().top <= activationLine
+            ? section
+            : current,
+        observedSections[0]
+      );
+
+      if (activeSection.tab.value !== activeTab) {
+        onTabChange(activeSection.tab.value);
+      }
+    };
+
+    const scheduleUpdate = () => {
+      if (frameId) {
+        return;
+      }
+
+      frameId = window.requestAnimationFrame(updateActiveTab);
+    };
+
+    scheduleUpdate();
+    window.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.addEventListener("resize", scheduleUpdate);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("resize", scheduleUpdate);
+    };
+  }, [activeTab, onTabChange]);
+
+  function handleTabClick(tab: (typeof tabs)[number]) {
+    onTabChange(tab.value);
+    document
+      .getElementById(tab.sectionId)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <section
       id="tour-detail-panel"
-      className="mt-5 overflow-hidden rounded-[8px] border border-border bg-card shadow-[0_12px_30px_rgba(67,43,27,0.07)]"
+      className="mt-5"
     >
-      <div className="grid border-b border-border md:grid-cols-4">
-        {tabs.map(({ icon: Icon, label, value }) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => onTabChange(value)}
-            className={cn(
-              "relative flex min-h-12 items-center justify-center gap-2 border-b border-border px-2 font-sans text-[11px] font-bold transition-colors sm:text-[12px] md:border-b-0",
-              activeTab === value
-                ? "bg-muted/45 text-primary"
-                : "text-secondary hover:bg-primary/5 hover:text-primary"
-            )}
-          >
-            <Icon className="size-4" strokeWidth={1.8} />
-            <span className="text-center leading-tight">{label}</span>
-            {activeTab === value ? (
-              <span className="absolute bottom-0 left-5 right-5 h-0.5 bg-primary" />
-            ) : null}
-          </button>
-        ))}
+      <div
+        data-tour-tabs
+        className="sticky top-0 z-[2147483647] overflow-x-auto rounded-[8px] border border-border bg-card shadow-[0_14px_34px_rgba(67,43,27,0.09)]"
+      >
+        <div className="grid min-w-[760px] grid-cols-5">
+          {tabs.map((tab) => {
+            const { icon: Icon, label, value } = tab;
+
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-controls={tab.sectionId}
+                aria-pressed={activeTab === value}
+                onClick={() => handleTabClick(tab)}
+                className={cn(
+                  "relative flex min-h-12 items-center justify-center gap-2 border-r border-border px-2 font-sans text-[13px] font-bold transition-colors last:border-r-0",
+                  activeTab === value
+                    ? "bg-muted/45 text-primary"
+                    : "text-secondary hover:bg-primary/5 hover:text-primary"
+                )}
+              >
+                <Icon className="size-4" strokeWidth={1.8} />
+                <span className="text-center leading-tight">{label}</span>
+                {activeTab === value ? (
+                  <span className="absolute bottom-0 left-5 right-5 h-0.5 bg-primary" />
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="p-4 sm:p-5">
-        {activeTab === "summary" ? (
+      <div className="mt-4 space-y-5">
+        <section
+          id="summary"
+          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4 shadow-[0_12px_30px_rgba(67,43,27,0.07)] sm:p-5"
+        >
           <SummaryPanel
             facts={facts}
-            highlights={highlights}
-            itineraryDays={itineraryDays}
             tour={tour}
           />
-        ) : null}
-        {activeTab === "itinerary" ? (
+        </section>
+
+        <section
+          id="itinerary"
+          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4 shadow-[0_12px_30px_rgba(67,43,27,0.07)] sm:p-5"
+        >
           <ItineraryPanel
-            highlights={highlights}
             itinerary={itinerary}
             itineraryDays={itineraryDays}
             primaryDestination={primaryDestination}
             tour={tour}
           />
-        ) : null}
-        {activeTab === "inclusions" ? (
+        </section>
+
+        <section
+          id="inclusions"
+          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4 shadow-[0_12px_30px_rgba(67,43,27,0.07)] sm:p-5"
+        >
           <InclusionsPanel tour={tour} />
-        ) : null}
-        {activeTab === "pricing" ? (
+        </section>
+
+        <section
+          id="departure-pricing"
+          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4 shadow-[0_12px_30px_rgba(67,43,27,0.07)] sm:p-5"
+        >
           <PricingPanel
+            childBirthDates={childBirthDates}
             departures={departures}
-            price={price}
+            selectedAccommodationOptionId={selectedAccommodationOptionId}
+            selectedDepartureId={selectedDepartureId}
+            setChildBirthDates={setChildBirthDates}
+            setSelectedAccommodationOptionId={setSelectedAccommodationOptionId}
+            setSelectedDepartureId={setSelectedDepartureId}
+            setTravellerCounts={setTravellerCounts}
             tour={tour}
+            travellerCounts={travellerCounts}
           />
-        ) : null}
+        </section>
+
+        <section
+          id="tour-expert"
+          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4 shadow-[0_12px_30px_rgba(67,43,27,0.07)] sm:p-5"
+        >
+          <ExpertPanel expert={expert} />
+        </section>
       </div>
     </section>
   );
@@ -1230,13 +1483,9 @@ function TourTabs({
 
 function SummaryPanel({
   facts,
-  highlights,
-  itineraryDays,
   tour,
 }: {
   facts: TourFact[];
-  highlights: string[];
-  itineraryDays: ItineraryDay[];
   tour: PublicTour;
 }) {
   return (
@@ -1247,47 +1496,91 @@ function SummaryPanel({
           "A thoughtfully designed tour with expert-led storytelling, local culture and curated heritage experiences."}
       </p>
       {tour.notes ? (
-        <p className="mt-3 max-w-[820px] rounded-[6px] bg-muted px-3 py-2 font-sans text-[12px] font-semibold leading-[1.6] text-accent">
+        <p className="mt-3 max-w-[820px] rounded-[6px] bg-muted px-3 py-2 font-sans text-[14px] font-semibold leading-[1.6] text-accent">
           {tour.notes}
         </p>
       ) : null}
 
       <FactGrid facts={facts} />
-
-      <div className="mt-5 border-t border-border pt-4">
-        <SectionTitle title="Itinerary Highlights" />
-        <HighlightList highlights={highlights} />
-      </div>
-
-      <DailyItinerary days={itineraryDays} />
     </>
   );
 }
 
 function ItineraryPanel({
-  highlights,
   itinerary,
   itineraryDays,
   primaryDestination,
   tour,
 }: {
-  highlights: string[];
   itinerary: PublicTourItinerary | null;
   itineraryDays: ItineraryDay[];
   primaryDestination: PublicDestination;
   tour: PublicTour;
 }) {
+  const summary =
+    itinerary?.itinerarySummary ||
+    tour.description ||
+    primaryDestination.shortDescription ||
+    "Each day combines landmark visits, expert interpretation and time to absorb the destination.";
+
   return (
-    <div id="itinerary">
+    <div>
       <SectionTitle title="Detailed Itinerary" />
-      <p className="mt-3 max-w-[820px] font-sans text-[14px] font-medium leading-[1.7] text-secondary/78">
-        {itinerary?.itinerarySummary ||
-          tour.description ||
-          primaryDestination.shortDescription ||
-          "Each day combines landmark visits, expert interpretation and time to absorb the destination."}
-      </p>
-      <HighlightList highlights={highlights} />
+      <ExpandableItinerarySummary key={summary} text={summary} />
       <DailyItinerary days={itineraryDays} />
+    </div>
+  );
+}
+
+function ExpandableItinerarySummary({ text }: { text: string }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [canExpand, setCanExpand] = useState(false);
+  const summaryRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    const summaryElement = summaryRef.current;
+
+    if (!summaryElement) {
+      return;
+    }
+
+    const updateCanExpand = () => {
+      const lineHeight = Number.parseFloat(
+        window.getComputedStyle(summaryElement).lineHeight
+      );
+
+      setCanExpand(
+        Number.isFinite(lineHeight) &&
+          summaryElement.scrollHeight > lineHeight * 5 + 1
+      );
+    };
+
+    updateCanExpand();
+    window.addEventListener("resize", updateCanExpand);
+
+    return () => window.removeEventListener("resize", updateCanExpand);
+  }, [text]);
+
+  return (
+    <div className="mt-3 max-w-[820px]">
+      <p
+        ref={summaryRef}
+        className={cn(
+          "font-sans text-[14px] font-medium leading-[1.7] text-secondary/78",
+          !isExpanded && "line-clamp-5"
+        )}
+      >
+        {text}
+      </p>
+      {canExpand ? (
+        <button
+          type="button"
+          onClick={() => setIsExpanded((current) => !current)}
+          className="mt-2 font-sans text-[14px] font-bold text-primary transition-colors hover:text-accent"
+        >
+          {isExpanded ? "Read Less" : "Read More"}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -1313,7 +1606,7 @@ function InclusionsPanel({ tour }: { tour: PublicTour }) {
         ];
 
   return (
-    <div id="inclusions">
+    <div>
       <SectionTitle title="Inclusions / Exclusions" />
       <div className="mt-4 grid gap-5 md:grid-cols-2">
         <ListBlock icon={Check} items={inclusions} title="Inclusions" />
@@ -1364,6 +1657,19 @@ function createTravellers(
       dateOfBirth: childBirthDates[index] || undefined,
     })),
   ];
+}
+
+function formatTravellerSummary(counts: TravellerCounts) {
+  return [
+    counts.adults
+      ? `${counts.adults} ${counts.adults === 1 ? "Adult" : "Adults"}`
+      : "",
+    counts.children
+      ? `${counts.children} ${counts.children === 1 ? "Child" : "Children"}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(", ") || "1 Adult";
 }
 
 function formatPricingCategory(category: PricingCategory) {
@@ -1433,27 +1739,28 @@ function formatBalanceDueDate(value: Date | null) {
 }
 
 function PricingPanel({
+  childBirthDates,
   departures,
-  price,
+  selectedAccommodationOptionId,
+  selectedDepartureId,
+  setChildBirthDates,
+  setSelectedAccommodationOptionId,
+  setSelectedDepartureId,
+  setTravellerCounts,
   tour,
+  travellerCounts,
 }: {
+  childBirthDates: string[];
   departures: PublicTourDeparture[];
-  price: number;
+  selectedAccommodationOptionId: string;
+  selectedDepartureId: string;
+  setChildBirthDates: Dispatch<SetStateAction<string[]>>;
+  setSelectedAccommodationOptionId: Dispatch<SetStateAction<string>>;
+  setSelectedDepartureId: Dispatch<SetStateAction<string>>;
+  setTravellerCounts: Dispatch<SetStateAction<TravellerCounts>>;
   tour: PublicTour;
+  travellerCounts: TravellerCounts;
 }) {
-  const firstDepartureId = departures[0]
-    ? getDepartureIdentifier(departures[0])
-    : "";
-  const [selectedDepartureId, setSelectedDepartureId] =
-    useState(firstDepartureId);
-  const [travellerCounts, setTravellerCounts] = useState<TravellerCounts>({
-    adults: 1,
-    children: 0,
-  });
-  const [childBirthDates, setChildBirthDates] = useState<string[]>([]);
-  const [selectedAccommodationOptionId, setSelectedAccommodationOptionId] =
-    useState("");
-
   const selectedDeparture =
     departures.find(
       (departure) => getDepartureIdentifier(departure) === selectedDepartureId
@@ -1476,6 +1783,27 @@ function PricingPanel({
       ? selectedDeparture.seatsAvailable
       : 12;
   const totalTravellers = getTotalTravellers(travellerCounts);
+  const travellerDetailTabs = useMemo(
+    () => createTravellerDetailTabs(travellerCounts),
+    [travellerCounts]
+  );
+  const [activeTravellerDetailId, setActiveTravellerDetailId] =
+    useState("adult-1");
+  const [travellerDetailForms, setTravellerDetailForms] = useState<
+    Record<string, TravellerDetailForm>
+  >({});
+  const activeTravellerDetailTab =
+    travellerDetailTabs.find((tab) => tab.id === activeTravellerDetailId) ||
+    travellerDetailTabs[0] || {
+      description: "This traveller will serve as the contact person for the booking.",
+      heading: "Lead Traveller",
+      id: "adult-1",
+      label: "Lead Traveller",
+    };
+  const activeTravellerDetails = {
+    ...defaultTravellerDetailForm,
+    ...(travellerDetailForms[activeTravellerDetailTab.id] || {}),
+  };
   const travellers = useMemo(
     () => createTravellers(travellerCounts, childBirthDates),
     [childBirthDates, travellerCounts]
@@ -1578,8 +1906,22 @@ function PricingPanel({
     );
   }
 
+  function updateActiveTravellerDetail(
+    field: TravellerDetailField,
+    value: TravellerDetailForm[TravellerDetailField]
+  ) {
+    setTravellerDetailForms((current) => ({
+      ...current,
+      [activeTravellerDetailTab.id]: {
+        ...defaultTravellerDetailForm,
+        ...(current[activeTravellerDetailTab.id] || {}),
+        [field]: value,
+      },
+    }));
+  }
+
   return (
-    <div id="departure-pricing" className="space-y-4">
+    <div className="space-y-4">
       <BookingStep
         actions={
           <div className="flex items-center gap-2">
@@ -1604,10 +1946,12 @@ function PricingPanel({
         step="1"
         title="Select Your Dates"
       >
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid auto-rows-fr gap-3 md:grid-cols-2">
           {departures.map((departure) => {
             const departureId = getDepartureIdentifier(departure);
             const isSelected = departureId === resolvedSelectedDepartureId;
+            const seatsAvailable = departure.seatsAvailable || 0;
+            const hasSeats = seatsAvailable > 0;
 
             return (
               <button
@@ -1615,59 +1959,68 @@ function PricingPanel({
                 type="button"
                 onClick={() => setSelectedDepartureId(departureId)}
                 className={cn(
-                  "group/date min-h-[142px] rounded-[8px] border bg-background p-3 text-left font-sans shadow-[0_8px_18px_rgba(67,43,27,0.04)] transition-all hover:border-primary hover:bg-white",
+                  "group/departure relative flex h-full w-full flex-col overflow-hidden rounded-[8px] border bg-card py-3 pl-5 pr-3 text-left font-sans shadow-[0_6px_14px_rgba(67,43,27,0.04)] transition-all before:absolute before:bottom-3 before:left-0 before:top-3 before:w-1.5 before:rounded-r-full before:bg-primary before:content-[''] hover:border-primary hover:shadow-[0_10px_20px_rgba(67,43,27,0.06)]",
                   isSelected
                     ? "border-primary ring-3 ring-primary/15"
-                    : "border-border"
+                    : "border-primary/28"
                 )}
               >
-                <span className="block text-[12px] font-bold text-secondary">
-                  {formatDate(departure.departureDate)}
+                <span className="relative z-10 grid gap-2 sm:grid-cols-3 sm:divide-x sm:divide-border">
+                      <DepartureMetric
+                        icon={CalendarDays}
+                        label="Departure Date"
+                        value={formatDate(departure.departureDate)}
+                      />
+                      <DepartureMetric
+                        icon={Hourglass}
+                        label="Tour Length"
+                        value={tour.durationDn || "Announced soon"}
+                      />
+                      <DepartureMetric
+                        icon={CalendarDays}
+                        label="Return Date"
+                        value={formatDate(departure.returnDate)}
+                      />
                 </span>
-                <span className="mt-1 block text-[10px] font-semibold text-secondary/58">
-                  Tour length
+
+                <span className="relative z-10 mt-3 grid grid-cols-[minmax(0,1fr)_64px] items-center border-t border-border pt-3">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                      <Users className="size-4" strokeWidth={1.7} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[10px] font-bold uppercase leading-tight text-secondary/58">
+                        {hasSeats ? "Seats Left" : "Availability"}
+                      </span>
+                      <strong
+                        className={cn(
+                          "mt-0.5 block text-[12px] font-bold leading-none",
+                          hasSeats ? "text-[#159447]" : "text-destructive"
+                        )}
+                      >
+                        {hasSeats ? `${seatsAvailable} Seats Left` : "Sold Out"}
+                      </strong>
+                    </span>
+                  </span>
+
+                  <span className="flex items-center justify-end border-l border-primary/15 pl-3">
+                    <span className="grid size-11 place-items-center rounded-full text-primary transition-transform group-hover/departure:scale-105">
+                      <span
+                        className={cn(
+                          "grid size-8 place-items-center rounded-full border transition-colors",
+                          isSelected
+                            ? "border-primary"
+                            : "border-primary/45"
+                        )}
+                      >
+                        <ArrowRight className="size-4" strokeWidth={2.4} />
+                      </span>
+                    </span>
+                  </span>
                 </span>
-                <strong className="block text-[11px] text-secondary">
-                  {tour.durationDn || "Announced soon"}
-                </strong>
-                <span className="mt-1.5 block text-[10px] font-semibold text-secondary/58">
-                  Return
-                </span>
-                <strong className="block text-[11px] text-secondary">
-                  {formatDate(departure.returnDate)}
-                </strong>
-                <span className="mt-1.5 block text-[10px] font-semibold text-secondary/58">
-                  Start From
-                </span>
-                <strong className="block text-[12px] text-secondary">
-                  {formatCurrency(departure.priceAdult || price)}
-                </strong>
-                <span
-                  className={cn(
-                    "mt-1.5 block text-[11px] font-bold",
-                    departure.seatsAvailable > 0
-                      ? "text-[#239a48]"
-                      : "text-destructive"
-                  )}
-                >
-                  {departure.seatsAvailable > 0
-                    ? `${departure.seatsAvailable} Seats`
-                    : "Sold Out"}
-                </span>
-                <span
-                  className={cn(
-                    "mt-2 grid size-4 place-items-center rounded-full border",
-                    isSelected
-                      ? "border-primary bg-primary"
-                      : "border-secondary/35 bg-background"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "size-1.5 rounded-full bg-white",
-                      !isSelected && "opacity-0"
-                    )}
-                  />
+
+                <span className="sr-only">
+                  {isSelected ? "Selected departure" : "Select departure"}
                 </span>
               </button>
             );
@@ -1701,13 +2054,13 @@ function PricingPanel({
                 key={`child-dob-${index + 1}`}
                 className="flex min-w-0 flex-col gap-1.5 font-sans"
               >
-                <span className="text-[11px] font-bold uppercase text-secondary/58">
+                <span className="text-[14px] font-bold uppercase text-secondary/58">
                   Child {index + 1} Date of Birth
                 </span>
                 <input
                   required
                   aria-label={`Child ${index + 1} date of birth`}
-                  className="h-11 rounded-[6px] border border-border bg-background px-3 text-[12px] font-semibold text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+                  className="h-11 rounded-[6px] border border-border bg-background px-3 text-[14px] font-semibold text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
                   type="date"
                   value={childBirthDates[index] || ""}
                   onChange={(event) =>
@@ -1719,7 +2072,7 @@ function PricingPanel({
           </div>
         ) : null}
 
-        <div className="mt-4 flex items-start gap-2 rounded-[6px] bg-muted px-3 py-2 font-sans text-[11px] font-semibold leading-[1.5] text-secondary/72">
+        <div className="mt-4 flex items-start gap-2 rounded-[6px] bg-muted px-3 py-2 font-sans text-[14px] font-semibold leading-[1.5] text-secondary/72">
           <Info className="mt-0.5 size-3.5 shrink-0 text-accent" />
           <span>
             <strong className="text-secondary">Please Note :</strong> Traveller
@@ -1727,18 +2080,63 @@ function PricingPanel({
           </span>
         </div>
 
-        <div className="mt-5">
-          <h3 className="font-sans text-[13px] font-bold text-secondary">
-            Lead Traveller
+        {travellerDetailTabs.length > 1 ? (
+          <div
+            aria-label="Traveller detail tabs"
+            className="mt-4 flex gap-2 overflow-x-auto rounded-[7px] border border-border bg-muted/35 p-1"
+            role="tablist"
+          >
+            {travellerDetailTabs.map((travellerTab) => {
+              const isSelected = travellerTab.id === activeTravellerDetailTab.id;
+
+              return (
+                <button
+                  key={travellerTab.id}
+                  aria-controls={`traveller-panel-${travellerTab.id}`}
+                  aria-selected={isSelected}
+                  className={cn(
+                    "h-9 shrink-0 rounded-[6px] px-3 font-sans text-[14px] font-bold transition-colors focus:outline-none focus:ring-3 focus:ring-primary/15",
+                    isSelected
+                      ? "bg-primary text-white shadow-[0_5px_12px_rgba(212,114,32,0.18)]"
+                      : "text-secondary/68 hover:bg-background hover:text-secondary"
+                  )}
+                  id={`traveller-tab-${travellerTab.id}`}
+                  onClick={() => setActiveTravellerDetailId(travellerTab.id)}
+                  role="tab"
+                  type="button"
+                >
+                  {travellerTab.label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+
+        <div
+          aria-labelledby={
+            travellerDetailTabs.length > 1
+              ? `traveller-tab-${activeTravellerDetailTab.id}`
+              : undefined
+          }
+          className="mt-5"
+          id={`traveller-panel-${activeTravellerDetailTab.id}`}
+          role="tabpanel"
+        >
+          <h3 className="font-sans text-[14px] font-bold text-secondary">
+            {activeTravellerDetailTab.heading}
           </h3>
-          <p className="mt-1 font-sans text-[11px] font-medium text-secondary/64">
-            This traveller will serve as the contact person for the booking.
+          <p className="mt-1 font-sans text-[14px] font-medium text-secondary/64">
+            {activeTravellerDetailTab.description}
           </p>
 
           <div className="mt-3 grid gap-3 md:grid-cols-[0.55fr_1.25fr_1.25fr]">
             <select
-              aria-label="Lead traveller title"
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[12px] font-semibold text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+              aria-label={`${activeTravellerDetailTab.label} title`}
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+              value={activeTravellerDetails.title}
+              onChange={(event) =>
+                updateActiveTravellerDetail("title", event.target.value)
+              }
             >
               <option>Mr</option>
               <option>Ms</option>
@@ -1746,14 +2144,22 @@ function PricingPanel({
               <option>Dr</option>
             </select>
             <input
-              aria-label="Lead traveller first name"
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[12px] font-semibold text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              aria-label={`${activeTravellerDetailTab.label} first name`}
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              value={activeTravellerDetails.firstName}
+              onChange={(event) =>
+                updateActiveTravellerDetail("firstName", event.target.value)
+              }
               placeholder="First Name *"
               type="text"
             />
             <input
-              aria-label="Lead traveller last name"
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[12px] font-semibold text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              aria-label={`${activeTravellerDetailTab.label} last name`}
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              value={activeTravellerDetails.lastName}
+              onChange={(event) =>
+                updateActiveTravellerDetail("lastName", event.target.value)
+              }
               placeholder="Last Name *"
               type="text"
             />
@@ -1761,19 +2167,31 @@ function PricingPanel({
 
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             <input
-              aria-label="Lead traveller email"
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[12px] font-semibold text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              aria-label={`${activeTravellerDetailTab.label} email`}
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              value={activeTravellerDetails.email}
+              onChange={(event) =>
+                updateActiveTravellerDetail("email", event.target.value)
+              }
               placeholder="Email *"
               type="email"
             />
             <input
-              aria-label="Lead traveller date of birth"
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[12px] font-semibold text-secondary outline-none transition-colors text-secondary/70 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              aria-label={`${activeTravellerDetailTab.label} date of birth`}
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary outline-none transition-colors text-secondary/70 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              value={activeTravellerDetails.dateOfBirth}
+              onChange={(event) =>
+                updateActiveTravellerDetail("dateOfBirth", event.target.value)
+              }
               type="date"
             />
             <select
-              aria-label="Lead traveller nationality"
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[12px] font-semibold text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+              aria-label={`${activeTravellerDetailTab.label} nationality`}
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+              value={activeTravellerDetails.nationality}
+              onChange={(event) =>
+                updateActiveTravellerDetail("nationality", event.target.value)
+              }
             >
               <option>India</option>
               <option>United States</option>
@@ -1785,8 +2203,15 @@ function PricingPanel({
 
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             <select
-              aria-label="Lead traveller phone country code"
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[12px] font-semibold text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+              aria-label={`${activeTravellerDetailTab.label} phone country code`}
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+              value={activeTravellerDetails.phoneCountryCode}
+              onChange={(event) =>
+                updateActiveTravellerDetail(
+                  "phoneCountryCode",
+                  event.target.value
+                )
+              }
             >
               <option>India +91</option>
               <option>US +1</option>
@@ -1794,42 +2219,60 @@ function PricingPanel({
               <option>Australia +61</option>
             </select>
             <input
-              aria-label="Lead traveller PAN number"
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[12px] font-semibold text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              aria-label={`${activeTravellerDetailTab.label} PAN number`}
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              value={activeTravellerDetails.panNumber}
+              onChange={(event) =>
+                updateActiveTravellerDetail("panNumber", event.target.value)
+              }
               placeholder="PAN Number *"
               type="text"
             />
-            <div className="flex h-11 items-center gap-4 rounded-[6px] border border-border bg-background px-3 font-sans text-[12px] font-semibold text-secondary">
+            <div className="flex h-11 items-center gap-4 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary">
               <span className="font-bold">Gender *</span>
               <label className="inline-flex items-center gap-1.5">
-                <input name="lead-gender" type="radio" />
+                <input
+                  checked={activeTravellerDetails.gender === "male"}
+                  name={`traveller-gender-${activeTravellerDetailTab.id}`}
+                  onChange={() => updateActiveTravellerDetail("gender", "male")}
+                  type="radio"
+                />
                 Male
               </label>
               <label className="inline-flex items-center gap-1.5">
-                <input name="lead-gender" type="radio" />
+                <input
+                  checked={activeTravellerDetails.gender === "female"}
+                  name={`traveller-gender-${activeTravellerDetailTab.id}`}
+                  onChange={() =>
+                    updateActiveTravellerDetail("gender", "female")
+                  }
+                  type="radio"
+                />
                 Female
               </label>
             </div>
           </div>
         </div>
 
-        <p className="mt-4 font-sans text-[12px] font-medium text-secondary/72">
-          You will fill the remaining traveller data after payment.
+        <p className="mt-4 font-sans text-[14px] font-medium text-secondary/72">
+          {travellerCounts.adults > 1
+            ? "Traveller details can be completed for each adult before payment."
+            : "You will fill the remaining traveller data after payment."}
         </p>
       </BookingStep>
 
       <BookingStep step="3" title="Select Accommodation">
-        <p className="font-sans text-[12px] font-medium text-secondary/68">
+        <p className="font-sans text-[14px] font-medium text-secondary/68">
           Select an accommodation option for {totalTravellers} traveller
           {totalTravellers === 1 ? "" : "s"}.
         </p>
         {departureValidationErrors.length > 0 ? (
-          <div className="mt-3 rounded-[7px] border border-destructive/20 bg-destructive/5 px-3 py-2 font-sans text-[12px] font-semibold text-destructive">
+          <div className="mt-3 rounded-[7px] border border-destructive/20 bg-destructive/5 px-3 py-2 font-sans text-[14px] font-semibold text-destructive">
             {departureValidationErrors[0]}
           </div>
         ) : null}
         {accommodationResult.error ? (
-          <div className="mt-3 rounded-[7px] border border-accent/20 bg-muted px-3 py-2 font-sans text-[12px] font-semibold text-accent">
+          <div className="mt-3 rounded-[7px] border border-accent/20 bg-muted px-3 py-2 font-sans text-[14px] font-semibold text-accent">
             {accommodationResult.error}
           </div>
         ) : null}
@@ -1843,7 +2286,7 @@ function PricingPanel({
             />
           ))}
         </div>
-        <p className="mt-3 font-sans text-[12px] leading-[1.6] text-secondary/65">
+        <p className="mt-3 font-sans text-[14px] leading-[1.6] text-secondary/65">
           Pricing is shown for {tour.tourName} and updates with the selected
           departure and traveller count.
         </p>
@@ -1857,9 +2300,38 @@ function PricingPanel({
         gstAmount={gstAmount}
         gstPercentage={GST_PERCENTAGE}
         selectedAccommodationOption={selectedAccommodationOption}
+        selectedDeparture={selectedDeparture}
         subtotal={subtotal}
+        tour={tour}
+        travellerCounts={travellerCounts}
       />
     </div>
+  );
+}
+
+function DepartureMetric({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+}) {
+  return (
+    <span className="flex min-w-0 flex-col items-center gap-1.5 px-1.5 text-center">
+      <span className="grid size-8 place-items-center rounded-full bg-primary/10 text-primary">
+        <Icon className="size-4" strokeWidth={1.7} />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[10px] font-bold uppercase leading-tight text-secondary/58">
+          {label}
+        </span>
+        <strong className="mt-1 block text-[12px] font-bold leading-none text-secondary">
+          {value}
+        </strong>
+      </span>
+    </span>
   );
 }
 
@@ -1929,24 +2401,24 @@ function AccommodationOptionCard({
             {option.title}
           </strong>
           {option.recommended ? (
-            <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase text-primary">
+            <span className="rounded-full bg-primary/10 px-2 py-1 text-[14px] font-bold uppercase text-primary">
               Recommended
             </span>
           ) : null}
           {option.requiresRoommateMatching ? (
-            <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-bold uppercase text-accent">
+            <span className="rounded-full bg-muted px-2 py-1 text-[14px] font-bold uppercase text-accent">
               Matching Needed
             </span>
           ) : null}
         </span>
-        <span className="mt-1 block text-[12px] font-semibold text-secondary/64">
+        <span className="mt-1 block text-[14px] font-semibold text-secondary/64">
           {option.description}
         </span>
         <span className="mt-2 flex flex-wrap gap-2">
           {Object.entries(roomCounts).map(([roomType, count]) => (
             <span
               key={roomType}
-              className="inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-white px-2 py-1 text-[11px] font-bold text-secondary/72"
+              className="inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-white px-2 py-1 text-[14px] font-bold text-secondary/72"
             >
               <BedDouble className="size-3.5 text-primary" />
               {ROOM_TYPES[roomType as keyof typeof ROOM_TYPES].title}
@@ -1955,7 +2427,7 @@ function AccommodationOptionCard({
           ))}
         </span>
       </span>
-      <span className="grid gap-1.5 rounded-[7px] bg-muted/45 p-3 text-[12px] text-secondary">
+      <span className="grid gap-1.5 rounded-[7px] bg-muted/45 p-3 text-[14px] text-secondary">
         {getPricingRows(option).map((row) => (
           <span
             key={row.key}
@@ -1969,7 +2441,7 @@ function AccommodationOptionCard({
             </span>
           </span>
         ))}
-        <span className="mt-1 flex items-center justify-between border-t border-border pt-2 text-[13px]">
+        <span className="mt-1 flex items-center justify-between border-t border-border pt-2 text-[14px]">
           <strong>Total</strong>
           <strong>{formatCurrency(option.totalPrice)}</strong>
         </span>
@@ -1986,7 +2458,10 @@ function BookingSummary({
   gstAmount,
   gstPercentage,
   selectedAccommodationOption,
+  selectedDeparture,
   subtotal,
+  tour,
+  travellerCounts,
 }: {
   balanceAmount: number;
   balanceDueDate: Date | null;
@@ -1995,13 +2470,37 @@ function BookingSummary({
   gstAmount: number;
   gstPercentage: number;
   selectedAccommodationOption?: AccommodationOption;
+  selectedDeparture?: PublicTourDeparture;
   subtotal: number;
+  tour: PublicTour;
+  travellerCounts: TravellerCounts;
 }) {
+  const travellerSummary = formatTravellerSummary(travellerCounts);
+  const departureDate = selectedDeparture
+    ? formatDate(selectedDeparture.departureDate)
+    : "Coming Soon";
+
   return (
     <BookingStep step="4" title="Booking Summary">
-      <div className="grid gap-2 rounded-[8px] border border-border bg-muted/35 p-3 font-sans text-[12px] text-secondary">
+      <div className="grid gap-2 rounded-[8px] border border-border bg-muted/35 p-3 font-sans text-[14px] text-secondary">
         <SummaryLine
-          label={selectedAccommodationOption?.title || "Tour Price"}
+          label="Tour"
+          value={tour.tourName}
+        />
+        <SummaryLine
+          label="Departure Date"
+          value={departureDate}
+        />
+        <SummaryLine
+          label="Travellers"
+          value={travellerSummary}
+        />
+        <SummaryLine
+          label="Accommodation"
+          value={selectedAccommodationOption?.title || "Not selected"}
+        />
+        <SummaryLine
+          label="Subtotal"
           value={formatCurrency(subtotal)}
         />
         <SummaryLine
@@ -2010,7 +2509,7 @@ function BookingSummary({
         />
         <SummaryLine
           strong
-          label="Grand Total"
+          label="Total"
           value={formatCurrency(grandTotal)}
         />
         <SummaryLine
@@ -2040,7 +2539,7 @@ function SummaryLine({
     <span
       className={cn(
         "flex items-center justify-between gap-4",
-        strong && "border-y border-border py-2 text-[14px]"
+        strong && "mt-1 border-t border-border pt-2 text-[14px]"
       )}
     >
       <span className={cn("font-semibold", strong && "font-bold")}>{label}</span>
@@ -2067,10 +2566,10 @@ function TravellerCounter({
   return (
     <div className="flex items-center justify-between gap-3 rounded-[7px] border border-border bg-background px-3 py-2.5">
       <span className="min-w-0 font-sans">
-        <span className="block text-[12px] font-bold leading-tight text-secondary">
+        <span className="block text-[14px] font-bold leading-tight text-secondary">
           {label}
         </span>
-        <span className="mt-0.5 block text-[10px] font-medium leading-tight text-secondary/56">
+        <span className="mt-0.5 block text-[14px] font-medium leading-tight text-secondary/56">
           {ageLabel}
         </span>
       </span>
@@ -2084,7 +2583,7 @@ function TravellerCounter({
         >
           <Minus className="size-3.5" />
         </button>
-        <strong className="w-5 text-center font-sans text-[13px] text-secondary">
+        <strong className="w-5 text-center font-sans text-[14px] text-secondary">
           {value}
         </strong>
         <button
@@ -2124,7 +2623,7 @@ function FactGrid({ facts }: { facts: TourFact[] }) {
         >
           <fact.icon className="size-7 shrink-0 text-primary" strokeWidth={1.7} />
           <span className="font-sans">
-            <span className="block text-[12px] font-medium text-secondary/72">
+            <span className="block text-[14px] font-medium text-secondary/72">
               {fact.label}
             </span>
             <strong className="mt-1 block text-[14px] leading-tight text-secondary">
@@ -2134,19 +2633,6 @@ function FactGrid({ facts }: { facts: TourFact[] }) {
         </article>
       ))}
     </div>
-  );
-}
-
-function HighlightList({ highlights }: { highlights: string[] }) {
-  return (
-    <ul className="mt-3 space-y-1.5 font-sans text-[13px] font-semibold text-secondary">
-      {highlights.map((highlight) => (
-        <li key={highlight} className="flex items-start gap-2">
-          <Check className="mt-0.5 size-4 shrink-0 text-primary" strokeWidth={2.2} />
-          <span>{highlight}</span>
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -2172,41 +2658,79 @@ function getDayMetaItems(day: ItineraryDay) {
 }
 
 function DailyItinerary({ days }: { days: ItineraryDay[] }) {
+  const [openDayNumber, setOpenDayNumber] = useState(days[0]?.dayNumber || 1);
+  const activeDayNumber = days.some((day) => day.dayNumber === openDayNumber)
+    ? openDayNumber
+    : days[0]?.dayNumber;
+
+  if (days.length === 0) {
+    return null;
+  }
+
   return (
     <div className="relative mt-4 pl-5 before:absolute before:bottom-5 before:left-[6px] before:top-4 before:w-px before:bg-primary/45">
       <div className="overflow-hidden rounded-[8px] border border-border bg-background">
-        {days.map((day) => (
-          <article
-            key={day.dayNumber}
-            className="relative grid gap-2 border-b border-border px-3 py-3 last:border-b-0 sm:grid-cols-[58px_minmax(0,1fr)]"
-          >
-            <span className="absolute -left-[20px] top-5 size-3 rounded-full bg-accent ring-4 ring-background" />
-            <span className="inline-flex h-7 w-14 items-center justify-center rounded-[5px] bg-accent font-sans text-[11px] font-bold text-white">
-              Day {day.dayNumber}
-            </span>
-            <span className="min-w-0 font-sans">
-              <strong className="block text-[14px] leading-tight text-secondary">
-                {day.title}
-              </strong>
-              <span className="mt-1 block text-[12px] font-medium leading-[1.55] text-secondary/72">
-                {day.summary}
-              </span>
-              {getDayMetaItems(day).length > 0 ? (
-                <span className="mt-2 flex flex-wrap gap-1.5">
-                  {getDayMetaItems(day).map((item) => (
-                    <span
-                      key={`${day.dayNumber}-${item.label}`}
-                      className="rounded-full bg-muted px-2 py-1 text-[11px] font-semibold leading-none text-accent"
-                    >
-                      <strong className="text-secondary">{item.label}:</strong>{" "}
-                      {item.value}
-                    </span>
-                  ))}
+        {days.map((day) => {
+          const isOpen = day.dayNumber === activeDayNumber;
+          const contentId = `itinerary-day-${day.dayNumber}`;
+          const metaItems = getDayMetaItems(day);
+
+          return (
+            <article
+              key={day.dayNumber}
+              className="relative border-b border-border last:border-b-0"
+            >
+              <span className="absolute -left-[20px] top-5 size-3 rounded-full bg-accent ring-4 ring-background" />
+              <button
+                type="button"
+                aria-controls={contentId}
+                aria-expanded={isOpen}
+                onClick={() => setOpenDayNumber(day.dayNumber)}
+                className="grid w-full gap-2 px-3 py-3 text-left font-sans transition-colors hover:bg-muted/35 sm:grid-cols-[58px_minmax(0,1fr)_32px] sm:items-start"
+              >
+                <span className="inline-flex h-7 w-14 items-center justify-center rounded-[5px] bg-accent font-sans text-[14px] font-bold text-white">
+                  Day {day.dayNumber}
                 </span>
+                <span className="min-w-0">
+                  <strong className="block text-[14px] leading-tight text-secondary">
+                    {day.title}
+                  </strong>
+                  <span className="mt-1 block text-[14px] font-medium leading-[1.55] text-secondary/72">
+                    {isOpen ? day.summary : "View day details"}
+                  </span>
+                </span>
+                <span className="grid size-8 place-items-center rounded-full border border-border bg-white text-primary">
+                  {isOpen ? (
+                    <Minus className="size-3.5" />
+                  ) : (
+                    <Plus className="size-3.5" />
+                  )}
+                </span>
+              </button>
+
+              {isOpen ? (
+                <div
+                  id={contentId}
+                  className="px-3 pb-4 font-sans sm:pl-[74px] sm:pr-12"
+                >
+                  {metaItems.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {metaItems.map((item) => (
+                        <span
+                          key={`${day.dayNumber}-${item.label}`}
+                          className="rounded-full bg-muted px-2.5 py-1.5 text-[14px] font-semibold leading-tight text-accent"
+                        >
+                          <strong className="text-secondary">{item.label}:</strong>{" "}
+                          {item.value}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
-            </span>
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </div>
     </div>
   );
@@ -2226,7 +2750,7 @@ function ListBlock({
       <h3 className="font-heading text-[20px] font-bold text-secondary">
         {title}
       </h3>
-      <ul className="mt-3 space-y-2.5 font-sans text-[13px] font-semibold leading-[1.55] text-secondary/78">
+      <ul className="mt-3 space-y-2.5 font-sans text-[14px] font-semibold leading-[1.55] text-secondary/78">
         {items.map((item) => (
           <li key={item} className="flex items-start gap-3">
             <Icon className="mt-0.5 size-4 shrink-0 text-primary" strokeWidth={2.1} />
@@ -2238,112 +2762,352 @@ function ListBlock({
   );
 }
 
-function BottomFacts({ facts }: { facts: TourFact[] }) {
-  return (
-    <section className="mt-5 grid overflow-hidden rounded-[8px] border border-border bg-card shadow-[0_10px_24px_rgba(67,43,27,0.05)] sm:grid-cols-2 lg:grid-cols-4">
-      {facts.map((fact, index) => (
-        <article
-          key={fact.label}
-          className={cn(
-            "flex min-h-[72px] items-center gap-3 px-4 py-3",
-            index > 0 && "border-t border-border sm:border-l sm:border-t-0"
-          )}
-        >
-          <fact.icon className="size-7 shrink-0 text-primary" strokeWidth={1.55} />
-          <span className="font-sans">
-            <span className="block text-[12px] font-bold text-secondary">
-              {fact.label}
-            </span>
-            <span className="mt-1 block text-[12px] font-medium text-secondary/72">
-              {fact.value}
-            </span>
-          </span>
-        </article>
-      ))}
-    </section>
-  );
-}
-
 function PriceCard({
   bestDeparture,
   discountPercent,
   oldPrice,
   onSelectDeparture,
   price,
+  tour,
 }: {
   bestDeparture?: PublicTourDeparture;
   discountPercent: number;
   oldPrice: number;
   onSelectDeparture: () => void;
   price: number;
+  tour: PublicTour;
 }) {
+  const [isEnquiryOpen, setIsEnquiryOpen] = useState(false);
+
   return (
-    <article className="rounded-[8px] border border-border bg-card p-4 shadow-[0_12px_30px_rgba(67,43,27,0.07)]">
-      <div className="flex items-start justify-between gap-4">
-        <span className="font-sans text-[13px] font-semibold text-secondary">
-          From{" "}
-          {oldPrice > 0 ? (
-            <span className="text-secondary/58 line-through">
-              {formatCurrency(oldPrice)}
+    <>
+    <article className="overflow-hidden rounded-[8px] border border-primary/15 bg-card shadow-[0_12px_28px_rgba(67,43,27,0.08)]">
+      <div className="border-b border-border bg-[#fff8f1] px-3 py-2.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 font-sans">
+            <span className="block text-[14px] font-semibold text-secondary/72">
+              Starts From
             </span>
-          ) : null}
-        </span>
+            <strong className="mt-1 flex flex-wrap items-end gap-x-2 gap-y-1 text-[27px] font-bold leading-none text-secondary">
+              {formatCurrency(price)}
+              <span className="pb-0.5 text-[14px] font-bold leading-none text-secondary/62">
+                per person
+              </span>
+            </strong>
+            {oldPrice > 0 ? (
+              <span className="mt-1 block text-[14px] font-semibold text-secondary/58">
+                Usually{" "}
+                <span className="line-through">{formatCurrency(oldPrice)}</span>
+              </span>
+            ) : null}
+          </div>
+
         {discountPercent > 0 ? (
-          <span className="rounded-full bg-accent px-2.5 py-1.5 font-sans text-[12px] font-bold text-white">
+          <span className="shrink-0 rounded-full bg-accent px-2 py-1 font-sans text-[14px] font-bold text-white">
             -{discountPercent}%
           </span>
         ) : null}
+        </div>
       </div>
 
-      <strong className="mt-3 block font-sans text-[34px] font-bold leading-none text-secondary">
-        {formatCurrency(price)}
-      </strong>
-      <span className="mt-2 block font-sans text-[12px] font-semibold text-secondary">
-        per person
-      </span>
-
-      <div className="mt-5 flex items-center gap-3 border-y border-border py-4">
-        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
-          <BedDouble className="size-4" strokeWidth={1.8} />
-        </span>
-        <span className="font-sans text-[12px] font-bold leading-[1.5] text-secondary">
-          Price based on Private Double Room
-        </span>
-      </div>
-
-      <Button
-        type="button"
-        onClick={onSelectDeparture}
-        className="mt-5 w-full justify-between gap-3 px-5 text-[15px] font-normal"
-      >
-        <span className="inline-flex items-center gap-2">
-          <CalendarDays className="size-4" strokeWidth={1.9} />
-          Select Departure
-        </span>
-        <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
-      </Button>
-
-      <Button
-        nativeButton={false}
-        render={
-          <a
-            href={`mailto:Holidays@easemytrip.com?subject=${encodeURIComponent(
-              "Tour enquiry"
-            )}`}
-          />
-        }
-        variant="outline"
-        className="mt-3 w-full px-5 text-[15px] font-normal"
-      >
-        Enquire Now
-      </Button>
+      <div className="px-3 py-3">
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            type="button"
+            onClick={onSelectDeparture}
+            className="h-10 px-3 text-[14px] font-semibold"
+          >
+            Book Now
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setIsEnquiryOpen(true)}
+            className="h-10 px-3 text-[14px] font-semibold"
+          >
+            Enquire Now
+          </Button>
+        </div>
 
       {bestDeparture ? (
-        <p className="mt-4 font-sans text-[11px] font-semibold text-secondary/58">
+        <p className="mt-2 flex items-center gap-1.5 font-sans text-[14px] font-semibold text-secondary/58">
+          <CalendarDays className="size-3 text-primary" strokeWidth={1.9} />
           Next departure: {formatDate(bestDeparture.departureDate)}
         </p>
       ) : null}
+      </div>
     </article>
+    {isEnquiryOpen ? (
+      <EnquiryModal
+        bestDeparture={bestDeparture}
+        tourName={tour.tourName}
+        onClose={() => setIsEnquiryOpen(false)}
+      />
+    ) : null}
+    </>
+  );
+}
+
+function EnquiryModal({
+  bestDeparture,
+  onClose,
+  tourName,
+}: {
+  bestDeparture?: PublicTourDeparture;
+  onClose: () => void;
+  tourName: string;
+}) {
+  const [isSubmitted, setIsSubmitted] = useState(false);
+
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSubmitted(true);
+  }
+
+  const modal = (
+    <div
+      aria-modal="true"
+      className="fixed inset-0 z-[2147483647] flex items-start justify-center overflow-y-auto bg-secondary/62 px-4 py-4 backdrop-blur-sm sm:py-6"
+      role="dialog"
+    >
+      <button
+        type="button"
+        aria-label="Close enquiry form"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+      />
+
+      <form
+        onSubmit={handleSubmit}
+        className="relative max-h-[calc(100dvh-2rem)] w-full max-w-[860px] overflow-y-auto rounded-[10px] border border-primary/20 bg-card shadow-[0_28px_80px_rgba(35,24,16,0.34)]"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-border bg-[#fff8f1] px-4 py-3">
+          <div>
+            <h2 className="font-heading text-[28px] font-bold leading-tight text-secondary">
+              Enquire Now
+            </h2>
+            <p className="mt-0.5 font-sans text-[14px] font-bold text-primary">
+              {tourName}
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Close enquiry form"
+            onClick={onClose}
+            className="grid size-8 shrink-0 place-items-center rounded-full border border-primary/20 bg-white text-secondary shadow-[0_8px_18px_rgba(67,43,27,0.1)] transition-colors hover:border-primary hover:bg-primary hover:text-white"
+          >
+            <X className="size-4" strokeWidth={2} />
+          </button>
+        </div>
+
+        <div className="px-4 py-4">
+          <p className="max-w-[780px] font-sans text-[14px] font-medium leading-[1.55] text-secondary/78">
+            Do you have any questions before you book? Complete the form below
+            and our tour team will get back to you shortly.
+          </p>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <EnquiryField label="Your Name *">
+              <input required type="text" placeholder="Your Name" />
+            </EnquiryField>
+            <EnquiryField label="Email address *">
+              <input required type="email" placeholder="Email address" />
+            </EnquiryField>
+            <EnquiryField label="Phone Number *">
+              <input required type="tel" placeholder="Phone Number" />
+            </EnquiryField>
+            <EnquiryField label="Current City *">
+              <input required type="text" placeholder="Current City" />
+            </EnquiryField>
+            <EnquiryField label="Total No. of Guests *">
+              <select required defaultValue="2 Adults">
+                <option>1 Adult</option>
+                <option>2 Adults</option>
+                <option>2 Adults, 1 Child</option>
+                <option>2 Adults, 2 Children</option>
+                <option>Group of 5+</option>
+              </select>
+            </EnquiryField>
+            <EnquiryField label="Date Of Travel *">
+              <input
+                required
+                type="date"
+                defaultValue={bestDeparture?.departureDate?.slice(0, 10) || ""}
+              />
+            </EnquiryField>
+          </div>
+
+          <EnquiryField className="mt-3" label="Please write Your Queries. *">
+            <textarea
+              required
+              rows={3}
+              placeholder="Tell us what you would like to know."
+            />
+          </EnquiryField>
+
+          {isSubmitted ? (
+            <p className="mt-3 rounded-[8px] border border-primary/20 bg-primary/8 px-3 py-2 font-sans text-[14px] font-bold text-primary">
+              Thank you. Your enquiry has been captured for this tour.
+            </p>
+          ) : null}
+
+          <Button type="submit" className="mt-4 h-10 px-7 text-[14px] font-semibold">
+            Send Question
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(modal, document.body);
+}
+
+function EnquiryField({
+  children,
+  className,
+  label,
+}: {
+  children: ReactNode;
+  className?: string;
+  label: string;
+}) {
+  return (
+    <label className={cn("block font-sans", className)}>
+      <span className="mb-1 block text-[14px] font-bold text-secondary/58">
+        {label}
+      </span>
+      <span className="block [&>input]:h-10 [&>input]:w-full [&>input]:rounded-[8px] [&>input]:border [&>input]:border-border [&>input]:bg-background [&>input]:px-3 [&>input]:text-[14px] [&>input]:font-semibold [&>input]:text-secondary [&>input]:outline-none [&>input]:transition-colors [&>input]:placeholder:text-secondary/38 focus-within:[&>input]:border-primary focus-within:[&>input]:ring-3 focus-within:[&>input]:ring-primary/15 [&>select]:h-10 [&>select]:w-full [&>select]:rounded-[8px] [&>select]:border [&>select]:border-border [&>select]:bg-background [&>select]:px-3 [&>select]:text-[14px] [&>select]:font-semibold [&>select]:text-secondary [&>select]:outline-none [&>select]:transition-colors focus-within:[&>select]:border-primary focus-within:[&>select]:ring-3 focus-within:[&>select]:ring-primary/15 [&>textarea]:w-full [&>textarea]:rounded-[8px] [&>textarea]:border [&>textarea]:border-border [&>textarea]:bg-background [&>textarea]:px-3 [&>textarea]:py-2.5 [&>textarea]:text-[14px] [&>textarea]:font-semibold [&>textarea]:text-secondary [&>textarea]:outline-none [&>textarea]:transition-colors [&>textarea]:placeholder:text-secondary/38 focus-within:[&>textarea]:border-primary focus-within:[&>textarea]:ring-3 focus-within:[&>textarea]:ring-primary/15">
+        {children}
+      </span>
+    </label>
+  );
+}
+
+function SidebarBookingSummary({
+  selectedAccommodationOption,
+  selectedDeparture,
+  subtotal,
+  tour,
+  travellerCounts,
+}: {
+  selectedAccommodationOption?: AccommodationOption;
+  selectedDeparture?: PublicTourDeparture;
+  subtotal: number;
+  tour: PublicTour;
+  travellerCounts: TravellerCounts;
+}) {
+  const taxesAndFees = subtotal > 0 ? Math.round((subtotal * GST_PERCENTAGE) / 100) : 0;
+  const total = subtotal + taxesAndFees;
+  const departureDate = selectedDeparture
+    ? formatDate(selectedDeparture.departureDate)
+    : "Coming Soon";
+  const travellerSummary = formatTravellerSummary(travellerCounts);
+
+  return (
+    <article className="rounded-[8px] border border-border bg-card p-3 shadow-[0_10px_24px_rgba(67,43,27,0.06)]">
+      <h2 className="flex items-center gap-2 font-heading text-[17px] font-bold text-secondary">
+        <BookOpen className="size-3.5 text-primary" strokeWidth={1.8} />
+        Booking Summary
+      </h2>
+
+      <div className="mt-3 space-y-2 font-sans">
+        <SidebarSummaryItem
+          icon={BookOpen}
+          label="Tour"
+          value={tour.tourName}
+        />
+        <SidebarSummaryItem
+          icon={CalendarDays}
+          label="Departure Date"
+          value={departureDate}
+        />
+        <SidebarSummaryItem
+          icon={Users}
+          label="Travellers"
+          value={travellerSummary}
+        />
+        <SidebarSummaryItem
+          icon={BedDouble}
+          label="Accommodation"
+          value={selectedAccommodationOption?.title || "Not selected"}
+        />
+      </div>
+
+      <div className="mt-3 font-sans text-[14px] text-secondary">
+        <SidebarAmountLine label="Subtotal" value={formatCurrency(subtotal)} />
+        <SidebarAmountLine label="Taxes & Fees" value={formatCurrency(taxesAndFees)} />
+        <SidebarAmountLine strong label="Total" value={formatCurrency(total)} />
+      </div>
+    </article>
+  );
+}
+
+function SidebarSummaryItem({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(132px,1fr)_minmax(96px,1fr)] items-start gap-3 py-1">
+      <span className="flex min-w-0 items-start gap-2.5">
+        <Icon className="mt-0.5 size-3.5 shrink-0 text-primary" strokeWidth={1.8} />
+        <span className="min-w-0 text-[14px] font-medium leading-tight text-secondary/58">
+          {label}
+        </span>
+      </span>
+      <strong className="min-w-0 break-words text-right text-[14px] leading-tight text-secondary">
+        {value}
+      </strong>
+    </div>
+  );
+}
+
+function SidebarAmountLine({
+  label,
+  strong = false,
+  value,
+}: {
+  label: string;
+  strong?: boolean;
+  value: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "flex items-center justify-between gap-4",
+        strong ? "mt-1 border-t border-border pb-1 pt-3 text-[14px]" : "py-1"
+      )}
+    >
+      <span className={cn("font-semibold text-secondary/64", strong && "text-secondary")}>
+        {label}
+      </span>
+      <strong className="text-secondary">{value}</strong>
+    </span>
   );
 }
 
@@ -2353,11 +3117,11 @@ function HelpCard() {
       <UserRound className="size-9 shrink-0 text-secondary" strokeWidth={1.5} />
       <div className="font-sans text-secondary">
         <h2 className="font-heading text-[18px] font-bold">Need Help?</h2>
-        <p className="mt-1.5 flex flex-wrap items-center gap-x-1 text-[11px] font-semibold">
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-1 text-[12px] font-semibold">
           <PhoneCall className="size-3.5 text-primary" />
           Call us : 011-43033003 | 43131313
         </p>
-        <p className="mt-1 flex flex-wrap items-center gap-x-1 text-[11px] font-semibold">
+        <p className="mt-1 flex flex-wrap items-center gap-x-1 text-[12px] font-semibold">
           <Mail className="size-3.5 text-primary" />
           Mail us : Holidays@easemytrip.com
         </p>
@@ -2366,48 +3130,58 @@ function HelpCard() {
   );
 }
 
-function ExpertCard({ expert }: { expert: PublicExpert }) {
+function ExpertPanel({ expert }: { expert: PublicExpert }) {
   return (
-    <article className="rounded-[8px] border border-border bg-card p-5 shadow-[0_12px_30px_rgba(67,43,27,0.07)]">
-      <div className="flex justify-center">
-        <span className="relative size-20 overflow-hidden rounded-full bg-border">
+    <div className="grid gap-5 md:grid-cols-[180px_minmax(0,1fr)] md:items-start">
+      <div className="flex justify-center md:justify-start">
+        <span className="relative size-32 overflow-hidden rounded-[8px] bg-border">
           <Image
             src={getExpertImage(expert)}
             alt={expert.fullName}
             fill
-            sizes="80px"
+            sizes="128px"
             className="object-cover"
           />
         </span>
       </div>
 
-      <h2 className="mt-4 text-center font-heading text-[21px] font-bold leading-tight text-secondary">
-        {expert.fullName}
-      </h2>
-      <p className="mt-2 text-center font-sans text-[13px] font-bold text-primary">
-        {getExpertRole(expert)}
-      </p>
-      <p className="mt-4 font-sans text-[13px] font-medium leading-[1.65] text-secondary/82">
-        {getExpertBio(expert)}
-      </p>
+      <div>
+        <SectionTitle title="Tour Expert" />
+        <h3 className="mt-4 font-heading text-[26px] font-bold leading-tight text-secondary">
+          {expert.fullName}
+        </h3>
+        <p className="mt-2 font-sans text-[14px] font-bold text-primary">
+          {getExpertRole(expert)}
+        </p>
+        <p className="mt-4 font-sans text-[14px] font-medium leading-[1.75] text-secondary/82">
+          {getExpertBio(expert)}
+        </p>
 
-      <div className="mt-4 flex items-center justify-center gap-4 text-primary">
-        <Landmark className="size-6" strokeWidth={1.5} />
-        <span className="h-6 w-px bg-border" />
-        <BookOpen className="size-6" strokeWidth={1.5} />
-        <span className="h-6 w-px bg-border" />
-        <Clock3 className="size-6" strokeWidth={1.5} />
+        <div className="mt-4 flex flex-wrap items-center gap-4 text-primary">
+          <span className="inline-flex items-center gap-2 font-sans text-[14px] font-bold text-secondary">
+            <Landmark className="size-5 text-primary" strokeWidth={1.5} />
+            Heritage Context
+          </span>
+          <span className="inline-flex items-center gap-2 font-sans text-[14px] font-bold text-secondary">
+            <BookOpen className="size-5 text-primary" strokeWidth={1.5} />
+            Storytelling
+          </span>
+          <span className="inline-flex items-center gap-2 font-sans text-[14px] font-bold text-secondary">
+            <Clock3 className="size-5 text-primary" strokeWidth={1.5} />
+            Field Experience
+          </span>
+        </div>
+
+        <Button
+          nativeButton={false}
+          render={<Link href="/about" />}
+          variant="outline"
+          className="mt-5 justify-between px-5 text-[14px] font-normal"
+        >
+          View Profile
+          <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />
+        </Button>
       </div>
-
-      <Button
-        nativeButton={false}
-        render={<Link href="/about" />}
-        variant="outline"
-        className="mt-5 w-full justify-between px-5 text-[15px] font-normal"
-      >
-        View Profile
-        <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />
-      </Button>
-    </article>
+    </div>
   );
 }

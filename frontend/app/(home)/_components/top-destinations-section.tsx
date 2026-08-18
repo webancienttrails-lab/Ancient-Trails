@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, MapPin, Minus, Plus, X } from "lucide-react";
+import { CalendarDays, MapPin, X } from "lucide-react";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
 import { getDestinationHref } from "@/lib/routes";
@@ -386,7 +386,7 @@ export function TopDestinationsSection({
                   <MapPushPin active={isActive} />
                   <span
                     className={cn(
-                      "pointer-events-none absolute z-30 w-[160px] translate-y-0 rounded-[14px] border border-primary/15 bg-white p-2 text-center opacity-0 shadow-[0_16px_34px_rgba(50,50,50,0.16)] transition-[opacity,transform] duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100",
+                      "pointer-events-none absolute z-30 w-[160px] translate-y-0 rounded-[8px] border border-primary/15 bg-white p-2 text-center opacity-0 shadow-[0_16px_34px_rgba(50,50,50,0.16)] transition-[opacity,transform] duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100",
                       showBelow ? "top-full mt-3" : "bottom-full mb-3",
                       !isActive && (showBelow ? "translate-y-1" : "-translate-y-1"),
                       isActive && "opacity-100",
@@ -412,7 +412,7 @@ export function TopDestinationsSection({
                       )}
                     />
                     <span className="relative z-10 block min-w-0">
-                      <span className="relative mx-auto block aspect-[4/3] w-[90%] overflow-hidden rounded-[10px] bg-muted shadow-sm">
+                      <span className="relative block aspect-[4/3] w-full overflow-hidden rounded-[6px] bg-muted shadow-sm">
                         <Image
                           src={destination.image}
                           alt=""
@@ -437,7 +437,7 @@ export function TopDestinationsSection({
                 "relative rounded-[10px] border border-primary/15 bg-white p-3 shadow-[0_14px_34px_rgba(50,50,50,0.12)] transition-[opacity,transform,box-shadow] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
                 isCardChanging
                   ? "translate-y-2 opacity-60"
-                  : "translate-y-0 opacity-100 hover:-translate-y-1 hover:shadow-[0_18px_42px_rgba(50,50,50,0.15)]"
+                  : "translate-y-0 opacity-100"
               )}
             >
               <button
@@ -455,7 +455,7 @@ export function TopDestinationsSection({
                   alt={`${activeDestination.name} tour`}
                   fill
                   sizes="245px"
-                  className="object-cover transition-transform duration-[900ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:scale-[1.05]"
+                  className="object-cover"
                 />
               </div>
 
@@ -498,35 +498,6 @@ export function TopDestinationsSection({
                   Explore {activeDestination.name}
                   <ButtonArrow className="h-3 w-6 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
                 </Button>
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-center justify-center gap-8">
-              <div className="overflow-hidden rounded-[5px] border border-border bg-white shadow-[0_8px_20px_rgba(50,50,50,0.1)]">
-                <button
-                  type="button"
-                  aria-label="Zoom in"
-                  className="grid size-8 place-items-center border-b border-border text-secondary transition-colors hover:text-primary"
-                >
-                  <Plus className="size-4" strokeWidth={2} />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Zoom out"
-                  className="grid size-8 place-items-center text-secondary transition-colors hover:text-primary"
-                >
-                  <Minus className="size-4" strokeWidth={2} />
-                </button>
-              </div>
-
-              <div className="relative size-[96px]">
-                <Image
-                  src="/home assets/destination/North_d.webp"
-                  alt="Map direction compass"
-                  fill
-                  sizes="96px"
-                  className="object-contain opacity-75 mix-blend-multiply contrast-90 saturate-75"
-                />
               </div>
             </div>
           </aside>

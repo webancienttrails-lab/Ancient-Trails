@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Pause, Play, Volume2, VolumeX, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
 import { TextReveal } from "./reveal-on-view";
@@ -179,12 +180,13 @@ export function AboutSection() {
         </div>
       </div>
 
-      {isVideoOpen ? (
+      {isVideoOpen && typeof document !== "undefined"
+        ? createPortal(
         <div
           role="dialog"
           aria-modal="true"
           aria-label="Ancient Trails video"
-          className={`fixed inset-0 z-50 flex items-center justify-center bg-secondary/80 px-5 py-8 backdrop-blur-sm transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          className={`fixed inset-0 z-[2147483647] flex items-center justify-center bg-secondary/80 px-5 py-8 backdrop-blur-sm transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
             isVideoVisible ? "opacity-100" : "opacity-0"
           }`}
         >
@@ -242,8 +244,10 @@ export function AboutSection() {
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+        </div>,
+          document.body
+        )
+        : null}
     </section>
   );
 }

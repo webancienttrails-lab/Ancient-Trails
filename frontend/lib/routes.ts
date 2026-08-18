@@ -74,6 +74,42 @@ export function getDestinationsHref(search = "") {
   return `/destinations?${params.toString()}`;
 }
 
+export function getToursHref({
+  adults,
+  children,
+  month = "",
+  search = "",
+}: {
+  adults?: number;
+  children?: number;
+  month?: string;
+  search?: string;
+} = {}) {
+  const params = new URLSearchParams();
+  const trimmedSearch = search.trim();
+  const trimmedMonth = month.trim();
+
+  if (trimmedSearch) {
+    params.set("search", trimmedSearch);
+  }
+
+  if (trimmedMonth) {
+    params.set("month", trimmedMonth);
+  }
+
+  if (typeof adults === "number" && adults !== 2) {
+    params.set("adults", String(adults));
+  }
+
+  if (typeof children === "number" && children > 0) {
+    params.set("children", String(children));
+  }
+
+  const query = params.toString();
+
+  return `/tours${query ? `?${query}` : ""}`;
+}
+
 export function matchesRouteValue(
   routeValue: string,
   idValue = "",

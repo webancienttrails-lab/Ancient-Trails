@@ -10,12 +10,9 @@ import {
   ChevronDown,
   Clock3,
   Grid2X2,
-  Heart,
   Landmark,
   List as ListIcon,
   MapPin,
-  Minus,
-  Plus,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
@@ -25,6 +22,8 @@ import {
 } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
+import { PlanTripInline } from "@/components/plan-trip-launcher";
+import { TourShowcaseCard } from "@/components/tours/tour-showcase-card";
 import {
   fallbackUpcomingTours,
   getHomeMediaUrl,
@@ -44,10 +43,19 @@ type AvailabilityFilter = "all" | "available" | "coming-soon" | "sold-out";
 type SortMode = "recommended" | "earliest" | "price-low" | "price-high" | "duration";
 type ViewMode = "grid" | "list";
 
+type SelectOption = {
+  label: string;
+  value: string;
+};
+
 type CountOption = {
   count: number;
   label: string;
   value: string;
+};
+
+type MonthOption = SelectOption & {
+  timestamp: number;
 };
 
 type TourListItem = {
@@ -161,6 +169,44 @@ function formatDate(value: string | null) {
   }
 
   return dateFormatter.format(date).replace(",", "");
+}
+
+function getMonthValue(value: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getMonthTimestamp(value: string) {
+  const [year, month] = value.split("-").map(Number);
+
+  if (!year || !month) {
+    return 0;
+  }
+
+  return new Date(year, month - 1, 1).getTime();
+}
+
+function formatMonthLabel(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, 1);
+
+  if (!year || !month || Number.isNaN(date.getTime())) {
+    return "Any Month";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    year: "numeric",
+  }).format(date);
 }
 
 function formatPrice(value: number) {
@@ -328,6 +374,58 @@ function createCountOptions(
   return Array.from(counts.values()).sort((left, right) =>
     left.label.localeCompare(right.label)
   );
+}
+
+function createMonthOptions(items: TourListItem[]) {
+  const months = new Map<string, MonthOption>();
+
+  items.forEach((item) => {
+    item.departures.forEach((departure) => {
+      const value = getMonthValue(departure.departureDate);
+
+      if (!value || months.has(value)) {
+        return;
+      }
+
+      months.set(value, {
+        label: formatMonthLabel(value),
+        timestamp: getMonthTimestamp(value),
+        value,
+      });
+    });
+  });
+
+  return Array.from(months.values()).sort(
+    (left, right) => left.timestamp - right.timestamp
+  );
+}
+
+function getMonthScopedItem(item: TourListItem, selectedMonth: string) {
+  if (!selectedMonth) {
+    return item;
+  }
+
+  const monthDepartures = item.departures.filter(
+    (departure) => getMonthValue(departure.departureDate) === selectedMonth
+  );
+
+  if (monthDepartures.length === 0) {
+    return null;
+  }
+
+  const totalSeats = monthDepartures.reduce(
+    (sum, departure) => sum + Math.max(0, departure.seatsAvailable),
+    0
+  );
+
+  return {
+    ...item,
+    availability: getAvailability(monthDepartures),
+    departures: monthDepartures,
+    lowestPrice: getLowestPrice(monthDepartures),
+    nextDeparture: getNextDeparture(monthDepartures),
+    totalSeats,
+  } satisfies TourListItem;
 }
 
 function getShowingRange(currentPage: number, totalCount: number) {
@@ -541,8 +639,14 @@ function toggleSelection(selection: string[], value: string) {
 }
 
 export function ToursListingPage({
+  initialAdultCount = 2,
+  initialChildCount = 0,
+  initialMonthValue = "",
   initialSearchQuery = "",
 }: {
+  initialAdultCount?: number;
+  initialChildCount?: number;
+  initialMonthValue?: string;
   initialSearchQuery?: string;
 }) {
   const fallbackTours = useMemo(() => createFallbackTours(), []);
@@ -558,11 +662,12 @@ export function ToursListingPage({
   const [selectedDestinationValues, setSelectedDestinationValues] = useState<
     string[]
   >([]);
+  const [selectedMonth, setSelectedMonth] = useState(initialMonthValue);
   const [durationFilter, setDurationFilter] = useState<DurationFilter>("all");
   const [availabilityFilter, setAvailabilityFilter] =
     useState<AvailabilityFilter>("all");
-  const [adultCount, setAdultCount] = useState(2);
-  const [childCount, setChildCount] = useState(0);
+  const [adultCount, setAdultCount] = useState(initialAdultCount);
+  const [childCount, setChildCount] = useState(initialChildCount);
   const [sortMode, setSortMode] = useState<SortMode>("recommended");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [currentPage, setCurrentPage] = useState(1);
@@ -649,21 +754,34 @@ export function ToursListingPage({
     [allItems]
   );
 
+  const monthOptions = useMemo(() => createMonthOptions(allItems), [allItems]);
+  const selectedMonthIsAvailable =
+    !selectedMonth ||
+    monthOptions.some((monthOption) => monthOption.value === selectedMonth);
+  const effectiveSelectedMonth = selectedMonthIsAvailable ? selectedMonth : "";
+
   const filteredItems = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
     return sortItems(
-      allItems.filter((item) => {
+      allItems.flatMap((item) => {
+        const scopedItem = getMonthScopedItem(item, effectiveSelectedMonth);
+
+        if (!scopedItem) {
+          return [];
+        }
+
         const typeValues = uniqueValues([
-          item.tour.category,
-          item.tour.tourType,
+          scopedItem.tour.category,
+          scopedItem.tour.tourType,
         ]).map(normalizeKey);
         const destinationValue = normalizeKey(
-          item.destination?.destinationName ||
-            item.destination?.city ||
-            getPrimaryDestinationId(item.tour)
+          scopedItem.destination?.destinationName ||
+            scopedItem.destination?.city ||
+            getPrimaryDestinationId(scopedItem.tour)
         );
-        const matchesSearch = !query || getTourSearchText(item).includes(query);
+        const matchesSearch =
+          !query || getTourSearchText(scopedItem).includes(query);
         const matchesType =
           selectedTypeValues.length === 0 ||
           selectedTypeValues.some((value) => typeValues.includes(value));
@@ -672,23 +790,24 @@ export function ToursListingPage({
           selectedDestinationValues.includes(destinationValue);
         const matchesAvailability =
           availabilityFilter === "all" ||
-          item.availability === availabilityFilter;
+          scopedItem.availability === availabilityFilter;
         const matchesTravellers =
-          item.availability !== "available" || item.totalSeats >= travellerCount;
+          scopedItem.availability !== "available" ||
+          scopedItem.totalSeats >= travellerCount;
         const matchesPrice =
           !effectivePriceLimit ||
-          !item.lowestPrice ||
-          item.lowestPrice <= effectivePriceLimit;
+          !scopedItem.lowestPrice ||
+          scopedItem.lowestPrice <= effectivePriceLimit;
 
-        return (
-          matchesSearch &&
+        return matchesSearch &&
           matchesType &&
           matchesDestination &&
-          matchesDuration(item, durationFilter) &&
+          matchesDuration(scopedItem, durationFilter) &&
           matchesAvailability &&
           matchesTravellers &&
           matchesPrice
-        );
+          ? [scopedItem]
+          : [];
       }),
       sortMode
     );
@@ -697,6 +816,7 @@ export function ToursListingPage({
     availabilityFilter,
     durationFilter,
     effectivePriceLimit,
+    effectiveSelectedMonth,
     searchQuery,
     selectedDestinationValues,
     selectedTypeValues,
@@ -713,6 +833,7 @@ export function ToursListingPage({
   const activeFilterCount =
     selectedTypeValues.length +
     selectedDestinationValues.length +
+    (effectiveSelectedMonth ? 1 : 0) +
     (durationFilter !== "all" ? 1 : 0) +
     (availabilityFilter !== "all" ? 1 : 0) +
     (priceLimit > 0 && maxPrice > 0 && priceLimit < maxPrice ? 1 : 0) +
@@ -723,6 +844,7 @@ export function ToursListingPage({
     setSearchQuery("");
     setSelectedTypeValues([]);
     setSelectedDestinationValues([]);
+    setSelectedMonth("");
     setDurationFilter("all");
     setAvailabilityFilter("all");
     setAdultCount(2);
@@ -730,24 +852,13 @@ export function ToursListingPage({
     setPriceLimit(0);
   }
 
-  function scrollToResults() {
-    document
-      .getElementById("tour-results")
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
   return (
-    <main className="min-h-screen bg-[#fff8f0] text-secondary">
+    <main className="min-h-screen bg-background text-secondary">
       <ToursHero
-        adultCount={adultCount}
-        childCount={childCount}
-        durationFilter={durationFilter}
-        searchQuery={searchQuery}
-        onAdultCountChange={setAdultCount}
-        onChildCountChange={setChildCount}
-        onDurationChange={setDurationFilter}
-        onSearch={scrollToResults}
-        onSearchQueryChange={setSearchQuery}
+        initialAdultCount={adultCount}
+        initialChildCount={childCount}
+        initialMonthValue={effectiveSelectedMonth}
+        initialSearchQuery={searchQuery}
       />
 
       <section
@@ -800,7 +911,7 @@ export function ToursListingPage({
             <EmptyState
               message={
                 loadError ||
-                "No tours match these filters. Try changing destination, duration or price."
+                "No tours match these filters. Try changing destination, month or price."
               }
             />
           ) : null}
@@ -819,28 +930,18 @@ export function ToursListingPage({
 }
 
 function ToursHero({
-  adultCount,
-  childCount,
-  durationFilter,
-  onAdultCountChange,
-  onChildCountChange,
-  onDurationChange,
-  onSearch,
-  onSearchQueryChange,
-  searchQuery,
+  initialAdultCount,
+  initialChildCount,
+  initialMonthValue,
+  initialSearchQuery,
 }: {
-  adultCount: number;
-  childCount: number;
-  durationFilter: DurationFilter;
-  searchQuery: string;
-  onAdultCountChange: (value: number) => void;
-  onChildCountChange: (value: number) => void;
-  onDurationChange: (value: DurationFilter) => void;
-  onSearch: () => void;
-  onSearchQueryChange: (value: string) => void;
+  initialAdultCount: number;
+  initialChildCount: number;
+  initialMonthValue: string;
+  initialSearchQuery: string;
 }) {
   return (
-    <section className="relative overflow-hidden bg-[#fff2e5]">
+    <section className="relative overflow-visible bg-[#fff2e5]">
       <Image
         src="/home assets/Heritage Banner.webp"
         alt="Heritage tour landscape"
@@ -852,10 +953,10 @@ function ToursHero({
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,248,240,0.98)_0%,rgba(255,248,240,0.86)_38%,rgba(255,248,240,0.32)_72%,rgba(255,248,240,0.12)_100%)]" />
       <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,rgba(255,248,240,0)_0%,#fff8f0_100%)]" />
 
-      <div className="relative z-10 mx-auto flex min-h-[390px] w-full max-w-[1300px] flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-8 lg:px-0">
+      <div className="relative z-10 mx-auto flex min-h-[520px] w-full max-w-[1300px] flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-8 lg:px-0">
         <Header />
 
-        <div className="grid flex-1 items-center gap-8 pb-16 pt-8 md:grid-cols-[minmax(0,0.95fr)_minmax(320px,0.55fr)]">
+        <div className="grid flex-1 items-center gap-8 pb-6 pt-8 md:grid-cols-[minmax(0,0.95fr)_minmax(320px,0.55fr)]">
           <div className="max-w-[620px]">
             <nav className="flex flex-wrap items-center gap-2 font-sans text-[12px] font-bold text-secondary/68">
               <Link href="/" className="transition-colors hover:text-primary">
@@ -876,196 +977,16 @@ function ToursHero({
             </p>
           </div>
         </div>
-      </div>
 
-      <div className="relative z-20 mx-auto -mt-7 w-full max-w-[1180px] px-5 sm:px-8 lg:px-0">
-        <div className="grid overflow-visible rounded-[30px] border border-accent/30 bg-white/90 p-2 shadow-[0_16px_36px_rgba(67,43,27,0.12)] backdrop-blur-md md:grid-cols-[minmax(0,1fr)_minmax(190px,0.62fr)_minmax(210px,0.64fr)_230px] md:items-stretch">
-          <label className="relative min-w-0 border-b border-accent/25 md:border-b-0 md:border-r">
-            <span className="sr-only">Search tours</span>
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(event) => onSearchQueryChange(event.target.value)}
-              placeholder="Where to?"
-              className="h-[54px] w-full rounded-none bg-transparent px-4 pl-[58px] font-sans text-[16px] font-semibold text-secondary outline-none placeholder:text-secondary/88"
-            />
-            <MapPin className="pointer-events-none absolute left-6 top-1/2 size-5 -translate-y-1/2 text-accent" strokeWidth={1.9} />
-          </label>
-
-          <SelectField
-            icon={CalendarDays}
-            label="Duration"
-            value={durationFilter}
-            onChange={(value) => onDurationChange(value as DurationFilter)}
-            options={durationOptions}
-          />
-
-          <TravellerPicker
-            adultCount={adultCount}
-            childCount={childCount}
-            onAdultCountChange={onAdultCountChange}
-            onChildCountChange={onChildCountChange}
-          />
-
-          <div className="pt-3 md:flex md:items-center md:justify-end md:pt-0">
-            <button
-              type="button"
-              onClick={onSearch}
-              className="inline-flex h-[44px] w-full items-center justify-center gap-5 rounded-full border border-primary bg-white px-5 font-sans text-[15px] font-medium text-primary shadow-none transition-colors hover:bg-primary hover:text-white md:w-[200px]"
-            >
-              Plan your trip
-              <ArrowRight className="size-6" strokeWidth={1.8} />
-            </button>
-          </div>
-        </div>
+        <PlanTripInline
+          className="mb-8"
+          initialAdultCount={initialAdultCount}
+          initialChildCount={initialChildCount}
+          initialMonthValue={initialMonthValue}
+          initialSearchQuery={initialSearchQuery}
+        />
       </div>
     </section>
-  );
-}
-
-function SelectField({
-  icon: Icon,
-  label,
-  onChange,
-  options,
-  value,
-}: {
-  icon: LucideIcon;
-  label: string;
-  options: Array<{ label: string; value: string }>;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="relative min-w-0 border-b border-accent/25 md:border-b-0 md:border-r">
-      <span className="sr-only">{label}</span>
-      <Icon className="pointer-events-none absolute left-6 top-1/2 size-5 -translate-y-1/2 text-accent" strokeWidth={1.9} />
-      <select
-        value={value || options[0]?.value || ""}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-[54px] w-full appearance-none rounded-none bg-transparent px-[58px] pr-10 font-sans text-[16px] font-semibold text-secondary outline-none"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-6 top-1/2 size-4 -translate-y-1/2 text-primary" />
-    </label>
-  );
-}
-
-function TravellerPicker({
-  adultCount,
-  childCount,
-  onAdultCountChange,
-  onChildCountChange,
-}: {
-  adultCount: number;
-  childCount: number;
-  onAdultCountChange: (value: number) => void;
-  onChildCountChange: (value: number) => void;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const totalGuests = adultCount + childCount;
-  const travellerLabel = `${totalGuests} ${totalGuests === 1 ? "Guest" : "Guests"}`;
-
-  function updateAdultCount(value: number) {
-    onAdultCountChange(Math.min(12, Math.max(1, value)));
-  }
-
-  function updateChildCount(value: number) {
-    onChildCountChange(Math.min(12, Math.max(0, value)));
-  }
-
-  return (
-    <div className="relative min-w-0">
-      <button
-        type="button"
-        aria-expanded={isOpen}
-        onClick={() => setIsOpen((current) => !current)}
-        className="relative flex h-[54px] w-full items-center gap-3 bg-transparent px-6 pr-10 text-left font-sans text-[16px] font-bold uppercase text-secondary outline-none transition-colors hover:text-primary focus-visible:ring-3 focus-visible:ring-primary/15"
-      >
-        <Users className="size-5 shrink-0 text-accent" strokeWidth={1.9} />
-        <span className="min-w-0 flex-1 truncate">{travellerLabel}</span>
-        <ChevronDown className="absolute right-6 top-1/2 size-4 -translate-y-1/2 text-primary" />
-      </button>
-
-      {isOpen ? (
-        <div className="absolute left-1/2 top-[calc(100%+10px)] z-30 w-[min(414px,calc(100vw-1rem))] -translate-x-1/2 overflow-hidden rounded-[18px] border border-border bg-white shadow-[0_18px_42px_rgba(15,23,42,0.16)]">
-          <div className="px-5 pb-5 pt-10 sm:px-6">
-            <TravellerStepper
-              label="Adults"
-              note="Ages 13+"
-              minimum={1}
-              value={adultCount}
-              onChange={updateAdultCount}
-            />
-            <div className="my-4 h-px bg-border" />
-            <TravellerStepper
-              label="Children"
-              note="Ages 2-12"
-              minimum={0}
-              value={childCount}
-              onChange={updateChildCount}
-            />
-            <p className="mt-4 font-sans text-[14px] font-medium text-secondary/62">
-              Total guests: <strong className="text-secondary">{totalGuests}</strong>
-            </p>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function TravellerStepper({
-  label,
-  minimum,
-  note,
-  onChange,
-  value,
-}: {
-  label: string;
-  minimum: number;
-  note: string;
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-5">
-      <span className="font-sans">
-        <strong className="block text-[20px] leading-tight text-secondary">
-          {label}
-        </strong>
-        <span className="mt-1 block text-[14px] font-medium leading-tight text-secondary/58">
-          {note}
-        </span>
-      </span>
-      <span className="inline-flex items-center gap-6">
-        <button
-          type="button"
-          aria-label={`Decrease ${label}`}
-          disabled={value <= minimum}
-          onClick={() => onChange(value - 1)}
-          className="grid size-10 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:bg-primary hover:text-white disabled:pointer-events-none disabled:text-secondary/28"
-        >
-          <Minus className="size-4" strokeWidth={1.8} />
-        </button>
-        <strong className="w-6 text-center font-sans text-[18px] font-medium text-secondary">
-          {value}
-        </strong>
-        <button
-          type="button"
-          aria-label={`Increase ${label}`}
-          onClick={() => onChange(value + 1)}
-          className="grid size-10 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:bg-primary hover:text-white"
-        >
-          <Plus className="size-4" strokeWidth={1.8} />
-        </button>
-      </span>
-    </div>
   );
 }
 
@@ -1445,57 +1366,16 @@ function TourResults({
 
 function TourCard({ item }: { item: TourListItem }) {
   return (
-    <article className="group overflow-hidden rounded-[8px] border border-[#ead8c5] bg-white shadow-[0_16px_34px_rgba(67,43,27,0.1)] transition-all hover:-translate-y-1 hover:border-primary/45 hover:shadow-[0_22px_48px_rgba(67,43,27,0.15)]">
-      <div className="relative h-[188px] overflow-hidden bg-muted">
-        <Image
-          src={item.image}
-          alt={item.tour.tourName}
-          fill
-          sizes="(min-width: 1280px) 300px, (min-width: 640px) 50vw, 100vw"
-          className="object-cover transition-transform duration-700 group-hover:scale-105"
-        />
-        <span
-          className={cn(
-            "absolute left-3 top-3 rounded-[5px] px-2 py-1 font-sans text-[10px] font-bold",
-            getAvailabilityClassName(item.availability)
-          )}
-        >
-          {getAvailabilityLabel(item.availability)}
-        </span>
-        <button
-          type="button"
-          aria-label={`Save ${item.tour.tourName}`}
-          className="absolute right-3 top-3 grid size-9 place-items-center rounded-full bg-white/82 text-primary shadow-[0_8px_18px_rgba(35,23,15,0.16)] transition-colors hover:bg-primary hover:text-white"
-        >
-          <Heart className="size-4" strokeWidth={1.9} />
-        </button>
-      </div>
-
-      <div className="p-4">
-        <h3 className="line-clamp-2 min-h-[46px] font-heading text-[19px] font-bold leading-tight text-secondary">
-          {item.tour.tourName}
-        </h3>
-
-        <TourMeta item={item} />
-
-        <div className="mt-4 flex items-end justify-between gap-3 border-t border-[#ead8c5] pt-4">
-          <span className="font-sans text-[11px] font-semibold text-secondary/58">
-            from
-            <strong className="mt-1 block font-heading text-[21px] leading-none text-secondary">
-              {formatPrice(item.lowestPrice)}
-            </strong>
-            <span>per person</span>
-          </span>
-          <Link
-            href={getTourHref(item.tour)}
-            aria-label={`View ${item.tour.tourName}`}
-            className="grid size-10 shrink-0 place-items-center rounded-full border border-primary bg-white text-primary transition-colors hover:bg-primary hover:text-white"
-          >
-            <ArrowRight className="size-5" />
-          </Link>
-        </div>
-      </div>
-    </article>
+    <TourShowcaseCard
+      durationLabel={item.tour.durationDn || `${item.durationDays} Days`}
+      favoriteLabel={`Save ${item.tour.tourName}`}
+      href={getTourHref(item.tour)}
+      image={item.image}
+      imageSizes="(min-width: 1280px) 300px, (min-width: 640px) 50vw, 100vw"
+      nextDepartureLabel={formatDate(item.nextDeparture?.departureDate || null)}
+      priceLabel={formatPrice(item.lowestPrice)}
+      title={item.tour.tourName}
+    />
   );
 }
 
