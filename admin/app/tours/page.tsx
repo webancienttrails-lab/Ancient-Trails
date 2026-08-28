@@ -183,6 +183,7 @@ const emptyTourForm: TourFormState = {
   exclusions: "",
   expertId: "",
   notes: "",
+  thumbnailImage: "",
   bannerImage: "",
   galleryImages: "",
   video: "",
@@ -303,6 +304,7 @@ function createTourPayload(form: TourFormState): TourPayload {
     exclusions: parseTextList(form.exclusions),
     expertId: form.expertId.trim(),
     notes: form.notes.trim(),
+    thumbnailImage: form.thumbnailImage.trim(),
     bannerImage: form.bannerImage.trim(),
     galleryImages: parseTextList(form.galleryImages),
     video: form.video.trim(),
@@ -385,6 +387,7 @@ function tourToForm(tour: AdminTour): TourFormState {
     exclusions: tour.exclusions.join("\n"),
     expertId: tour.expertId,
     notes: tour.notes,
+    thumbnailImage: tour.thumbnailImage || "",
     bannerImage: tour.bannerImage,
     galleryImages: tour.galleryImages.join("\n"),
     video: tour.video,
@@ -610,6 +613,8 @@ export default function ToursPage() {
   const [itineraryForm, setItineraryForm] =
     useState<ItineraryFormState>(emptyItineraryForm);
   const [isSavingTour, setIsSavingTour] = useState(false);
+  const [isUploadingTourThumbnailImage, setIsUploadingTourThumbnailImage] =
+    useState(false);
   const [isUploadingTourBannerImage, setIsUploadingTourBannerImage] =
     useState(false);
   const [isUploadingTourGalleryImages, setIsUploadingTourGalleryImages] =
@@ -767,6 +772,7 @@ export default function ToursPage() {
   );
   const isTourFormBusy =
     isSavingTour ||
+    isUploadingTourThumbnailImage ||
     isUploadingTourBannerImage ||
     isUploadingTourGalleryImages ||
     isUploadingTourVideo;
@@ -873,6 +879,30 @@ export default function ToursPage() {
     setTourForm(emptyTourForm);
   }
 
+  async function handleTourThumbnailImageUpload(files: FileList | null) {
+    const [thumbnailImage] = Array.from(files || []);
+
+    if (!thumbnailImage) {
+      return;
+    }
+
+    setIsUploadingTourThumbnailImage(true);
+
+    try {
+      const response = await uploadTourMedia({ thumbnailImage });
+
+      setTourForm((currentForm) => ({
+        ...currentForm,
+        thumbnailImage: response.data.thumbnailImage,
+      }));
+      toast.success("Thumbnail uploaded", response.message);
+    } catch (error) {
+      toast.error("Thumbnail upload failed", getErrorMessage(error));
+    } finally {
+      setIsUploadingTourThumbnailImage(false);
+    }
+  }
+
   async function handleTourBannerImageUpload(files: FileList | null) {
     const [bannerImage] = Array.from(files || []);
 
@@ -946,6 +976,10 @@ export default function ToursPage() {
     } finally {
       setIsUploadingTourVideo(false);
     }
+  }
+
+  function handleRemoveTourThumbnailImage() {
+    updateTourForm("thumbnailImage", "");
   }
 
   function handleRemoveTourBannerImage() {
@@ -1026,6 +1060,7 @@ export default function ToursPage() {
 
     if (
       tourSheetMode === "view" ||
+      isUploadingTourThumbnailImage ||
       isUploadingTourBannerImage ||
       isUploadingTourGalleryImages ||
       isUploadingTourVideo
@@ -1358,13 +1393,16 @@ export default function ToursPage() {
         isBusy={isTourFormBusy}
         isOpen={tourSheetMode !== null}
         isSaving={isSavingTour}
+        isUploadingThumbnailImage={isUploadingTourThumbnailImage}
         isUploadingBannerImage={isUploadingTourBannerImage}
         isUploadingGalleryImages={isUploadingTourGalleryImages}
         isUploadingVideo={isUploadingTourVideo}
         mode={tourSheetMode}
+        onThumbnailImageUpload={handleTourThumbnailImageUpload}
         onBannerImageUpload={handleTourBannerImageUpload}
         onClose={closeTourSheet}
         onGalleryImagesUpload={handleTourGalleryImagesUpload}
+        onRemoveThumbnailImage={handleRemoveTourThumbnailImage}
         onRemoveBannerImage={handleRemoveTourBannerImage}
         onRemoveGalleryImage={handleRemoveTourGalleryImage}
         onRemoveVideo={handleRemoveTourVideo}
@@ -1692,7 +1730,11 @@ function TourMasterTable({
                     >
                       <div className="flex min-w-0 items-center gap-2.5">
                         <TourThumb
-                          photo={tour.bannerImage || tour.galleryImages[0]}
+                          photo={
+                            tour.thumbnailImage ||
+                            tour.bannerImage ||
+                            tour.galleryImages[0]
+                          }
                         />
                         <div className="min-w-0">
                           <p className="truncate text-sm font-bold text-foreground">
@@ -2216,13 +2258,16 @@ function TourFormDialog({
   isBusy,
   isOpen,
   isSaving,
+  isUploadingThumbnailImage,
   isUploadingBannerImage,
   isUploadingGalleryImages,
   isUploadingVideo,
   mode,
+  onThumbnailImageUpload,
   onBannerImageUpload,
   onClose,
   onGalleryImagesUpload,
+  onRemoveThumbnailImage,
   onRemoveBannerImage,
   onRemoveGalleryImage,
   onRemoveVideo,
@@ -2236,13 +2281,16 @@ function TourFormDialog({
   isBusy: boolean;
   isOpen: boolean;
   isSaving: boolean;
+  isUploadingThumbnailImage: boolean;
   isUploadingBannerImage: boolean;
   isUploadingGalleryImages: boolean;
   isUploadingVideo: boolean;
   mode: TourSheetMode | null;
+  onThumbnailImageUpload: (files: FileList | null) => void;
   onBannerImageUpload: (files: FileList | null) => void;
   onClose: () => void;
   onGalleryImagesUpload: (files: FileList | null) => void;
+  onRemoveThumbnailImage: () => void;
   onRemoveBannerImage: () => void;
   onRemoveGalleryImage: (index: number) => void;
   onRemoveVideo: () => void;
@@ -2264,7 +2312,10 @@ function TourFormDialog({
         : "Add a tour master record.";
   const submitButtonLabel = isSaving
     ? "Saving..."
-    : isUploadingBannerImage || isUploadingGalleryImages || isUploadingVideo
+    : isUploadingThumbnailImage ||
+        isUploadingBannerImage ||
+        isUploadingGalleryImages ||
+        isUploadingVideo
       ? "Uploading media..."
     : mode === "edit"
       ? "Update Tour"
@@ -2474,6 +2525,25 @@ function TourFormDialog({
                 onChange={(event) => onUpdate("notes", event.target.value)}
                 className={textareaClassName}
                 placeholder="Internal notes for operations."
+              />
+            </FormField>
+
+            <FormField className="sm:col-span-2" label="Thumbnail Image">
+              {!isReadOnly ? (
+                <UploadField
+                  accept="image/*"
+                  disabled={isBusy}
+                  isUploading={isUploadingThumbnailImage}
+                  label="Upload thumbnail image"
+                  onFilesSelected={onThumbnailImageUpload}
+                />
+              ) : null}
+              <ImagePreviewGrid
+                images={
+                  form.thumbnailImage.trim() ? [form.thumbnailImage.trim()] : []
+                }
+                onRemove={!isReadOnly ? onRemoveThumbnailImage : undefined}
+                variant="thumbnail"
               />
             </FormField>
 
@@ -3489,14 +3559,18 @@ function ImagePreviewGrid({
 }: {
   images: string[];
   onRemove?: (index: number) => void;
-  variant?: "banner" | "gallery";
+  variant?: "banner" | "gallery" | "thumbnail";
 }) {
+  const isGallery = variant === "gallery";
+  const imageLabel = variant === "banner" ? "banner" : "thumbnail";
+  const previewImages = isGallery ? images : images.slice(0, 1);
+
   if (images.length === 0) {
     return (
       <div
         className={cn(
           "grid place-items-center rounded-sm border border-dashed border-border bg-muted/35 text-xs font-medium text-foreground/45",
-          variant === "banner" ? "h-28" : "h-20"
+          isGallery ? "h-20" : "h-28"
         )}
       >
         Preview will appear here
@@ -3508,15 +3582,15 @@ function ImagePreviewGrid({
     <div
       className={cn(
         "grid gap-2",
-        variant === "banner" ? "grid-cols-1" : "grid-cols-3"
+        isGallery ? "grid-cols-3" : "grid-cols-1"
       )}
     >
-      {images.slice(0, variant === "banner" ? 1 : 6).map((image, index) => (
+      {previewImages.map((image, index) => (
         <div
           key={`${image}-${index}`}
           className={cn(
             "relative overflow-hidden rounded-sm border border-border bg-muted",
-            variant === "banner" ? "h-32" : "h-20"
+            variant === "banner" ? "h-32" : isGallery ? "h-20" : "h-28"
           )}
         >
           {onRemove ? (
@@ -3525,9 +3599,9 @@ function ImagePreviewGrid({
               onClick={() => onRemove(index)}
               className="absolute right-1.5 top-1.5 z-10 grid size-6 place-items-center rounded-sm border border-white/70 bg-white/95 text-foreground shadow-sm transition-colors hover:border-primary hover:text-primary"
               aria-label={
-                variant === "banner"
-                  ? "Remove banner image"
-                  : `Remove gallery photo ${index + 1}`
+                isGallery
+                  ? `Remove gallery photo ${index + 1}`
+                  : `Remove ${imageLabel} image`
               }
             >
               <X className="size-3.5" />
@@ -3537,9 +3611,9 @@ function ImagePreviewGrid({
             className="h-full w-full bg-cover bg-center"
             role="img"
             aria-label={
-              variant === "banner"
-                ? "Tour banner preview"
-                : `Tour gallery preview ${index + 1}`
+              isGallery
+                ? `Tour gallery preview ${index + 1}`
+                : `Tour ${imageLabel} preview`
             }
             style={{
               backgroundImage: `url("${getTourMediaUrl(image)}")`,

@@ -14,11 +14,14 @@ export type AdminDestination = {
   destinationName: string;
   destinationType: DestinationType;
   countryRegion: string;
+  region: string;
   state: string;
   city: string;
   primaryHeritageFocus: string;
+  bestTimeToVisit: string;
   unescoSite: boolean;
   keyLandmarks: string[];
+  keyLandmarkImages: string[];
   recommendedDurationDays: number;
   shortDescription: string;
   dressCode: string;
@@ -26,6 +29,7 @@ export type AdminDestination = {
   permits: string;
   idRequirement: string;
   restrictions: string;
+  thumbnailImage: string;
   bannerImage: string;
   galleryImages: string[];
   createdAt: string;
@@ -37,11 +41,14 @@ export type DestinationPayload = {
   destinationName: string;
   destinationType: DestinationType;
   countryRegion: string;
+  region: string;
   state: string;
   city: string;
   primaryHeritageFocus: string;
+  bestTimeToVisit: string;
   unescoSite: boolean;
   keyLandmarks: string[];
+  keyLandmarkImages: string[];
   recommendedDurationDays: number;
   shortDescription: string;
   dressCode: string;
@@ -49,16 +56,19 @@ export type DestinationPayload = {
   permits: string;
   idRequirement: string;
   restrictions: string;
+  thumbnailImage: string;
   bannerImage: string;
   galleryImages: string[];
 };
 
 type DestinationImageUploadPayload = {
+  thumbnailImage?: File;
   bannerImage?: File;
   galleryImages?: File[];
 };
 
 export type DestinationImageUploadResponse = {
+  thumbnailImage: string;
   bannerImage: string;
   galleryImages: string[];
 };
@@ -154,6 +164,10 @@ export async function uploadDestinationImages(
   payload: DestinationImageUploadPayload
 ) {
   const formData = new FormData();
+
+  if (payload.thumbnailImage) {
+    formData.append("thumbnailImage", payload.thumbnailImage);
+  }
 
   if (payload.bannerImage) {
     formData.append("bannerImage", payload.bannerImage);

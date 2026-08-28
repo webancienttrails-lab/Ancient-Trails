@@ -656,10 +656,14 @@ function UpcomingTourEditor({
   return (
     <article className="grid gap-3 rounded-sm border border-border bg-[#fffaf7] p-3 lg:grid-cols-[132px_minmax(0,1fr)_44px]">
       <div className="relative aspect-[1.32/1] overflow-hidden rounded-sm border border-border bg-white">
-        {selectedTour?.bannerImage || selectedTour?.galleryImages[0] ? (
+        {selectedTour?.thumbnailImage ||
+        selectedTour?.bannerImage ||
+        selectedTour?.galleryImages[0] ? (
           <img
             src={getTourMediaUrl(
-              selectedTour.bannerImage || selectedTour.galleryImages[0]
+              selectedTour.thumbnailImage ||
+                selectedTour.bannerImage ||
+                selectedTour.galleryImages[0]
             )}
             alt={selectedTour.tourName}
             className="size-full object-cover"

@@ -156,6 +156,18 @@ const pages: AdminPageRecord[] = [
     updatedTime: "05:20 PM",
   },
   {
+    title: "Mega Menu",
+    description: "Manage which tours and destinations appear in header mega menus.",
+    editorHref: "/pages/mega-menu",
+    slug: "Header navigation",
+    status: "Published",
+    thumbnailTone: "from-[#7a3b22] via-orange-200 to-stone-800",
+    type: "Feature Page",
+    updatedBy: "Admin User",
+    updatedDate: "25-08-2026",
+    updatedTime: "10:30 AM",
+  },
+  {
     title: "Experiences",
     description: "Manage content for experiences and travel stories.",
     slug: "/experiences",

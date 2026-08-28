@@ -22,6 +22,7 @@ export type AdminTour = {
   exclusions: string[];
   expertId: string;
   notes: string;
+  thumbnailImage: string;
   bannerImage: string;
   galleryImages: string[];
   video: string;
@@ -44,18 +45,21 @@ export type TourPayload = {
   exclusions: string[];
   expertId: string;
   notes: string;
+  thumbnailImage: string;
   bannerImage: string;
   galleryImages: string[];
   video: string;
 };
 
 type TourMediaUploadPayload = {
+  thumbnailImage?: File;
   bannerImage?: File;
   galleryImages?: File[];
   video?: File;
 };
 
 export type TourMediaUploadResponse = {
+  thumbnailImage: string;
   bannerImage: string;
   galleryImages: string[];
   video: string;
@@ -237,6 +241,10 @@ export async function deleteAdminTour(id: string) {
 
 export async function uploadTourMedia(payload: TourMediaUploadPayload) {
   const formData = new FormData();
+
+  if (payload.thumbnailImage) {
+    formData.append("thumbnailImage", payload.thumbnailImage);
+  }
 
   if (payload.bannerImage) {
     formData.append("bannerImage", payload.bannerImage);

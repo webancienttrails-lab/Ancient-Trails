@@ -80,9 +80,13 @@ type DestinationMetric = {
 
 type DestinationFormState = Omit<
   DestinationPayload,
-  "keyLandmarks" | "galleryImages" | "recommendedDurationDays"
+  | "keyLandmarks"
+  | "keyLandmarkImages"
+  | "galleryImages"
+  | "recommendedDurationDays"
 > & {
   keyLandmarks: string;
+  keyLandmarkImages: string;
   galleryImages: string;
   recommendedDurationDays: string;
 };
@@ -93,11 +97,14 @@ const emptyDestinationForm: DestinationFormState = {
   destinationName: "",
   destinationType: "Domestic",
   countryRegion: "",
+  region: "",
   state: "",
   city: "",
   primaryHeritageFocus: "",
+  bestTimeToVisit: "",
   unescoSite: false,
   keyLandmarks: "",
+  keyLandmarkImages: "",
   recommendedDurationDays: "1",
   shortDescription: "",
   dressCode: "",
@@ -105,6 +112,7 @@ const emptyDestinationForm: DestinationFormState = {
   permits: "",
   idRequirement: "",
   restrictions: "",
+  thumbnailImage: "",
   bannerImage: "",
   galleryImages: "",
 };
@@ -117,6 +125,48 @@ const thumbTones = [
   "from-green-600 via-lime-200 to-cyan-700",
   "from-emerald-500 via-sky-300 to-slate-700",
 ];
+
+const domesticRegionOptions = [
+  "North India",
+  "South India",
+  "Central India",
+  "West India",
+  "East India",
+];
+
+const internationalRegionOptions = [
+  "Central Asia",
+  "Southeast Asia",
+  "South Asia",
+  "East Asia",
+  "Middle East",
+  "Caucasus",
+  "Central Europe",
+  "Eastern Europe",
+  "Western Europe",
+  "Northern Europe",
+  "Southern Europe",
+  "Scandinavia",
+  "Balkans",
+  "Mediterranean",
+  "North Africa",
+  "East Africa",
+  "Southern Africa",
+  "West Africa",
+  "Central Africa",
+  "North America",
+  "Central America",
+  "South America",
+  "Caribbean",
+  "Oceania",
+  "Pacific Islands",
+];
+
+function getRegionOptions(destinationType: DestinationType) {
+  return destinationType === "Domestic"
+    ? domesticRegionOptions
+    : internationalRegionOptions;
+}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {
@@ -138,17 +188,84 @@ function appendTextList(currentValue: string, newValues: string[]): string {
     .join("\n");
 }
 
+function parseFormLineList(value: string): string[] {
+  return value === "" ? [] : value.split("\n");
+}
+
+function serializeFormLineList(values: string[]): string {
+  return values.join("\n");
+}
+
+function updateFormLineListValue(
+  currentValue: string,
+  indexToUpdate: number,
+  nextValue: string
+): string {
+  const values = parseFormLineList(currentValue);
+
+  while (values.length <= indexToUpdate) {
+    values.push("");
+  }
+
+  values[indexToUpdate] = nextValue;
+
+  return serializeFormLineList(values);
+}
+
+function trimTrailingEmptyValues(values: string[]): string[] {
+  const trimmedValues = values.map((value) => value.trim());
+
+  while (
+    trimmedValues.length > 0 &&
+    trimmedValues[trimmedValues.length - 1] === ""
+  ) {
+    trimmedValues.pop();
+  }
+
+  return trimmedValues;
+}
+
+function getLandmarkRows(destinationForm: DestinationFormState) {
+  const landmarkNames = parseFormLineList(destinationForm.keyLandmarks);
+  const landmarkImages = parseFormLineList(destinationForm.keyLandmarkImages);
+  const rowCount = Math.max(landmarkNames.length, landmarkImages.length, 1);
+
+  return Array.from({ length: rowCount }, (_item, index) => ({
+    image: landmarkImages[index] || "",
+    name: landmarkNames[index] || "",
+  }));
+}
+
+function createKeyLandmarkPayload(destinationForm: DestinationFormState) {
+  const landmarkRows = getLandmarkRows(destinationForm)
+    .map((row) => ({
+      image: row.image.trim(),
+      name: row.name.trim(),
+    }))
+    .filter((row) => row.name);
+
+  return {
+    keyLandmarkImages: trimTrailingEmptyValues(
+      landmarkRows.map((row) => row.image)
+    ),
+    keyLandmarks: landmarkRows.map((row) => row.name),
+  };
+}
+
 function destinationToForm(destination: AdminDestination): DestinationFormState {
   return {
     destinationId: destination.destinationId,
     destinationName: destination.destinationName,
     destinationType: destination.destinationType,
     countryRegion: destination.countryRegion,
+    region: destination.region || "",
     state: destination.state,
     city: destination.city,
     primaryHeritageFocus: destination.primaryHeritageFocus,
+    bestTimeToVisit: destination.bestTimeToVisit || "",
     unescoSite: destination.unescoSite,
     keyLandmarks: destination.keyLandmarks.join("\n"),
+    keyLandmarkImages: (destination.keyLandmarkImages || []).join("\n"),
     recommendedDurationDays: destination.recommendedDurationDays.toString(),
     shortDescription: destination.shortDescription,
     dressCode: destination.dressCode,
@@ -156,6 +273,7 @@ function destinationToForm(destination: AdminDestination): DestinationFormState 
     permits: destination.permits,
     idRequirement: destination.idRequirement,
     restrictions: destination.restrictions,
+    thumbnailImage: destination.thumbnailImage || "",
     bannerImage: destination.bannerImage,
     galleryImages: destination.galleryImages.join("\n"),
   };
@@ -164,14 +282,18 @@ function destinationToForm(destination: AdminDestination): DestinationFormState 
 function createDestinationPayload(
   destinationForm: DestinationFormState
 ): DestinationPayload {
+  const keyLandmarkPayload = createKeyLandmarkPayload(destinationForm);
+
   return {
     ...destinationForm,
     destinationId: destinationForm.destinationId.trim(),
     destinationName: destinationForm.destinationName.trim(),
     countryRegion: destinationForm.countryRegion.trim(),
+    region: destinationForm.region.trim(),
     state: destinationForm.state.trim(),
     city: destinationForm.city.trim(),
     primaryHeritageFocus: destinationForm.primaryHeritageFocus.trim(),
+    bestTimeToVisit: destinationForm.bestTimeToVisit.trim(),
     recommendedDurationDays:
       Number(destinationForm.recommendedDurationDays) || 1,
     shortDescription: destinationForm.shortDescription.trim(),
@@ -180,7 +302,9 @@ function createDestinationPayload(
     permits: destinationForm.permits.trim(),
     idRequirement: destinationForm.idRequirement.trim(),
     restrictions: destinationForm.restrictions.trim(),
-    keyLandmarks: parseTextList(destinationForm.keyLandmarks),
+    thumbnailImage: destinationForm.thumbnailImage.trim(),
+    keyLandmarks: keyLandmarkPayload.keyLandmarks,
+    keyLandmarkImages: keyLandmarkPayload.keyLandmarkImages,
     bannerImage: destinationForm.bannerImage.trim(),
     galleryImages: parseTextList(destinationForm.galleryImages),
   };
@@ -303,7 +427,13 @@ export default function DestinationsPage() {
   const [selectedDestination, setSelectedDestination] =
     useState<AdminDestination | null>(null);
   const [isSavingDestination, setIsSavingDestination] = useState(false);
+  const [isUploadingThumbnailImage, setIsUploadingThumbnailImage] =
+    useState(false);
   const [isUploadingBannerImage, setIsUploadingBannerImage] = useState(false);
+  const [
+    uploadingKeyLandmarkImageIndex,
+    setUploadingKeyLandmarkImageIndex,
+  ] = useState<number | null>(null);
   const [isUploadingGalleryImages, setIsUploadingGalleryImages] =
     useState(false);
   const [savingTopDestinationId, setSavingTopDestinationId] =
@@ -366,9 +496,11 @@ export default function DestinationsPage() {
         destination.destinationName,
         destination.destinationType,
         destination.countryRegion,
+        destination.region,
         destination.state,
         destination.city,
         destination.primaryHeritageFocus,
+        destination.bestTimeToVisit,
       ]
         .join(" ")
         .toLowerCase()
@@ -393,7 +525,11 @@ export default function DestinationsPage() {
     [destinations, topDestinationSettings.length]
   );
   const isDestinationFormBusy =
-    isSavingDestination || isUploadingBannerImage || isUploadingGalleryImages;
+    isSavingDestination ||
+    isUploadingThumbnailImage ||
+    isUploadingBannerImage ||
+    uploadingKeyLandmarkImageIndex !== null ||
+    isUploadingGalleryImages;
   const isDestinationSheetOpen = destinationSheetMode !== null;
 
   function updateDestinationForm<K extends keyof DestinationFormState>(
@@ -409,18 +545,21 @@ export default function DestinationsPage() {
   function openAddDestinationSheet() {
     setSelectedDestination(null);
     setDestinationForm(emptyDestinationForm);
+    setUploadingKeyLandmarkImageIndex(null);
     setDestinationSheetMode("add");
   }
 
   function openViewDestinationSheet(destination: AdminDestination) {
     setSelectedDestination(destination);
     setDestinationForm(destinationToForm(destination));
+    setUploadingKeyLandmarkImageIndex(null);
     setDestinationSheetMode("view");
   }
 
   function openEditDestinationSheet(destination: AdminDestination) {
     setSelectedDestination(destination);
     setDestinationForm(destinationToForm(destination));
+    setUploadingKeyLandmarkImageIndex(null);
     setDestinationSheetMode("edit");
   }
 
@@ -432,6 +571,31 @@ export default function DestinationsPage() {
     setDestinationSheetMode(null);
     setSelectedDestination(null);
     setDestinationForm(emptyDestinationForm);
+    setUploadingKeyLandmarkImageIndex(null);
+  }
+
+  async function handleThumbnailImageUpload(files: FileList | null) {
+    const [thumbnailImage] = Array.from(files || []);
+
+    if (!thumbnailImage) {
+      return;
+    }
+
+    setIsUploadingThumbnailImage(true);
+
+    try {
+      const response = await uploadDestinationImages({ thumbnailImage });
+
+      setDestinationForm((currentForm) => ({
+        ...currentForm,
+        thumbnailImage: response.data.thumbnailImage,
+      }));
+      toast.success("Thumbnail uploaded", response.message);
+    } catch (error) {
+      toast.error("Thumbnail upload failed", getErrorMessage(error));
+    } finally {
+      setIsUploadingThumbnailImage(false);
+    }
   }
 
   async function handleBannerImageUpload(files: FileList | null) {
@@ -485,6 +649,48 @@ export default function DestinationsPage() {
     }
   }
 
+  async function handleKeyLandmarkImageUpload(
+    landmarkIndex: number,
+    files: FileList | null
+  ) {
+    const [keyLandmarkImage] = Array.from(files || []);
+
+    if (!keyLandmarkImage) {
+      return;
+    }
+
+    setUploadingKeyLandmarkImageIndex(landmarkIndex);
+
+    try {
+      const response = await uploadDestinationImages({
+        galleryImages: [keyLandmarkImage],
+      });
+      const [uploadedImage] = response.data.galleryImages;
+
+      if (!uploadedImage) {
+        throw new Error("No landmark image was returned from the upload.");
+      }
+
+      setDestinationForm((currentForm) => ({
+        ...currentForm,
+        keyLandmarkImages: updateFormLineListValue(
+          currentForm.keyLandmarkImages,
+          landmarkIndex,
+          uploadedImage
+        ),
+      }));
+      toast.success("Landmark image uploaded", response.message);
+    } catch (error) {
+      toast.error("Landmark image upload failed", getErrorMessage(error));
+    } finally {
+      setUploadingKeyLandmarkImageIndex(null);
+    }
+  }
+
+  function handleRemoveThumbnailImage() {
+    updateDestinationForm("thumbnailImage", "");
+  }
+
   function handleRemoveBannerImage() {
     updateDestinationForm("bannerImage", "");
   }
@@ -495,6 +701,17 @@ export default function DestinationsPage() {
       galleryImages: parseTextList(currentForm.galleryImages)
         .filter((_image, index) => index !== indexToRemove)
         .join("\n"),
+    }));
+  }
+
+  function handleRemoveKeyLandmarkImage(indexToRemove: number) {
+    setDestinationForm((currentForm) => ({
+      ...currentForm,
+      keyLandmarkImages: updateFormLineListValue(
+        currentForm.keyLandmarkImages,
+        indexToRemove,
+        ""
+      ),
     }));
   }
 
@@ -582,7 +799,9 @@ export default function DestinationsPage() {
 
     if (
       destinationSheetMode === "view" ||
+      isUploadingThumbnailImage ||
       isUploadingBannerImage ||
+      uploadingKeyLandmarkImageIndex !== null ||
       isUploadingGalleryImages
     ) {
       return;
@@ -609,6 +828,7 @@ export default function DestinationsPage() {
         setDestinationSheetMode(null);
         setSelectedDestination(null);
         setDestinationForm(emptyDestinationForm);
+        setUploadingKeyLandmarkImageIndex(null);
         toast.success("Destination updated", response.message);
         return;
       }
@@ -622,6 +842,7 @@ export default function DestinationsPage() {
       setDestinationSheetMode(null);
       setSelectedDestination(null);
       setDestinationForm(emptyDestinationForm);
+      setUploadingKeyLandmarkImageIndex(null);
       toast.success("Destination added", response.message);
     } catch (error) {
       toast.error(
@@ -699,13 +920,19 @@ export default function DestinationsPage() {
         isOpen={isDestinationSheetOpen}
         isBusy={isDestinationFormBusy}
         isSaving={isSavingDestination}
+        isUploadingThumbnailImage={isUploadingThumbnailImage}
         isUploadingBannerImage={isUploadingBannerImage}
+        uploadingKeyLandmarkImageIndex={uploadingKeyLandmarkImageIndex}
         isUploadingGalleryImages={isUploadingGalleryImages}
+        onThumbnailImageUpload={handleThumbnailImageUpload}
         onBannerImageUpload={handleBannerImageUpload}
         onClose={closeDestinationSheet}
         onGalleryImagesUpload={handleGalleryImagesUpload}
+        onKeyLandmarkImageUpload={handleKeyLandmarkImageUpload}
+        onRemoveThumbnailImage={handleRemoveThumbnailImage}
         onRemoveBannerImage={handleRemoveBannerImage}
         onRemoveGalleryImage={handleRemoveGalleryImage}
+        onRemoveKeyLandmarkImage={handleRemoveKeyLandmarkImage}
         onSubmit={handleSaveDestination}
         onUpdate={updateDestinationForm}
       />
@@ -888,7 +1115,7 @@ function DestinationTable({
               <th className="px-2.5 py-3 font-bold">Destination ID</th>
               <th className="px-3 py-3 font-bold">Destination</th>
               <th className="px-2.5 py-3 font-bold">Type</th>
-              <th className="px-2.5 py-3 font-bold">Country / Region</th>
+              <th className="px-2.5 py-3 font-bold">Country</th>
               <th className="px-2.5 py-3 font-bold">State / City</th>
               <th className="px-2.5 py-3 font-bold">UNESCO</th>
               <th className="px-2.5 py-3 text-center font-bold">
@@ -937,6 +1164,7 @@ function DestinationTable({
                       <div className="flex items-center gap-2.5">
                         <DestinationThumb
                           photo={
+                            destination.thumbnailImage ||
                             destination.bannerImage ||
                             destination.galleryImages[0]
                           }
@@ -964,12 +1192,17 @@ function DestinationTable({
                         {destination.destinationType}
                       </span>
                     </td>
-                    <td data-label="Country / Region" className="px-2.5 py-3">
-                      <div className="flex min-w-0 items-center gap-2 text-xs text-foreground/70">
+                    <td data-label="Country" className="px-2.5 py-3">
+                      <div className="flex min-w-0 items-start gap-2 text-xs text-foreground/70">
                         <CountryFlag country={destination.countryRegion} />
-                        <span className="truncate">
-                          {destination.countryRegion}
-                        </span>
+                        <div className="min-w-0">
+                          <span className="block truncate">
+                            {destination.countryRegion}
+                          </span>
+                          <span className="mt-1 block truncate text-foreground/50">
+                            {destination.region || "-"}
+                          </span>
+                        </div>
                       </div>
                     </td>
                     <td
@@ -1208,13 +1441,19 @@ function DestinationFormDialog({
   mode,
   isOpen,
   isSaving,
+  isUploadingThumbnailImage,
   isUploadingBannerImage,
+  uploadingKeyLandmarkImageIndex,
   isUploadingGalleryImages,
+  onThumbnailImageUpload,
   onBannerImageUpload,
   onClose,
   onGalleryImagesUpload,
+  onKeyLandmarkImageUpload,
+  onRemoveThumbnailImage,
   onRemoveBannerImage,
   onRemoveGalleryImage,
+  onRemoveKeyLandmarkImage,
   onSubmit,
   onUpdate,
 }: {
@@ -1223,13 +1462,22 @@ function DestinationFormDialog({
   mode: DestinationSheetMode | null;
   isOpen: boolean;
   isSaving: boolean;
+  isUploadingThumbnailImage: boolean;
   isUploadingBannerImage: boolean;
+  uploadingKeyLandmarkImageIndex: number | null;
   isUploadingGalleryImages: boolean;
+  onThumbnailImageUpload: (files: FileList | null) => void;
   onBannerImageUpload: (files: FileList | null) => void;
   onClose: () => void;
   onGalleryImagesUpload: (files: FileList | null) => void;
+  onKeyLandmarkImageUpload: (
+    landmarkIndex: number,
+    files: FileList | null
+  ) => void;
+  onRemoveThumbnailImage: () => void;
   onRemoveBannerImage: () => void;
   onRemoveGalleryImage: (index: number) => void;
+  onRemoveKeyLandmarkImage: (index: number) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onUpdate: <K extends keyof DestinationFormState>(
     field: K,
@@ -1251,7 +1499,10 @@ function DestinationFormDialog({
         : "Add the destination profile and travel requirements.";
   const submitButtonLabel = isSaving
     ? "Saving..."
-    : isUploadingBannerImage || isUploadingGalleryImages
+    : isUploadingThumbnailImage ||
+        isUploadingBannerImage ||
+        uploadingKeyLandmarkImageIndex !== null ||
+        isUploadingGalleryImages
       ? "Uploading images..."
       : mode === "edit"
         ? "Update Destination"
@@ -1260,6 +1511,11 @@ function DestinationFormDialog({
     "h-11 rounded-sm border border-border bg-white px-3 text-sm outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15 read-only:cursor-default read-only:bg-muted/35 disabled:cursor-default disabled:bg-muted/35 disabled:text-foreground/60";
   const textareaClassName =
     "min-h-20 rounded-sm border border-border bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15 read-only:cursor-default read-only:bg-muted/35 disabled:cursor-default disabled:bg-muted/35 disabled:text-foreground/60";
+  const regionOptions = getRegionOptions(form.destinationType);
+  const regionSelectOptions =
+    form.region && !regionOptions.includes(form.region)
+      ? [form.region, ...regionOptions]
+      : regionOptions;
 
   return (
     <Sheet
@@ -1335,7 +1591,16 @@ function DestinationFormDialog({
               value={form.destinationType}
               onValueChange={(value) => {
                 if (value === "Domestic" || value === "International") {
-                  onUpdate("destinationType", value as DestinationType);
+                  const nextDestinationType = value as DestinationType;
+
+                  onUpdate("destinationType", nextDestinationType);
+
+                  if (
+                    form.region &&
+                    !getRegionOptions(nextDestinationType).includes(form.region)
+                  ) {
+                    onUpdate("region", "");
+                  }
                 }
               }}
             >
@@ -1349,7 +1614,7 @@ function DestinationFormDialog({
             </Select>
           </FormField>
 
-          <FormField label="Country / Region" required>
+          <FormField label="Country" required>
             <input
               required
               readOnly={isReadOnly}
@@ -1360,6 +1625,25 @@ function DestinationFormDialog({
                 className={inputClassName}
               placeholder="India"
             />
+          </FormField>
+
+          <FormField label="Region">
+            <Select
+              disabled={isReadOnly}
+              value={form.region}
+              onValueChange={(value) => onUpdate("region", String(value || ""))}
+            >
+              <SelectTrigger className={inputClassName}>
+                <SelectValue placeholder="Select region" />
+              </SelectTrigger>
+              <SelectContent>
+                {regionSelectOptions.map((region) => (
+                  <SelectItem key={region} value={region}>
+                    {region}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </FormField>
 
           <FormField label="State">
@@ -1394,6 +1678,18 @@ function DestinationFormDialog({
             />
           </FormField>
 
+          <FormField label="Best Time To Visit">
+            <input
+              readOnly={isReadOnly}
+              value={form.bestTimeToVisit}
+              onChange={(event) =>
+                onUpdate("bestTimeToVisit", event.target.value)
+              }
+                className={inputClassName}
+              placeholder="Oct - Mar"
+            />
+          </FormField>
+
           <FormField label="Recommended Duration (Days)" required>
             <input
               required
@@ -1422,15 +1718,18 @@ function DestinationFormDialog({
           </label>
 
             <FormField className="sm:col-span-2" label="Key Landmarks">
-            <textarea
-              readOnly={isReadOnly}
-              value={form.keyLandmarks}
-              onChange={(event) =>
-                onUpdate("keyLandmarks", event.target.value)
-              }
-                className={textareaClassName}
-              placeholder="Amber Fort, Hawa Mahal, City Palace"
-            />
+              <LandmarkImageRows
+                form={form}
+                inputClassName={inputClassName}
+                isBusy={isBusy}
+                isReadOnly={isReadOnly}
+                uploadingKeyLandmarkImageIndex={
+                  uploadingKeyLandmarkImageIndex
+                }
+                onImageUpload={onKeyLandmarkImageUpload}
+                onRemoveImage={onRemoveKeyLandmarkImage}
+                onUpdate={onUpdate}
+              />
           </FormField>
 
             <FormField className="sm:col-span-2" label="Short Description">
@@ -1495,9 +1794,28 @@ function DestinationFormDialog({
                 onUpdate("restrictions", event.target.value)
               }
                 className={textareaClassName}
-              placeholder="Photography restrictions, access limits, timings"
+                placeholder="Photography restrictions, access limits, timings"
             />
           </FormField>
+
+            <FormField className="sm:col-span-2" label="Thumbnail Image">
+              {!isReadOnly ? (
+                <UploadField
+                  accept="image/*"
+                  disabled={isBusy}
+                  isUploading={isUploadingThumbnailImage}
+                  label="Upload thumbnail image"
+                  onFilesSelected={onThumbnailImageUpload}
+                />
+              ) : null}
+              <ImagePreviewGrid
+                images={
+                  form.thumbnailImage.trim() ? [form.thumbnailImage.trim()] : []
+                }
+                onRemove={!isReadOnly ? onRemoveThumbnailImage : undefined}
+                variant="thumbnail"
+              />
+            </FormField>
 
             <FormField className="sm:col-span-2" label="Banner Image">
               {!isReadOnly ? (
@@ -1551,6 +1869,171 @@ function DestinationFormDialog({
   );
 }
 
+function LandmarkImageRows({
+  form,
+  inputClassName,
+  isBusy,
+  isReadOnly,
+  uploadingKeyLandmarkImageIndex,
+  onImageUpload,
+  onRemoveImage,
+  onUpdate,
+}: {
+  form: DestinationFormState;
+  inputClassName: string;
+  isBusy: boolean;
+  isReadOnly: boolean;
+  uploadingKeyLandmarkImageIndex: number | null;
+  onImageUpload: (landmarkIndex: number, files: FileList | null) => void;
+  onRemoveImage: (index: number) => void;
+  onUpdate: <K extends keyof DestinationFormState>(
+    field: K,
+    value: DestinationFormState[K]
+  ) => void;
+}) {
+  const landmarkRows = getLandmarkRows(form);
+
+  function updateLandmarkName(indexToUpdate: number, nextName: string) {
+    const nextNames = landmarkRows.map((row) => row.name);
+
+    nextNames[indexToUpdate] = nextName;
+    onUpdate("keyLandmarks", serializeFormLineList(nextNames));
+  }
+
+  function addLandmarkRow() {
+    onUpdate(
+      "keyLandmarks",
+      serializeFormLineList([...landmarkRows.map((row) => row.name), ""])
+    );
+    onUpdate(
+      "keyLandmarkImages",
+      serializeFormLineList([...landmarkRows.map((row) => row.image), ""])
+    );
+  }
+
+  function removeLandmarkRow(indexToRemove: number) {
+    const nextNames = landmarkRows.map((row) => row.name);
+    const nextImages = landmarkRows.map((row) => row.image);
+
+    nextNames.splice(indexToRemove, 1);
+    nextImages.splice(indexToRemove, 1);
+
+    onUpdate("keyLandmarks", serializeFormLineList(nextNames));
+    onUpdate("keyLandmarkImages", serializeFormLineList(nextImages));
+  }
+
+  return (
+    <div className="grid gap-3">
+      {landmarkRows.map((row, index) => (
+        <div
+          key={index}
+          className="grid gap-3 rounded-sm border border-border bg-muted/25 p-3"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-bold text-foreground/60">
+              Landmark {index + 1}
+            </span>
+            {!isReadOnly ? (
+              <button
+                type="button"
+                onClick={() => removeLandmarkRow(index)}
+                disabled={isBusy}
+                className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-border bg-white px-2 text-[11px] font-bold text-foreground/60 transition-colors hover:border-primary hover:text-primary disabled:pointer-events-none disabled:opacity-50"
+              >
+                <Trash2 className="size-3.5" />
+                Remove
+              </button>
+            ) : null}
+          </div>
+
+          <input
+            readOnly={isReadOnly}
+            value={row.name}
+            onChange={(event) => updateLandmarkName(index, event.target.value)}
+            className={inputClassName}
+            placeholder="Amber Fort"
+          />
+
+          {!isReadOnly ? (
+            <UploadField
+              accept="image/*"
+              disabled={isBusy}
+              isUploading={uploadingKeyLandmarkImageIndex === index}
+              label={row.image.trim() ? "Replace landmark image" : "Upload landmark image"}
+              onFilesSelected={(files) => onImageUpload(index, files)}
+            />
+          ) : null}
+
+          <SingleLandmarkImagePreview
+            image={row.image}
+            index={index}
+            onRemove={
+              !isReadOnly && row.image.trim()
+                ? () => onRemoveImage(index)
+                : undefined
+            }
+          />
+        </div>
+      ))}
+
+      {!isReadOnly ? (
+        <button
+          type="button"
+          onClick={addLandmarkRow}
+          disabled={isBusy}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-sm border border-primary/30 bg-white px-3 text-sm font-bold text-primary transition-colors hover:border-primary hover:bg-primary/5 disabled:pointer-events-none disabled:opacity-50"
+        >
+          <Plus className="size-4" />
+          Add landmark
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function SingleLandmarkImagePreview({
+  image,
+  index,
+  onRemove,
+}: {
+  image: string;
+  index: number;
+  onRemove?: () => void;
+}) {
+  const trimmedImage = image.trim();
+
+  if (!trimmedImage) {
+    return (
+      <div className="grid h-24 place-items-center rounded-sm border border-dashed border-border bg-white text-xs font-medium text-foreground/45">
+        Preview will appear here
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-24 overflow-hidden rounded-sm border border-border bg-muted">
+      {onRemove ? (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="absolute right-1.5 top-1.5 z-10 grid size-6 place-items-center rounded-sm border border-white/70 bg-white/95 text-foreground shadow-sm transition-colors hover:border-primary hover:text-primary"
+          aria-label={`Remove landmark image ${index + 1}`}
+        >
+          <X className="size-3.5" />
+        </button>
+      ) : null}
+      <div
+        className="h-full w-full bg-cover bg-center"
+        role="img"
+        aria-label={`Destination landmark preview ${index + 1}`}
+        style={{
+          backgroundImage: `url("${getDestinationMediaUrl(trimmedImage)}")`,
+        }}
+      />
+    </div>
+  );
+}
+
 function ImagePreviewGrid({
   images,
   onRemove,
@@ -1558,14 +2041,25 @@ function ImagePreviewGrid({
 }: {
   images: string[];
   onRemove?: (index: number) => void;
-  variant?: "banner" | "gallery";
+  variant?: "banner" | "gallery" | "landmark" | "thumbnail";
 }) {
+  const isGrid = variant === "gallery" || variant === "landmark";
+  const imageLabel =
+    variant === "banner"
+      ? "banner"
+      : variant === "gallery"
+        ? "gallery"
+      : variant === "landmark"
+        ? "landmark"
+        : "thumbnail";
+  const previewImages = isGrid ? images : images.slice(0, 1);
+
   if (images.length === 0) {
     return (
       <div
         className={cn(
           "grid place-items-center rounded-sm border border-dashed border-border bg-muted/35 text-xs font-medium text-foreground/45",
-          variant === "banner" ? "h-28" : "h-20"
+          isGrid ? "h-20" : "h-28"
         )}
       >
         Preview will appear here
@@ -1577,15 +2071,15 @@ function ImagePreviewGrid({
     <div
       className={cn(
         "grid gap-2",
-        variant === "banner" ? "grid-cols-1" : "grid-cols-3"
+        isGrid ? "grid-cols-3" : "grid-cols-1"
       )}
     >
-      {images.slice(0, variant === "banner" ? 1 : 6).map((image, index) => (
+      {previewImages.map((image, index) => (
         <div
           key={`${image}-${index}`}
           className={cn(
             "relative overflow-hidden rounded-sm border border-border bg-muted",
-            variant === "banner" ? "h-32" : "h-20"
+            variant === "banner" ? "h-32" : isGrid ? "h-20" : "h-28"
           )}
         >
           {onRemove ? (
@@ -1594,9 +2088,9 @@ function ImagePreviewGrid({
               onClick={() => onRemove(index)}
               className="absolute right-1.5 top-1.5 z-10 grid size-6 place-items-center rounded-sm border border-white/70 bg-white/95 text-foreground shadow-sm transition-colors hover:border-primary hover:text-primary"
               aria-label={
-                variant === "banner"
-                  ? "Remove banner image"
-                  : `Remove gallery image ${index + 1}`
+                isGrid
+                  ? `Remove ${imageLabel} image ${index + 1}`
+                  : `Remove ${imageLabel} image`
               }
             >
               <X className="size-3.5" />
@@ -1606,9 +2100,9 @@ function ImagePreviewGrid({
             className="h-full w-full bg-cover bg-center"
             role="img"
             aria-label={
-              variant === "banner"
-                ? "Destination banner preview"
-                : `Destination gallery preview ${index + 1}`
+              isGrid
+                ? `Destination ${imageLabel} preview ${index + 1}`
+                : `Destination ${imageLabel} preview`
             }
             style={{
               backgroundImage: `url("${getDestinationMediaUrl(image)}")`,

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bell,
   CalendarDays,
@@ -15,8 +16,10 @@ import {
   Plane,
   Plus,
   Ticket,
+  UserRoundCheck,
   Users,
   XCircle,
+  Pencil,
   type LucideIcon,
 } from "lucide-react";
 
@@ -26,12 +29,28 @@ import {
 } from "@/components/admin-dashboard/admin-dashboard-shell";
 import { HeaderDateRangePicker } from "@/components/admin-dashboard/header-date-range-picker";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
+import {
+  getAdminSession,
+  listenForAdminSessionChanges,
+  type AdminUser,
+} from "@/lib/admin-auth";
+import {
+  getAdminDashboardSummary,
+  getDashboardMediaUrl,
+  type AdminDashboardSummary,
+  type DashboardBookingStatusKey,
+  type DashboardEnquiryStatusKey,
+  type DashboardMetricKey,
+  type DashboardRecentBooking,
+  type DashboardTopDestination,
+  type DashboardUpcomingTour,
+} from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
 
-type Metric = {
+type MetricConfig = {
+  key: DashboardMetricKey;
   label: string;
-  value: string;
-  trend: string;
   icon: LucideIcon;
   tone: string;
 };
@@ -43,39 +62,46 @@ type QuickAction = {
   tone: string;
 };
 
-const metrics: Metric[] = [
+type StatusConfig = {
+  color: string;
+  dot: string;
+  label: string;
+};
+
+type EnquiryConfig = {
+  icon: LucideIcon;
+  label: string;
+  tone: string;
+};
+
+const metricConfigs: MetricConfig[] = [
   {
+    key: "totalBookings",
     label: "Total Bookings",
-    value: "156",
-    trend: "+18.6% from Apr 2024",
     icon: Ticket,
     tone: "bg-primary/10 text-primary",
   },
   {
+    key: "upcomingTours",
     label: "Upcoming Tours",
-    value: "12",
-    trend: "+20% from Apr 2024",
     icon: CalendarDays,
     tone: "bg-orange-100 text-orange-600",
   },
   {
+    key: "totalDestinations",
     label: "Total Destinations",
-    value: "48",
-    trend: "+8% from Apr 2024",
     icon: MapPin,
     tone: "bg-emerald-100 text-emerald-600",
   },
   {
+    key: "totalUsers",
     label: "Total Users",
-    value: "1,248",
-    trend: "+15.4% from Apr 2024",
     icon: Users,
     tone: "bg-violet-100 text-violet-600",
   },
   {
+    key: "totalEnquiries",
     label: "Total Enquiries",
-    value: "289",
-    trend: "+12.3% from Apr 2024",
     icon: MessageCircle,
     tone: "bg-amber-100 text-amber-600",
   },
@@ -89,21 +115,21 @@ const quickActions: QuickAction[] = [
     tone: "text-primary",
   },
   {
-    label: "+ Add Tour",
+    label: "Add Tour",
     href: "/tours",
     icon: CalendarDays,
     tone: "text-orange-600",
   },
   {
-    label: "+ Add Blog Post",
-    href: "/blog",
-    icon: FilePlus,
+    label: "Edit Pages",
+    href: "/pages",
+    icon: Pencil,
     tone: "text-orange-500",
   },
   {
-    label: "+ Add User",
-    href: "/users",
-    icon: Users,
+    label: "Add Expert",
+    href: "/experts",
+    icon: UserRoundCheck,
     tone: "text-blue-600",
   },
   {
@@ -120,181 +146,260 @@ const quickActions: QuickAction[] = [
   },
 ];
 
-const upcomingTours = [
-  {
-    title: "Rajasthan Heritage Trail",
-    date: "05 Jun 2024",
-    bookings: 8,
-    tone: "from-orange-500 via-amber-300 to-stone-700",
+const statusConfig: Record<DashboardBookingStatusKey, StatusConfig> = {
+  cancelled: {
+    color: "#ef4444",
+    dot: "bg-red-500",
+    label: "Cancelled",
   },
-  {
-    title: "Himalayan Escape",
-    date: "10 Jun 2024",
-    bookings: 6,
-    tone: "from-emerald-500 via-sky-300 to-slate-700",
+  completed: {
+    color: "#3b82f6",
+    dot: "bg-blue-500",
+    label: "Completed",
   },
-  {
-    title: "Spiritual Varanasi",
-    date: "15 Jun 2024",
-    bookings: 7,
-    tone: "from-amber-500 via-orange-200 to-stone-800",
+  confirmed: {
+    color: "#44b96d",
+    dot: "bg-emerald-500",
+    label: "Confirmed",
   },
-  {
-    title: "Kerala Backwaters",
-    date: "18 Jun 2024",
-    bookings: 5,
-    tone: "from-green-600 via-lime-200 to-cyan-700",
+  pending: {
+    color: "#ff9f2e",
+    dot: "bg-orange-400",
+    label: "Pending",
   },
-];
+  refunded: {
+    color: "#8b5cf6",
+    dot: "bg-violet-500",
+    label: "Refunded",
+  },
+};
 
-const destinations = [
-  { name: "Rajasthan", bookings: 68, tone: "from-orange-500 to-stone-700" },
-  { name: "Varanasi", bookings: 42, tone: "from-amber-500 to-stone-800" },
-  { name: "Hampi", bookings: 31, tone: "from-sky-500 to-orange-700" },
-  { name: "Khajuraho", bookings: 24, tone: "from-lime-600 to-stone-700" },
-  { name: "Kerala", bookings: 19, tone: "from-green-600 to-cyan-700" },
-];
-
-const recentBookings = [
-  {
-    name: "Rahul Sharma",
-    tour: "Rajasthan Heritage Trail",
-    date: "30 May 2024",
-    status: "Confirmed",
-    amount: "Rs24,500",
-    statusClass: "bg-emerald-100 text-emerald-700",
-  },
-  {
-    name: "Priya Mehta",
-    tour: "Himalayan Escape",
-    date: "30 May 2024",
-    status: "Pending",
-    amount: "Rs18,000",
-    statusClass: "bg-amber-100 text-amber-700",
-  },
-  {
-    name: "Arjun Verma",
-    tour: "Spiritual Varanasi",
-    date: "29 May 2024",
-    status: "Confirmed",
-    amount: "Rs12,500",
-    statusClass: "bg-emerald-100 text-emerald-700",
-  },
-  {
-    name: "Sneha Iyer",
-    tour: "Kerala Backwaters",
-    date: "29 May 2024",
-    status: "Confirmed",
-    amount: "Rs16,800",
-    statusClass: "bg-emerald-100 text-emerald-700",
-  },
-  {
-    name: "Karan Patel",
-    tour: "Rajasthan Heritage Trail",
-    date: "28 May 2024",
-    status: "Cancelled",
-    amount: "Rs22,000",
-    statusClass: "bg-red-100 text-red-700",
-  },
-];
-
-const enquiryStats = [
-  {
-    label: "New Enquiries",
-    value: "98",
-    icon: Mail,
-    tone: "bg-primary/10 text-primary",
-  },
-  {
-    label: "In Progress",
-    value: "121",
-    icon: Clock3,
-    tone: "bg-amber-100 text-amber-700",
-  },
-  {
-    label: "Replied",
-    value: "45",
-    icon: CheckCircle2,
-    tone: "bg-emerald-100 text-emerald-700",
-  },
-  {
+const enquiryConfig: Record<DashboardEnquiryStatusKey, EnquiryConfig> = {
+  closed: {
     label: "Closed",
-    value: "25",
     icon: XCircle,
     tone: "bg-violet-100 text-violet-700",
   },
+  inProgress: {
+    label: "In Progress",
+    icon: Clock3,
+    tone: "bg-amber-100 text-amber-700",
+  },
+  new: {
+    label: "New Enquiries",
+    icon: Mail,
+    tone: "bg-primary/10 text-primary",
+  },
+  replied: {
+    label: "Replied",
+    icon: CheckCircle2,
+    tone: "bg-emerald-100 text-emerald-700",
+  },
+};
+
+const statusClassNames: Record<DashboardBookingStatusKey, string> = {
+  cancelled: "bg-red-100 text-red-700",
+  completed: "bg-blue-100 text-blue-700",
+  confirmed: "bg-emerald-100 text-emerald-700",
+  pending: "bg-amber-100 text-amber-700",
+  refunded: "bg-violet-100 text-violet-700",
+};
+
+const avatarTones = [
+  "bg-[#7a3b22]",
+  "bg-primary",
+  "bg-amber-700",
+  "bg-emerald-700",
+  "bg-violet-700",
 ];
 
-const statusLegend = [
-  { label: "Confirmed", value: "62 (39.7%)", dot: "bg-emerald-500" },
-  { label: "Pending", value: "48 (30.8%)", dot: "bg-orange-400" },
-  { label: "Cancelled", value: "22 (14.1%)", dot: "bg-red-500" },
-  { label: "Completed", value: "18 (11.5%)", dot: "bg-blue-500" },
-  { label: "Refunded", value: "6 (3.8%)", dot: "bg-violet-500" },
-];
+const numberFormatter = new Intl.NumberFormat("en-IN", {
+  maximumFractionDigits: 0,
+});
+
+const currencyFormatter = new Intl.NumberFormat("en-IN", {
+  currency: "INR",
+  maximumFractionDigits: 0,
+  style: "currency",
+});
+
+function formatNumber(value: number) {
+  return numberFormatter.format(value);
+}
+
+function formatCurrency(value: number) {
+  return currencyFormatter.format(value || 0);
+}
+
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) {
+    return "0%";
+  }
+
+  return `${Number(value.toFixed(1))}%`;
+}
+
+function getDashboardErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return "Unable to load dashboard data.";
+}
+
+function getDisplayName(user: AdminUser | null) {
+  if (!user) {
+    return "Admin";
+  }
+
+  const name = [user.firstName, user.lastName]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(" ");
+
+  return name || user.email.split("@")[0] || "Admin";
+}
+
+function getInitials(name: string) {
+  const parts = name.split(/\s+/).filter(Boolean);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+
+  return name.slice(0, 2).toUpperCase() || "AU";
+}
 
 export default function DashboardPage() {
+  const toast = useToast();
+  const [summary, setSummary] = useState<AdminDashboardSummary | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadDashboard() {
+      setIsLoading(true);
+      setLoadError("");
+
+      try {
+        const response = await getAdminDashboardSummary();
+
+        if (isMounted) {
+          setSummary(response.data);
+        }
+      } catch (error) {
+        const message = getDashboardErrorMessage(error);
+
+        if (isMounted) {
+          setLoadError(message);
+          setSummary(null);
+        }
+
+        toast.error("Dashboard unavailable", message);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadDashboard();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [toast]);
+
   return (
     <AdminDashboardShell activeLabel="Dashboard">
       <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-5">
-        <DashboardHeader />
+        <DashboardHeader
+          isLoading={isLoading}
+          notificationCount={summary?.notificationCount ?? 0}
+        />
+
+        {loadError ? (
+          <div className="rounded-sm border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700">
+            {loadError}
+          </div>
+        ) : null}
 
         <section
           data-admin-metric-grid
           className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"
         >
-          {metrics.map((metric) => (
-            <MetricCard key={metric.label} metric={metric} />
+          {metricConfigs.map((config) => (
+            <MetricCard
+              key={config.key}
+              config={config}
+              isLoading={isLoading}
+              metric={summary?.metrics[config.key]}
+            />
           ))}
         </section>
 
         <DashboardPanel title="Quick Actions" className="p-3.5 sm:p-4">
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-flow-col sm:auto-cols-[minmax(150px,1fr)] sm:overflow-x-auto sm:pb-1 sm:[-ms-overflow-style:none] sm:[scrollbar-width:none] xl:grid-flow-row xl:grid-cols-6 xl:auto-cols-auto xl:overflow-visible xl:pb-0 sm:[&::-webkit-scrollbar]:hidden">
-            {quickActions.map((action) => {
-              const Icon = action.icon;
-
-              return (
-                <Link
-                  key={action.label}
-                  href={action.href}
-                  data-slot="button"
-                  className={cn(
-                    buttonVariants({ variant: "outline" }),
-                    "h-11 w-full cursor-pointer justify-start rounded-sm border-border bg-white px-3 text-left text-xs font-semibold text-foreground hover:border-primary hover:bg-primary hover:text-primary-foreground"
-                  )}
-                >
-                  <span className="grid w-5 shrink-0 place-items-center">
-                    <Icon
-                      className={cn(
-                        "size-4 group-hover/button:text-primary-foreground",
-                        action.tone
-                      )}
-                    />
-                  </span>
-                  <span className="min-w-0 truncate">{action.label}</span>
-                </Link>
-              );
-            })}
-          </div>
+          <QuickActions />
         </DashboardPanel>
 
         <section className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr_0.85fr]">
-          <UpcomingTours />
-          <RecentBookings />
-          <EnquiriesOverview />
+          <UpcomingTours
+            isLoading={isLoading}
+            tours={summary?.upcomingTours ?? []}
+          />
+          <RecentBookings
+            bookings={summary?.recentBookings ?? []}
+            isLoading={isLoading}
+          />
+          <EnquiriesOverview
+            isLoading={isLoading}
+            stats={summary?.enquiryStats ?? []}
+          />
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[1.25fr_0.95fr_0.9fr]">
-          <BookingsOverview />
-          <BookingsStatus />
-          <TopDestinations />
+          <BookingsOverview
+            buckets={summary?.bookingChart ?? []}
+            isLoading={isLoading}
+          />
+          <BookingsStatus
+            isLoading={isLoading}
+            statuses={summary?.bookingStatus ?? []}
+          />
+          <TopDestinations
+            destinations={summary?.topDestinations ?? []}
+            isLoading={isLoading}
+          />
         </section>
       </div>
     </AdminDashboardShell>
   );
 }
 
-function DashboardHeader() {
+function DashboardHeader({
+  isLoading,
+  notificationCount,
+}: {
+  isLoading: boolean;
+  notificationCount: number;
+}) {
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
+
+  useEffect(() => {
+    const syncAdminUser = () => {
+      setAdminUser(getAdminSession()?.user ?? null);
+    };
+
+    syncAdminUser();
+
+    return listenForAdminSessionChanges(syncAdminUser);
+  }, []);
+
+  const displayName = getDisplayName(adminUser);
+  const initials = getInitials(displayName);
+
   return (
     <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 items-center gap-4">
@@ -304,7 +409,7 @@ function DashboardHeader() {
             Dashboard
           </h1>
           <p className="mt-1 text-sm text-foreground/60">
-            Welcome back, Admin! Here&apos;s what&apos;s happening today.
+            Welcome back, {displayName}! Here&apos;s what&apos;s happening today.
           </p>
         </div>
       </div>
@@ -318,9 +423,11 @@ function DashboardHeader() {
           aria-label="Notifications"
         >
           <Bell className="size-5" />
-          <span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-bold text-white">
-            5
-          </span>
+          {!isLoading && notificationCount > 0 ? (
+            <span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-bold text-white">
+              {notificationCount > 99 ? "99" : notificationCount}
+            </span>
+          ) : null}
         </button>
 
         <button
@@ -329,9 +436,11 @@ function DashboardHeader() {
           aria-label="Admin profile"
         >
           <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#7a3b22] text-xs font-bold text-white">
-            AU
+            {initials}
           </span>
-          <span className="hidden sm:inline">Admin User</span>
+          <span className="hidden max-w-[150px] truncate sm:inline">
+            {displayName}
+          </span>
           <ChevronDown className="size-4 text-foreground/45" />
         </button>
       </div>
@@ -339,8 +448,16 @@ function DashboardHeader() {
   );
 }
 
-function MetricCard({ metric }: { metric: Metric }) {
-  const Icon = metric.icon;
+function MetricCard({
+  config,
+  isLoading,
+  metric,
+}: {
+  config: MetricConfig;
+  isLoading: boolean;
+  metric?: AdminDashboardSummary["metrics"][DashboardMetricKey];
+}) {
+  const Icon = config.icon;
 
   return (
     <div className="rounded-sm border border-border bg-white p-4 shadow-sm shadow-stone-200/40">
@@ -348,21 +465,36 @@ function MetricCard({ metric }: { metric: Metric }) {
         <span
           className={cn(
             "grid size-12 shrink-0 place-items-center rounded-full",
-            metric.tone
+            config.tone
           )}
         >
           <Icon className="size-6" />
         </span>
         <div className="min-w-0">
           <p className="truncate text-xs font-medium text-foreground/60">
-            {metric.label}
+            {config.label}
           </p>
-          <p className="mt-1 text-2xl font-bold leading-none text-foreground">
-            {metric.value}
-          </p>
-          <p className="mt-2 text-[11px] font-semibold text-emerald-600">
-            {metric.trend}
-          </p>
+          {isLoading ? (
+            <SkeletonLine className="mt-2 h-7 w-20" />
+          ) : (
+            <p className="mt-1 text-2xl font-bold leading-none text-foreground">
+              {formatNumber(metric?.value ?? 0)}
+            </p>
+          )}
+          {isLoading ? (
+            <SkeletonLine className="mt-3 h-3 w-28" />
+          ) : (
+            <p
+              className={cn(
+                "mt-2 text-[11px] font-semibold",
+                metric?.trend.startsWith("-")
+                  ? "text-red-600"
+                  : "text-emerald-600"
+              )}
+            >
+              {metric?.trend ?? "0% from last month"}
+            </p>
+          )}
         </div>
       </div>
     </div>
@@ -398,7 +530,48 @@ function DashboardPanel({
   );
 }
 
-function BookingsOverview() {
+function QuickActions() {
+  return (
+    <div className="grid grid-cols-2 gap-2.5 sm:grid-flow-col sm:auto-cols-[minmax(150px,1fr)] sm:overflow-x-auto sm:pb-1 sm:[-ms-overflow-style:none] sm:[scrollbar-width:none] xl:grid-flow-row xl:grid-cols-6 xl:auto-cols-auto xl:overflow-visible xl:pb-0 sm:[&::-webkit-scrollbar]:hidden">
+      {quickActions.map((action) => {
+        const Icon = action.icon;
+        const label = action.label.startsWith("Add ")
+          ? `+ ${action.label}`
+          : action.label;
+
+        return (
+          <Link
+            key={action.label}
+            href={action.href}
+            data-slot="button"
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              "h-11 w-full cursor-pointer justify-start rounded-sm border-border bg-white px-3 text-left text-xs font-semibold text-foreground hover:border-primary hover:bg-primary hover:text-primary-foreground"
+            )}
+          >
+            <span className="grid w-5 shrink-0 place-items-center">
+              <Icon
+                className={cn(
+                  "size-4 group-hover/button:text-primary-foreground",
+                  action.tone
+                )}
+              />
+            </span>
+            <span className="min-w-0 truncate">{label}</span>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+function BookingsOverview({
+  buckets,
+  isLoading,
+}: {
+  buckets: AdminDashboardSummary["bookingChart"];
+  isLoading: boolean;
+}) {
   return (
     <DashboardPanel
       title="Bookings Overview"
@@ -425,308 +598,498 @@ function BookingsOverview() {
         </span>
       </div>
 
-      <div className="h-[220px] w-full">
-        <svg
-          className="h-full w-full"
-          viewBox="0 0 560 240"
-          role="img"
-          aria-label="Bookings overview line chart"
-        >
-          {[35, 80, 125, 170].map((y) => (
-            <line
-              key={y}
-              x1="45"
-              x2="535"
-              y1={y}
-              y2={y}
-              stroke="#ece2da"
-              strokeWidth="1"
-            />
-          ))}
-          <polyline
-            fill="none"
-            points="48,175 168,125 288,96 408,84 528,48"
-            stroke="#e6650a"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="4"
-          />
-          <polyline
-            fill="none"
-            points="48,198 168,155 288,132 408,145 528,118"
-            stroke="#cfd3d6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="4"
-          />
-          {[["48", "175"], ["168", "125"], ["288", "96"], ["408", "84"], ["528", "48"]].map(
-            ([cx, cy]) => (
-              <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="5" fill="#e6650a" />
-            )
-          )}
-          {[["48", "198"], ["168", "155"], ["288", "132"], ["408", "145"], ["528", "118"]].map(
-            ([cx, cy]) => (
-              <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="5" fill="#cfd3d6" />
-            )
-          )}
-          {["0", "20", "40", "60", "80"].map((label, index) => (
-            <text
-              key={label}
-              x="18"
-              y={215 - index * 45}
-              fill="#8f8178"
-              fontSize="12"
-            >
-              {label}
-            </text>
-          ))}
-          {["1 May", "8 May", "15 May", "22 May", "29 May"].map(
-            (label, index) => (
-              <text
-                key={label}
-                x={38 + index * 120}
-                y="230"
-                fill="#8f8178"
-                fontSize="12"
-              >
-                {label}
-              </text>
-            )
-          )}
-        </svg>
-      </div>
+      {isLoading ? (
+        <SkeletonBlock className="h-[220px]" />
+      ) : (
+        <BookingLineChart buckets={buckets} />
+      )}
     </DashboardPanel>
   );
 }
 
-function BookingsStatus() {
+function BookingLineChart({
+  buckets,
+}: {
+  buckets: AdminDashboardSummary["bookingChart"];
+}) {
+  const visibleBuckets =
+    buckets.length > 0
+      ? buckets
+      : [{ current: 0, label: "This month", previous: 0 }];
+  const maxValue = Math.max(
+    1,
+    ...visibleBuckets.flatMap((bucket) => [bucket.current, bucket.previous])
+  );
+  const chartLeft = 48;
+  const chartRight = 528;
+  const chartTop = 35;
+  const chartBottom = 200;
+  const chartHeight = chartBottom - chartTop;
+  const step = visibleBuckets.length > 1
+    ? (chartRight - chartLeft) / (visibleBuckets.length - 1)
+    : 0;
+  const getY = (value: number) =>
+    chartBottom - (value / maxValue) * chartHeight;
+  const createPoints = (key: "current" | "previous") =>
+    visibleBuckets
+      .map((bucket, index) => {
+        const x = chartLeft + index * step;
+        const y = getY(bucket[key]);
+
+        return `${x},${y}`;
+      })
+      .join(" ");
+  const guideValues = [0, 0.25, 0.5, 0.75, 1].map((ratio) =>
+    Math.round(maxValue * ratio)
+  );
+
+  return (
+    <div className="h-[220px] w-full">
+      <svg
+        className="h-full w-full"
+        viewBox="0 0 560 240"
+        role="img"
+        aria-label="Bookings overview line chart"
+      >
+        {guideValues.map((value, index) => {
+          const y = chartBottom - index * (chartHeight / 4);
+
+          return (
+            <g key={`${value}-${index}`}>
+              <line
+                x1="45"
+                x2="535"
+                y1={y}
+                y2={y}
+                stroke="#ece2da"
+                strokeWidth="1"
+              />
+              <text x="18" y={y + 4} fill="#8f8178" fontSize="12">
+                {value}
+              </text>
+            </g>
+          );
+        })}
+        <polyline
+          fill="none"
+          points={createPoints("current")}
+          stroke="#e6650a"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="4"
+        />
+        <polyline
+          fill="none"
+          points={createPoints("previous")}
+          stroke="#cfd3d6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="4"
+        />
+        {visibleBuckets.map((bucket, index) => {
+          const x = chartLeft + index * step;
+
+          return (
+            <g key={`${bucket.label}-${index}`}>
+              <circle cx={x} cy={getY(bucket.current)} r="5" fill="#e6650a" />
+              <circle cx={x} cy={getY(bucket.previous)} r="5" fill="#cfd3d6" />
+              <text x={x - 10} y="230" fill="#8f8178" fontSize="12">
+                {bucket.label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function BookingsStatus({
+  isLoading,
+  statuses,
+}: {
+  isLoading: boolean;
+  statuses: AdminDashboardSummary["bookingStatus"];
+}) {
+  const total = statuses.reduce((sum, item) => sum + item.value, 0);
+  const conicGradient = useMemo(() => {
+    if (total <= 0) {
+      return "conic-gradient(#ece2da 0 100%)";
+    }
+
+    let cursor = 0;
+    const segments = statuses.map((item) => {
+      const percentage = (item.value / total) * 100;
+      const start = cursor;
+      const end = cursor + percentage;
+
+      cursor = end;
+
+      return `${statusConfig[item.key].color} ${start}% ${end}%`;
+    });
+
+    return `conic-gradient(${segments.join(", ")})`;
+  }, [statuses, total]);
+
   return (
     <DashboardPanel title="Bookings by Status">
-      <div className="flex flex-col items-center gap-5 sm:flex-row xl:flex-col 2xl:flex-row">
-        <div
-          className="relative size-44 shrink-0 rounded-full"
-          style={{
-            background:
-              "conic-gradient(#44b96d 0 39.7%, #ff9f2e 39.7% 70.5%, #ef4444 70.5% 84.6%, #3b82f6 84.6% 96.1%, #8b5cf6 96.1% 100%)",
-          }}
-        >
-          <div className="absolute inset-9 grid place-items-center rounded-full bg-white">
-            <div className="text-center">
-              <p className="text-4xl font-bold leading-none">156</p>
-              <p className="mt-1 text-xs text-foreground/55">Total</p>
+      {isLoading ? (
+        <SkeletonBlock className="h-[230px]" />
+      ) : (
+        <div className="flex flex-col items-center gap-5 sm:flex-row xl:flex-col 2xl:flex-row">
+          <div
+            className="relative size-44 shrink-0 rounded-full"
+            style={{ background: conicGradient }}
+          >
+            <div className="absolute inset-9 grid place-items-center rounded-full bg-white">
+              <div className="text-center">
+                <p className="text-4xl font-bold leading-none">
+                  {formatNumber(total)}
+                </p>
+                <p className="mt-1 text-xs text-foreground/55">Total</p>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="w-full space-y-3">
-          {statusLegend.map((item) => (
-            <div
-              key={item.label}
-              className="flex items-center justify-between gap-3 text-xs"
-            >
-              <span className="flex items-center gap-2 text-foreground/70">
-                <span className={cn("size-2.5 rounded-full", item.dot)} />
-                {item.label}
-              </span>
-              <span className="font-semibold text-foreground/70">
-                {item.value}
-              </span>
-            </div>
-          ))}
+          <div className="w-full space-y-3">
+            {statuses.map((item) => (
+              <div
+                key={item.key}
+                className="flex items-center justify-between gap-3 text-xs"
+              >
+                <span className="flex items-center gap-2 text-foreground/70">
+                  <span
+                    className={cn("size-2.5 rounded-full", statusConfig[item.key].dot)}
+                  />
+                  {statusConfig[item.key].label}
+                </span>
+                <span className="font-semibold text-foreground/70">
+                  {formatNumber(item.value)} ({formatPercent(item.percentage)})
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </DashboardPanel>
   );
 }
 
-function UpcomingTours() {
+function UpcomingTours({
+  isLoading,
+  tours,
+}: {
+  isLoading: boolean;
+  tours: DashboardUpcomingTour[];
+}) {
   return (
     <DashboardPanel
       title="Upcoming Tours"
-      action={<PanelLink label="View All" />}
+      action={<PanelLink href="/tours" label="View All" />}
     >
-      <div className="space-y-3">
-        {upcomingTours.map((tour) => (
-          <div
-            key={tour.title}
-            className="grid grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-3"
-          >
-            <TourThumb tone={tour.tone} />
-            <div className="min-w-0">
-              <p className="truncate text-xs font-bold text-foreground">
-                {tour.title}
-              </p>
-              <p className="mt-1 text-[11px] text-foreground/55">{tour.date}</p>
+      {isLoading ? (
+        <PanelListSkeleton />
+      ) : tours.length > 0 ? (
+        <div className="space-y-3">
+          {tours.map((tour, index) => (
+            <div
+              key={tour.departureId}
+              className="grid grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-3"
+            >
+              <TourThumb image={tour.image} index={index} />
+              <div className="min-w-0">
+                <p className="truncate text-xs font-bold text-foreground">
+                  {tour.title}
+                </p>
+                <p className="mt-1 text-[11px] text-foreground/55">
+                  {tour.date}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold leading-none">
+                  {formatNumber(tour.bookings)}
+                </p>
+                <p className="mt-1 text-[10px] font-semibold text-primary">
+                  Bookings
+                </p>
+              </div>
             </div>
-            <div className="text-right">
-              <p className="text-lg font-bold leading-none">{tour.bookings}</p>
-              <p className="mt-1 text-[10px] font-semibold text-primary">
-                Bookings
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyPanelMessage message="No upcoming departures found." />
+      )}
     </DashboardPanel>
   );
 }
 
-function TopDestinations() {
-  const maxBookings = Math.max(...destinations.map((item) => item.bookings));
+function TopDestinations({
+  destinations,
+  isLoading,
+}: {
+  destinations: DashboardTopDestination[];
+  isLoading: boolean;
+}) {
+  const maxBookings = Math.max(
+    1,
+    ...destinations.map((destination) => destination.bookings)
+  );
 
   return (
     <DashboardPanel
       title="Top Destinations (By Bookings)"
-      action={<PanelLink label="View All" />}
+      action={<PanelLink href="/destinations" label="View All" />}
     >
-      <div className="space-y-3.5">
-        {destinations.map((destination, index) => (
-          <div
-            key={destination.name}
-            className="grid grid-cols-[18px_48px_minmax(0,1fr)_32px] items-center gap-3"
-          >
-            <span className="text-xs font-semibold text-foreground/60">
-              {index + 1}.
-            </span>
-            <TourThumb tone={destination.tone} size="sm" />
-            <div className="min-w-0">
-              <div className="mb-1 flex items-center justify-between gap-3">
-                <p className="truncate text-xs font-bold">{destination.name}</p>
+      {isLoading ? (
+        <PanelListSkeleton />
+      ) : destinations.length > 0 ? (
+        <div className="space-y-3.5">
+          {destinations.map((destination, index) => (
+            <div
+              key={destination.destinationId}
+              className="grid grid-cols-[18px_48px_minmax(0,1fr)_32px] items-center gap-3"
+            >
+              <span className="text-xs font-semibold text-foreground/60">
+                {index + 1}.
+              </span>
+              <TourThumb image={destination.image} index={index} size="sm" />
+              <div className="min-w-0">
+                <div className="mb-1 flex items-center justify-between gap-3">
+                  <p className="truncate text-xs font-bold">{destination.name}</p>
+                </div>
+                <div className="h-1.5 rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{
+                      width: `${(destination.bookings / maxBookings) * 100}%`,
+                    }}
+                  />
+                </div>
               </div>
-              <div className="h-1.5 rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-primary"
-                  style={{
-                    width: `${(destination.bookings / maxBookings) * 100}%`,
-                  }}
-                />
-              </div>
+              <span className="text-right text-xs font-bold">
+                {formatNumber(destination.bookings)}
+              </span>
             </div>
-            <span className="text-right text-xs font-bold">
-              {destination.bookings}
-            </span>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyPanelMessage message="No destination bookings found." />
+      )}
     </DashboardPanel>
   );
 }
 
-function RecentBookings() {
+function RecentBookings({
+  bookings,
+  isLoading,
+}: {
+  bookings: DashboardRecentBooking[];
+  isLoading: boolean;
+}) {
   return (
     <DashboardPanel
       title="Recent Bookings"
-      action={<PanelLink label="View All" />}
+      action={<PanelLink href="/bookings" label="View All" />}
     >
-      <div className="space-y-3">
-        {recentBookings.map((booking, index) => (
-          <div
-            key={`${booking.name}-${booking.tour}`}
-            className="grid gap-3 rounded-sm border border-transparent py-0.5 sm:grid-cols-[minmax(0,1fr)_86px_82px_74px] sm:items-center"
-          >
-            <div className="flex min-w-0 items-center gap-3">
+      {isLoading ? (
+        <PanelListSkeleton />
+      ) : bookings.length > 0 ? (
+        <div className="space-y-3">
+          {bookings.map((booking, index) => (
+            <div
+              key={booking.id}
+              className="grid gap-3 rounded-sm border border-transparent py-0.5 sm:grid-cols-[minmax(0,1fr)_86px_82px_82px] sm:items-center"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <span
+                  className={cn(
+                    "grid size-9 shrink-0 place-items-center rounded-full text-xs font-bold text-white",
+                    avatarTones[index % avatarTones.length]
+                  )}
+                >
+                  {booking.initials}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-bold">{booking.name}</p>
+                  <p className="truncate text-[11px] text-foreground/55">
+                    {booking.tour}
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs text-foreground/60">{booking.date}</span>
               <span
                 className={cn(
-                  "grid size-9 shrink-0 place-items-center rounded-full text-xs font-bold text-white",
-                  index % 2 === 0 ? "bg-[#7a3b22]" : "bg-primary"
+                  "w-fit rounded-full px-2 py-1 text-[10px] font-semibold",
+                  statusClassNames[booking.status]
                 )}
               >
-                {booking.name
-                  .split(" ")
-                  .map((part) => part[0])
-                  .join("")}
+                {statusConfig[booking.status].label}
               </span>
-              <div className="min-w-0">
-                <p className="truncate text-xs font-bold">{booking.name}</p>
-                <p className="truncate text-[11px] text-foreground/55">
-                  {booking.tour}
-                </p>
-              </div>
+              <span className="text-sm font-bold">
+                {formatCurrency(booking.amount)}
+              </span>
             </div>
-            <span className="text-xs text-foreground/60">{booking.date}</span>
-            <span
-              className={cn(
-                "w-fit rounded-full px-2 py-1 text-[10px] font-semibold",
-                booking.statusClass
-              )}
-            >
-              {booking.status}
-            </span>
-            <span className="text-sm font-bold">{booking.amount}</span>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyPanelMessage message="No bookings found." />
+      )}
     </DashboardPanel>
   );
 }
 
-function EnquiriesOverview() {
+function EnquiriesOverview({
+  isLoading,
+  stats,
+}: {
+  isLoading: boolean;
+  stats: AdminDashboardSummary["enquiryStats"];
+}) {
   return (
     <DashboardPanel
       title="Enquiries Overview"
-      action={<PanelLink label="View All" />}
+      action={<PanelLink href="/enquiries" label="View All" />}
     >
-      <div className="space-y-4">
-        {enquiryStats.map((item) => {
-          const Icon = item.icon;
+      {isLoading ? (
+        <PanelListSkeleton />
+      ) : (
+        <div className="space-y-4">
+          {stats.map((item) => {
+            const config = enquiryConfig[item.key];
+            const Icon = config.icon;
 
-          return (
-            <div
-              key={item.label}
-              className="flex items-center justify-between gap-4"
-            >
-              <div className="flex items-center gap-3">
-                <span
-                  className={cn(
-                    "grid size-10 shrink-0 place-items-center rounded-sm",
-                    item.tone
-                  )}
-                >
-                  <Icon className="size-5" />
-                </span>
-                <span className="text-xs font-medium text-foreground/75">
-                  {item.label}
+            return (
+              <div
+                key={item.key}
+                className="flex items-center justify-between gap-4"
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className={cn(
+                      "grid size-10 shrink-0 place-items-center rounded-sm",
+                      config.tone
+                    )}
+                  >
+                    <Icon className="size-5" />
+                  </span>
+                  <span className="text-xs font-medium text-foreground/75">
+                    {config.label}
+                  </span>
+                </div>
+                <span className="text-lg font-bold">
+                  {formatNumber(item.value)}
                 </span>
               </div>
-              <span className="text-lg font-bold">{item.value}</span>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </DashboardPanel>
   );
 }
 
 function TourThumb({
-  tone,
+  image,
+  index,
   size = "default",
 }: {
-  tone: string;
+  image: string;
+  index: number;
   size?: "default" | "sm";
 }) {
+  const imageUrl = getDashboardMediaUrl(image);
+  const fallbackClassName = [
+    "from-orange-500 via-amber-300 to-stone-700",
+    "from-emerald-500 via-sky-300 to-slate-700",
+    "from-amber-500 via-orange-200 to-stone-800",
+    "from-green-600 via-lime-200 to-cyan-700",
+    "from-violet-500 via-sky-300 to-stone-700",
+  ][index % 5];
+
   return (
     <div
       className={cn(
-        "relative shrink-0 overflow-hidden rounded-md bg-gradient-to-br",
+        "relative shrink-0 overflow-hidden rounded-sm bg-gradient-to-br",
         size === "default" ? "h-12 w-16" : "h-9 w-12",
-        tone
+        !imageUrl && fallbackClassName
       )}
     >
-      <span className="absolute bottom-1 left-1 h-2 w-7 rounded-full bg-white/65" />
-      <span className="absolute bottom-3 left-3 h-5 w-5 rounded-sm border border-white/60 bg-white/25" />
-      <Plane className="absolute right-1 top-1 size-3 text-white/80" />
+      {imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imageUrl}
+          alt=""
+          className="size-full object-cover"
+        />
+      ) : (
+        <>
+          <span className="absolute bottom-1 left-1 h-2 w-7 rounded-full bg-white/65" />
+          <span className="absolute bottom-3 left-3 h-5 w-5 rounded-sm border border-white/60 bg-white/25" />
+          <Plane className="absolute right-1 top-1 size-3 text-white/80" />
+        </>
+      )}
     </div>
   );
 }
 
-function PanelLink({ label }: { label: string }) {
+function PanelLink({ href, label }: { href: string; label: string }) {
   return (
-    <button
-      type="button"
+    <Link
+      href={href}
       className="inline-flex items-center gap-1 text-xs font-bold text-primary transition-colors hover:text-accent"
     >
       {label}
       <Plus className="size-3 rotate-45" />
-    </button>
+    </Link>
+  );
+}
+
+function EmptyPanelMessage({ message }: { message: string }) {
+  return (
+    <div className="rounded-sm border border-dashed border-border bg-muted/20 px-4 py-8 text-center text-xs font-medium text-foreground/55">
+      {message}
+    </div>
+  );
+}
+
+function SkeletonLine({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "block animate-pulse rounded-sm bg-muted",
+        className
+      )}
+    />
+  );
+}
+
+function SkeletonBlock({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn(
+        "animate-pulse rounded-sm bg-muted",
+        className
+      )}
+    />
+  );
+}
+
+function PanelListSkeleton() {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: 4 }).map((_item, index) => (
+        <div
+          key={index}
+          className="grid grid-cols-[64px_minmax(0,1fr)_48px] items-center gap-3"
+        >
+          <SkeletonBlock className="h-12 w-16" />
+          <div>
+            <SkeletonLine className="h-3 w-32" />
+            <SkeletonLine className="mt-2 h-3 w-20" />
+          </div>
+          <SkeletonLine className="h-5 w-10" />
+        </div>
+      ))}
+    </div>
   );
 }

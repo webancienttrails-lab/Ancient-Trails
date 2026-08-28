@@ -11,6 +11,7 @@ export type BookingGuestDetails = {
   dateOfBirth: string;
   gender: string;
   address: string;
+  panNumber?: string;
 };
 
 export type BookingChildDetails = {
@@ -34,6 +35,13 @@ export type AdminBooking = {
   childDetails: BookingChildDetails[];
   guestDetails: BookingGuestDetails[];
   accommodationDetails: BookingAccommodationDetails;
+  subtotal?: number;
+  grandTotal?: number;
+  depositAmount?: number;
+  balanceAmount?: number;
+  paymentStatus?: "pending" | "paid" | "failed" | "refunded";
+  paymentCurrency?: string;
+  amountPaid?: number;
   createdAt: string;
   updatedAt: string;
 };

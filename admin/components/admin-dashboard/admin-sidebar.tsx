@@ -61,10 +61,10 @@ export const adminSidebarItems: AdminSidebarItem[] = [
   },
   { label: "Settings", href: "/settings", icon: Settings },
   {
-    label: "Testimonial",
-    href: "/testimonials",
+    label: "Experiences",
+    href: "/experiences",
     icon: Star,
-    activeLabels: ["Testimonials"],
+    activeLabels: ["Experiences"],
   },
   { label: "Pages", href: "/pages", icon: FileText },
   {

@@ -61,7 +61,6 @@ import {
   updateAdminBooking,
   type AdminBooking,
   type BookingAccommodationDetails,
-  type BookingChildDetails,
   type BookingGuestDetails,
   type BookingPayload,
 } from "@/lib/bookings";
@@ -133,6 +132,7 @@ function createEmptyGuestDetails(): BookingFormGuestDetails {
     dateOfBirth: "",
     gender: "Male",
     address: "",
+    panNumber: "",
   };
 }
 
@@ -261,26 +261,99 @@ function getBookingReference(booking: AdminBooking): string {
   return `BK-${booking.id.slice(-6).toUpperCase()}`;
 }
 
-function formatChildDetails(childDetails: BookingChildDetails[]): string {
-  return childDetails.length
-    ? childDetails.map((child) => child.age).join(", ")
-    : "-";
+function toMoney(value: number | null | undefined): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round(Number(value)));
 }
 
-function formatAccommodation(
-  accommodation: BookingAccommodationDetails
-): string {
-  const entries = [
-    ["Single 1R", accommodation.singleOccupancyOneRoom],
-    ["Single 2R", accommodation.singleOccupancyTwoRooms],
-    ["Double", accommodation.doubleOccupancy],
-    ["Twin", accommodation.twinOccupancy],
-    ["Triple", accommodation.tripleOccupancy],
-  ].filter((entry): entry is [string, number] => Number(entry[1]) > 0);
+function formatCurrency(value: number, currency = "INR"): string {
+  return new Intl.NumberFormat("en-IN", {
+    currency,
+    maximumFractionDigits: 0,
+    style: "currency",
+  }).format(toMoney(value));
+}
 
-  return entries.length
-    ? entries.map(([label, value]) => `${label}: ${value}`).join(", ")
-    : "-";
+function getBookingTotalAmount(booking: AdminBooking): number {
+  const grandTotal = toMoney(booking.grandTotal);
+
+  if (grandTotal > 0) {
+    return grandTotal;
+  }
+
+  const paidAmount = toMoney(booking.amountPaid) || toMoney(booking.depositAmount);
+  const balanceAmount = Number.isFinite(booking.balanceAmount)
+    ? toMoney(booking.balanceAmount)
+    : 0;
+  const paymentTotal = paidAmount + balanceAmount;
+
+  if (paymentTotal > 0) {
+    return paymentTotal;
+  }
+
+  return toMoney(booking.subtotal) || paidAmount;
+}
+
+function getBookingPaidAmount(booking: AdminBooking): number {
+  const amountPaid = toMoney(booking.amountPaid);
+
+  if (amountPaid > 0) {
+    return amountPaid;
+  }
+
+  if (booking.paymentStatus === "paid") {
+    return toMoney(booking.depositAmount) || getBookingTotalAmount(booking);
+  }
+
+  return 0;
+}
+
+function getBookingDueAmount(booking: AdminBooking): number {
+  if (Number.isFinite(booking.balanceAmount)) {
+    return toMoney(booking.balanceAmount);
+  }
+
+  return Math.max(0, getBookingTotalAmount(booking) - getBookingPaidAmount(booking));
+}
+
+function getBookingStatusView(booking: AdminBooking) {
+  const paymentStatus = booking.paymentStatus || "pending";
+
+  if (paymentStatus === "refunded") {
+    return {
+      label: "Refunded",
+      tone: "bg-violet-100 text-violet-700",
+    };
+  }
+
+  if (paymentStatus === "failed") {
+    return {
+      label: "Failed",
+      tone: "bg-red-100 text-red-700",
+    };
+  }
+
+  if (getBookingPaidAmount(booking) > 0 && getBookingDueAmount(booking) > 0) {
+    return {
+      label: "Balance Due",
+      tone: "bg-amber-100 text-amber-700",
+    };
+  }
+
+  if (paymentStatus === "paid") {
+    return {
+      label: "Paid",
+      tone: "bg-emerald-100 text-emerald-700",
+    };
+  }
+
+  return {
+    label: "Pending",
+    tone: "bg-slate-100 text-slate-700",
+  };
 }
 
 function getAccommodationUnitCount(
@@ -330,6 +403,7 @@ function bookingGuestToForm(
     dateOfBirth: toDateInputValue(guest.dateOfBirth),
     gender: guest.gender,
     address: guest.address,
+    panNumber: guest.panNumber || "",
   };
 }
 
@@ -389,6 +463,7 @@ function createBookingPayload(form: BookingFormState): BookingPayload {
         dateOfBirth: guest.dateOfBirth,
         gender: guest.gender.trim(),
         address: guest.address.trim(),
+        panNumber: guest.panNumber?.trim() || "",
       };
     }),
     accommodationDetails: {
@@ -948,21 +1023,21 @@ function BookingTable({
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <colgroup>
             <col className="w-[11%]" />
-            <col className="w-[25%]" />
-            <col className="w-[18%]" />
+            <col className="w-[24%]" />
+            <col className="w-[17%]" />
+            <col className="w-[11%]" />
+            <col className="w-[17%]" />
             <col className="w-[12%]" />
-            <col className="w-[12%]" />
-            <col className="w-[16%]" />
-            <col className="w-[6%]" />
+            <col className="w-[8%]" />
           </colgroup>
           <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
             <tr>
               <th className="px-2 py-3 font-bold">Booking</th>
               <th className="px-2 py-3 font-bold">Guest Details</th>
-              <th className="px-2 py-3 font-bold">Tour ID</th>
+              <th className="px-2 py-3 font-bold">Tour</th>
               <th className="px-2 py-3 font-bold">Guests</th>
-              <th className="px-2 py-3 font-bold">Child Ages</th>
-              <th className="px-2 py-3 font-bold">Accommodation</th>
+              <th className="px-2 py-3 font-bold">Payment</th>
+              <th className="px-2 py-3 font-bold">Status</th>
               <th className="px-2 py-3 text-right font-bold">Actions</th>
             </tr>
           </thead>
@@ -996,6 +1071,11 @@ function BookingTable({
                     booking.guestDetails.length - 1,
                     0
                   );
+                  const currency = booking.paymentCurrency || "INR";
+                  const totalAmount = getBookingTotalAmount(booking);
+                  const paidAmount = getBookingPaidAmount(booking);
+                  const dueAmount = getBookingDueAmount(booking);
+                  const status = getBookingStatusView(booking);
 
                   return (
                     <tr
@@ -1040,7 +1120,7 @@ function BookingTable({
                       </div>
                     </td>
                     <td
-                      data-label="Tour ID"
+                      data-label="Tour"
                       data-mobile-split
                       className="px-2 py-3 text-xs text-foreground/70"
                     >
@@ -1064,19 +1144,39 @@ function BookingTable({
                       </span>
                     </td>
                     <td
-                      data-label="Child Ages"
+                      data-label="Payment"
                       className="px-2 py-3 text-xs text-foreground/70"
                     >
-                      <span className="block truncate">
-                        {formatChildDetails(booking.childDetails)}
-                      </span>
+                      <div className="min-w-0">
+                        <span className="block truncate text-sm font-bold text-foreground">
+                          {formatCurrency(totalAmount, currency)}
+                        </span>
+                        <span className="mt-1 block truncate text-[10px] font-semibold text-emerald-600">
+                          {formatCurrency(paidAmount, currency)} Paid
+                        </span>
+                        <span
+                          className={cn(
+                            "mt-1 block truncate text-[10px] font-semibold",
+                            dueAmount > 0
+                              ? "text-amber-600"
+                              : "text-foreground/45"
+                          )}
+                        >
+                          {formatCurrency(dueAmount, currency)} Due
+                        </span>
+                      </div>
                     </td>
                     <td
-                      data-label="Accommodation"
-                      className="px-2 py-3 text-xs text-foreground/70"
+                      data-label="Status"
+                      className="px-2 py-3"
                     >
-                      <span className="line-clamp-2">
-                        {formatAccommodation(booking.accommodationDetails)}
+                      <span
+                        className={cn(
+                          "inline-flex w-fit rounded-full px-2 py-1 text-[10px] font-bold",
+                          status.tone
+                        )}
+                      >
+                        {status.label}
                       </span>
                     </td>
                     <td data-actions data-label="Actions" className="px-2 py-3">

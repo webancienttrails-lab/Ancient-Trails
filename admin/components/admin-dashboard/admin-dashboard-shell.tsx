@@ -7,7 +7,6 @@ import {
   useEffect,
   useState,
 } from "react";
-import { Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import { AdminDashboardGuard } from "./admin-dashboard-guard";
@@ -60,8 +59,28 @@ export function AdminSidebarToggle({ className }: { className?: string }) {
       aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
       title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
     >
-      <Menu className="size-5" />
+      <SidebarMinimizeIcon />
     </button>
+  );
+}
+
+function SidebarMinimizeIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="size-5"
+      focusable="false"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="M7 4L17 12L7 20"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="square"
+        strokeLinejoin="miter"
+        strokeWidth="4"
+      />
+    </svg>
   );
 }
 
