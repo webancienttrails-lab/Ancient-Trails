@@ -16,11 +16,14 @@ export interface IDestination {
   destinationName: string;
   destinationType: DestinationType;
   countryRegion: string;
+  region: string;
   state: string;
   city: string;
   primaryHeritageFocus: string;
+  bestTimeToVisit: string;
   unescoSite: boolean;
   keyLandmarks: string[];
+  keyLandmarkImages: string[];
   recommendedDurationDays: number;
   shortDescription: string;
   dressCode: string;
@@ -28,6 +31,7 @@ export interface IDestination {
   permits: string;
   idRequirement: string;
   restrictions: string;
+  thumbnailImage: string;
   bannerImage: string;
   galleryImages: string[];
   photos?: string[];
@@ -70,6 +74,10 @@ const destinationSchema = new Schema<IDestination>(
       ...requiredTrimmedString,
       maxlength: 120,
     },
+    region: {
+      ...trimmedString,
+      maxlength: 120,
+    },
     state: {
       ...trimmedString,
       maxlength: 100,
@@ -82,6 +90,10 @@ const destinationSchema = new Schema<IDestination>(
       ...trimmedString,
       maxlength: 160,
     },
+    bestTimeToVisit: {
+      ...trimmedString,
+      maxlength: 120,
+    },
     unescoSite: {
       type: Boolean,
       default: false,
@@ -92,6 +104,22 @@ const destinationSchema = new Schema<IDestination>(
       default: [],
       set: (values: string[]) =>
         values.map((value) => value.trim()).filter(Boolean),
+    },
+    keyLandmarkImages: {
+      type: [String],
+      default: [],
+      set: (values: string[]) => {
+        const trimmedValues = values.map((value) => value.trim());
+
+        while (
+          trimmedValues.length > 0 &&
+          trimmedValues[trimmedValues.length - 1] === ""
+        ) {
+          trimmedValues.pop();
+        }
+
+        return trimmedValues;
+      },
     },
     recommendedDurationDays: {
       type: Number,
@@ -124,6 +152,10 @@ const destinationSchema = new Schema<IDestination>(
       ...trimmedString,
       maxlength: 400,
     },
+    thumbnailImage: {
+      ...trimmedString,
+      maxlength: 500,
+    },
     bannerImage: {
       ...trimmedString,
       maxlength: 500,
@@ -150,6 +182,7 @@ destinationSchema.index({ destinationId: 1 }, { unique: true });
 destinationSchema.index({ destinationName: "text", city: "text", state: "text" });
 destinationSchema.index({ destinationType: 1 });
 destinationSchema.index({ countryRegion: 1 });
+destinationSchema.index({ region: 1 });
 
 destinationSchema.virtual("tours", {
   ref: "Tour",

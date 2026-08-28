@@ -18,6 +18,7 @@ export interface IBookingGuestDetails {
   dateOfBirth: Date;
   gender: string;
   address: string;
+  panNumber?: string;
 }
 
 export interface IBookingChildDetails {
@@ -35,9 +36,16 @@ export interface IBookingAccommodationDetails {
 export interface IBookingTraveller {
   id: string;
   type: "adult" | "child";
+  title?: string;
   firstName?: string;
   lastName?: string;
+  countryCode?: string;
+  mobileNumber?: string;
+  email?: string;
   dateOfBirth?: Date;
+  gender?: string;
+  address?: string;
+  panNumber?: string;
   ageOnDeparture?: number;
 }
 
@@ -60,6 +68,35 @@ export interface IBooking {
   depositAmount?: number;
   balanceAmount?: number;
   balanceDueDate?: Date | null;
+  paymentStatus?: "pending" | "paid" | "failed" | "refunded";
+  paymentProvider?: "razorpay";
+  paymentOrderId?: string;
+  paymentId?: string;
+  paymentSignature?: string;
+  paymentCurrency?: string;
+  amountPaid?: number;
+  paymentCapturedAt?: Date | null;
+  confirmationToken?: string;
+  emailBookingConfirmationStatus?:
+    | "pending"
+    | "sending"
+    | "sent"
+    | "failed";
+  emailBookingConfirmationAttemptedAt?: Date | null;
+  emailBookingConfirmationSentAt?: Date | null;
+  emailBookingConfirmationRecipient?: string;
+  emailBookingConfirmationMessageId?: string;
+  emailBookingConfirmationError?: string;
+  whatsappBookingConfirmationStatus?:
+    | "pending"
+    | "sending"
+    | "sent"
+    | "failed";
+  whatsappBookingConfirmationAttemptedAt?: Date | null;
+  whatsappBookingConfirmationSentAt?: Date | null;
+  whatsappBookingConfirmationRecipient?: string;
+  whatsappBookingConfirmationRequestId?: string;
+  whatsappBookingConfirmationError?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -123,6 +160,10 @@ const guestDetailsSchema = new Schema<IBookingGuestDetails>(
       ...requiredTrimmedString,
       maxlength: 500,
     },
+    panNumber: {
+      ...trimmedString,
+      maxlength: 20,
+    },
   },
   {
     _id: false,
@@ -154,6 +195,10 @@ const travellerSchema = new Schema<IBookingTraveller>(
       enum: ["adult", "child"],
       required: true,
     },
+    title: {
+      ...trimmedString,
+      maxlength: 20,
+    },
     firstName: {
       ...trimmedString,
       maxlength: 80,
@@ -162,9 +207,34 @@ const travellerSchema = new Schema<IBookingTraveller>(
       ...trimmedString,
       maxlength: 80,
     },
+    countryCode: {
+      ...trimmedString,
+      maxlength: 8,
+    },
+    mobileNumber: {
+      ...trimmedString,
+      maxlength: 20,
+    },
+    email: {
+      ...trimmedString,
+      lowercase: true,
+      maxlength: 160,
+    },
     dateOfBirth: {
       type: Date,
       default: null,
+    },
+    gender: {
+      ...trimmedString,
+      maxlength: 40,
+    },
+    address: {
+      ...trimmedString,
+      maxlength: 500,
+    },
+    panNumber: {
+      ...trimmedString,
+      maxlength: 20,
     },
     ageOnDeparture: {
       ...nonNegativeNumber,
@@ -291,6 +361,96 @@ const bookingSchema = new Schema<IBooking>(
       type: Date,
       default: null,
     },
+    paymentStatus: {
+      type: String,
+      enum: ["pending", "paid", "failed", "refunded"],
+      default: "pending",
+    },
+    paymentProvider: {
+      type: String,
+      enum: ["razorpay"],
+      default: undefined,
+    },
+    paymentOrderId: {
+      ...trimmedString,
+      maxlength: 120,
+    },
+    paymentId: {
+      ...trimmedString,
+      maxlength: 120,
+    },
+    paymentSignature: {
+      ...trimmedString,
+      maxlength: 256,
+    },
+    paymentCurrency: {
+      ...trimmedString,
+      uppercase: true,
+      maxlength: 10,
+    },
+    amountPaid: {
+      ...nonNegativeNumber,
+      max: 1000000000,
+    },
+    paymentCapturedAt: {
+      type: Date,
+      default: null,
+    },
+    confirmationToken: {
+      ...trimmedString,
+      maxlength: 128,
+    },
+    emailBookingConfirmationStatus: {
+      type: String,
+      enum: ["pending", "sending", "sent", "failed"],
+      default: "pending",
+    },
+    emailBookingConfirmationAttemptedAt: {
+      type: Date,
+      default: null,
+    },
+    emailBookingConfirmationSentAt: {
+      type: Date,
+      default: null,
+    },
+    emailBookingConfirmationRecipient: {
+      ...trimmedString,
+      lowercase: true,
+      maxlength: 160,
+    },
+    emailBookingConfirmationMessageId: {
+      ...trimmedString,
+      maxlength: 200,
+    },
+    emailBookingConfirmationError: {
+      ...trimmedString,
+      maxlength: 500,
+    },
+    whatsappBookingConfirmationStatus: {
+      type: String,
+      enum: ["pending", "sending", "sent", "failed"],
+      default: "pending",
+    },
+    whatsappBookingConfirmationAttemptedAt: {
+      type: Date,
+      default: null,
+    },
+    whatsappBookingConfirmationSentAt: {
+      type: Date,
+      default: null,
+    },
+    whatsappBookingConfirmationRecipient: {
+      ...trimmedString,
+      maxlength: 20,
+    },
+    whatsappBookingConfirmationRequestId: {
+      ...trimmedString,
+      maxlength: 160,
+    },
+    whatsappBookingConfirmationError: {
+      ...trimmedString,
+      maxlength: 500,
+    },
   },
   {
     timestamps: true,
@@ -300,6 +460,11 @@ const bookingSchema = new Schema<IBooking>(
 bookingSchema.index({ tourId: 1 });
 bookingSchema.index({ departureId: 1 });
 bookingSchema.index({ "guestDetails.email": 1 });
+bookingSchema.index({ paymentOrderId: 1 }, { sparse: true });
+bookingSchema.index({ paymentId: 1 }, { sparse: true });
+bookingSchema.index({ confirmationToken: 1 }, { sparse: true });
+bookingSchema.index({ emailBookingConfirmationStatus: 1 });
+bookingSchema.index({ whatsappBookingConfirmationStatus: 1 });
 bookingSchema.index({
   tourId: "text",
   "guestDetails.firstName": "text",

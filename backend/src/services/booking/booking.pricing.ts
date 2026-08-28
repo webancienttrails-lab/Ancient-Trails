@@ -7,12 +7,12 @@ export function calculateBookingTotals({
   accommodationOption: AccommodationOption;
   gstPercentage?: number;
 }) {
-  const subtotal = accommodationOption.totalPrice;
+  const subtotal = accommodationOption.total;
   const gstAmount = Math.round((subtotal * gstPercentage) / 100);
   const grandTotal = subtotal + gstAmount;
 
   return {
-    tourPrice: accommodationOption.totalPrice,
+    tourPrice: accommodationOption.total,
     subtotal,
     gstPercentage,
     gstAmount,

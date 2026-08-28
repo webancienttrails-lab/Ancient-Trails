@@ -13,14 +13,21 @@ import morgan from "morgan";
 import { adminAboutRoutes, publicAboutRoutes } from "./routes/about.routes";
 import authRoutes from "./routes/auth.routes";
 import { adminBlogRoutes, publicBlogRoutes } from "./routes/blog.routes";
-import bookingRoutes from "./routes/booking.routes";
+import bookingRoutes, { publicBookingRoutes } from "./routes/booking.routes";
+import dashboardRoutes from "./routes/dashboard.routes";
 import destinationRoutes from "./routes/destination.routes";
+import experienceRoutes from "./routes/experience.routes";
 import expertRoutes, { publicExpertRoutes } from "./routes/expert.routes";
 import {
   adminHomePageRoutes,
   publicHomePageRoutes,
 } from "./routes/homePage.routes";
+import {
+  adminMegaMenuRoutes,
+  publicMegaMenuRoutes,
+} from "./routes/megaMenu.routes";
 import publicDestinationRoutes from "./routes/publicDestination.routes";
+import publicExperienceRoutes from "./routes/publicExperience.routes";
 import publicTourRoutes from "./routes/publicTour.routes";
 import tourRoutes from "./routes/tour.routes";
 import { HttpError } from "./utils/httpError";
@@ -173,11 +180,17 @@ app.use("/api/blogs", publicBlogRoutes);
 app.use("/api/admin/blogs", adminBlogRoutes);
 app.use("/api/home", publicHomePageRoutes);
 app.use("/api/admin/home", adminHomePageRoutes);
+app.use("/api/mega-menu", publicMegaMenuRoutes);
+app.use("/api/admin/mega-menu", adminMegaMenuRoutes);
 app.use("/api/destinations", publicDestinationRoutes);
 app.use("/api/tours", publicTourRoutes);
+app.use("/api/experiences", publicExperienceRoutes);
 app.use("/api/experts", publicExpertRoutes);
+app.use("/api/bookings", publicBookingRoutes);
+app.use("/api/admin/dashboard", dashboardRoutes);
 app.use("/api/admin/bookings", bookingRoutes);
 app.use("/api/admin/destinations", destinationRoutes);
+app.use("/api/admin/experiences", experienceRoutes);
 app.use("/api/admin/experts", expertRoutes);
 app.use("/api/admin/tours", tourRoutes);
 

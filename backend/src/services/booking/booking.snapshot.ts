@@ -49,7 +49,8 @@ export function createPricingSnapshot({
         (room) => room.allocations
       ),
       pricingBreakdown: accommodationOption.pricingBreakdown,
-      totalPrice: accommodationOption.totalPrice,
+      total: accommodationOption.total,
+      totalPrice: accommodationOption.total,
     },
     subtotal: totals.subtotal,
     gstPercentage: totals.gstPercentage,

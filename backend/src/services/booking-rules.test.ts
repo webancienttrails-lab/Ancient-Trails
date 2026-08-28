@@ -1,16 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  deduplicateAccommodationOptions,
-  generateAccommodationOptions,
-  generateRoomCombinations,
-} from "./accommodation/accommodation.generator";
-import type {
-  AccommodationOption,
-  Traveller,
-} from "./accommodation/accommodation.types";
-import { calculateDeposit, calculateBalance } from "./booking/booking.deposit";
+import { generateOccupancyOptions } from "./accommodation/accommodation.generator";
+import type { AccommodationOption } from "./accommodation/accommodation.types";
+import { calculateBalance, calculateDeposit } from "./booking/booking.deposit";
 import { createPricingSnapshot } from "./booking/booking.snapshot";
 import type { PricedDeparture } from "./departure/departure.types";
 import {
@@ -36,464 +29,381 @@ const departure: PricedDeparture = {
   earlyBirdOffer: null,
   bookingDeadline: "2026-11-30T00:00:00.000Z",
   status: "scheduled",
-  childPricingRules: [
-    {
-      minAge: 0,
-      maxAge: 11,
-      allowExtraBed: true,
-      allowWithoutExtraBed: true,
-    },
-  ],
-  roomPolicy: {
-    allowChildBedSharing: true,
-    maxChildrenWithoutExtraBedPerRoom: 1,
-    allowExtraBed: true,
-    allowChildSingleRoom: false,
-  },
+  childPricingRules: [],
 };
 
-function adultTravellers(count: number): Traveller[] {
-  return Array.from({ length: count }, (_item, index) => ({
-    id: `A${index + 1}`,
-    type: "adult",
-  }));
-}
-
-function childTravellers(count: number, birthYear = 2018): Traveller[] {
-  return Array.from({ length: count }, (_item, index) => ({
-    id: `C${index + 1}`,
-    type: "child",
-    dateOfBirth: `${birthYear}-01-01`,
-  }));
-}
-
-function travellers(adults: number, children = 0): Traveller[] {
-  return [...adultTravellers(adults), ...childTravellers(children)];
-}
-
-function canonicalKey(option: AccommodationOption) {
-  return option.rooms
-    .map((room) => room.roomType)
-    .sort()
-    .join("|");
-}
-
-function findByRoomTypes(
-  options: AccommodationOption[],
-  roomTypes: string[],
-  idPrefix = "option"
+function options(
+  adults: number,
+  childAges: number[] = [],
+  selectedDeparture: PricedDeparture = departure
 ) {
-  const key = [...roomTypes].sort().join("|");
-
-  return options.find(
-    (option) => option.id.startsWith(idPrefix) && canonicalKey(option) === key
-  );
-}
-
-function hasRoomCounts(
-  options: AccommodationOption[],
-  counts: {
-    singles?: number;
-    standards?: number;
-    triples?: number;
-  }
-) {
-  return options.some((option) => {
-    const singles = option.rooms.filter((room) => room.roomType === "single").length;
-    const standards = option.rooms.filter(
-      (room) => room.roomType === "double" || room.roomType === "twin"
-    ).length;
-    const triples = option.rooms.filter((room) =>
-      room.roomType.startsWith("triple")
-    ).length;
-
-    return (
-      singles === (counts.singles || 0) &&
-      standards === (counts.standards || 0) &&
-      triples === (counts.triples || 0)
-    );
+  return generateOccupancyOptions({
+    adults,
+    children: childAges.map((age, index) => ({
+      id: `child-${index + 1}`,
+      age,
+    })),
+    selectedDeparture,
   });
 }
 
-function assertEveryTravellerAssignedExactlyOnce(
-  option: AccommodationOption,
-  sourceTravellers: Traveller[]
+function optionByTitle(
+  generatedOptions: AccommodationOption[],
+  title: string
 ) {
-  const expectedIds = sourceTravellers.map((traveller) => traveller.id).sort();
-  const allocatedIds = option.rooms
-    .flatMap((room) => room.allocations.map((allocation) => allocation.travellerId))
-    .sort();
-
-  assert.deepEqual(allocatedIds, expectedIds);
-  assert.equal(new Set(allocatedIds).size, expectedIds.length);
+  return generatedOptions.find((option) => option.title === title);
 }
 
-function assertNoRoomExceedsCapacity(option: AccommodationOption) {
-  option.rooms.forEach((room) => {
-    const childWithoutBedCount = room.allocations.filter(
-      (allocation) => allocation.bedType === "without_extra_bed"
-    ).length;
-    const bedOccupantCount = room.allocations.length - childWithoutBedCount;
-    const maxPeopleInRoom =
-      room.roomType === "single"
-        ? 1
-        : room.capacity +
-          (departure.roomPolicy?.maxChildrenWithoutExtraBedPerRoom || 1);
-
-    assert.ok(bedOccupantCount <= room.capacity);
-    assert.ok(room.allocations.length <= maxPeopleInRoom);
-  });
+function roomTypes(option: AccommodationOption) {
+  return option.rooms.map((room) => room.roomType);
 }
 
 function assertOptionIntegrity(
   option: AccommodationOption,
-  sourceTravellers: Traveller[]
+  adultCount: number,
+  childCount: number
 ) {
-  assertEveryTravellerAssignedExactlyOnce(option, sourceTravellers);
-  assertNoRoomExceedsCapacity(option);
-  assert.equal(
-    option.totalPrice,
-    option.rooms
-      .flatMap((room) => room.allocations)
-      .reduce((sum, allocation) => sum + allocation.price, 0)
+  const allocations = option.rooms.flatMap((room) => room.allocations);
+  const allocatedAdults = allocations.filter(
+    (allocation) => allocation.travellerType === "adult"
+  );
+  const allocatedChildren = allocations.filter(
+    (allocation) => allocation.travellerType === "child"
+  );
+  const allocationIds = allocations.map((allocation) => allocation.travellerId);
+  const total = option.breakdown.reduce((sum, item) => sum + item.amount, 0);
+
+  assert.equal(allocatedAdults.length, adultCount);
+  assert.equal(allocatedChildren.length, childCount);
+  assert.equal(new Set(allocationIds).size, allocationIds.length);
+  assert.equal(option.breakdown.length, allocations.length);
+  assert.equal(option.total, total);
+
+  allocations.forEach((allocation) => {
+    assert.ok(allocation.rateType);
+    assert.equal(allocation.amount, allocation.price);
+
+    if (allocation.rateType === "EXTRA_BED") {
+      assert.equal(allocation.bedType, "extra_bed");
+    }
+
+    if (allocation.rateType === "FREE_CHILD") {
+      assert.equal(allocation.amount, 0);
+    }
+  });
+
+  option.rooms.forEach((room) => {
+    const bedOccupants = room.allocations.filter(
+      (allocation) => allocation.bedType !== "without_extra_bed"
+    ).length;
+    const extraBeds = room.allocations.filter(
+      (allocation) => allocation.bedType === "extra_bed"
+    ).length;
+    const sharingChildren = room.allocations.filter(
+      (allocation) => allocation.bedType === "without_extra_bed"
+    ).length;
+
+    if (room.roomType === "single") {
+      assert.equal(room.allocations.length, 1);
+      assert.equal(bedOccupants, 1);
+    } else if (room.roomType === "double" || room.roomType === "twin") {
+      assert.ok(bedOccupants <= 2);
+      assert.equal(extraBeds, 0);
+      assert.ok(sharingChildren <= 2);
+    } else {
+      assert.ok(bedOccupants <= 3);
+      assert.equal(extraBeds, 1);
+      assert.ok(sharingChildren <= 1);
+    }
+  });
+}
+
+function assertAllOptionsValid(
+  generatedOptions: AccommodationOption[],
+  adultCount: number,
+  childCount: number
+) {
+  assert.ok(generatedOptions.length > 0);
+  generatedOptions.forEach((option) =>
+    assertOptionIntegrity(option, adultCount, childCount)
   );
 }
 
-test("adult accommodation options are generated and priced from explicit departure prices", () => {
-  const cases = [
-    { count: 1, expectedTotal: 44375, roomTypes: ["single"] },
-    { count: 2, expectedTotal: 71000, roomTypes: ["double"] },
-    { count: 3, expectedTotal: 102950, roomTypes: ["triple_double"] },
-    { count: 4, expectedTotal: 142000, roomTypes: ["double", "double"] },
-  ];
+test("adult occupancy options use only final departure rates", () => {
+  const oneAdult = options(1);
+  const oneAdultTitles = oneAdult.map((option) => option.title);
 
-  cases.forEach(({ count, expectedTotal, roomTypes }) => {
-    const sourceTravellers = adultTravellers(count);
-    const options = generateAccommodationOptions({
-      travellers: sourceTravellers,
-      departure,
-    });
-    const option = findByRoomTypes(options, roomTypes);
-
-    assert.ok(option, `${count} adult option missing`);
-    assert.equal(option.totalPrice, expectedTotal);
-    assertOptionIntegrity(option, sourceTravellers);
-  });
-
-  const threeAdultOptions = generateAccommodationOptions({
-    travellers: adultTravellers(3),
-    departure,
-  });
+  assert.deepEqual(oneAdultTitles, ["Single Occupancy", "Twin Sharing"]);
   assert.equal(
-    findByRoomTypes(threeAdultOptions, ["double", "single"])?.totalPrice,
-    115375
+    optionByTitle(oneAdult, "Single Occupancy")?.total,
+    departure.singleOccupancy
+  );
+  assert.equal(optionByTitle(oneAdult, "Twin Sharing")?.total, departure.priceAdult);
+  assert.equal(
+    oneAdult.some((option) => option.preferredSharingType === "triple"),
+    false
+  );
+  assertAllOptionsValid(oneAdult, 1, 0);
+
+  const twoAdults = options(2);
+  assert.equal(
+    optionByTitle(twoAdults, "Double Occupancy")?.total,
+    departure.priceAdult * 2
   );
   assert.equal(
-    findByRoomTypes(threeAdultOptions, ["single", "single", "single"])
-      ?.totalPrice,
-    133125
+    optionByTitle(twoAdults, "Twin Occupancy")?.total,
+    departure.priceAdult * 2
   );
+  assert.equal(
+    optionByTitle(twoAdults, "Separate Single Occupancy")?.total,
+    departure.singleOccupancy * 2
+  );
+  assertAllOptionsValid(twoAdults, 2, 0);
+
+  const threeAdults = options(3);
+  assert.equal(
+    optionByTitle(threeAdults, "Double + Extra Bed")?.total,
+    departure.priceAdult * 2 + departure.priceExtraBed
+  );
+  assert.equal(
+    optionByTitle(threeAdults, "Twin + Extra Bed")?.total,
+    departure.priceAdult * 2 + departure.priceExtraBed
+  );
+  assert.equal(
+    optionByTitle(threeAdults, "Double + Single")?.total,
+    departure.priceAdult * 2 + departure.singleOccupancy
+  );
+  assert.equal(
+    optionByTitle(threeAdults, "Twin + Single")?.total,
+    departure.priceAdult * 2 + departure.singleOccupancy
+  );
+  assert.equal(
+    optionByTitle(threeAdults, "All Single")?.total,
+    departure.singleOccupancy * 3
+  );
+  assertAllOptionsValid(threeAdults, 3, 0);
+
+  const fourAdults = options(4);
+  assert.equal(
+    optionByTitle(fourAdults, "Two Double Rooms")?.total,
+    departure.priceAdult * 4
+  );
+  assert.equal(
+    optionByTitle(fourAdults, "Two Twin Rooms")?.total,
+    departure.priceAdult * 4
+  );
+  assert.equal(
+    optionByTitle(fourAdults, "Double + Twin")?.total,
+    departure.priceAdult * 4
+  );
+  assert.equal(
+    optionByTitle(fourAdults, "All Single")?.total,
+    departure.singleOccupancy * 4
+  );
+  assertAllOptionsValid(fourAdults, 4, 0);
 });
 
-test("larger groups return practical, deduplicated options with all single retained", () => {
-  [5, 6, 7, 8, 10, 15, 24, 25].forEach((count) => {
-    const sourceTravellers = adultTravellers(count);
-    const options = generateAccommodationOptions({
-      travellers: sourceTravellers,
-      departure,
-    });
-    const keys = options.map(canonicalKey);
+test("larger adult groups are generated dynamically", () => {
+  const fiveAdults = options(5);
+  const sharedRooms = optionByTitle(fiveAdults, "Shared Rooms");
 
-    assert.ok(options.length <= 6);
-    assert.equal(new Set(keys).size, keys.length);
-    assert.ok(
-      options.some((option) =>
-        option.rooms.every((room) => room.roomType === "single")
-      )
-    );
-    options.forEach((option) => assertOptionIntegrity(option, sourceTravellers));
-  });
-
-  const twentyFiveOptions = generateAccommodationOptions({
-    travellers: adultTravellers(25),
-    departure,
-  });
-
-  assert.ok(hasRoomCounts(twentyFiveOptions, { standards: 12, singles: 1 }));
-  assert.ok(hasRoomCounts(twentyFiveOptions, { standards: 11, triples: 1 }));
-  assert.ok(hasRoomCounts(twentyFiveOptions, { triples: 8, singles: 1 }));
-});
-
-test("solo sharing options do not create a fake second traveller", () => {
-  const sourceTravellers = adultTravellers(1);
-  const options = generateAccommodationOptions({
-    travellers: sourceTravellers,
-    departure,
-  });
-  const twinSharing = options.find(
-    (option) => option.preferredSharingType === "twin"
-  );
-  const tripleSharing = options.find(
-    (option) => option.preferredSharingType === "triple"
-  );
-
-  assert.ok(twinSharing);
-  assert.ok(tripleSharing);
-  assert.equal(twinSharing.requiresRoommateMatching, true);
-  assert.equal(tripleSharing.requiresRoommateMatching, true);
-  assert.equal(twinSharing.totalTravellers, 1);
-  assert.equal(twinSharing.rooms[0].travellerIds.length, 1);
-  assert.equal(twinSharing.rooms[0].allocations.length, 1);
-  assert.equal(twinSharing.totalPrice, departure.priceAdult);
-});
-
-test("child allocations honor age rules and bed allocation", () => {
-  const twoAdultsOneChild = travellers(2, 1);
-  const options = generateAccommodationOptions({
-    travellers: twoAdultsOneChild,
-    departure,
-  });
-  const childWithoutBed = findByRoomTypes(
-    options,
-    ["double"],
-    "child-without-bed"
-  );
-  const childWithExtraBed = findByRoomTypes(options, ["triple_double"]);
-
-  assert.ok(childWithoutBed);
-  assert.ok(childWithExtraBed);
-  assert.equal(childWithoutBed.totalPrice, 99400);
-  assert.equal(childWithExtraBed.totalPrice, 102950);
-  assertOptionIntegrity(childWithoutBed, twoAdultsOneChild);
-  assertOptionIntegrity(childWithExtraBed, twoAdultsOneChild);
-  assert.equal(childWithoutBed.pricingBreakdown.childWithoutExtraBedCount, 1);
-  assert.equal(childWithExtraBed.pricingBreakdown.extraBedCount, 1);
-
-  const oneAdultTwoChildren = travellers(1, 2);
-  const oneAdultOptions = generateAccommodationOptions({
-    travellers: oneAdultTwoChildren,
-    departure,
-  });
-  const oneAdultMixedBedOption = findByRoomTypes(
-    oneAdultOptions,
-    ["triple_double"]
-  );
-
-  assert.ok(oneAdultMixedBedOption);
+  assert.ok(sharedRooms);
+  assert.deepEqual(roomTypes(sharedRooms), ["double", "triple_double"]);
   assert.equal(
-    oneAdultMixedBedOption.totalPrice,
-    departure.priceAdult +
-      departure.priceChildWithoutExtraBed +
-      departure.priceExtraBed
+    sharedRooms.total,
+    departure.priceAdult * 4 + departure.priceExtraBed
   );
+  assert.ok(optionByTitle(fiveAdults, "All Single"));
+  assertAllOptionsValid(fiveAdults, 5, 0);
 
-  const twoAdultsTwoChildren = travellers(2, 2);
-  const twoChildOptions = generateAccommodationOptions({
-    travellers: twoAdultsTwoChildren,
-    departure,
-  });
-  assert.equal(
-    findByRoomTypes(twoChildOptions, ["double", "double"], "child-without-bed")
-      ?.totalPrice,
-    127800
-  );
-
-  const twoAdultsTwoChildrenShared = generateAccommodationOptions({
-    travellers: twoAdultsTwoChildren,
-    departure,
-    roomPolicy: {
-      allowChildBedSharing: true,
-      maxChildrenWithoutExtraBedPerRoom: 2,
-      allowExtraBed: true,
-      allowChildSingleRoom: false,
-    },
-  });
-
-  assert.equal(
-    findByRoomTypes(twoAdultsTwoChildrenShared, ["double"], "child-without-bed")
-      ?.totalPrice,
-    departure.priceAdult * 2 + departure.priceChildWithoutExtraBed * 2
-  );
-});
-
-test("two adults and one child only get child-aware primary options by default", () => {
-  const sourceTravellers = travellers(2, 1);
-  const options = generateAccommodationOptions({
-    travellers: sourceTravellers,
-    departure,
-    maxVisibleOptions: 20,
-  });
-  const titles = options.map((option) => option.title).sort();
-
-  assert.deepEqual(titles, [
-    "Double Room + Extra Bed",
-    "Double Room - Child Without Extra Bed",
-    "Twin Room + Extra Bed",
-    "Twin Room - Child Without Extra Bed",
-  ].sort());
-  assert.equal(findByRoomTypes(options, ["double", "single"]), undefined);
-  assert.equal(findByRoomTypes(options, ["twin", "single"]), undefined);
-  assert.equal(
-    findByRoomTypes(options, ["single", "single", "single"]),
-    undefined
-  );
-
-  const childSingleOptions = generateAccommodationOptions({
-    travellers: sourceTravellers,
-    departure,
-    maxVisibleOptions: 20,
-    roomPolicy: {
-      ...departure.roomPolicy!,
-      allowChildSingleRoom: true,
-    },
-  });
-
-  assert.ok(
-    findByRoomTypes(childSingleOptions, ["double", "single"], "child-single-room")
-  );
-  childSingleOptions.forEach((option) =>
-    assertOptionIntegrity(option, sourceTravellers)
-  );
-});
-
-test("two adults and two children never use triple capacity without explicit bed sharing", () => {
-  const sourceTravellers = travellers(2, 2);
-  const options = generateAccommodationOptions({
-    travellers: sourceTravellers,
-    departure,
-    maxVisibleOptions: 20,
-  });
-
-  assert.ok(options.length > 0);
-  options.forEach((option) => {
-    assertOptionIntegrity(option, sourceTravellers);
-    option.rooms.forEach((room) => {
-      if (!room.roomType.startsWith("triple")) {
-        return;
-      }
-
-      const childrenWithoutExtraBed = room.allocations.filter(
-        (allocation) => allocation.bedType === "without_extra_bed"
-      );
-
-      assert.ok(room.allocations.length <= room.capacity || childrenWithoutExtraBed.length > 0);
-    });
+  [6, 7, 8, 10, 25].forEach((adultCount) => {
+    assertAllOptionsValid(options(adultCount), adultCount, 0);
   });
 });
 
-test("child pricing uses age on departure date and configured bed rules", () => {
-  const twoAdultsOneEligibleChild = [
-    ...adultTravellers(2),
-    {
-      id: "C1",
-      type: "child" as const,
-      dateOfBirth: "2015-12-14",
-    },
-  ];
-  const eligibleChildOptions = generateAccommodationOptions({
-    travellers: twoAdultsOneEligibleChild,
-    departure,
-  });
-  const childWithoutBed = findByRoomTypes(
+test("two adults and one child show extra-bed and without-bed options together", () => {
+  const eligibleChildOptions = options(2, [8]);
+  const childWithoutBed = optionByTitle(
     eligibleChildOptions,
-    ["double"],
-    "child-without-bed"
+    "Double - Child Without Extra Bed"
   );
-  const childWithExtraBed = findByRoomTypes(
+  const childWithExtraBed = optionByTitle(
     eligibleChildOptions,
-    ["triple_double"]
+    "Double + Extra Bed"
   );
 
   assert.ok(childWithoutBed);
   assert.ok(childWithExtraBed);
   assert.equal(
-    childWithoutBed.totalPrice,
+    childWithoutBed.total,
     departure.priceAdult * 2 + departure.priceChildWithoutExtraBed
   );
   assert.equal(
-    childWithExtraBed.totalPrice,
+    childWithExtraBed.total,
+    departure.priceAdult * 2 + departure.priceExtraBed
+  );
+  assert.ok(optionByTitle(eligibleChildOptions, "Twin - Child Without Extra Bed"));
+  assert.ok(optionByTitle(eligibleChildOptions, "Twin + Extra Bed"));
+  assertAllOptionsValid(eligibleChildOptions, 2, 1);
+
+  const complimentaryChildOptions = options(2, [4]);
+  const complimentaryOption = optionByTitle(
+    complimentaryChildOptions,
+    "Double - Child Without Extra Bed"
+  );
+
+  assert.ok(complimentaryOption);
+  assert.equal(complimentaryOption.total, departure.priceAdult * 2);
+  assert.equal(
+    complimentaryOption.breakdown.some(
+      (item) => item.rateType === "FREE_CHILD" && item.amount === 0
+    ),
+    true
+  );
+  assert.equal(
+    optionByTitle(complimentaryChildOptions, "Double + Extra Bed"),
+    undefined
+  );
+  assert.equal(
+    optionByTitle(complimentaryChildOptions, "Twin + Extra Bed"),
+    undefined
+  );
+  assertAllOptionsValid(complimentaryChildOptions, 2, 1);
+});
+
+test("one adult with two children prices each child independently", () => {
+  const generatedOptions = options(1, [8, 4]);
+  const withoutBed = optionByTitle(
+    generatedOptions,
+    "Double - Children Without Extra Bed"
+  );
+  const withExtraBed = optionByTitle(
+    generatedOptions,
+    "Double + Extra Bed - Child 1"
+  );
+
+  assert.ok(withoutBed);
+  assert.ok(withExtraBed);
+  assert.equal(
+    withoutBed.total,
+    departure.priceAdult + departure.priceChildWithoutExtraBed
+  );
+  assert.equal(
+    withExtraBed.total,
+    departure.priceAdult + departure.priceExtraBed
+  );
+  assert.equal(
+    withExtraBed.breakdown.some((item) => item.rateType === "FREE_CHILD"),
+    true
+  );
+  assertAllOptionsValid(generatedOptions, 1, 2);
+});
+
+test("two adults and two children allocate and price all four guests", () => {
+  const generatedOptions = options(2, [8, 4]);
+  const twoRooms = optionByTitle(generatedOptions, "Two Double Rooms");
+  const withoutExtraBeds = optionByTitle(
+    generatedOptions,
+    "Double - 2 Children Without Extra Bed"
+  );
+  const tripleArrangement = optionByTitle(
+    generatedOptions,
+    "Double + Extra Bed - Child 1"
+  );
+
+  assert.ok(twoRooms);
+  assert.equal(twoRooms.total, departure.priceAdult * 3);
+  assert.ok(withoutExtraBeds);
+  assert.equal(
+    withoutExtraBeds.total,
+    departure.priceAdult * 2 + departure.priceChildWithoutExtraBed
+  );
+  assert.ok(tripleArrangement);
+  assert.equal(
+    tripleArrangement.total,
     departure.priceAdult * 2 + departure.priceExtraBed
   );
 
-  const birthdayAfterDeparture = childWithoutBed.rooms
-    .flatMap((room) => room.allocations)
-    .find((allocation) => allocation.travellerId === "C1");
+  [twoRooms, withoutExtraBeds, tripleArrangement].forEach((option) => {
+    assert.equal(
+      option.rooms.flatMap((room) => room.allocations).length,
+      4
+    );
+    assert.equal(
+      option.breakdown.some((item) => item.rateType === "FREE_CHILD"),
+      true
+    );
+  });
+  assertAllOptionsValid(generatedOptions, 2, 2);
+});
 
-  assert.equal(
-    birthdayAfterDeparture?.pricingCategory,
-    "child_without_extra_bed"
-  );
-  assert.equal(birthdayAfterDeparture?.bedType, "without_extra_bed");
-  assert.equal(birthdayAfterDeparture?.ageOnDeparture, 10);
+test("missing final rates hide dependent options instead of falling back", () => {
+  const noExtraBed = options(2, [8], {
+    ...departure,
+    priceExtraBed: 0,
+  });
 
-  const oneAdultOneNonEligibleChild = [
-    ...adultTravellers(1),
-    {
-      id: "C1",
-      type: "child" as const,
-      dateOfBirth: "2014-12-13",
-    },
-  ];
-  const adultPricedChildOptions = generateAccommodationOptions({
-    travellers: oneAdultOneNonEligibleChild,
-    departure,
+  assert.ok(optionByTitle(noExtraBed, "Double - Child Without Extra Bed"));
+  assert.equal(optionByTitle(noExtraBed, "Double + Extra Bed"), undefined);
+
+  const noChildWithoutBed = options(2, [8], {
+    ...departure,
+    priceChildWithoutExtraBed: 0,
   });
 
   assert.equal(
-    findByRoomTypes(adultPricedChildOptions, ["double"])?.totalPrice,
+    optionByTitle(noChildWithoutBed, "Double - Child Without Extra Bed"),
+    undefined
+  );
+  assert.ok(optionByTitle(noChildWithoutBed, "Double + Extra Bed"));
+
+  const complimentaryWithoutChildRate = options(2, [4], {
+    ...departure,
+    priceChildWithoutExtraBed: 0,
+  });
+
+  assert.equal(
+    optionByTitle(complimentaryWithoutChildRate, "Double - Child Without Extra Bed")
+      ?.total,
     departure.priceAdult * 2
   );
-});
 
-test("children default to adult pricing when no child age rule matches", () => {
-  const oneAdultOneChild = [
-    ...adultTravellers(1),
-    ...childTravellers(1, 2018),
-  ];
-  const options = generateAccommodationOptions({
-    travellers: oneAdultOneChild,
-    departure: {
-      ...departure,
-      childPricingRules: [],
-    },
+  const noSingleOccupancy = options(1, [], {
+    ...departure,
+    singleOccupancy: 0,
   });
 
-  assert.equal(
-    findByRoomTypes(options, ["double"])?.totalPrice,
-    departure.priceAdult * 2
-  );
+  assert.equal(optionByTitle(noSingleOccupancy, "Single Occupancy"), undefined);
+  assert.ok(optionByTitle(noSingleOccupancy, "Twin Sharing"));
 });
 
-test("invalid traveller counts are rejected", () => {
-  assert.throws(() =>
-    generateAccommodationOptions({
-      travellers: [],
-      departure,
-    })
-  );
-  assert.throws(() =>
-    generateAccommodationOptions({
-      travellers: adultTravellers(26),
-      departure,
-    })
-  );
-});
-
-test("room combinations are canonical and duplicate-free", () => {
-  const combinations = generateRoomCombinations(7);
-  const keys = combinations.map((roomTypes) =>
-    roomTypes.map((roomType) => roomType).sort().join("|")
-  );
-  const options = generateAccommodationOptions({
-    travellers: adultTravellers(7),
-    departure,
-    maxVisibleOptions: 20,
+test("child age is required and can be resolved from departure date", () => {
+  const generatedOptions = generateOccupancyOptions({
+    adults: 2,
+    children: [{ id: "child-1", dateOfBirth: "2021-12-14" }],
+    selectedDeparture: departure,
   });
+  const option = optionByTitle(
+    generatedOptions,
+    "Double - Child Without Extra Bed"
+  );
 
-  assert.equal(new Set(keys).size, keys.length);
+  assert.ok(option);
+  assert.equal(option.total, departure.priceAdult * 2);
   assert.equal(
-    deduplicateAccommodationOptions([options[0], options[0]]).length,
-    1
+    option.rooms
+      .flatMap((room) => room.allocations)
+      .find((allocation) => allocation.travellerId === "child-1")
+      ?.ageOnDeparture,
+    4
+  );
+
+  assert.throws(() =>
+    generateOccupancyOptions({
+      adults: 2,
+      children: [{ id: "child-1" }],
+      selectedDeparture: departure,
+    })
   );
 });
 
@@ -540,7 +450,7 @@ test("departure validation catches booking blockers", () => {
   );
 });
 
-test("deposit, balance, and due date calculations are configurable and capped", () => {
+test("deposit, balance, and due date calculations are preserved", () => {
   assert.equal(
     calculateDeposit({
       depositAppliesTo: "per_person",
@@ -591,15 +501,8 @@ test("deposit, balance, and due date calculations are configurable and capped", 
   );
 });
 
-test("pricing snapshots remain immutable when departure prices change later", () => {
-  const sourceTravellers = adultTravellers(3);
-  const option = findByRoomTypes(
-    generateAccommodationOptions({
-      travellers: sourceTravellers,
-      departure,
-    }),
-    ["triple_double"]
-  );
+test("pricing snapshots use the selected occupancy option total", () => {
+  const option = optionByTitle(options(3), "Double + Extra Bed");
 
   assert.ok(option);
 
@@ -617,7 +520,9 @@ test("pricing snapshots remain immutable when departure prices change later", ()
 
   assert.equal(editedDeparture.priceAdult, 1);
   assert.equal(snapshot.priceAdult, 35500);
-  assert.equal(snapshot.accommodation.totalPrice, 102950);
+  assert.equal(snapshot.accommodation.total, option.total);
+  assert.equal(snapshot.accommodation.totalPrice, option.total);
+  assert.equal(snapshot.subtotal, option.total);
   assert.equal(snapshot.gstAmount, 5148);
   assert.equal(snapshot.grandTotal, 108098);
   assert.equal(snapshot.depositAmount, 60000);

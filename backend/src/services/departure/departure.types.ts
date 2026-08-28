@@ -11,6 +11,7 @@ export const pricingCategories = [
   "extra_bed",
   "child_without_extra_bed",
   "single_occupancy",
+  "free_child",
 ] as const;
 
 export type DepositType = (typeof depositTypes)[number];

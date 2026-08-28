@@ -149,13 +149,16 @@ export const tourMediaUpload = multer({
   },
   limits: {
     fileSize: 50 * 1024 * 1024,
-    files: 22,
   },
 });
 
 const stringListSchema = z
   .array(z.string().trim().min(1).max(300))
   .max(50)
+  .default([])
+  .transform((values) => Array.from(new Set(values)));
+const mediaListSchema = z
+  .array(z.string().trim().min(1).max(500))
   .default([])
   .transform((values) => Array.from(new Set(values)));
 const destinationIdsSchema = z
@@ -194,8 +197,9 @@ const tourPayloadSchema = z
     exclusions: stringListSchema,
     expertId: optionalCodeField("Expert ID", 40),
     notes: textField(1000),
+    thumbnailImage: textField(500),
     bannerImage: textField(500),
-    galleryImages: stringListSchema,
+    galleryImages: mediaListSchema,
     video: textField(500),
   })
   .transform((payload, context) => {
@@ -400,6 +404,7 @@ function formatTour(tour: TourDocument) {
     exclusions: tour.exclusions,
     expertId: tour.expertId,
     notes: tour.notes,
+    thumbnailImage: tour.thumbnailImage || "",
     bannerImage: tour.bannerImage,
     galleryImages: tour.galleryImages,
     video: tour.video,
@@ -735,18 +740,22 @@ export async function uploadTourMedia(
 ): Promise<void> {
   const files = request.files as
     | {
+        thumbnailImage?: Express.Multer.File[];
         bannerImage?: Express.Multer.File[];
         galleryImages?: Express.Multer.File[];
         video?: Express.Multer.File[];
       }
     | undefined;
+  const thumbnailImage = files?.thumbnailImage?.[0]
+    ? getUploadUrl(files.thumbnailImage[0])
+    : "";
   const bannerImage = files?.bannerImage?.[0]
     ? getUploadUrl(files.bannerImage[0])
     : "";
   const galleryImages = (files?.galleryImages || []).map(getUploadUrl);
   const video = files?.video?.[0] ? getUploadUrl(files.video[0]) : "";
 
-  if (!bannerImage && galleryImages.length === 0 && !video) {
+  if (!thumbnailImage && !bannerImage && galleryImages.length === 0 && !video) {
     throw new HttpError(400, "Please select at least one file to upload");
   }
 
@@ -754,6 +763,7 @@ export async function uploadTourMedia(
     success: true,
     message: "Media uploaded successfully",
     data: {
+      thumbnailImage,
       bannerImage,
       galleryImages,
       video,

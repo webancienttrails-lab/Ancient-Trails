@@ -21,6 +21,7 @@ export interface ITour {
   exclusions: string[];
   expertId: string;
   notes: string;
+  thumbnailImage: string;
   bannerImage: string;
   galleryImages: string[];
   video: string;
@@ -113,6 +114,10 @@ const tourSchema = new Schema<ITour>(
     notes: {
       ...trimmedString,
       maxlength: 1000,
+    },
+    thumbnailImage: {
+      ...trimmedString,
+      maxlength: 500,
     },
     bannerImage: {
       ...trimmedString,

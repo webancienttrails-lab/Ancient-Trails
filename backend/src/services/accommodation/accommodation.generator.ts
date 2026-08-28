@@ -1,1401 +1,969 @@
-import {
-  allocateChildrenWithoutExtraBed,
-  allocatePlannedRooms,
-  allocateTravellersToRooms,
-  createAccommodationDescription,
-  createAccommodationTitle,
-  type PlannedRoomAllocation,
-} from "./accommodation.allocator";
-import {
-  calculateAccommodationTotal,
-  createPricingBreakdown,
-} from "./accommodation.pricing";
-import {
-  MAX_VISIBLE_OPTIONS,
-  rankAccommodationOptions,
-} from "./accommodation.ranking";
+import type { PricedDeparture } from "../departure/departure.types";
 import {
   ROOM_TYPES,
   type AccommodationOption,
-  type GenerateAccommodationOptionsInput,
+  type OccupancyBreakdownItem,
+  type OccupancyRateType,
   type RoomAllocation,
+  type TravellerAllocation,
+  type TravellerType,
   type RoomType,
-  type Traveller,
 } from "./accommodation.types";
-import {
-  calculateAgeOnDate,
-  findChildPricingRule,
-  normalizeRoomPolicy,
-  validateAccommodationOption,
-} from "./accommodation.validation";
 
-const roomCombinationTypes: RoomType[] = [
-  "single",
-  "double",
-  "twin",
-  "triple_double",
-  "triple_twin",
-];
+type ChildInput = {
+  id?: string;
+  age?: number;
+  dateOfBirth?: string;
+};
 
-function canonicalRoomCombinationKey(roomTypeList: RoomType[]): string {
-  return [...roomTypeList].sort().join("|");
-}
+type Guest = {
+  id: string;
+  index: number;
+  type: TravellerType;
+  age?: number;
+};
 
-function getRoomCount(roomTypeList: RoomType[], matcher: (roomType: RoomType) => boolean) {
-  return roomTypeList.filter(matcher).length;
-}
+type GuestRate = {
+  bedType: TravellerAllocation["bedType"];
+  rateType: OccupancyRateType;
+  amount: number;
+};
 
-function createPracticalTitle(roomTypeList: RoomType[]) {
-  if (roomTypeList.length === 1) {
-    return ROOM_TYPES[roomTypeList[0]].title;
+type RoomGuestPlan = {
+  guest: Guest;
+  rate: GuestRate;
+};
+
+type RoomPlan = {
+  roomType: RoomType;
+  guests: RoomGuestPlan[];
+};
+
+type GeneratedOptionDraft = {
+  title: string;
+  plans: RoomPlan[];
+  description?: string;
+  recommended?: boolean;
+  requiresRoommateMatching?: boolean;
+  preferredSharingType?: "twin" | "triple";
+};
+
+const rateCategoryByType: Record<
+  OccupancyRateType,
+  TravellerAllocation["pricingCategory"]
+> = {
+  ADULT: "adult",
+  SINGLE_OCCUPANCY: "single_occupancy",
+  EXTRA_BED: "extra_bed",
+  CHILD_WITHOUT_EXTRA_BED: "child_without_extra_bed",
+  FREE_CHILD: "free_child",
+};
+
+function toDate(value: Date | string | null): Date | null {
+  if (!value) {
+    return null;
   }
 
-  return createAccommodationTitle(roomTypeList)
-    .replace(/Double Occupancy/g, "Double Room")
-    .replace(/Twin Occupancy/g, "Twin Room")
-    .replace(/Triple Occupancy/g, "Triple Room")
-    .replace(/Single Occupancy/g, "Single Room");
+  const date = value instanceof Date ? value : new Date(value);
+
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function createPricedOption({
-  departure,
-  description,
-  idPrefix,
-  recommended,
-  rooms,
-  title,
-  travellers,
-}: {
-  departure: GenerateAccommodationOptionsInput["departure"];
-  description?: string;
-  idPrefix?: string;
-  recommended?: boolean;
-  rooms: RoomAllocation[];
-  title?: string;
-  travellers: Traveller[];
-}): AccommodationOption {
-  const allocations = rooms.flatMap((room) => room.allocations);
-  const roomTypeList = rooms.map((room) => room.roomType);
+export function calculateAgeOnDate(
+  dateOfBirth: string | Date,
+  targetDate: string | Date
+): number {
+  const birthDate = dateOfBirth instanceof Date ? dateOfBirth : new Date(dateOfBirth);
+  const comparisonDate =
+    targetDate instanceof Date ? targetDate : new Date(targetDate);
 
+  if (
+    Number.isNaN(birthDate.getTime()) ||
+    Number.isNaN(comparisonDate.getTime())
+  ) {
+    throw new Error("A valid child date of birth is required for pricing.");
+  }
+
+  let age = comparisonDate.getFullYear() - birthDate.getFullYear();
+  const monthDifference = comparisonDate.getMonth() - birthDate.getMonth();
+  const dayDifference = comparisonDate.getDate() - birthDate.getDate();
+
+  if (monthDifference < 0 || (monthDifference === 0 && dayDifference < 0)) {
+    age -= 1;
+  }
+
+  return age;
+}
+
+function hasFinalRate(value: number) {
+  return Number.isFinite(value) && value > 0;
+}
+
+function getRateAmount(
+  selectedDeparture: PricedDeparture,
+  rateType: Exclude<OccupancyRateType, "FREE_CHILD">
+) {
+  switch (rateType) {
+    case "ADULT":
+      return selectedDeparture.priceAdult;
+    case "SINGLE_OCCUPANCY":
+      return selectedDeparture.singleOccupancy;
+    case "EXTRA_BED":
+      return selectedDeparture.priceExtraBed;
+    case "CHILD_WITHOUT_EXTRA_BED":
+      return selectedDeparture.priceChildWithoutExtraBed;
+  }
+}
+
+function assertRate(
+  selectedDeparture: PricedDeparture,
+  rateType: Exclude<OccupancyRateType, "FREE_CHILD">
+) {
+  const rate = getRateAmount(selectedDeparture, rateType);
+
+  if (!hasFinalRate(rate)) {
+    throw new Error(`Required ${rateType} departure price is missing.`);
+  }
+
+  return rate;
+}
+
+function optionalRate(
+  selectedDeparture: PricedDeparture,
+  rateType: Exclude<OccupancyRateType, "ADULT" | "FREE_CHILD">
+) {
+  const rate = getRateAmount(selectedDeparture, rateType);
+
+  return hasFinalRate(rate) ? rate : Number.NaN;
+}
+
+function adultRate(selectedDeparture: PricedDeparture): GuestRate {
   return {
-    id: `${idPrefix || "option"}-${canonicalRoomCombinationKey(roomTypeList)}`,
-    title: title || createPracticalTitle(roomTypeList),
-    description: description || createAccommodationDescription(roomTypeList),
-    rooms,
-    totalTravellers: travellers.length,
-    pricingBreakdown: createPricingBreakdown(allocations, departure),
-    totalPrice: calculateAccommodationTotal(allocations),
-    recommended,
+    bedType: "standard_bed",
+    rateType: "ADULT",
+    amount: assertRate(selectedDeparture, "ADULT"),
   };
 }
 
-function assertTravellerCount(travellers: Traveller[]) {
-  if (travellers.length === 0) {
-    throw new Error("At least one traveller is required.");
+function singleRate(selectedDeparture: PricedDeparture): GuestRate {
+  return {
+    bedType: "single_room",
+    rateType: "SINGLE_OCCUPANCY",
+    amount: optionalRate(selectedDeparture, "SINGLE_OCCUPANCY"),
+  };
+}
+
+function extraBedRate(selectedDeparture: PricedDeparture): GuestRate {
+  return {
+    bedType: "extra_bed",
+    rateType: "EXTRA_BED",
+    amount: optionalRate(selectedDeparture, "EXTRA_BED"),
+  };
+}
+
+function freeChildRate(): GuestRate {
+  return {
+    bedType: "without_extra_bed",
+    rateType: "FREE_CHILD",
+    amount: 0,
+  };
+}
+
+function childWithoutBedRate(
+  child: Guest,
+  selectedDeparture: PricedDeparture
+): GuestRate {
+  if ((child.age ?? 0) < 6) {
+    return freeChildRate();
   }
 
-  if (travellers.length > 25) {
-    throw new Error("A maximum of 25 travellers can be booked at once.");
+  return {
+    bedType: "without_extra_bed",
+    rateType: "CHILD_WITHOUT_EXTRA_BED",
+    amount: optionalRate(selectedDeparture, "CHILD_WITHOUT_EXTRA_BED"),
+  };
+}
+
+function childStandardBedRate(
+  child: Guest,
+  selectedDeparture: PricedDeparture
+): GuestRate {
+  if ((child.age ?? 0) < 6) {
+    return freeChildRate();
   }
 
-  const uniqueIds = new Set(travellers.map((traveller) => traveller.id));
-
-  if (uniqueIds.size !== travellers.length) {
-    throw new Error("Traveller IDs must be unique.");
-  }
+  return adultRate(selectedDeparture);
 }
 
-function assertChildAgeInputs({
-  departure,
-  travellers,
-}: {
-  departure: GenerateAccommodationOptionsInput["departure"];
-  travellers: Traveller[];
-}) {
-  travellers
-    .filter((traveller) => traveller.type === "child")
-    .forEach((traveller) => {
-      const departureDate =
-        departure.departureDate instanceof Date
-          ? departure.departureDate
-          : new Date(departure.departureDate || "");
-
-      if (!traveller.dateOfBirth || Number.isNaN(departureDate.getTime())) {
-        throw new Error("Child date of birth is required for pricing.");
-      }
-
-      calculateAgeOnDate(traveller.dateOfBirth, departureDate);
-    });
-}
-
-function safeCreateOption(createOption: () => AccommodationOption | null) {
-  try {
-    return createOption();
-  } catch {
-    return null;
-  }
-}
-
-function createNormalOption({
-  childPricingRules,
-  departure,
-  roomPolicy,
-  roomTypeList,
-  travellers,
-}: {
-  childPricingRules: GenerateAccommodationOptionsInput["childPricingRules"];
-  departure: GenerateAccommodationOptionsInput["departure"];
-  roomPolicy: GenerateAccommodationOptionsInput["roomPolicy"];
-  roomTypeList: RoomType[];
-  travellers: Traveller[];
-}): AccommodationOption | null {
-  const rooms = allocateTravellersToRooms({
-    childPricingRules: childPricingRules || departure.childPricingRules,
-    departure,
-    roomPolicy,
-    roomTypes: roomTypeList,
-    travellers,
-  });
-  const option = createPricedOption({
-    departure,
-    recommended:
-      roomTypeList.every((roomType) => roomType === "double" || roomType === "twin") ||
-      (getRoomCount(roomTypeList, (roomType) => roomType === "single") === 1 &&
-        roomTypeList.every(
-          (roomType) => roomType === "single" || roomType === "double" || roomType === "twin"
-        )),
-    rooms,
-    travellers,
-  });
-  const errors = validateAccommodationOption(
-    option,
-    travellers,
-    roomPolicy,
-    childPricingRules || departure.childPricingRules
-  );
-
-  return errors.length === 0 ? option : null;
-}
-
-function createChildWithoutBedOption({
-  childPricingRules,
-  departure,
-  roomPolicy,
-  roomTypeList,
-  travellers,
-}: {
-  childPricingRules: GenerateAccommodationOptionsInput["childPricingRules"];
-  departure: GenerateAccommodationOptionsInput["departure"];
-  roomPolicy: GenerateAccommodationOptionsInput["roomPolicy"];
-  roomTypeList: RoomType[];
-  travellers: Traveller[];
-}): AccommodationOption | null {
-  const rooms = allocateChildrenWithoutExtraBed({
-    childPricingRules: childPricingRules || departure.childPricingRules,
-    departure,
-    roomPolicy,
-    roomTypes: roomTypeList,
-    travellers,
-  });
-  const option = createPricedOption({
-    departure,
-    idPrefix: "child-without-bed",
-    rooms,
-    title: `${createPracticalTitle(roomTypeList)} with Child Without Extra Bed`,
-    travellers,
-  });
-  const errors = validateAccommodationOption(
-    option,
-    travellers,
-    roomPolicy,
-    childPricingRules || departure.childPricingRules
-  );
-
-  return errors.length === 0 ? option : null;
-}
-
-function getDepartureDate(
-  departure: GenerateAccommodationOptionsInput["departure"]
-) {
-  const departureDate =
-    departure.departureDate instanceof Date
-      ? departure.departureDate
-      : new Date(departure.departureDate || "");
-
-  if (Number.isNaN(departureDate.getTime())) {
-    throw new Error("Child date of birth is required for pricing.");
+function getGuestLabel(guest: Guest, rateType?: OccupancyRateType) {
+  if (guest.type === "adult") {
+    return `Adult ${guest.index}`;
   }
 
-  return departureDate;
+  if (rateType === "EXTRA_BED") {
+    return `Child ${guest.index} - Extra Bed`;
+  }
+
+  if (rateType === "CHILD_WITHOUT_EXTRA_BED") {
+    return `Child ${guest.index} - Without Extra Bed`;
+  }
+
+  if (rateType === "FREE_CHILD") {
+    return `Child ${guest.index} - Complimentary`;
+  }
+
+  if (rateType === "ADULT") {
+    return `Child ${guest.index} - Adult Rate`;
+  }
+
+  return `Child ${guest.index}`;
 }
 
-function hydrateChildrenForGeneration(
-  children: Traveller[],
-  departure: GenerateAccommodationOptionsInput["departure"]
-) {
-  const departureDate = getDepartureDate(departure);
-
-  return children.map((child) => ({
-    ...child,
-    ageOnDeparture:
-      child.ageOnDeparture ?? calculateAgeOnDate(child.dateOfBirth || "", departureDate),
+function createAdults(count: number): Guest[] {
+  return Array.from({ length: count }, (_item, index) => ({
+    id: `adult-${index + 1}`,
+    index: index + 1,
+    type: "adult" as const,
   }));
 }
 
-function getReadableRoomName(roomType: "double" | "twin") {
-  return roomType === "double" ? "Double Room" : "Twin Room";
-}
-
-function getTripleRoomType(roomType: "double" | "twin"): RoomType {
-  return roomType === "double" ? "triple_double" : "triple_twin";
-}
-
-function canChildUseExtraBed({
-  child,
-  childPricingRules,
-  roomPolicy,
-}: {
-  child: Traveller;
-  childPricingRules: GenerateAccommodationOptionsInput["childPricingRules"];
-  roomPolicy: GenerateAccommodationOptionsInput["roomPolicy"];
-}) {
-  const policy = normalizeRoomPolicy(roomPolicy);
-  const matchingRule = findChildPricingRule(
-    child.ageOnDeparture,
-    childPricingRules || []
-  );
-
-  return policy.allowExtraBed && (!matchingRule || matchingRule.allowExtraBed);
-}
-
-function canChildShareWithoutExtraBed({
-  child,
-  childPricingRules,
-  roomPolicy,
-}: {
-  child: Traveller;
-  childPricingRules: GenerateAccommodationOptionsInput["childPricingRules"];
-  roomPolicy: GenerateAccommodationOptionsInput["roomPolicy"];
-}) {
-  const policy = normalizeRoomPolicy(roomPolicy);
-  const matchingRule = findChildPricingRule(
-    child.ageOnDeparture,
-    childPricingRules || []
-  );
-
-  return (
-    policy.allowChildBedSharing &&
-    policy.maxChildrenWithoutExtraBedPerRoom > 0 &&
-    Boolean(matchingRule?.allowWithoutExtraBed)
-  );
-}
-
-function canChildUseSingleRoom(
-  roomPolicy: GenerateAccommodationOptionsInput["roomPolicy"]
+function resolveChildAge(
+  child: ChildInput,
+  selectedDeparture: PricedDeparture,
+  index: number
 ) {
-  return normalizeRoomPolicy(roomPolicy).allowChildSingleRoom;
-}
-
-function createPlannedOption({
-  childPricingRules,
-  departure,
-  description,
-  idPrefix,
-  recommended,
-  plans,
-  roomPolicy,
-  title,
-  travellers,
-}: {
-  childPricingRules: GenerateAccommodationOptionsInput["childPricingRules"];
-  departure: GenerateAccommodationOptionsInput["departure"];
-  description?: string;
-  idPrefix?: string;
-  recommended?: boolean;
-  plans: PlannedRoomAllocation[];
-  roomPolicy: GenerateAccommodationOptionsInput["roomPolicy"];
-  title: string;
-  travellers: Traveller[];
-}): AccommodationOption | null {
-  const rules = childPricingRules || departure.childPricingRules;
-  const rooms = allocatePlannedRooms({
-    childPricingRules: rules,
-    departure,
-    plans,
-    roomPolicy,
-  });
-  const option = createPricedOption({
-    departure,
-    description,
-    idPrefix,
-    recommended,
-    rooms,
-    title,
-    travellers,
-  });
-  const errors = validateAccommodationOption(
-    option,
-    travellers,
-    roomPolicy,
-    rules
-  );
-
-  return errors.length === 0 ? option : null;
-}
-
-function createChildSingleRoomOptions({
-  adults,
-  childPricingRules,
-  children,
-  departure,
-  roomPolicy,
-  travellers,
-}: {
-  adults: Traveller[];
-  childPricingRules: GenerateAccommodationOptionsInput["childPricingRules"];
-  children: Traveller[];
-  departure: GenerateAccommodationOptionsInput["departure"];
-  roomPolicy: GenerateAccommodationOptionsInput["roomPolicy"];
-  travellers: Traveller[];
-}) {
-  if (!canChildUseSingleRoom(roomPolicy)) {
-    return [];
+  if (typeof child.age === "number" && Number.isFinite(child.age)) {
+    return Math.max(0, Math.floor(child.age));
   }
 
-  const options: AccommodationOption[] = [];
-  const childSinglePlans = children.map(
-    (child): PlannedRoomAllocation => ({
-      roomType: "single",
-      assignments: [{ traveller: child, bedType: "single_room" }],
-    })
-  );
-  const allSingleOption = safeCreateOption(() =>
-    createPlannedOption({
-      childPricingRules,
-      departure,
-      idPrefix: "child-single-room",
-      plans: [
-        ...adults.map(
-          (adult): PlannedRoomAllocation => ({
-            roomType: "single",
-            assignments: [{ traveller: adult, bedType: "single_room" }],
-          })
-        ),
-        ...childSinglePlans,
-      ],
-      roomPolicy,
-      title: `${travellers.length} Single Rooms`,
-      travellers,
-    })
-  );
-
-  if (allSingleOption) {
-    options.push(allSingleOption);
+  if (!child.dateOfBirth) {
+    throw new Error(`Child ${index + 1} date of birth is required.`);
   }
 
-  if (adults.length === 2) {
-    (["double", "twin"] as const).forEach((roomType) => {
-      const option = safeCreateOption(() =>
-        createPlannedOption({
-          childPricingRules,
-          departure,
-          idPrefix: "child-single-room",
-          plans: [
-            {
-              roomType,
-              assignments: adults.map((adult) => ({
-                traveller: adult,
-                bedType: "standard_bed" as const,
-              })),
-            },
-            ...childSinglePlans,
-          ],
-          roomPolicy,
-          title: `${getReadableRoomName(roomType)} + ${
-            children.length === 1
-              ? "Child Single Room"
-              : `${children.length} Child Single Rooms`
-          }`,
-          travellers,
-        })
-      );
+  const departureDate = toDate(selectedDeparture.departureDate);
 
-      if (option) {
-        options.push(option);
-      }
-    });
+  if (!departureDate) {
+    throw new Error("Departure date is required for child pricing.");
   }
 
-  return options;
+  return calculateAgeOnDate(child.dateOfBirth, departureDate);
 }
 
-function generateTwoAdultsOneChildOptions({
-  adults,
-  childPricingRules,
-  children,
-  departure,
-  roomPolicy,
-  travellers,
-}: {
-  adults: Traveller[];
-  childPricingRules: GenerateAccommodationOptionsInput["childPricingRules"];
-  children: Traveller[];
-  departure: GenerateAccommodationOptionsInput["departure"];
-  roomPolicy: GenerateAccommodationOptionsInput["roomPolicy"];
-  travellers: Traveller[];
-}) {
-  const child = children[0];
-  const options: AccommodationOption[] = [];
-
-  (["double", "twin"] as const).forEach((roomType) => {
-    const roomName = getReadableRoomName(roomType);
-
-    if (
-      canChildUseExtraBed({
-        child,
-        childPricingRules,
-        roomPolicy,
-      })
-    ) {
-      const option = safeCreateOption(() =>
-        createPlannedOption({
-          childPricingRules,
-          departure,
-          idPrefix: "option",
-          plans: [
-            {
-              roomType: getTripleRoomType(roomType),
-              assignments: [
-                ...adults.map((adult) => ({
-                  traveller: adult,
-                  bedType: "standard_bed" as const,
-                })),
-                { traveller: child, bedType: "extra_bed" as const },
-              ],
-            },
-          ],
-          recommended: true,
-          roomPolicy,
-          title: `${roomName} + Extra Bed`,
-          travellers,
-        })
-      );
-
-      if (option) {
-        options.push(option);
-      }
-    }
-
-    if (
-      canChildShareWithoutExtraBed({
-        child,
-        childPricingRules,
-        roomPolicy,
-      })
-    ) {
-      const option = safeCreateOption(() =>
-        createPlannedOption({
-          childPricingRules,
-          departure,
-          idPrefix: "child-without-bed",
-          plans: [
-            {
-              roomType,
-              assignments: [
-                ...adults.map((adult) => ({
-                  traveller: adult,
-                  bedType: "standard_bed" as const,
-                })),
-                { traveller: child, bedType: "without_extra_bed" as const },
-              ],
-            },
-          ],
-          roomPolicy,
-          title: `${roomName} - Child Without Extra Bed`,
-          travellers,
-        })
-      );
-
-      if (option) {
-        options.push(option);
-      }
-    }
-  });
-
-  options.push(
-    ...createChildSingleRoomOptions({
-      adults,
-      childPricingRules,
-      children,
-      departure,
-      roomPolicy,
-      travellers,
-    })
-  );
-
-  return options;
+function createChildren(
+  children: ChildInput[],
+  selectedDeparture: PricedDeparture
+): Guest[] {
+  return children.map((child, index) => ({
+    id: child.id || `child-${index + 1}`,
+    index: index + 1,
+    type: "child" as const,
+    age: resolveChildAge(child, selectedDeparture, index),
+  }));
 }
 
-function generateOneAdultTwoChildrenOptions({
-  adults,
-  childPricingRules,
-  children,
-  departure,
-  roomPolicy,
-  travellers,
-}: {
-  adults: Traveller[];
-  childPricingRules: GenerateAccommodationOptionsInput["childPricingRules"];
-  children: Traveller[];
-  departure: GenerateAccommodationOptionsInput["departure"];
-  roomPolicy: GenerateAccommodationOptionsInput["roomPolicy"];
-  travellers: Traveller[];
-}) {
-  const adult = adults[0];
-  const options: AccommodationOption[] = [];
-  const policy = normalizeRoomPolicy(roomPolicy);
-
-  (["double", "twin"] as const).forEach((roomType) => {
-    const roomName = getReadableRoomName(roomType);
-
-    children.forEach((extraBedChild, extraBedIndex) => {
-      const sharingChild = children.find(
-        (_child, index) => index !== extraBedIndex
-      );
-
-      if (
-        !sharingChild ||
-        !canChildUseExtraBed({
-          child: extraBedChild,
-          childPricingRules,
-          roomPolicy,
-        })
-      ) {
-        return;
-      }
-
-      if (
-        canChildShareWithoutExtraBed({
-          child: sharingChild,
-          childPricingRules,
-          roomPolicy,
-        })
-      ) {
-        const option = safeCreateOption(() =>
-          createPlannedOption({
-            childPricingRules,
-            departure,
-            idPrefix: "option",
-            plans: [
-              {
-                roomType: getTripleRoomType(roomType),
-                assignments: [
-                  { traveller: adult, bedType: "standard_bed" },
-                  { traveller: extraBedChild, bedType: "extra_bed" },
-                  { traveller: sharingChild, bedType: "without_extra_bed" },
-                ],
-              },
-            ],
-            recommended: true,
-            roomPolicy,
-            title: `${roomName} + Extra Bed - Child Without Extra Bed`,
-            travellers,
-          })
-        );
-
-        if (option) {
-          options.push(option);
-        }
-      }
-
-      const standardChild = sharingChild;
-      const standardBedOption = safeCreateOption(() =>
-        createPlannedOption({
-          childPricingRules,
-          departure,
-          idPrefix: "option",
-          plans: [
-            {
-              roomType: getTripleRoomType(roomType),
-              assignments: [
-                { traveller: adult, bedType: "standard_bed" },
-                { traveller: standardChild, bedType: "standard_bed" },
-                { traveller: extraBedChild, bedType: "extra_bed" },
-              ],
-            },
-          ],
-          roomPolicy,
-          title: `${roomName} + Extra Bed`,
-          travellers,
-        })
-      );
-
-      if (standardBedOption) {
-        options.push(standardBedOption);
-      }
-    });
-
-    if (
-      policy.maxChildrenWithoutExtraBedPerRoom >= 2 &&
-      children.every((child) =>
-        canChildShareWithoutExtraBed({
-          child,
-          childPricingRules,
-          roomPolicy,
-        })
-      )
-    ) {
-      const option = safeCreateOption(() =>
-        createPlannedOption({
-          childPricingRules,
-          departure,
-          idPrefix: "child-without-bed",
-          plans: [
-            {
-              roomType,
-              assignments: [
-                { traveller: adult, bedType: "standard_bed" },
-                ...children.map((child) => ({
-                  traveller: child,
-                  bedType: "without_extra_bed" as const,
-                })),
-              ],
-            },
-          ],
-          roomPolicy,
-          title: `${roomName} - 2 Children Without Extra Bed`,
-          travellers,
-        })
-      );
-
-      if (option) {
-        options.push(option);
-      }
-    }
-  });
-
-  options.push(
-    ...createChildSingleRoomOptions({
-      adults,
-      childPricingRules,
-      children,
-      departure,
-      roomPolicy,
-      travellers,
-    })
-  );
-
-  return options;
+function roomTitle(roomType: RoomType, roomNumber: number) {
+  return `Room ${roomNumber} - ${ROOM_TYPES[roomType].title}`;
 }
 
-function generateTwoAdultsTwoChildrenOptions({
-  adults,
-  childPricingRules,
-  children,
-  departure,
-  roomPolicy,
-  travellers,
-}: {
-  adults: Traveller[];
-  childPricingRules: GenerateAccommodationOptionsInput["childPricingRules"];
-  children: Traveller[];
-  departure: GenerateAccommodationOptionsInput["departure"];
-  roomPolicy: GenerateAccommodationOptionsInput["roomPolicy"];
-  travellers: Traveller[];
-}) {
-  const options: AccommodationOption[] = [];
-  const policy = normalizeRoomPolicy(roomPolicy);
-  const familyRoomSets: Array<{
-    roomTypes: ["double" | "twin", "double" | "twin"];
-    title: string;
-  }> = [
-    { roomTypes: ["double", "double"], title: "2 Double Rooms" },
-    { roomTypes: ["twin", "twin"], title: "2 Twin Rooms" },
-    { roomTypes: ["double", "twin"], title: "Double Room + Twin Room" },
-  ];
-
-  familyRoomSets.forEach(({ roomTypes, title }) => {
-    const standardOption = safeCreateOption(() =>
-      createPlannedOption({
-        childPricingRules,
-        departure,
-        idPrefix: "option",
-        plans: roomTypes.map((roomType, index) => ({
-          roomType,
-          assignments: [
-            { traveller: adults[index], bedType: "standard_bed" as const },
-            { traveller: children[index], bedType: "standard_bed" as const },
-          ],
-        })),
-        recommended: true,
-        roomPolicy,
-        title,
-        travellers,
-      })
-    );
-
-    if (standardOption) {
-      options.push(standardOption);
-    }
-
-    if (
-      children.every((child) =>
-        canChildShareWithoutExtraBed({
-          child,
-          childPricingRules,
-          roomPolicy,
-        })
-      )
-    ) {
-      const sharingOption = safeCreateOption(() =>
-        createPlannedOption({
-          childPricingRules,
-          departure,
-          idPrefix: "child-without-bed",
-          plans: roomTypes.map((roomType, index) => ({
-            roomType,
-            assignments: [
-              { traveller: adults[index], bedType: "standard_bed" as const },
-              { traveller: children[index], bedType: "without_extra_bed" as const },
-            ],
-          })),
-          roomPolicy,
-          title: `${title} - Children Without Extra Bed`,
-          travellers,
-        })
-      );
-
-      if (sharingOption) {
-        options.push(sharingOption);
-      }
-    }
-  });
-
-  (["double", "twin"] as const).forEach((roomType) => {
-    const roomName = getReadableRoomName(roomType);
-
-    if (
-      policy.maxChildrenWithoutExtraBedPerRoom >= 2 &&
-      children.every((child) =>
-        canChildShareWithoutExtraBed({
-          child,
-          childPricingRules,
-          roomPolicy,
-        })
-      )
-    ) {
-      const option = safeCreateOption(() =>
-        createPlannedOption({
-          childPricingRules,
-          departure,
-          idPrefix: "child-without-bed",
-          plans: [
-            {
-              roomType,
-              assignments: [
-                ...adults.map((adult) => ({
-                  traveller: adult,
-                  bedType: "standard_bed" as const,
-                })),
-                ...children.map((child) => ({
-                  traveller: child,
-                  bedType: "without_extra_bed" as const,
-                })),
-              ],
-            },
-          ],
-          roomPolicy,
-          title: `${roomName} - 2 Children Without Extra Bed`,
-          travellers,
-        })
-      );
-
-      if (option) {
-        options.push(option);
-      }
-    }
-
-    children.forEach((extraBedChild, extraBedIndex) => {
-      const sharingChild = children.find(
-        (_child, index) => index !== extraBedIndex
-      );
-
-      if (
-        !sharingChild ||
-        !canChildUseExtraBed({
-          child: extraBedChild,
-          childPricingRules,
-          roomPolicy,
-        }) ||
-        !canChildShareWithoutExtraBed({
-          child: sharingChild,
-          childPricingRules,
-          roomPolicy,
-        })
-      ) {
-        return;
-      }
-
-      const option = safeCreateOption(() =>
-        createPlannedOption({
-          childPricingRules,
-          departure,
-          idPrefix: "option",
-          plans: [
-            {
-              roomType: getTripleRoomType(roomType),
-              assignments: [
-                ...adults.map((adult) => ({
-                  traveller: adult,
-                  bedType: "standard_bed" as const,
-                })),
-                { traveller: extraBedChild, bedType: "extra_bed" },
-                { traveller: sharingChild, bedType: "without_extra_bed" },
-              ],
-            },
-          ],
-          roomPolicy,
-          title: `${roomName} + Extra Bed - Child Without Extra Bed`,
-          travellers,
-        })
-      );
-
-      if (option) {
-        options.push(option);
-      }
-    });
-  });
-
-  options.push(
-    ...createChildSingleRoomOptions({
-      adults,
-      childPricingRules,
-      children,
-      departure,
-      roomPolicy,
-      travellers,
-    })
-  );
-
-  return options;
-}
-
-function getAdultRoomTypeLists(adultCount: number): RoomType[][] {
-  if (adultCount === 1) {
-    return [["single"], ["twin"], ["triple_twin"]];
-  }
-
-  if (adultCount === 2) {
-    return [["double"], ["twin"], ["single", "single"]];
-  }
-
-  if (adultCount === 3) {
-    return [
-      ["triple_double"],
-      ["triple_twin"],
-      ["double", "single"],
-      ["twin", "single"],
-      ["single", "single", "single"],
-    ];
-  }
-
-  if (adultCount === 4) {
-    return [
-      ["double", "double"],
-      ["twin", "twin"],
-      ["double", "twin"],
-      ["single", "single", "single", "single"],
-    ];
-  }
-
-  return generateRoomCombinations(adultCount);
-}
-
-function createAdultPlans(
-  adults: Traveller[],
-  roomTypeList: RoomType[]
-): PlannedRoomAllocation[] {
-  let adultCursor = 0;
-
-  return roomTypeList.map((roomType) => {
-    const capacity = ROOM_TYPES[roomType].capacity;
-    const roomAdults = adults.slice(adultCursor, adultCursor + capacity);
-
-    adultCursor += capacity;
-
-    return {
-      roomType,
-      assignments: roomAdults.map((adult, occupantIndex) => ({
-        traveller: adult,
-        bedType:
-          roomType === "single"
-            ? "single_room"
-            : roomType.startsWith("triple") && occupantIndex === 2
-              ? "extra_bed"
-              : "standard_bed",
-      })),
-    };
-  });
-}
-
-function generateGenericFamilyOptions({
-  adults,
-  childPricingRules,
-  children,
-  departure,
-  roomPolicy,
-  travellers,
-}: {
-  adults: Traveller[];
-  childPricingRules: GenerateAccommodationOptionsInput["childPricingRules"];
-  children: Traveller[];
-  departure: GenerateAccommodationOptionsInput["departure"];
-  roomPolicy: GenerateAccommodationOptionsInput["roomPolicy"];
-  travellers: Traveller[];
-}) {
-  const options: AccommodationOption[] = [];
-  const pairedChildrenCount = Math.min(adults.length, children.length);
-
-  if (pairedChildrenCount > 0) {
-    (["double", "twin"] as const).forEach((roomType) => {
-      const pairedRooms = Array.from(
-        { length: pairedChildrenCount },
-        (_item, index): PlannedRoomAllocation => ({
-          roomType,
-          assignments: [
-            { traveller: adults[index], bedType: "standard_bed" },
-            { traveller: children[index], bedType: "standard_bed" },
-          ],
-        })
-      );
-      const remainingAdults = adults.slice(pairedChildrenCount);
-      const remainingChildren = children.slice(pairedChildrenCount);
-
-      if (remainingChildren.length > 0) {
-        return;
-      }
-
-      const remainingAdultRoomTypes =
-        remainingAdults.length > 0
-          ? getAdultRoomTypeLists(remainingAdults.length).slice(0, 3)
-          : [[]];
-
-      remainingAdultRoomTypes.forEach((adultRoomTypes) => {
-        const adultPlans = createAdultPlans(remainingAdults, adultRoomTypes);
-        const option = safeCreateOption(() =>
-          createPlannedOption({
-            childPricingRules,
-            departure,
-            idPrefix: "option",
-            plans: [...pairedRooms, ...adultPlans],
-            roomPolicy,
-            title: createPracticalTitle([
-              ...pairedRooms.map((room) => room.roomType),
-              ...adultPlans.map((room) => room.roomType),
-            ]),
-            travellers,
-          })
-        );
-
-        if (option) {
-          options.push(option);
-        }
-      });
-    });
-  }
-
-  const childWithoutBedOptions = getChildWithoutBedRoomCombinations(
-    adults.length,
-    children.length,
-    roomPolicy
-  )
-    .map((roomTypeList) =>
-      safeCreateOption(() =>
-        createChildWithoutBedOption({
-          childPricingRules,
-          departure,
-          roomPolicy,
-          roomTypeList,
-          travellers,
-        })
-      )
-    )
-    .filter((option): option is AccommodationOption => Boolean(option));
-
-  options.push(...childWithoutBedOptions);
-  options.push(
-    ...createChildSingleRoomOptions({
-      adults,
-      childPricingRules,
-      children,
-      departure,
-      roomPolicy,
-      travellers,
-    })
-  );
-
-  return options;
-}
-
-function createSoloSharingOption({
-  departure,
-  preferredSharingType,
-  roomPolicy,
-  roomType,
-  travellers,
-}: {
-  departure: GenerateAccommodationOptionsInput["departure"];
-  preferredSharingType: "twin" | "triple";
-  roomPolicy: GenerateAccommodationOptionsInput["roomPolicy"];
-  roomType: RoomType;
-  travellers: Traveller[];
-}): AccommodationOption {
-  const rooms = allocateTravellersToRooms({
-    childPricingRules: departure.childPricingRules,
-    departure,
-    roomPolicy,
-    roomTypes: [roomType],
-    travellers,
-  });
-  const option = createPricedOption({
-    departure,
-    idPrefix: "solo-sharing",
-    rooms,
-    title:
-      preferredSharingType === "twin"
-        ? "Sharing in Twin Occupancy"
-        : "Sharing in Triple Occupancy",
-    description: "Traveller sharing with another tour guest",
-    travellers,
-  });
+function createRoom(plan: RoomPlan, index: number): RoomAllocation {
+  const roomNumber = index + 1;
+  const roomId = `room-${roomNumber}`;
+  const config = ROOM_TYPES[plan.roomType];
+  const allocations = plan.guests.map(({ guest, rate }) => ({
+    travellerId: guest.id,
+    travellerType: guest.type,
+    label: getGuestLabel(guest, rate.rateType),
+    roomId,
+    roomType: plan.roomType,
+    bedType: rate.bedType,
+    rateType: rate.rateType,
+    pricingCategory: rateCategoryByType[rate.rateType],
+    amount: rate.amount,
+    price: rate.amount,
+    ...(guest.type === "child" ? { ageOnDeparture: guest.age } : {}),
+  }));
 
   return {
-    ...option,
-    requiresRoommateMatching: true,
-    preferredSharingType,
+    id: roomId,
+    title: roomTitle(plan.roomType, roomNumber),
+    roomType: plan.roomType,
+    bedSummary: config.bedSummary,
+    capacity: config.capacity,
+    travellerIds: allocations.map((allocation) => allocation.travellerId),
+    allocations,
   };
 }
 
-function getChildWithoutBedRoomCombinations(
+function createPricingBreakdown(
+  breakdown: OccupancyBreakdownItem[],
+  selectedDeparture: PricedDeparture
+): AccommodationOption["pricingBreakdown"] {
+  const count = (rateType: OccupancyRateType) =>
+    breakdown.filter((item) => item.rateType === rateType).length;
+
+  return {
+    adultCount: count("ADULT"),
+    adultUnitPrice: hasFinalRate(selectedDeparture.priceAdult)
+      ? selectedDeparture.priceAdult
+      : 0,
+    extraBedCount: count("EXTRA_BED"),
+    extraBedUnitPrice: hasFinalRate(selectedDeparture.priceExtraBed)
+      ? selectedDeparture.priceExtraBed
+      : 0,
+    childWithoutExtraBedCount: count("CHILD_WITHOUT_EXTRA_BED"),
+    childWithoutExtraBedUnitPrice: hasFinalRate(
+      selectedDeparture.priceChildWithoutExtraBed
+    )
+      ? selectedDeparture.priceChildWithoutExtraBed
+      : 0,
+    singleOccupancyCount: count("SINGLE_OCCUPANCY"),
+    singleOccupancyUnitPrice: hasFinalRate(selectedDeparture.singleOccupancy)
+      ? selectedDeparture.singleOccupancy
+      : 0,
+    freeChildCount: count("FREE_CHILD"),
+    freeChildUnitPrice: 0,
+  };
+}
+
+function slugify(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function createOption(
+  draft: GeneratedOptionDraft,
+  selectedDeparture: PricedDeparture,
+  sequence: number
+): AccommodationOption {
+  const rooms = draft.plans.map(createRoom);
+  const breakdown = rooms
+    .flatMap((room) => room.allocations)
+    .map((allocation) => ({
+      label: allocation.label,
+      rateType: allocation.rateType,
+      amount: allocation.amount,
+    }));
+  const total = breakdown.reduce((sum, item) => sum + item.amount, 0);
+
+  return {
+    id: `${slugify(draft.title)}-${sequence}`,
+    title: draft.title,
+    description:
+      draft.description ||
+      rooms.map((room) => `${room.title}: ${room.bedSummary}`).join("; "),
+    rooms,
+    breakdown,
+    total,
+    totalTravellers: breakdown.length,
+    pricingBreakdown: createPricingBreakdown(breakdown, selectedDeparture),
+    recommended: draft.recommended,
+    requiresRoommateMatching: draft.requiresRoommateMatching,
+    preferredSharingType: draft.preferredSharingType,
+  };
+}
+
+function validateOption(
+  option: AccommodationOption,
   adultCount: number,
-  childCount: number,
-  roomPolicy: GenerateAccommodationOptionsInput["roomPolicy"]
-): RoomType[][] {
-  const policy = normalizeRoomPolicy(roomPolicy);
+  childCount: number
+) {
+  const allocations = option.rooms.flatMap((room) => room.allocations);
+  const ids = new Set(allocations.map((allocation) => allocation.travellerId));
+  const allocatedAdults = allocations.filter(
+    (allocation) => allocation.travellerType === "adult"
+  ).length;
+  const allocatedChildren = allocations.filter(
+    (allocation) => allocation.travellerType === "child"
+  ).length;
+  const total = option.breakdown.reduce((sum, item) => sum + item.amount, 0);
 
-  if (
-    adultCount === 0 ||
-    childCount === 0 ||
-    !policy.allowChildBedSharing ||
-    policy.maxChildrenWithoutExtraBedPerRoom === 0
-  ) {
-    return [];
+  if (allocatedAdults !== adultCount || allocatedChildren !== childCount) {
+    return false;
   }
 
-  const roomCount = Math.max(
-    1,
-    Math.ceil(childCount / policy.maxChildrenWithoutExtraBedPerRoom)
-  );
-  const minimumRooms = Math.min(adultCount, roomCount);
-  const maximumRooms = adultCount;
-  const combinations: RoomType[][] = [];
+  if (ids.size !== allocations.length || allocations.length !== option.breakdown.length) {
+    return false;
+  }
 
-  for (let count = minimumRooms; count <= maximumRooms; count += 1) {
-    combinations.push(Array.from({ length: count }, () => "double" as RoomType));
+  if (total !== option.total) {
+    return false;
+  }
 
-    if (count <= 3) {
-      combinations.push(Array.from({ length: count }, () => "twin" as RoomType));
+  return option.rooms.every((room) => {
+    const bedOccupants = room.allocations.filter(
+      (allocation) =>
+        allocation.bedType === "standard_bed" ||
+        allocation.bedType === "single_room" ||
+        allocation.bedType === "extra_bed"
+    ).length;
+    const extraBeds = room.allocations.filter(
+      (allocation) => allocation.bedType === "extra_bed"
+    ).length;
+    const sharingChildren = room.allocations.filter(
+      (allocation) =>
+        allocation.travellerType === "child" &&
+        (allocation.bedType === "without_extra_bed" ||
+          allocation.rateType === "FREE_CHILD")
+    ).length;
+
+    if (room.roomType === "single") {
+      return room.allocations.length === 1 && bedOccupants === 1;
     }
-  }
 
-  return combinations;
+    if (room.roomType === "double" || room.roomType === "twin") {
+      return bedOccupants <= 2 && extraBeds === 0 && sharingChildren <= 2;
+    }
+
+    return bedOccupants <= 3 && extraBeds === 1 && sharingChildren <= 1;
+  });
 }
 
-function limitVisibleOptions(
-  options: AccommodationOption[],
-  maxVisibleOptions: number
+function addOption(
+  drafts: GeneratedOptionDraft[],
+  draft: GeneratedOptionDraft | null
 ) {
-  const ranked = rankAccommodationOptions(options);
-  const allSingle = ranked.find((option) =>
-    option.rooms.every((room) => room.roomType === "single")
-  );
-  const extraBedOption = ranked.find(
-    (option) => option.pricingBreakdown.extraBedCount > 0
-  );
-  const includeRequiredOption = (
-    visibleOptions: AccommodationOption[],
-    requiredOption: AccommodationOption | undefined,
-    protectedIds = new Set<string>()
-  ) => {
-    if (
-      !requiredOption ||
-      maxVisibleOptions <= 0 ||
-      visibleOptions.some((option) => option.id === requiredOption.id)
-    ) {
-      return visibleOptions;
-    }
+  if (draft) {
+    drafts.push(draft);
+  }
+}
 
-    if (visibleOptions.length < maxVisibleOptions) {
-      return [...visibleOptions, requiredOption];
-    }
+function adultRoomPlan(
+  roomType: RoomType,
+  roomAdults: Guest[],
+  selectedDeparture: PricedDeparture
+): RoomPlan {
+  return {
+    roomType,
+    guests: roomAdults.map((adult, index) => ({
+      guest: adult,
+      rate:
+        roomType === "single"
+          ? singleRate(selectedDeparture)
+          : roomType === "triple_double" || roomType === "triple_twin"
+            ? index === 2
+              ? extraBedRate(selectedDeparture)
+              : adultRate(selectedDeparture)
+            : adultRate(selectedDeparture),
+    })),
+  };
+}
 
-    const replaceIndex = [...visibleOptions]
-      .reverse()
-      .findIndex((option) => !protectedIds.has(option.id));
+function adultOnlyDrafts(
+  adults: Guest[],
+  selectedDeparture: PricedDeparture
+): GeneratedOptionDraft[] {
+  const count = adults.length;
+  const drafts: GeneratedOptionDraft[] = [];
 
-    if (replaceIndex === -1) {
-      return visibleOptions;
-    }
+  if (count === 1) {
+    addOption(drafts, {
+      title: "Single Occupancy",
+      plans: [adultRoomPlan("single", adults, selectedDeparture)],
+      recommended: true,
+    });
+    addOption(drafts, {
+      title: "Twin Sharing",
+      description: "1 adult shares a twin room with another tour guest",
+      plans: [adultRoomPlan("twin", adults, selectedDeparture)],
+      requiresRoommateMatching: true,
+      preferredSharingType: "twin",
+    });
+    return drafts;
+  }
 
-    const nextVisibleOptions = [...visibleOptions];
+  if (count === 2) {
+    return [
+      {
+        title: "Double Occupancy",
+        plans: [adultRoomPlan("double", adults, selectedDeparture)],
+        recommended: true,
+      },
+      {
+        title: "Twin Occupancy",
+        plans: [adultRoomPlan("twin", adults, selectedDeparture)],
+      },
+      {
+        title: "Separate Single Occupancy",
+        plans: adults.map((adult) =>
+          adultRoomPlan("single", [adult], selectedDeparture)
+        ),
+      },
+    ];
+  }
 
-    nextVisibleOptions[visibleOptions.length - 1 - replaceIndex] =
-      requiredOption;
+  if (count === 3) {
+    return [
+      {
+        title: "Double + Extra Bed",
+        plans: [adultRoomPlan("triple_double", adults, selectedDeparture)],
+        recommended: true,
+      },
+      {
+        title: "Twin + Extra Bed",
+        plans: [adultRoomPlan("triple_twin", adults, selectedDeparture)],
+      },
+      {
+        title: "Double + Single",
+        plans: [
+          adultRoomPlan("double", adults.slice(0, 2), selectedDeparture),
+          adultRoomPlan("single", adults.slice(2), selectedDeparture),
+        ],
+      },
+      {
+        title: "Twin + Single",
+        plans: [
+          adultRoomPlan("twin", adults.slice(0, 2), selectedDeparture),
+          adultRoomPlan("single", adults.slice(2), selectedDeparture),
+        ],
+      },
+      {
+        title: "All Single",
+        plans: adults.map((adult) =>
+          adultRoomPlan("single", [adult], selectedDeparture)
+        ),
+      },
+    ];
+  }
 
-    return nextVisibleOptions;
+  if (count === 4) {
+    return [
+      {
+        title: "Two Double Rooms",
+        plans: [
+          adultRoomPlan("double", adults.slice(0, 2), selectedDeparture),
+          adultRoomPlan("double", adults.slice(2, 4), selectedDeparture),
+        ],
+        recommended: true,
+      },
+      {
+        title: "Two Twin Rooms",
+        plans: [
+          adultRoomPlan("twin", adults.slice(0, 2), selectedDeparture),
+          adultRoomPlan("twin", adults.slice(2, 4), selectedDeparture),
+        ],
+      },
+      {
+        title: "Double + Twin",
+        plans: [
+          adultRoomPlan("double", adults.slice(0, 2), selectedDeparture),
+          adultRoomPlan("twin", adults.slice(2, 4), selectedDeparture),
+        ],
+      },
+      {
+        title: "All Single",
+        plans: adults.map((adult) =>
+          adultRoomPlan("single", [adult], selectedDeparture)
+        ),
+      },
+    ];
+  }
+
+  return dynamicAdultDrafts(adults, selectedDeparture);
+}
+
+function makeRoomSizes(adultCount: number) {
+  const sizes: number[] = [];
+  let remaining = adultCount;
+
+  if (remaining % 2 === 1) {
+    sizes.push(3);
+    remaining -= 3;
+  }
+
+  while (remaining > 0) {
+    sizes.push(2);
+    remaining -= 2;
+  }
+
+  return sizes.sort((left, right) => left - right);
+}
+
+function dynamicAdultDrafts(
+  adults: Guest[],
+  selectedDeparture: PricedDeparture
+): GeneratedOptionDraft[] {
+  const sizes = makeRoomSizes(adults.length);
+  const createPlans = (mode: "double" | "twin" | "mixed") => {
+    let cursor = 0;
+
+    return sizes.map((size, index) => {
+      const roomAdults = adults.slice(cursor, cursor + size);
+      cursor += size;
+      const useTwin = mode === "twin" || (mode === "mixed" && index % 2 === 1);
+      const roomType =
+        size === 3
+          ? useTwin
+            ? "triple_twin"
+            : "triple_double"
+          : useTwin
+            ? "twin"
+            : "double";
+
+      return adultRoomPlan(roomType, roomAdults, selectedDeparture);
+    });
   };
 
-  if (ranked[0]?.totalTravellers && ranked[0].totalTravellers >= 5) {
-    const visible: AccommodationOption[] = [];
-    const addOption = (option: AccommodationOption | undefined) => {
-      if (option && !visible.some((item) => item.id === option.id)) {
-        visible.push(option);
-      }
+  return [
+    {
+      title: "Shared Rooms",
+      plans: createPlans("double"),
+      recommended: true,
+    },
+    {
+      title: "Twin Shared Rooms",
+      plans: createPlans("twin"),
+    },
+    {
+      title: "Mixed Shared Rooms",
+      plans: createPlans("mixed"),
+    },
+    {
+      title: "All Single",
+      plans: adults.map((adult) =>
+        adultRoomPlan("single", [adult], selectedDeparture)
+      ),
+    },
+  ];
+}
+
+function childPlan(
+  child: Guest,
+  selectedDeparture: PricedDeparture,
+  mode: "without" | "extra" | "standard"
+): RoomGuestPlan {
+  if (mode === "extra") {
+    return {
+      guest: child,
+      rate: extraBedRate(selectedDeparture),
     };
-    const counts = (option: AccommodationOption) => {
-      const singles = option.rooms.filter((room) => room.roomType === "single").length;
-      const standards = option.rooms.filter(
-        (room) => room.roomType === "double" || room.roomType === "twin"
-      ).length;
-      const triples = option.rooms.filter((room) =>
-        room.roomType.startsWith("triple")
-      ).length;
+  }
 
-      return { singles, standards, triples };
+  if (mode === "standard") {
+    return {
+      guest: child,
+      rate:
+        (child.age ?? 0) < 6
+          ? freeChildRate()
+          : {
+              bedType: "standard_bed",
+              rateType: "ADULT",
+              amount: assertRate(selectedDeparture, "ADULT"),
+            },
     };
-    const matches = (
-      predicate: (values: ReturnType<typeof counts>) => boolean
-    ) => ranked.filter((option) => predicate(counts(option)));
+  }
 
-    addOption(matches(({ triples, standards, singles }) => triples === 0 && standards > 0 && singles <= 1)[0]);
+  return {
+    guest: child,
+    rate: childWithoutBedRate(child, selectedDeparture),
+  };
+}
 
-    const tripleStandard = matches(
-      ({ triples, standards, singles }) => triples > 0 && standards > 0 && singles === 0
-    );
-    addOption(tripleStandard[0]);
-    addOption(tripleStandard[tripleStandard.length - 1]);
-    addOption(matches(({ triples, standards, singles }) => triples > 0 && standards === 0 && singles === 0)[0]);
-    addOption(matches(({ triples, standards, singles }) => triples === 0 && standards > 0 && singles > 1)[0]);
-    addOption(matches(({ triples, standards, singles }) => triples > 0 && standards === 0 && singles > 0)[0]);
-    addOption(matches(({ triples, standards, singles }) => triples > 0 && standards > 0 && singles > 0)[0]);
-    addOption(allSingle);
+function adultPlan(adult: Guest, selectedDeparture: PricedDeparture): RoomGuestPlan {
+  return {
+    guest: adult,
+    rate: adultRate(selectedDeparture),
+  };
+}
 
-    ranked.forEach((option) => {
-      if (visible.length < maxVisibleOptions) {
-        addOption(option);
-      }
+function twoAdultsOneChildDrafts(
+  adults: Guest[],
+  children: Guest[],
+  selectedDeparture: PricedDeparture
+) {
+  const child = children[0];
+  const drafts: GeneratedOptionDraft[] = [];
+
+  (["double", "twin"] as const).forEach((roomType) => {
+    addOption(drafts, {
+      title:
+        roomType === "double"
+          ? "Double - Child Without Extra Bed"
+          : "Twin - Child Without Extra Bed",
+      plans: [
+        {
+          roomType,
+          guests: [
+            ...adults.map((adult) => adultPlan(adult, selectedDeparture)),
+            childPlan(child, selectedDeparture, "without"),
+          ],
+        },
+      ],
+      recommended: true,
     });
 
-    const limitedVisible = visible.slice(0, maxVisibleOptions);
-
-    if (
-      allSingle &&
-      !limitedVisible.some((option) => option.id === allSingle.id) &&
-      maxVisibleOptions > 0
-    ) {
-      limitedVisible.splice(maxVisibleOptions - 1, 1, allSingle);
+    if ((child.age ?? 0) >= 6) {
+      addOption(drafts, {
+        title:
+          roomType === "double"
+            ? "Double + Extra Bed"
+            : "Twin + Extra Bed",
+        plans: [
+          {
+            roomType: roomType === "double" ? "triple_double" : "triple_twin",
+            guests: [
+              ...adults.map((adult) => adultPlan(adult, selectedDeparture)),
+              childPlan(child, selectedDeparture, "extra"),
+            ],
+          },
+        ],
+      });
     }
+  });
 
-    return includeRequiredOption(
-      limitedVisible,
-      extraBedOption,
-      new Set(allSingle ? [allSingle.id] : [])
-    );
-  }
-
-  let visible = ranked.slice(0, maxVisibleOptions);
-
-  if (
-    allSingle &&
-    !visible.some((option) => option.id === allSingle.id) &&
-    maxVisibleOptions > 0
-  ) {
-    visible.splice(maxVisibleOptions - 1, 1, allSingle);
-  }
-
-  visible = includeRequiredOption(
-    visible,
-    extraBedOption,
-    new Set(allSingle ? [allSingle.id] : [])
-  );
-
-  return visible;
+  return drafts;
 }
 
-export function generateRoomCombinations(totalTravellers: number): RoomType[][] {
-  if (totalTravellers < 1 || totalTravellers > 25) {
-    return [];
-  }
+function oneAdultChildrenDrafts(
+  adults: Guest[],
+  children: Guest[],
+  selectedDeparture: PricedDeparture
+) {
+  const drafts: GeneratedOptionDraft[] = [];
 
-  const combinations: RoomType[][] = [];
+  (["double", "twin"] as const).forEach((roomType) => {
+    addOption(drafts, {
+      title:
+        roomType === "double"
+          ? "Double - Children Without Extra Bed"
+          : "Twin - Children Without Extra Bed",
+      plans: [
+        {
+          roomType,
+          guests: [
+            adultPlan(adults[0], selectedDeparture),
+            ...children.map((child) =>
+              childPlan(child, selectedDeparture, "without")
+            ),
+          ],
+        },
+      ],
+      recommended: true,
+    });
 
-  function walk(startIndex: number, remainingCapacity: number, current: RoomType[]) {
-    if (remainingCapacity === 0) {
-      combinations.push([...current]);
-      return;
-    }
-
-    roomCombinationTypes.slice(startIndex).forEach((roomType, offset) => {
-      const capacity = ROOM_TYPES[roomType].capacity;
-
-      if (capacity > remainingCapacity) {
+    children.forEach((extraBedChild) => {
+      if ((extraBedChild.age ?? 0) < 6) {
         return;
       }
 
-      current.push(roomType);
-      walk(startIndex + offset, remainingCapacity - capacity, current);
-      current.pop();
+      addOption(drafts, {
+        title:
+          roomType === "double"
+            ? `Double + Extra Bed - Child ${extraBedChild.index}`
+            : `Twin + Extra Bed - Child ${extraBedChild.index}`,
+        plans: [
+          {
+            roomType: roomType === "double" ? "triple_double" : "triple_twin",
+            guests: [
+              adultPlan(adults[0], selectedDeparture),
+              childPlan(extraBedChild, selectedDeparture, "extra"),
+              ...children
+                .filter((child) => child.id !== extraBedChild.id)
+                .map((child) => childPlan(child, selectedDeparture, "without")),
+            ],
+          },
+        ],
+      });
     });
-  }
+  });
 
-  walk(0, totalTravellers, []);
-
-  return combinations;
+  return drafts;
 }
 
-export function deduplicateAccommodationOptions(
-  options: AccommodationOption[]
-): AccommodationOption[] {
-  const optionByKey = new Map<string, AccommodationOption>();
+function twoAdultsTwoChildrenDrafts(
+  adults: Guest[],
+  children: Guest[],
+  selectedDeparture: PricedDeparture
+) {
+  const drafts: GeneratedOptionDraft[] = [];
+
+  (["double", "twin"] as const).forEach((roomType) => {
+    addOption(drafts, {
+      title: roomType === "double" ? "Two Double Rooms" : "Two Twin Rooms",
+      plans: [
+        {
+          roomType,
+          guests: [
+            adultPlan(adults[0], selectedDeparture),
+            childPlan(children[0], selectedDeparture, "standard"),
+          ],
+        },
+        {
+          roomType,
+          guests: [
+            adultPlan(adults[1], selectedDeparture),
+            childPlan(children[1], selectedDeparture, "standard"),
+          ],
+        },
+      ],
+    });
+
+    addOption(drafts, {
+      title:
+        roomType === "double"
+          ? "Double - 2 Children Without Extra Bed"
+          : "Twin - 2 Children Without Extra Bed",
+      plans: [
+        {
+          roomType,
+          guests: [
+            ...adults.map((adult) => adultPlan(adult, selectedDeparture)),
+            ...children.map((child) =>
+              childPlan(child, selectedDeparture, "without")
+            ),
+          ],
+        },
+      ],
+      recommended: true,
+    });
+
+    children.forEach((extraBedChild) => {
+      if ((extraBedChild.age ?? 0) < 6) {
+        return;
+      }
+
+      addOption(drafts, {
+        title:
+          roomType === "double"
+            ? `Double + Extra Bed - Child ${extraBedChild.index}`
+            : `Twin + Extra Bed - Child ${extraBedChild.index}`,
+        plans: [
+          {
+            roomType: roomType === "double" ? "triple_double" : "triple_twin",
+            guests: [
+              ...adults.map((adult) => adultPlan(adult, selectedDeparture)),
+              childPlan(extraBedChild, selectedDeparture, "extra"),
+              ...children
+                .filter((child) => child.id !== extraBedChild.id)
+                .map((child) => childPlan(child, selectedDeparture, "without")),
+            ],
+          },
+        ],
+      });
+    });
+  });
+
+  return drafts;
+}
+
+function genericFamilyDrafts(
+  adults: Guest[],
+  children: Guest[],
+  selectedDeparture: PricedDeparture
+) {
+  const drafts: GeneratedOptionDraft[] = [];
+  const baseAdultDrafts = adultOnlyDrafts(adults, selectedDeparture).filter(
+    (draft) => !draft.plans.some((plan) => plan.roomType === "single")
+  );
+
+  baseAdultDrafts.slice(0, 3).forEach((draft) => {
+    const plans = draft.plans.map((plan) => ({
+      ...plan,
+      guests: [...plan.guests],
+    }));
+    let roomIndex = 0;
+
+    children.forEach((child) => {
+      const candidateRooms = plans.filter((plan) => plan.roomType !== "single");
+      const targetRoom = candidateRooms[roomIndex % candidateRooms.length];
+      roomIndex += 1;
+
+      targetRoom.guests.push(childPlan(child, selectedDeparture, "without"));
+    });
+
+    addOption(drafts, {
+      title: `${draft.title} - Children Without Extra Bed`,
+      plans,
+      recommended: draft.recommended,
+    });
+  });
+
+  return drafts;
+}
+
+function familyDrafts(
+  adults: Guest[],
+  children: Guest[],
+  selectedDeparture: PricedDeparture
+) {
+  if (adults.length === 2 && children.length === 1) {
+    return twoAdultsOneChildDrafts(adults, children, selectedDeparture);
+  }
+
+  if (adults.length === 1 && children.length >= 1) {
+    return oneAdultChildrenDrafts(adults, children, selectedDeparture);
+  }
+
+  if (adults.length === 2 && children.length === 2) {
+    return twoAdultsTwoChildrenDrafts(adults, children, selectedDeparture);
+  }
+
+  return genericFamilyDrafts(adults, children, selectedDeparture);
+}
+
+function dedupeOptions(options: AccommodationOption[]) {
+  const map = new Map<string, AccommodationOption>();
 
   options.forEach((option) => {
-    const key = canonicalRoomCombinationKey(
-      option.rooms.map((room) => room.roomType)
-    );
-    const existingOption = optionByKey.get(key);
+    const key = option.rooms
+      .map((room) =>
+        [
+          room.roomType,
+          ...room.allocations.map(
+            (allocation) =>
+              `${allocation.travellerId}:${allocation.rateType}:${allocation.amount}`
+          ),
+        ].join(",")
+      )
+      .join("|");
 
-    if (!existingOption || option.totalPrice < existingOption.totalPrice) {
-      optionByKey.set(key, option);
+    if (!map.has(key)) {
+      map.set(key, option);
     }
   });
 
-  return Array.from(optionByKey.values());
+  return Array.from(map.values());
 }
 
-export function generateAccommodationOptions({
-  childPricingRules,
-  departure,
-  includeSoloTripleSharing = true,
-  maxVisibleOptions = MAX_VISIBLE_OPTIONS,
-  roomPolicy,
-  travellers,
-}: GenerateAccommodationOptionsInput): AccommodationOption[] {
-  assertTravellerCount(travellers);
-  assertChildAgeInputs({
-    departure,
-    travellers,
-  });
-
-  const adults = travellers.filter((traveller) => traveller.type === "adult");
-  const children = travellers.filter((traveller) => traveller.type === "child");
-  const rules = childPricingRules || departure.childPricingRules;
-  const hydratedChildren = children.length
-    ? hydrateChildrenForGeneration(children, departure)
-    : [];
-  const resolvedTravellers = [...adults, ...hydratedChildren];
-  const resolvedRoomPolicy = normalizeRoomPolicy(roomPolicy || departure.roomPolicy);
-
-  if (children.length === 0 && travellers.length === 1 && adults.length === 1) {
-    const singleOption = createNormalOption({
-      childPricingRules: rules,
-      departure,
-      roomPolicy: resolvedRoomPolicy,
-      roomTypeList: ["single"],
-      travellers: resolvedTravellers,
-    });
-    const options = [
-      singleOption,
-      createSoloSharingOption({
-        departure,
-        preferredSharingType: "twin",
-        roomPolicy: resolvedRoomPolicy,
-        roomType: "twin",
-        travellers: resolvedTravellers,
-      }),
-      includeSoloTripleSharing
-        ? createSoloSharingOption({
-            departure,
-            preferredSharingType: "triple",
-            roomPolicy: resolvedRoomPolicy,
-            roomType: "triple_twin",
-            travellers: resolvedTravellers,
-          })
-        : null,
-    ].filter((option): option is AccommodationOption => Boolean(option));
-
-    return options;
+export function generateOccupancyOptions({
+  adults,
+  children,
+  selectedDeparture,
+}: {
+  adults: number;
+  children: ChildInput[];
+  selectedDeparture: PricedDeparture;
+}): AccommodationOption[] {
+  if (adults < 1) {
+    throw new Error("At least one adult is required.");
   }
 
-  if (children.length === 0) {
-    const adultOptions = getAdultRoomTypeLists(adults.length)
-      .map((roomTypeList) =>
-        safeCreateOption(() =>
-          createNormalOption({
-            childPricingRules: rules,
-            departure,
-            roomPolicy: resolvedRoomPolicy,
-            roomTypeList,
-            travellers: resolvedTravellers,
-          })
-        )
-      )
-      .filter((option): option is AccommodationOption => Boolean(option));
+  if (adults + children.length > 25) {
+    throw new Error("A maximum of 25 travellers can be booked at once.");
+  }
 
-    return limitVisibleOptions(
-      deduplicateAccommodationOptions(adultOptions),
-      maxVisibleOptions
+  assertRate(selectedDeparture, "ADULT");
+
+  const adultGuests = createAdults(adults);
+  const childGuests = createChildren(children, selectedDeparture);
+  const drafts =
+    childGuests.length === 0
+      ? adultOnlyDrafts(adultGuests, selectedDeparture)
+      : familyDrafts(adultGuests, childGuests, selectedDeparture);
+  const options = drafts
+    .map((draft, index) => {
+      try {
+        return createOption(draft, selectedDeparture, index + 1);
+      } catch {
+        return null;
+      }
+    })
+    .filter((option): option is AccommodationOption => Boolean(option))
+    .filter((option) =>
+      validateOption(option, adultGuests.length, childGuests.length)
     );
-  }
 
-  const childAwareOptions =
-    adults.length === 2 && hydratedChildren.length === 1
-      ? generateTwoAdultsOneChildOptions({
-          adults,
-          childPricingRules: rules,
-          children: hydratedChildren,
-          departure,
-          roomPolicy: resolvedRoomPolicy,
-          travellers: resolvedTravellers,
-        })
-      : adults.length === 1 && hydratedChildren.length === 2
-        ? generateOneAdultTwoChildrenOptions({
-            adults,
-            childPricingRules: rules,
-            children: hydratedChildren,
-            departure,
-            roomPolicy: resolvedRoomPolicy,
-            travellers: resolvedTravellers,
-          })
-        : adults.length === 2 && hydratedChildren.length === 2
-          ? generateTwoAdultsTwoChildrenOptions({
-              adults,
-              childPricingRules: rules,
-              children: hydratedChildren,
-              departure,
-              roomPolicy: resolvedRoomPolicy,
-              travellers: resolvedTravellers,
-            })
-          : generateGenericFamilyOptions({
-              adults,
-              childPricingRules: rules,
-              children: hydratedChildren,
-              departure,
-              roomPolicy: resolvedRoomPolicy,
-              travellers: resolvedTravellers,
-            });
-
-  return limitVisibleOptions(
-    deduplicateAccommodationOptions(childAwareOptions),
-    maxVisibleOptions
-  );
+  return dedupeOptions(options);
 }

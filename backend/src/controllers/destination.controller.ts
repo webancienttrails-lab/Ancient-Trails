@@ -68,15 +68,33 @@ export const destinationImageUpload = multer({
   },
   limits: {
     fileSize: 5 * 1024 * 1024,
-    files: 21,
   },
 });
 
 const stringListSchema = z
   .array(z.string().trim().min(1).max(300))
   .max(30)
+  .default([]);
+const imageListSchema = z
+  .array(z.string().trim().min(1).max(500))
   .default([])
   .transform((values) => Array.from(new Set(values)));
+const landmarkImageListSchema = z
+  .array(z.string().trim().max(500))
+  .max(30)
+  .default([])
+  .transform((values) => {
+    const trimmedValues = values.map((value) => value.trim());
+
+    while (
+      trimmedValues.length > 0 &&
+      trimmedValues[trimmedValues.length - 1] === ""
+    ) {
+      trimmedValues.pop();
+    }
+
+    return trimmedValues;
+  });
 
 const destinationPayloadSchema = z.object({
   destinationId: requiredTextField("Destination ID", 40)
@@ -90,12 +108,15 @@ const destinationPayloadSchema = z.object({
     DestinationType.DOMESTIC,
     DestinationType.INTERNATIONAL,
   ]),
-  countryRegion: requiredTextField("Country / Region", 120),
+  countryRegion: requiredTextField("Country", 120),
+  region: textField(120),
   state: textField(100),
   city: textField(100),
   primaryHeritageFocus: textField(160),
+  bestTimeToVisit: textField(120),
   unescoSite: z.boolean().default(false),
   keyLandmarks: stringListSchema,
+  keyLandmarkImages: landmarkImageListSchema,
   recommendedDurationDays: z.coerce
     .number()
     .int()
@@ -108,9 +129,10 @@ const destinationPayloadSchema = z.object({
   permits: textField(240),
   idRequirement: textField(240),
   restrictions: textField(400),
+  thumbnailImage: textField(500),
   bannerImage: textField(500),
-  galleryImages: stringListSchema,
-  photos: stringListSchema.optional(),
+  galleryImages: imageListSchema,
+  photos: imageListSchema.optional(),
 });
 
 function parseRequestBody<TSchema extends z.ZodType>(
@@ -158,11 +180,14 @@ function formatDestination(destination: DestinationDocument) {
     destinationName: destination.destinationName,
     destinationType: destination.destinationType,
     countryRegion: destination.countryRegion,
+    region: destination.region || "",
     state: destination.state,
     city: destination.city,
     primaryHeritageFocus: destination.primaryHeritageFocus,
+    bestTimeToVisit: destination.bestTimeToVisit || "",
     unescoSite: destination.unescoSite,
     keyLandmarks: destination.keyLandmarks,
+    keyLandmarkImages: destination.keyLandmarkImages || [],
     recommendedDurationDays: destination.recommendedDurationDays,
     shortDescription: destination.shortDescription,
     dressCode: destination.dressCode,
@@ -170,6 +195,7 @@ function formatDestination(destination: DestinationDocument) {
     permits: destination.permits,
     idRequirement: destination.idRequirement,
     restrictions: destination.restrictions,
+    thumbnailImage: destination.thumbnailImage || "",
     bannerImage: destination.bannerImage || destination.photos?.[0] || "",
     galleryImages:
       destination.galleryImages?.length > 0
@@ -197,6 +223,7 @@ export async function listDestinations(
       { destinationId: new RegExp(search, "i") },
       { destinationName: new RegExp(search, "i") },
       { countryRegion: new RegExp(search, "i") },
+      { region: new RegExp(search, "i") },
       { state: new RegExp(search, "i") },
       { city: new RegExp(search, "i") },
     ];
@@ -311,16 +338,20 @@ export async function uploadDestinationImages(
 ): Promise<void> {
   const files = request.files as
     | {
+        thumbnailImage?: Express.Multer.File[];
         bannerImage?: Express.Multer.File[];
         galleryImages?: Express.Multer.File[];
       }
     | undefined;
+  const thumbnailImage = files?.thumbnailImage?.[0]
+    ? getUploadUrl(files.thumbnailImage[0])
+    : "";
   const bannerImage = files?.bannerImage?.[0]
     ? getUploadUrl(files.bannerImage[0])
     : "";
   const galleryImages = (files?.galleryImages || []).map(getUploadUrl);
 
-  if (!bannerImage && galleryImages.length === 0) {
+  if (!thumbnailImage && !bannerImage && galleryImages.length === 0) {
     throw new HttpError(400, "Please select at least one image to upload");
   }
 
@@ -328,6 +359,7 @@ export async function uploadDestinationImages(
     success: true,
     message: "Images uploaded successfully",
     data: {
+      thumbnailImage,
       bannerImage,
       galleryImages,
     },

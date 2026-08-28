@@ -17,8 +17,9 @@ router.get("/", listDestinations);
 router.post(
   "/upload",
   destinationImageUpload.fields([
+    { name: "thumbnailImage", maxCount: 1 },
     { name: "bannerImage", maxCount: 1 },
-    { name: "galleryImages", maxCount: 20 },
+    { name: "galleryImages" },
   ]),
   uploadDestinationImages
 );

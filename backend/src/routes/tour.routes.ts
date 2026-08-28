@@ -34,8 +34,9 @@ router.get("/", listTours);
 router.post(
   "/upload",
   tourMediaUpload.fields([
+    { name: "thumbnailImage", maxCount: 1 },
     { name: "bannerImage", maxCount: 1 },
-    { name: "galleryImages", maxCount: 20 },
+    { name: "galleryImages" },
     { name: "video", maxCount: 1 },
   ]),
   uploadTourMedia
