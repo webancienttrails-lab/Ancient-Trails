@@ -2,8 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Clock3, Heart } from "lucide-react";
+import { Clock3, Heart } from "lucide-react";
 
+import { Button, ButtonArrow } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type TourShowcaseCardProps = {
@@ -14,20 +15,24 @@ type TourShowcaseCardProps = {
   href: string;
   image: string;
   imageSizes: string;
+  isFavorite?: boolean;
   nextDepartureLabel?: string;
+  onFavoriteToggle?: () => void;
   priceLabel?: string;
   title: string;
 };
 
 export function TourShowcaseCard({
   className,
-  ctaLabel = "Read More",
+  ctaLabel = "Book Now",
   durationLabel,
   favoriteLabel,
   href,
   image,
   imageSizes,
+  isFavorite = false,
   nextDepartureLabel = "Coming Soon",
+  onFavoriteToggle,
   priceLabel = "Price on request",
   title,
 }: TourShowcaseCardProps) {
@@ -55,9 +60,14 @@ export function TourShowcaseCard({
           <button
             type="button"
             aria-label={favoriteLabel}
+            aria-pressed={isFavorite}
+            onClick={onFavoriteToggle}
             className="absolute right-4 top-4 grid size-11 place-items-center rounded-full border border-white/35 bg-secondary/55 text-white shadow-[0_10px_24px_rgba(35,23,15,0.22)] backdrop-blur transition-colors hover:bg-primary"
           >
-            <Heart className="size-5" strokeWidth={1.9} />
+            <Heart
+              className={cn("size-5", isFavorite && "fill-current")}
+              strokeWidth={isFavorite ? 0 : 1.9}
+            />
           </button>
         ) : null}
       </div>
@@ -88,14 +98,14 @@ export function TourShowcaseCard({
               {priceLabel}
             </strong>
           </span>
-          <Link
-            href={href}
-            aria-label={`${ctaLabel} ${title}`}
-            className="inline-flex h-9 shrink-0 items-center justify-center rounded-full bg-primary px-3.5 font-sans text-[12px] font-bold text-white transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
+          <Button
+            nativeButton={false}
+            render={<Link href={href} aria-label={`${ctaLabel} ${title}`} />}
+            className="h-9 shrink-0 gap-1.5 px-3.5 text-[12px] font-bold"
           >
             {ctaLabel}
-            <ArrowRight className="ml-1.5 size-3.5" strokeWidth={2} />
-          </Link>
+            <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+          </Button>
         </div>
       </div>
     </article>

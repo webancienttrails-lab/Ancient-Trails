@@ -108,7 +108,7 @@ export function EgyptExperiencesSection() {
           <div className="mt-2">
             <TextReveal delay={120}>
               <div>
-                <h2 className="font-heading text-[34px] font-bold leading-none text-secondary sm:text-[40px] lg:text-title">
+                <h2 className="font-heading text-title font-bold leading-none text-secondary">
                   Egypt - Beyond the Icon
                 </h2>
                 <p className="mt-3 text-description text-secondary/70">

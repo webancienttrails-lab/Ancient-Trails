@@ -341,7 +341,7 @@ function HeroSection() {
             <p className="mb-[clamp(0.5rem,1.5vh,0.75rem)] text-eyebrow font-medium uppercase tracking-normal text-primary">
               About Ancient Trails
             </p>
-            <h1 className="font-heading text-[36px] font-bold leading-none tracking-normal text-secondary sm:text-[44px] lg:text-title">
+            <h1 className="font-heading text-title font-bold leading-none tracking-normal text-secondary">
               Our Story.
               <span className="block">
                 Our Passion<span className="text-primary">.</span>
@@ -493,7 +493,7 @@ function ValuesSection() {
           <p className="mt-5 text-description font-medium uppercase text-primary">
             Why Travel With Us?
           </p>
-          <h2 className="mt-1 font-heading text-[34px] font-bold leading-none text-secondary sm:text-[40px] lg:text-title">
+          <h2 className="mt-1 font-heading text-title font-bold leading-none text-secondary">
             Why Choose Ancient Trails
           </h2>
         </div>
@@ -572,7 +572,7 @@ function FounderSection({
             <p className="text-description font-medium uppercase text-primary">
               Meet Our Founder
             </p>
-            <h2 className="mt-2 font-heading text-[34px] font-bold leading-none text-secondary sm:text-[40px] lg:text-title">
+            <h2 className="mt-2 font-heading text-title font-bold leading-none text-secondary">
               {getDisplayFounderName(name)}
             </h2>
             <p className="mt-3 font-sans text-[14px] font-semibold leading-tight text-primary">

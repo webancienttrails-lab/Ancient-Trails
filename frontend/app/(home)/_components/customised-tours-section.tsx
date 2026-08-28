@@ -57,7 +57,7 @@ function CustomisedTourCard({ tour }: CustomisedTourCardProps) {
         {tour.tags.map((tag) => (
           <span
             key={tag}
-            className="rounded-full bg-white px-3 py-1 text-[9px] font-medium text-primary"
+            className="rounded-full bg-white px-3 py-1 text-[12px] font-medium text-primary"
           >
             {tag} +
           </span>
@@ -120,7 +120,7 @@ export function CustomisedToursSection() {
               </p>
             </TextReveal>
             <TextReveal delay={120} visible={isSectionReady}>
-              <h2 className="mt-2 max-w-[330px] font-heading text-[34px] font-bold leading-none text-secondary sm:text-[40px] lg:text-title">
+              <h2 className="mt-2 max-w-[330px] font-heading text-title font-bold leading-none text-secondary">
                 Find your perfect experience
               </h2>
             </TextReveal>

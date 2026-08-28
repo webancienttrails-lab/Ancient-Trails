@@ -72,7 +72,7 @@ export function WhyChooseUsSection() {
             </p>
           </TextReveal>
           <TextReveal delay={200}>
-            <h2 className="mt-1 font-heading text-[34px] font-bold leading-none text-secondary sm:text-[40px] lg:text-title">
+            <h2 className="mt-1 font-heading text-title font-bold leading-none text-secondary">
               A Deeper Discovery
             </h2>
           </TextReveal>

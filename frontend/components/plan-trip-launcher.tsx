@@ -22,7 +22,6 @@ import {
 
 import { Button, ButtonArrow } from "@/components/ui/button";
 import {
-  fallbackTrendingDestinations,
   fallbackUpcomingTours,
   getTourDestinationIds,
   listPublicDestinations,
@@ -75,7 +74,7 @@ type PlannerSuggestion = {
   label: string;
   meta: string;
   searchValue: string;
-  type: "Destination" | "Tour";
+  type: "Destination";
 };
 
 const planTripButtonClassName =
@@ -116,17 +115,6 @@ function createFallbackTours(): PlannerTour[] {
     tourId: tour.tourId,
     tourName: tour.title,
     tourType: "Heritage Tour",
-  }));
-}
-
-function createFallbackDestinations(): PlannerDestination[] {
-  return fallbackTrendingDestinations.map((destination) => ({
-    city: destination.name,
-    countryRegion: "India",
-    destinationId: destination.destinationId,
-    destinationName: destination.name,
-    primaryHeritageFocus: destination.focus,
-    state: destination.state,
   }));
 }
 
@@ -302,15 +290,11 @@ function createMonthOptions({
 }
 
 function createSuggestions({
-  destinationById,
   destinations,
   query,
-  tours,
 }: {
-  destinationById: Map<string, PlannerDestination>;
   destinations: PlannerDestination[];
   query: string;
-  tours: PlannerTour[];
 }) {
   const normalizedQuery = normalizeText(query);
   const suggestions: PlannerSuggestion[] = [];
@@ -324,7 +308,9 @@ function createSuggestions({
       return;
     }
 
-    const id = `destination-${normalizeText(destination.destinationName)}`;
+    const id = `destination-${normalizeText(
+      destination.destinationId || destination.destinationName
+    )}`;
 
     if (seenSuggestionIds.has(id)) {
       return;
@@ -339,34 +325,6 @@ function createSuggestions({
           .join(", ") || "Destination",
       searchValue: destination.destinationName,
       type: "Destination",
-    });
-  });
-
-  tours.forEach((tour) => {
-    if (normalizedQuery && !getTourSearchText(tour, destinationById).includes(normalizedQuery)) {
-      return;
-    }
-
-    const id = `tour-${normalizeText(tour.tourName)}`;
-
-    if (seenSuggestionIds.has(id)) {
-      return;
-    }
-
-    const destinationLabels = getTourDestinationIds(tour)
-      .map((destinationId) => destinationById.get(destinationId)?.destinationName)
-      .filter((label): label is string => Boolean(label));
-
-    seenSuggestionIds.add(id);
-    suggestions.push({
-      id,
-      label: tour.tourName,
-      meta:
-        uniqueValues([tour.category, tour.tourType, ...destinationLabels]).join(
-          " - "
-        ) || "Tour",
-      searchValue: tour.tourName,
-      type: "Tour",
     });
   });
 
@@ -386,9 +344,7 @@ export function PlanTripLauncher() {
   const [adultCount, setAdultCount] = useState(2);
   const [childCount, setChildCount] = useState(0);
   const [tours, setTours] = useState<PlannerTour[]>(() => createFallbackTours());
-  const [destinations, setDestinations] = useState<PlannerDestination[]>(() =>
-    createFallbackDestinations()
-  );
+  const [destinations, setDestinations] = useState<PlannerDestination[]>([]);
   const [departures, setDepartures] = useState<PlannerDeparture[]>(() =>
     createFallbackDepartures()
   );
@@ -424,12 +380,10 @@ export function PlanTripLauncher() {
   const suggestions = useMemo(
     () =>
       createSuggestions({
-        destinationById,
         destinations,
         query: destinationQuery,
-        tours,
       }),
-    [destinationById, destinationQuery, destinations, tours]
+    [destinationQuery, destinations]
   );
 
   useEffect(() => {
@@ -806,9 +760,7 @@ export function PlanTripInline({
     Math.min(12, Math.max(0, initialChildCount))
   );
   const [tours, setTours] = useState<PlannerTour[]>(() => createFallbackTours());
-  const [destinations, setDestinations] = useState<PlannerDestination[]>(() =>
-    createFallbackDestinations()
-  );
+  const [destinations, setDestinations] = useState<PlannerDestination[]>([]);
   const [departures, setDepartures] = useState<PlannerDeparture[]>(() =>
     createFallbackDepartures()
   );
@@ -843,12 +795,10 @@ export function PlanTripInline({
   const suggestions = useMemo(
     () =>
       createSuggestions({
-        destinationById,
         destinations,
         query: destinationQuery,
-        tours,
       }),
-    [destinationById, destinationQuery, destinations, tours]
+    [destinationQuery, destinations]
   );
 
   useEffect(() => {
@@ -997,7 +947,7 @@ function DestinationField({
   return (
     <div className="relative min-w-0 text-left">
       <label className="sr-only" htmlFor="plan-trip-destination-search">
-        Search destination or tour
+        Search destination
       </label>
       <MapPin className="pointer-events-none absolute left-5 top-1/2 size-6 -translate-y-1/2 text-accent md:left-8" strokeWidth={1.9} />
       <input
@@ -1044,7 +994,7 @@ function DestinationField({
             </div>
           ) : (
             <p className="px-5 py-4 font-sans text-[13px] font-semibold text-secondary/58">
-              No matching tours found.
+              No matching destinations found.
             </p>
           )}
         </div>

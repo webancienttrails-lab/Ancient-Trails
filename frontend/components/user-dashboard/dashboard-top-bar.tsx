@@ -8,14 +8,12 @@ import {
   Bell,
   CalendarCheck,
   ChevronDown,
-  Gift,
   Heart,
   Home,
   LogOut,
   Mail,
   Menu,
   Phone,
-  ShoppingCart,
   UserRound,
   X,
   type LucideIcon,
@@ -41,12 +39,12 @@ import {
 } from "@/lib/profile-photo";
 
 const navItems = [
-  "Home",
-  "About",
-  "Tours",
-  "Destinations",
-  "Experiences",
-  "Tour Calendar",
+  { label: "Home", href: "/" },
+  { label: "About", href: "/about" },
+  { label: "Tours", href: "/tours" },
+  { label: "Destinations", href: "/destinations" },
+  { label: "Experiences", href: "/experiences" },
+  { label: "Tour Calendar", href: "/tour-calendar" },
 ];
 
 const accountMenuItems = [
@@ -63,22 +61,10 @@ const accountMenuItems = [
     icon: CalendarCheck,
   },
   {
-    title: "My Holiday Cart",
-    description: "Complete pending bookings.",
-    href: "/me/holiday-cart",
-    icon: ShoppingCart,
-  },
-  {
     title: "Wishlist",
     description: "Saved tours and experiences.",
     href: "/me/wishlist",
     icon: Heart,
-  },
-  {
-    title: "Gift Cards",
-    description: "View your gift cards.",
-    href: "/me/gift-cards",
-    icon: Gift,
   },
 ];
 
@@ -438,25 +424,29 @@ export function DashboardTopBar() {
         <nav className="hidden flex-1 justify-center lg:flex">
           <ul className="flex items-center gap-10 text-header font-medium text-accent">
             {navItems.map((item) => (
-              <li key={item}>
-                <a
-                  href={item === "Home" ? "/" : "#"}
+              <li key={item.label}>
+                <Link
+                  href={item.href}
                   onMouseEnter={() => {
                     setHoveredNavItem(
-                      item === "Tours" || item === "Destinations" ? item : null
+                      item.label === "Tours" || item.label === "Destinations"
+                        ? item.label
+                        : null
                     );
                   }}
                   onFocus={() => {
                     setHoveredNavItem(
-                      item === "Tours" || item === "Destinations" ? item : null
+                      item.label === "Tours" || item.label === "Destinations"
+                        ? item.label
+                        : null
                     );
                   }}
                   className={`transition-colors hover:text-primary ${
-                    item === hoveredNavItem ? "text-primary" : ""
+                    item.label === hoveredNavItem ? "text-primary" : ""
                   }`}
                 >
-                  {item}
-                </a>
+                  {item.label}
+                </Link>
               </li>
             ))}
           </ul>

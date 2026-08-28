@@ -10,6 +10,7 @@ import {
   ChevronDown,
   Clock3,
   Grid2X2,
+  Heart,
   Landmark,
   List as ListIcon,
   MapPin,
@@ -24,6 +25,8 @@ import {
 import { Header } from "@/components/layout/header";
 import { PlanTripInline } from "@/components/plan-trip-launcher";
 import { TourShowcaseCard } from "@/components/tours/tour-showcase-card";
+import { useToast } from "@/components/ui/toast";
+import { listenForTravellerSessionChanges } from "@/lib/auth";
 import {
   fallbackUpcomingTours,
   getHomeMediaUrl,
@@ -37,6 +40,13 @@ import {
 } from "@/lib/home-travel";
 import { getTourHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
+import {
+  getWishlistTourIds,
+  listenForWishlistChanges,
+  normalizeWishlistTourId,
+  toggleWishlistTour,
+  type WishlistTourSnapshot,
+} from "@/lib/wishlist";
 
 type DurationFilter = "all" | "short" | "medium" | "long";
 type AvailabilityFilter = "all" | "available" | "coming-soon" | "sold-out";
@@ -237,7 +247,10 @@ function getDestinationLabel(destination: PublicDestination | undefined) {
 
 function getTourImage(tour: PublicTour, fallbackImage: string) {
   return getHomeMediaUrl(
-    tour.bannerImage || tour.galleryImages[0] || fallbackImage
+    tour.thumbnailImage ||
+      tour.bannerImage ||
+      tour.galleryImages[0] ||
+      fallbackImage
   );
 }
 
@@ -531,8 +544,8 @@ function createFallbackDepartures(): PublicTourDeparture[] {
       seatsAvailable: [18, 12, 9, 22, 14, 8][index] || 10,
       priceAdult: price,
       priceExtraBed: price,
-      priceChildWithoutExtraBed: Math.round(price * 0.8),
-      singleOccupancy: Math.round(price * 1.25),
+      priceChildWithoutExtraBed: price,
+      singleOccupancy: price,
       depositType: "fixed",
       depositValue: 0,
       depositAppliesTo: "per_person",
@@ -596,7 +609,7 @@ function buildTourItems(
       score:
         (nextDeparture ? 8 : 0) +
         (lowestPrice > 0 ? 4 : 0) +
-        (tour.bannerImage ? 3 : 0) +
+        (tour.thumbnailImage || tour.bannerImage ? 3 : 0) +
         Math.min(totalSeats, 10),
       totalSeats,
       tour,
@@ -638,6 +651,24 @@ function toggleSelection(selection: string[], value: string) {
     : [...selection, value];
 }
 
+function createWishlistSnapshot(item: TourListItem): WishlistTourSnapshot {
+  return {
+    categoryLabel: item.tour.category || item.tour.tourType || "Heritage",
+    description:
+      item.tour.description ||
+      "An expert-led Ancient Trails journey through heritage, culture and local stories.",
+    destinationLabel: item.locationLabel,
+    difficultyLabel: item.tour.difficulty || "Moderate",
+    durationLabel: item.tour.durationDn || `${item.durationDays} Days`,
+    href: getTourHref(item.tour),
+    image: item.image,
+    nextDepartureLabel: formatDate(item.nextDeparture?.departureDate || null),
+    priceLabel: formatPrice(item.lowestPrice),
+    title: item.tour.tourName,
+    tourId: normalizeWishlistTourId(item.tour.tourId),
+  };
+}
+
 export function ToursListingPage({
   initialAdultCount = 2,
   initialChildCount = 0,
@@ -649,6 +680,7 @@ export function ToursListingPage({
   initialMonthValue?: string;
   initialSearchQuery?: string;
 }) {
+  const toast = useToast();
   const fallbackTours = useMemo(() => createFallbackTours(), []);
   const fallbackDepartures = useMemo(() => createFallbackDepartures(), []);
   const fallbackDestinations = useMemo(() => createFallbackDestinations(), []);
@@ -672,8 +704,10 @@ export function ToursListingPage({
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [currentPage, setCurrentPage] = useState(1);
   const [priceLimit, setPriceLimit] = useState(0);
+  const [isFilterCollapsed, setIsFilterCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [wishlistTourIds, setWishlistTourIds] = useState<string[]>([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -718,6 +752,23 @@ export function ToursListingPage({
 
     return () => {
       isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const syncWishlist = () => {
+      setWishlistTourIds(getWishlistTourIds());
+    };
+
+    syncWishlist();
+
+    const stopWishlistListener = listenForWishlistChanges(syncWishlist);
+    const stopSessionListener =
+      listenForTravellerSessionChanges(syncWishlist);
+
+    return () => {
+      stopWishlistListener();
+      stopSessionListener();
     };
   }, []);
 
@@ -830,6 +881,10 @@ export function ToursListingPage({
     (activePage - 1) * pageSize,
     activePage * pageSize
   );
+  const wishlistedTourIds = useMemo(
+    () => new Set(wishlistTourIds),
+    [wishlistTourIds]
+  );
   const activeFilterCount =
     selectedTypeValues.length +
     selectedDestinationValues.length +
@@ -852,6 +907,21 @@ export function ToursListingPage({
     setPriceLimit(0);
   }
 
+  function handleWishlistToggle(item: TourListItem) {
+    const { isWishlisted, items } = toggleWishlistTour(
+      createWishlistSnapshot(item)
+    );
+
+    setWishlistTourIds(items.map((wishlistItem) => wishlistItem.tourId));
+
+    if (isWishlisted) {
+      toast.success("Added to wishlist", `${item.tour.tourName} is saved.`);
+      return;
+    }
+
+    toast.info("Removed from wishlist", `${item.tour.tourName} was removed.`);
+  }
+
   return (
     <main className="min-h-screen bg-background text-secondary">
       <ToursHero
@@ -863,20 +933,27 @@ export function ToursListingPage({
 
       <section
         id="tour-results"
-        className="mx-auto grid w-full max-w-[1300px] items-start gap-6 px-5 pb-14 pt-8 sm:px-8 lg:grid-cols-[282px_minmax(0,1fr)] lg:px-0"
+        className={cn(
+          "mx-auto grid w-full max-w-[1300px] items-start gap-6 px-5 pb-14 pt-8 transition-[grid-template-columns] duration-300 sm:px-8 lg:px-0",
+          isFilterCollapsed
+            ? "lg:grid-cols-[76px_minmax(0,1fr)] xl:grid-cols-[84px_minmax(0,1fr)]"
+            : "lg:grid-cols-[282px_minmax(0,1fr)]"
+        )}
       >
         <TourSidebar
           activeFilterCount={activeFilterCount}
           availabilityFilter={availabilityFilter}
           destinationOptions={destinationOptions}
           durationFilter={durationFilter}
+          isCollapsed={isFilterCollapsed}
           maxPrice={maxPrice}
-          priceLimit={effectivePriceLimit}
+          priceLimit={priceLimit}
           selectedDestinationValues={selectedDestinationValues}
           selectedTypeValues={selectedTypeValues}
           typeOptions={typeOptions}
           onAvailabilityChange={setAvailabilityFilter}
           onClearFilters={clearFilters}
+          onCollapsedChange={setIsFilterCollapsed}
           onDestinationToggle={(value) =>
             setSelectedDestinationValues((current) =>
               toggleSelection(current, value)
@@ -902,9 +979,11 @@ export function ToursListingPage({
           />
 
           <TourResults
+            favoriteTourIds={wishlistedTourIds}
             isLoading={isLoading}
             items={visibleItems}
             viewMode={viewMode}
+            onWishlistToggle={handleWishlistToggle}
           />
 
           {!isLoading && filteredItems.length === 0 ? (
@@ -995,9 +1074,11 @@ function TourSidebar({
   availabilityFilter,
   destinationOptions,
   durationFilter,
+  isCollapsed,
   maxPrice,
   onAvailabilityChange,
   onClearFilters,
+  onCollapsedChange,
   onDestinationToggle,
   onDurationChange,
   onPriceLimitChange,
@@ -1011,6 +1092,7 @@ function TourSidebar({
   availabilityFilter: AvailabilityFilter;
   destinationOptions: CountOption[];
   durationFilter: DurationFilter;
+  isCollapsed: boolean;
   maxPrice: number;
   priceLimit: number;
   selectedDestinationValues: string[];
@@ -1018,11 +1100,61 @@ function TourSidebar({
   typeOptions: CountOption[];
   onAvailabilityChange: (value: AvailabilityFilter) => void;
   onClearFilters: () => void;
+  onCollapsedChange: (value: boolean) => void;
   onDestinationToggle: (value: string) => void;
   onDurationChange: (value: DurationFilter) => void;
   onPriceLimitChange: (value: number) => void;
   onTypeToggle: (value: string) => void;
 }) {
+  const isPriceFiltered = priceLimit > 0 && maxPrice > 0 && priceLimit < maxPrice;
+
+  if (isCollapsed) {
+    return (
+      <aside className="lg:sticky lg:top-5 lg:z-20 lg:self-start">
+        <div className="flex items-center justify-center gap-2 rounded-[8px] border border-[#ead8c5] bg-white p-2 shadow-[0_12px_32px_rgba(67,43,27,0.07)] lg:flex-col">
+          <button
+            type="button"
+            aria-label="Maximize tour filters"
+            onClick={() => onCollapsedChange(false)}
+            className="grid size-10 place-items-center rounded-[7px] border border-primary/25 bg-primary/8 text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+          >
+            <SlidersHorizontal className="size-4" strokeWidth={1.9} />
+          </button>
+          <CollapsedFilterButton
+            active={selectedTypeValues.length > 0}
+            icon={Sparkles}
+            label="Open tour type filters"
+            onClick={() => onCollapsedChange(false)}
+          />
+          <CollapsedFilterButton
+            active={durationFilter !== "all"}
+            icon={Clock3}
+            label="Open duration filters"
+            onClick={() => onCollapsedChange(false)}
+          />
+          <CollapsedFilterButton
+            active={isPriceFiltered}
+            icon={Landmark}
+            label="Open price filters"
+            onClick={() => onCollapsedChange(false)}
+          />
+          <CollapsedFilterButton
+            active={selectedDestinationValues.length > 0}
+            icon={MapPin}
+            label="Open destination filters"
+            onClick={() => onCollapsedChange(false)}
+          />
+          <CollapsedFilterButton
+            active={availabilityFilter !== "all"}
+            icon={BadgeCheck}
+            label="Open status filters"
+            onClick={() => onCollapsedChange(false)}
+          />
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside className="space-y-4 lg:sticky lg:top-5 lg:self-start">
       <div className="rounded-[8px] border border-[#ead8c5] bg-white p-4 shadow-[0_12px_32px_rgba(67,43,27,0.07)]">
@@ -1031,17 +1163,32 @@ function TourSidebar({
             <SlidersHorizontal className="size-4 text-primary" />
             Filters
           </h2>
-          <button
-            type="button"
-            onClick={onClearFilters}
-            disabled={activeFilterCount === 0}
-            className="font-sans text-[11px] font-bold text-primary transition-colors hover:text-accent disabled:pointer-events-none disabled:text-secondary/35"
-          >
-            Clear All
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClearFilters}
+              disabled={activeFilterCount === 0}
+              className="font-sans text-[11px] font-bold text-primary transition-colors hover:text-accent disabled:pointer-events-none disabled:text-secondary/35"
+            >
+              Clear All
+            </button>
+            <button
+              type="button"
+              aria-controls="tour-filter-panel"
+              aria-expanded={!isCollapsed}
+              onClick={() => onCollapsedChange(true)}
+              className="inline-flex h-7 items-center gap-1 rounded-[6px] border border-primary/25 bg-primary/5 px-2 font-sans text-[11px] font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+            >
+              Minimize
+              <ChevronDown
+                className="size-3.5 rotate-90 transition-transform"
+                strokeWidth={2}
+              />
+            </button>
+          </div>
         </div>
 
-        <div className="mt-5 space-y-6">
+        <div id="tour-filter-panel" className="mt-5 space-y-6">
           <CheckboxGroup
             icon={Sparkles}
             options={typeOptions}
@@ -1099,6 +1246,32 @@ function TourSidebar({
         </div>
       </article>
     </aside>
+  );
+}
+
+function CollapsedFilterButton({
+  active,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="relative grid size-10 place-items-center rounded-[7px] text-secondary transition-colors hover:bg-primary/8 hover:text-primary"
+    >
+      <Icon className="size-4" strokeWidth={1.8} />
+      {active ? (
+        <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" />
+      ) : null}
+    </button>
   );
 }
 
@@ -1320,12 +1493,16 @@ function ViewButton({
 }
 
 function TourResults({
+  favoriteTourIds,
   isLoading,
   items,
+  onWishlistToggle,
   viewMode,
 }: {
+  favoriteTourIds: Set<string>;
   isLoading: boolean;
   items: TourListItem[];
+  onWishlistToggle: (item: TourListItem) => void;
   viewMode: ViewMode;
 }) {
   if (isLoading) {
@@ -1349,7 +1526,14 @@ function TourResults({
     return (
       <div className="mt-5 grid gap-4">
         {items.map((item) => (
-          <TourListRow key={item.tour.id || item.tour.tourId} item={item} />
+          <TourListRow
+            key={item.tour.id || item.tour.tourId}
+            isWishlisted={favoriteTourIds.has(
+              normalizeWishlistTourId(item.tour.tourId)
+            )}
+            item={item}
+            onWishlistToggle={onWishlistToggle}
+          />
         ))}
       </div>
     );
@@ -1358,28 +1542,57 @@ function TourResults({
   return (
     <div className="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
       {items.map((item) => (
-        <TourCard key={item.tour.id || item.tour.tourId} item={item} />
+        <TourCard
+          key={item.tour.id || item.tour.tourId}
+          isWishlisted={favoriteTourIds.has(
+            normalizeWishlistTourId(item.tour.tourId)
+          )}
+          item={item}
+          onWishlistToggle={onWishlistToggle}
+        />
       ))}
     </div>
   );
 }
 
-function TourCard({ item }: { item: TourListItem }) {
+function TourCard({
+  isWishlisted,
+  item,
+  onWishlistToggle,
+}: {
+  isWishlisted: boolean;
+  item: TourListItem;
+  onWishlistToggle: (item: TourListItem) => void;
+}) {
   return (
     <TourShowcaseCard
       durationLabel={item.tour.durationDn || `${item.durationDays} Days`}
-      favoriteLabel={`Save ${item.tour.tourName}`}
+      favoriteLabel={
+        isWishlisted
+          ? `Remove ${item.tour.tourName} from wishlist`
+          : `Save ${item.tour.tourName}`
+      }
       href={getTourHref(item.tour)}
       image={item.image}
       imageSizes="(min-width: 1280px) 300px, (min-width: 640px) 50vw, 100vw"
+      isFavorite={isWishlisted}
       nextDepartureLabel={formatDate(item.nextDeparture?.departureDate || null)}
+      onFavoriteToggle={() => onWishlistToggle(item)}
       priceLabel={formatPrice(item.lowestPrice)}
       title={item.tour.tourName}
     />
   );
 }
 
-function TourListRow({ item }: { item: TourListItem }) {
+function TourListRow({
+  isWishlisted,
+  item,
+  onWishlistToggle,
+}: {
+  isWishlisted: boolean;
+  item: TourListItem;
+  onWishlistToggle: (item: TourListItem) => void;
+}) {
   return (
     <article className="grid gap-4 overflow-hidden rounded-[8px] border border-[#ead8c5] bg-white p-3 shadow-[0_14px_32px_rgba(67,43,27,0.08)] transition-all hover:-translate-y-0.5 hover:border-primary/45 sm:grid-cols-[220px_minmax(0,1fr)_170px] sm:items-center">
       <div className="relative h-[170px] overflow-hidden rounded-[7px] bg-muted sm:h-[150px]">
@@ -1398,6 +1611,22 @@ function TourListRow({ item }: { item: TourListItem }) {
         >
           {getAvailabilityLabel(item.availability)}
         </span>
+        <button
+          type="button"
+          aria-label={
+            isWishlisted
+              ? `Remove ${item.tour.tourName} from wishlist`
+              : `Save ${item.tour.tourName}`
+          }
+          aria-pressed={isWishlisted}
+          onClick={() => onWishlistToggle(item)}
+          className="absolute right-3 top-3 grid size-10 place-items-center rounded-full border border-white/35 bg-secondary/55 text-white shadow-[0_10px_22px_rgba(35,23,15,0.2)] backdrop-blur transition-colors hover:bg-primary"
+        >
+          <Heart
+            className={cn("size-[18px]", isWishlisted && "fill-current")}
+            strokeWidth={isWishlisted ? 0 : 1.9}
+          />
+        </button>
       </div>
 
       <div className="min-w-0">

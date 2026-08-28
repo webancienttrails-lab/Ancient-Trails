@@ -154,7 +154,7 @@ export function AboutSection() {
                 </p>
               </TextReveal>
               <TextReveal delay={120}>
-                <h2 className="mt-2 font-heading text-[34px] font-bold leading-none text-secondary sm:text-[40px] lg:text-title">
+                <h2 className="mt-2 font-heading text-title font-bold leading-none text-secondary">
                   Learning with Leisure
                 </h2>
               </TextReveal>

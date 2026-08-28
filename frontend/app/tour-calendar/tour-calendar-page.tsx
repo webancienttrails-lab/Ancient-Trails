@@ -8,7 +8,6 @@ import {
   BadgeCheck,
   BookOpen,
   CalendarDays,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -20,8 +19,14 @@ import {
 } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
-import { PlanTripInline } from "@/components/plan-trip-launcher";
-import { TourShowcaseCard } from "@/components/tours/tour-showcase-card";
+import { ButtonArrow, buttonVariants } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   fallbackUpcomingTours,
   getHomeMediaUrl,
@@ -52,11 +57,15 @@ type EnrichedDeparture = {
   tour: PublicTour;
 };
 
-type SortMode = "earliest" | "price" | "seats";
+type DestinationOption = {
+  id: string;
+  label: string;
+};
 
-const monthFormatter = new Intl.DateTimeFormat("en-US", {
+type SortMode = "price-low" | "price-high";
+
+const monthNameFormatter = new Intl.DateTimeFormat("en-US", {
   month: "long",
-  year: "numeric",
 });
 const dayMonthFormatter = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",
@@ -73,6 +82,13 @@ const currencyFormatter = new Intl.NumberFormat("en-IN", {
   style: "currency",
 });
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const departureCapacityFallback = 25;
+const currentDateDotClassName = "bg-[#2faa5d]";
+const departureDateDotClassName = "bg-primary";
+const monthOptions = Array.from({ length: 12 }, (_item, monthIndex) => ({
+  label: monthNameFormatter.format(new Date(2026, monthIndex, 1)),
+  value: monthIndex,
+}));
 
 const fallbackExpertImages = [
   "/home assets/Khajuraho.webp",
@@ -138,23 +154,6 @@ function getDateKey(value: string | Date | null) {
   return `${year}-${month}-${day}`;
 }
 
-function getMonthKey(value: string | Date | null) {
-  if (!value) {
-    return "";
-  }
-
-  const date = typeof value === "string" ? new Date(value) : value;
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-
-  return `${year}-${month}`;
-}
-
 function getMonthDate(monthKey: string) {
   const [year, month] = monthKey.split("-").map(Number);
 
@@ -163,6 +162,59 @@ function getMonthDate(monthKey: string) {
   }
 
   return new Date(year, month - 1, 1);
+}
+
+function getTodayKey() {
+  return getDateKey(new Date());
+}
+
+function getCalendarYearOptions(departures: EnrichedDeparture[]) {
+  const currentYear = new Date().getFullYear();
+  const years = new Set<number>([
+    currentYear - 1,
+    currentYear,
+    currentYear + 1,
+  ]);
+
+  departures.forEach(({ departure }) => {
+    const date = departure.departureDate
+      ? new Date(departure.departureDate)
+      : null;
+
+    if (date && !Number.isNaN(date.getTime())) {
+      years.add(date.getFullYear());
+    }
+  });
+
+  return Array.from(years).sort((left, right) => left - right);
+}
+
+function getDestinationOptions(departures: EnrichedDeparture[]) {
+  const destinationOptions = new Map<string, DestinationOption>();
+  const usedDestinationLabels = new Set<string>();
+
+  departures.forEach((item) => {
+    const destinationId = [
+      item.departure.destinationId,
+      ...getTourDestinationIds(item.tour),
+    ].find(Boolean);
+    const label = getDestinationName(item);
+    const labelKey = label.trim().toLowerCase();
+
+    if (!destinationId || !labelKey || usedDestinationLabels.has(labelKey)) {
+      return;
+    }
+
+    usedDestinationLabels.add(labelKey);
+    destinationOptions.set(destinationId, {
+      id: destinationId,
+      label,
+    });
+  });
+
+  return Array.from(destinationOptions.values()).sort((left, right) =>
+    left.label.localeCompare(right.label)
+  );
 }
 
 function buildCalendarDays(monthDate: Date): CalendarDay[] {
@@ -256,23 +308,10 @@ function getDepartureStatus(departures: EnrichedDeparture[]): DepartureStatus {
   return "available";
 }
 
-function statusDotClassName(status: DepartureStatus) {
-  switch (status) {
-    case "available":
-      return "bg-[#4f9f45]";
-    case "few":
-      return "bg-[#e3b14d]";
-    case "almost":
-      return "bg-[#d95c34]";
-    case "full":
-      return "bg-[#bdb2a6]";
-  }
-}
-
 function statusBadgeClassName(status: DepartureStatus) {
   switch (status) {
     case "available":
-      return "bg-[#48a94a] text-white";
+      return "bg-primary text-white";
     case "few":
       return "bg-[#f0a22a] text-white";
     case "almost":
@@ -284,7 +323,8 @@ function statusBadgeClassName(status: DepartureStatus) {
 
 function getTourImage(tour?: PublicTour) {
   return getHomeMediaUrl(
-    tour?.bannerImage ||
+    tour?.thumbnailImage ||
+      tour?.bannerImage ||
       tour?.galleryImages?.[0] ||
       fallbackUpcomingTours[0]?.image ||
       "/home assets/Khajuraho.webp"
@@ -384,6 +424,54 @@ function resolveDestinationFilter(
 
 function getDurationBadge(tour: PublicTour) {
   return tour.durationDn.replace(/\s+/g, "") || "6D/5N";
+}
+
+function getDepartureCapacity(departure: PublicTourDeparture) {
+  const departureWithCapacity = departure as PublicTourDeparture & {
+    capacity?: number;
+    maxSeats?: number;
+    seatsTotal?: number;
+    totalSeats?: number;
+  };
+  const declaredCapacity = [
+    departureWithCapacity.capacity,
+    departureWithCapacity.totalSeats,
+    departureWithCapacity.seatsTotal,
+    departureWithCapacity.maxSeats,
+  ].find((value) => typeof value === "number" && value > 0);
+
+  return Math.max(departure.seatsAvailable, declaredCapacity || departureCapacityFallback);
+}
+
+function getAvailableSeatPercent(departure: PublicTourDeparture) {
+  const capacity = getDepartureCapacity(departure);
+
+  if (capacity <= 0) {
+    return 0;
+  }
+
+  return Math.min(100, Math.max(0, (departure.seatsAvailable / capacity) * 100));
+}
+
+function sortDeparturesByPrice(
+  departures: EnrichedDeparture[],
+  sortMode: SortMode
+) {
+  return [...departures].sort((left, right) => {
+    const priceDifference =
+      sortMode === "price-high"
+        ? right.departure.priceAdult - left.departure.priceAdult
+        : left.departure.priceAdult - right.departure.priceAdult;
+
+    if (priceDifference !== 0) {
+      return priceDifference;
+    }
+
+    return (
+      getDateValue(left.departure.departureDate) -
+      getDateValue(right.departure.departureDate)
+    );
+  });
 }
 
 function createFallbackExperts(): PublicExpert[] {
@@ -639,20 +727,6 @@ function buildEnrichedDepartures(
     );
 }
 
-function getPreferredMonth(departures: EnrichedDeparture[]) {
-  const today = startOfDay(new Date()).getTime();
-  const upcoming = departures.find(
-    ({ departure }) => getDateValue(departure.departureDate) >= today
-  );
-  const sourceDate = upcoming?.departure.departureDate
-    ? new Date(upcoming.departure.departureDate)
-    : departures[0]?.departure.departureDate
-      ? new Date(departures[0].departure.departureDate)
-      : new Date();
-
-  return startOfMonth(sourceDate);
-}
-
 function getUniqueExperts(
   departures: EnrichedDeparture[],
   experts: PublicExpert[]
@@ -705,11 +779,11 @@ export function TourCalendarPage({
   const [selectedDestinationId, setSelectedDestinationId] = useState(() =>
     resolveDestinationFilter(initialDestinationQuery, fallbackDestinations)
   );
-  const [selectedMonth, setSelectedMonth] = useState("all");
-  const [selectedDateKey, setSelectedDateKey] = useState("");
-  const [sortMode, setSortMode] = useState<SortMode>("earliest");
+  const [selectedDateKey, setSelectedDateKey] = useState(() => getTodayKey());
+  const [isDateFilterActive, setIsDateFilterActive] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>("price-low");
   const [visibleMonth, setVisibleMonth] = useState(() =>
-    getPreferredMonth(fallbackData)
+    startOfMonth(new Date())
   );
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -765,8 +839,9 @@ export function TourCalendarPage({
           setSelectedDestinationId(
             resolveDestinationFilter(initialDestinationQuery, nextDestinations)
           );
-          setSelectedDateKey("");
-          setVisibleMonth(getPreferredMonth(sourceDepartures));
+          setSelectedDateKey(getTodayKey());
+          setIsDateFilterActive(false);
+          setVisibleMonth(startOfMonth(new Date()));
         }
       } catch {
         if (isMounted) {
@@ -785,8 +860,9 @@ export function TourCalendarPage({
           setSelectedDestinationId(
             resolveDestinationFilter(initialDestinationQuery, nextDestinations)
           );
-          setSelectedDateKey("");
-          setVisibleMonth(getPreferredMonth(fallbackDepartures));
+          setSelectedDateKey(getTodayKey());
+          setIsDateFilterActive(false);
+          setVisibleMonth(startOfMonth(new Date()));
         }
       } finally {
         if (isMounted) {
@@ -816,18 +892,13 @@ export function TourCalendarPage({
       return matchesTour && matchesDestination;
     });
   }, [enrichedDepartures, selectedDestinationId, selectedTourId]);
-
-  const filteredDepartures = useMemo(() => {
-    return calendarFilteredDepartures.filter(({ departure }) => {
-      return (
-        selectedMonth === "all" ||
-        getMonthKey(departure.departureDate) === selectedMonth
-      );
-    });
-  }, [calendarFilteredDepartures, selectedMonth]);
+  const sortedCalendarFilteredDepartures = useMemo(
+    () => sortDeparturesByPrice(calendarFilteredDepartures, sortMode),
+    [calendarFilteredDepartures, sortMode]
+  );
 
   const departuresByDate = useMemo(() => {
-    return calendarFilteredDepartures.reduce(
+    return sortedCalendarFilteredDepartures.reduce(
       (map, departure) => {
         const key = getDateKey(departure.departure.departureDate);
 
@@ -841,196 +912,114 @@ export function TourCalendarPage({
       },
       {} as Record<string, EnrichedDeparture[]>
     );
-  }, [calendarFilteredDepartures]);
+  }, [sortedCalendarFilteredDepartures]);
 
   const calendarDays = useMemo(
     () => buildCalendarDays(visibleMonth),
     [visibleMonth]
   );
+  const destinationOptions = useMemo(
+    () => getDestinationOptions(enrichedDepartures),
+    [enrichedDepartures]
+  );
+  const calendarYearOptions = useMemo(
+    () => getCalendarYearOptions(enrichedDepartures),
+    [enrichedDepartures]
+  );
   const selectedDateDepartures = selectedDateKey
-    ? filteredDepartures.filter(
+    ? sortedCalendarFilteredDepartures.filter(
         ({ departure }) =>
           getDateKey(departure.departureDate) === selectedDateKey
       )
     : [];
-  const upcomingDepartures = (
-    selectedDateDepartures.length > 0
+  const upcomingDepartures =
+    isDateFilterActive && selectedDateDepartures.length > 0
       ? selectedDateDepartures
-      : filteredDepartures.filter(
+      : sortedCalendarFilteredDepartures.filter(
           ({ departure }) =>
             getDateValue(departure.departureDate) >=
             startOfDay(new Date()).getTime()
-        )
-  );
-  const scheduledDepartures = [...filteredDepartures]
-    .sort((left, right) => {
-      if (sortMode === "price") {
-        return left.departure.priceAdult - right.departure.priceAdult;
-      }
-
-      if (sortMode === "seats") {
-        return right.departure.seatsAvailable - left.departure.seatsAvailable;
-      }
-
-      return (
-        getDateValue(left.departure.departureDate) -
-        getDateValue(right.departure.departureDate)
-      );
-    });
-  const visibleExperts = getUniqueExperts(filteredDepartures, experts);
+        );
+  const visibleExperts = getUniqueExperts(calendarFilteredDepartures, experts);
 
   function clearDateSelection() {
-    setSelectedDateKey("");
+    setSelectedDateKey(getTodayKey());
+    setIsDateFilterActive(false);
   }
 
   function selectDate(key: string) {
     const monthKey = key.slice(0, 7);
 
     setSelectedDateKey(key);
+    setIsDateFilterActive(true);
 
     if (monthKey) {
-      setSelectedMonth(monthKey);
       setVisibleMonth(getMonthDate(monthKey));
     }
   }
 
+  function selectVisibleMonth(monthIndex: number, year = visibleMonth.getFullYear()) {
+    setVisibleMonth(
+      new Date(year, monthIndex, 1)
+    );
+    clearDateSelection();
+  }
+
+  function selectVisibleYear(year: number) {
+    setVisibleMonth(new Date(year, visibleMonth.getMonth(), 1));
+    clearDateSelection();
+  }
+
   return (
-    <main className="min-h-screen overflow-hidden bg-background text-secondary">
-      <HeroSection />
+    <main className="min-h-screen bg-background text-secondary">
+      <HeaderBand />
 
       <section className="mx-auto grid w-full max-w-[1300px] items-start gap-5 px-4 pb-6 pt-8 sm:px-6 lg:grid-cols-[430px_minmax(0,1fr)] lg:px-0">
         <CalendarPanel
           calendarDays={calendarDays}
+          calendarYearOptions={calendarYearOptions}
           departuresByDate={departuresByDate}
+          isDateFilterActive={isDateFilterActive}
           selectedDateKey={selectedDateKey}
           visibleMonth={visibleMonth}
-          onMonthChange={(month) => {
-            setVisibleMonth(month);
-            setSelectedMonth(getMonthKey(month));
-            clearDateSelection();
-          }}
+          onMonthChange={selectVisibleMonth}
           onSelectDate={selectDate}
+          onYearChange={selectVisibleYear}
         />
 
         <UpcomingDeparturesPanel
+          destinationOptions={destinationOptions}
           departures={upcomingDepartures}
           isLoading={isLoading}
           loadError={loadError}
-          onViewAll={() => {
-            setSelectedTourId("all");
-            setSelectedDestinationId("all");
-            setSelectedMonth("all");
+          selectedDestinationId={selectedDestinationId}
+          sortMode={sortMode}
+          onDestinationChange={(destinationId) => {
+            setSelectedDestinationId(destinationId);
             clearDateSelection();
-            setVisibleMonth(getPreferredMonth(enrichedDepartures));
           }}
+          onSortModeChange={setSortMode}
         />
       </section>
 
-      <section className="mx-auto w-full max-w-[1300px] px-4 py-3 sm:px-6 lg:px-0">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="font-heading text-[24px] font-bold leading-tight text-secondary">
-            All Scheduled Tours
-          </h2>
-          <label className="relative inline-flex h-10 w-fit min-w-[186px] items-center gap-2 rounded-[7px] border border-[#e8cbaa] bg-[#fffaf4] px-3 font-sans text-[11px] font-semibold text-secondary/65 shadow-[0_8px_20px_rgba(67,43,27,0.05)] transition-all hover:border-primary/55 hover:bg-white focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/15">
-            <span className="shrink-0">Sort by:</span>
-            <select
-              value={sortMode}
-              onChange={(event) => setSortMode(event.target.value as SortMode)}
-              className="min-w-0 flex-1 cursor-pointer appearance-none bg-transparent pr-6 font-bold text-secondary outline-none"
-            >
-              <option value="earliest">Earliest Departure</option>
-              <option value="price">Price Low to High</option>
-              <option value="seats">Most Seats Left</option>
-            </select>
-            <ChevronDown
-              className="pointer-events-none absolute right-3 size-3.5 text-primary"
-              strokeWidth={1.8}
-            />
-          </label>
-        </div>
-
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {scheduledDepartures.length > 0 ? (
-            scheduledDepartures.map((item) => (
-              <ScheduledTourCard
-                key={getDepartureIdentifier(item.departure)}
-                item={item}
-              />
-            ))
-          ) : (
-            <EmptyState message="No scheduled tours match these filters." />
-          )}
-        </div>
-      </section>
-
-      <section className="mx-auto w-full max-w-[1300px] px-4 py-5 sm:px-6 lg:px-0">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="font-heading text-[24px] font-bold leading-tight text-secondary">
-            Meet Our Experts
-          </h2>
-          <Link
-            href="/about"
-            className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-sans text-[12px] font-bold text-primary transition-colors hover:bg-[#fff1e5] hover:text-accent focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
-          >
-            View All Experts
-            <ArrowRight className="size-3.5" />
-          </Link>
-        </div>
-
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {visibleExperts.length > 0 ? (
-            visibleExperts.map((expert, index) => (
-              <ExpertCard
-                key={expert.expertId || expert.id}
-                expert={expert}
-                index={index}
-              />
-            ))
-          ) : (
-            <EmptyState message="No expert profiles are available yet." />
-          )}
-        </div>
-      </section>
-
-      <BenefitsBand />
     </main>
   );
 }
 
-function HeroSection() {
+function HeaderBand() {
   return (
-    <section className="relative overflow-visible bg-[#fff8f0]">
+    <section className="relative h-[200px] overflow-hidden bg-secondary">
       <Image
         src="/home assets/Heritage Banner.webp"
-        alt="Traveller overlooking ancient temple architecture"
+        alt="Ancient Trails heritage landscape"
         fill
         priority
         sizes="100vw"
         className="object-cover object-center"
       />
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,248,240,0.98)_0%,rgba(255,248,240,0.9)_31%,rgba(255,248,240,0.38)_58%,rgba(255,248,240,0.05)_100%)]" />
-      
-      <div className="absolute inset-x-0 bottom-0 h-20 bg-[linear-gradient(180deg,rgba(255,248,240,0)_0%,#fff8f0_100%)]" />
-
-      <div className="relative z-10 mx-auto flex min-h-[500px] w-full max-w-[1300px] flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0">
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(35,18,9,0.34)_100%)]" />
+      <div className="relative z-10 mx-auto w-full max-w-[1300px] px-5 sm:px-8 lg:px-0">
         <Header />
-
-        <div className="flex flex-1 items-center px-0 pb-6 pt-7 sm:px-8">
-          <div className="max-w-[430px]">
-            <p className="font-sans text-[11px] font-bold uppercase tracking-normal text-primary">
-              Plan Your Journey
-            </p>
-            <h1 className="mt-2 font-heading text-[42px] font-bold leading-none tracking-normal text-secondary sm:text-[56px] lg:text-[64px]">
-              Tour Calendar
-            </h1>
-            <p className="mt-4 max-w-[360px] font-sans text-[13px] leading-[1.65] text-secondary/78">
-              Handpicked journeys across India, led by experts. Explore, learn
-              and experience timeless heritage.
-            </p>
-          </div>
-        </div>
-
-        <PlanTripInline className="mb-8" />
       </div>
     </section>
   );
@@ -1038,133 +1027,282 @@ function HeroSection() {
 
 function CalendarPanel({
   calendarDays,
+  calendarYearOptions,
   departuresByDate,
+  isDateFilterActive,
   selectedDateKey,
   visibleMonth,
   onMonthChange,
   onSelectDate,
+  onYearChange,
 }: {
   calendarDays: CalendarDay[];
+  calendarYearOptions: number[];
   departuresByDate: Record<string, EnrichedDeparture[]>;
+  isDateFilterActive: boolean;
   selectedDateKey: string;
   visibleMonth: Date;
-  onMonthChange: (month: Date) => void;
+  onMonthChange: (monthIndex: number, year?: number) => void;
   onSelectDate: (key: string) => void;
+  onYearChange: (year: number) => void;
+}) {
+  const todayKey = getTodayKey();
+
+  return (
+    <aside className="lg:sticky lg:top-[118px] lg:self-start">
+      <article className="rounded-[9px] border border-[#ead8c5] bg-white/94 p-6 shadow-[0_16px_36px_rgba(67,43,27,0.08)] transition-all duration-300">
+        <h2 className="font-heading text-[22px] font-bold leading-none text-secondary">
+          Filter by Date
+        </h2>
+        <div className="mt-6 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              const previousMonth = addMonths(visibleMonth, -1);
+
+              onMonthChange(previousMonth.getMonth(), previousMonth.getFullYear());
+            }}
+            className="grid size-9 place-items-center rounded-full border border-transparent text-secondary/60 transition-all hover:border-primary/20 hover:bg-[#fff1e5] hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
+            aria-label="Previous month"
+          >
+            <ChevronLeft className="size-5" />
+          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <Select
+              value={String(visibleMonth.getMonth())}
+              onValueChange={(value) => {
+                if (value !== null) {
+                  onMonthChange(Number(value));
+                }
+              }}
+            >
+              <SelectTrigger
+                aria-label="Select month"
+                className="h-10 rounded-full border-[#e8cbaa] bg-[#fffaf4] text-[13px] font-bold"
+              >
+                <SelectValue>
+                  {monthOptions.find(
+                    (month) => month.value === visibleMonth.getMonth()
+                  )?.label || monthNameFormatter.format(visibleMonth)}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {monthOptions.map((month) => (
+                  <SelectItem key={month.value} value={String(month.value)}>
+                    {month.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={String(visibleMonth.getFullYear())}
+              onValueChange={(value) => {
+                if (value !== null) {
+                  onYearChange(Number(value));
+                }
+              }}
+            >
+              <SelectTrigger
+                aria-label="Select year"
+                className="h-10 rounded-full border-[#e8cbaa] bg-[#fffaf4] text-[13px] font-bold"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {calendarYearOptions.map((year) => (
+                  <SelectItem key={year} value={String(year)}>
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const nextMonth = addMonths(visibleMonth, 1);
+
+              onMonthChange(nextMonth.getMonth(), nextMonth.getFullYear());
+            }}
+            className="grid size-9 place-items-center rounded-full border border-transparent text-secondary/60 transition-all hover:border-primary/20 hover:bg-[#fff1e5] hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
+            aria-label="Next month"
+          >
+            <ChevronRight className="size-5" />
+          </button>
+        </div>
+
+        <div className="mt-6 grid grid-cols-7 gap-y-2">
+          {weekdayLabels.map((day) => (
+            <span
+              key={day}
+              className="text-center font-sans text-[10px] font-bold uppercase text-secondary/48"
+            >
+              {day}
+            </span>
+          ))}
+          {calendarDays.map((day) => {
+            const key = getDateKey(day.date);
+            const dayDepartures = departuresByDate[key] || [];
+            const hasDepartures = dayDepartures.length > 0;
+            const isSelected = isDateFilterActive && selectedDateKey === key;
+            const isToday = todayKey === key;
+
+            return (
+              <button
+                key={key}
+                type="button"
+                disabled={!hasDepartures}
+                onClick={() => onSelectDate(key)}
+                aria-pressed={isSelected}
+                className={cn(
+                  "relative mx-auto grid size-10 place-items-center rounded-full border border-transparent pb-1.5 font-sans text-[13px] font-semibold transition-all disabled:cursor-default focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20",
+                  day.isCurrentMonth ? "text-secondary" : "text-secondary/32",
+                  hasDepartures &&
+                    "bg-primary/12 text-primary hover:border-primary/20 hover:bg-primary/20",
+                  isToday &&
+                    "border-[#2faa5d]/40 shadow-[0_0_0_3px_rgba(47,170,93,0.08)]",
+                  isSelected &&
+                    "border-primary/45 bg-primary text-white shadow-[0_0_0_4px_rgba(212,114,32,0.13)]"
+                )}
+              >
+                <span className="leading-none">{day.date.getDate()}</span>
+                {isToday || hasDepartures ? (
+                  <span
+                    className={cn(
+                      "absolute bottom-1.5 size-1.5 rounded-full",
+                      isToday
+                        ? currentDateDotClassName
+                        : isSelected
+                          ? "bg-white"
+                          : departureDateDotClassName
+                    )}
+                  />
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className=" flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-[#f1ebe6] pt-4 font-sans text-[11px] font-semibold text-secondary/62">
+          <CalendarLegendDot
+            className={currentDateDotClassName}
+            label="Current date"
+          />
+          <CalendarLegendDot
+            className={departureDateDotClassName}
+            label="Departure date"
+          />
+        </div>
+      </article>
+    </aside>
+  );
+}
+
+function CalendarLegendDot({
+  className,
+  label,
+}: {
+  className: string;
+  label: string;
 }) {
   return (
-    <article className="rounded-[9px] border border-[#ead8c5] bg-white/94 p-6 shadow-[0_16px_36px_rgba(67,43,27,0.08)]">
-      <h2 className="font-heading text-[22px] font-bold leading-none text-secondary">
-        Select Dates
-      </h2>
-      <div className="mt-6 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => onMonthChange(addMonths(visibleMonth, -1))}
-          className="grid size-9 place-items-center rounded-full border border-transparent text-secondary/60 transition-all hover:border-primary/20 hover:bg-[#fff1e5] hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
-          aria-label="Previous month"
-        >
-          <ChevronLeft className="size-5" />
-        </button>
-        <h3 className="font-sans text-[15px] font-bold text-secondary">
-          {monthFormatter.format(visibleMonth)}
-        </h3>
-        <button
-          type="button"
-          onClick={() => onMonthChange(addMonths(visibleMonth, 1))}
-          className="grid size-9 place-items-center rounded-full border border-transparent text-secondary/60 transition-all hover:border-primary/20 hover:bg-[#fff1e5] hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
-          aria-label="Next month"
-        >
-          <ChevronRight className="size-5" />
-        </button>
-      </div>
-
-      <div className="mt-6 grid grid-cols-7 gap-y-4">
-        {weekdayLabels.map((day) => (
-          <span
-            key={day}
-            className="text-center font-sans text-[10px] font-bold uppercase text-secondary/48"
-          >
-            {day}
-          </span>
-        ))}
-        {calendarDays.map((day) => {
-          const key = getDateKey(day.date);
-          const dayDepartures = departuresByDate[key] || [];
-          const hasDepartures = dayDepartures.length > 0;
-          const status = getDepartureStatus(dayDepartures);
-          const isSelected = selectedDateKey === key;
-
-          return (
-            <button
-              key={key}
-              type="button"
-              disabled={!hasDepartures}
-              onClick={() => onSelectDate(key)}
-              aria-pressed={isSelected}
-              className={cn(
-                "relative mx-auto grid size-10 place-items-center rounded-full border border-transparent font-sans text-[13px] font-semibold transition-all disabled:cursor-default focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20",
-                day.isCurrentMonth ? "text-secondary" : "text-secondary/32",
-                hasDepartures &&
-                  "hover:border-primary/20 hover:bg-[#fff1e5] hover:text-primary",
-                isSelected &&
-                  "border-primary/30 bg-[#fff1e5] text-primary shadow-[0_0_0_4px_rgba(212,114,32,0.1)]"
-              )}
-            >
-              {day.date.getDate()}
-              {hasDepartures ? (
-                <span
-                  className={cn(
-                    "absolute -bottom-1 size-1.5 rounded-full",
-                    statusDotClassName(status)
-                  )}
-                />
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="mt-8 grid gap-3 font-sans text-[11px] font-semibold text-secondary/62 sm:grid-cols-2">
-        <LegendDot label="Seats Available" status="available" />
-        <LegendDot label="Few Seats Left" status="few" />
-        <LegendDot label="Almost Full" status="almost" />
-        <LegendDot label="Sold Out" status="full" />
-      </div>
-    </article>
+    <span className="inline-flex items-center gap-2">
+      <span className={cn("size-2 rounded-full", className)} />
+      {label}
+    </span>
   );
 }
 
 function UpcomingDeparturesPanel({
+  destinationOptions,
   departures,
   isLoading,
   loadError,
-  onViewAll,
+  selectedDestinationId,
+  sortMode,
+  onDestinationChange,
+  onSortModeChange,
 }: {
+  destinationOptions: DestinationOption[];
   departures: EnrichedDeparture[];
   isLoading: boolean;
   loadError: string;
-  onViewAll: () => void;
+  selectedDestinationId: string;
+  sortMode: SortMode;
+  onDestinationChange: (destinationId: string) => void;
+  onSortModeChange: (sortMode: SortMode) => void;
 }) {
+  const selectedDestinationLabel =
+    selectedDestinationId === "all"
+      ? "All Destinations"
+      : destinationOptions.find(
+          (destination) =>
+            destination.id.trim().toUpperCase() ===
+            selectedDestinationId.trim().toUpperCase()
+        )?.label || selectedDestinationId;
+
   return (
-    <article className="rounded-[9px] border border-[#ead8c5] bg-white/94 p-5 shadow-[0_16px_36px_rgba(67,43,27,0.08)]">
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="font-heading text-[19px] font-bold leading-none text-secondary">
-          Upcoming Departures
-        </h2>
-        <button
-          type="button"
-          onClick={onViewAll}
-          className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-sans text-[11px] font-bold text-primary transition-colors hover:bg-[#fff1e5] hover:text-accent focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
-        >
-          View All Departures
-          <ArrowRight className="size-3.5" />
-        </button>
+    <article>
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <h2 className="font-heading text-[19px] font-bold leading-none text-secondary">
+            Upcoming Departures
+          </h2>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <span className="shrink-0 font-sans text-[12px] font-bold text-secondary">
+              Choose Destination
+            </span>
+            <div className="w-full sm:w-[250px]">
+              <Select
+                value={selectedDestinationId}
+                onValueChange={(value) => {
+                  if (value) {
+                    onDestinationChange(value);
+                  }
+                }}
+              >
+                <SelectTrigger className="h-10 rounded-full border-[#e8cbaa] bg-[#fffaf4] text-[13px] font-bold">
+                  <SelectValue>{selectedDestinationLabel}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Destinations</SelectItem>
+                  {destinationOptions.map((destination) => (
+                    <SelectItem key={destination.id} value={destination.id}>
+                      {destination.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+        <div className="w-full xl:w-[210px]">
+          <Select
+            value={sortMode}
+            onValueChange={(value) => {
+              if (value) {
+                onSortModeChange(value as SortMode);
+              }
+            }}
+          >
+            <SelectTrigger
+              aria-label="Sort departures by price"
+              className="h-10 rounded-full border-[#e8cbaa] bg-[#fffaf4] text-[13px] font-bold"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="price-low">Price Low to High</SelectItem>
+              <SelectItem value="price-high">Price High to Low</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      <div className="mt-4 max-h-[560px] space-y-3 overflow-y-auto pr-1">
+      <div className="mt-5 space-y-5">
         {departures.length > 0 ? (
           departures.map((item, index) => (
-            <DepartureRow
+            <DepartureCard
               key={getDepartureIdentifier(item.departure)}
               item={item}
               index={index}
@@ -1184,92 +1322,118 @@ function UpcomingDeparturesPanel({
   );
 }
 
-function DepartureRow({ index, item }: { index: number; item: EnrichedDeparture }) {
+function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture }) {
   const status = getDepartureStatus([item]);
+  const capacity = getDepartureCapacity(item.departure);
+  const availablePercent = getAvailableSeatPercent(item.departure);
 
   return (
-    <article className="grid gap-3 rounded-[8px] border border-[#ead8c5] bg-white p-3 shadow-[0_8px_20px_rgba(67,43,27,0.035)] transition-all hover:-translate-y-0.5 hover:border-primary/55 hover:bg-[#fffaf4] hover:shadow-[0_14px_28px_rgba(67,43,27,0.08)] xl:grid-cols-[172px_minmax(0,1fr)_82px_112px_150px] xl:items-center">
-      <div className="relative h-[128px] overflow-hidden rounded-[7px] bg-muted xl:h-[104px]">
-        <Image
-          src={getTourImage(item.tour)}
-          alt={item.tour.tourName}
-          fill
-          sizes="172px"
-          className="object-cover"
-        />
-        <span
-          className={cn(
-            "absolute left-2 top-2 rounded-[5px] px-2 py-1 font-sans text-[10px] font-bold",
-            statusBadgeClassName(status)
-          )}
-        >
-          {getDurationBadge(item.tour)}
-        </span>
-      </div>
-
-      <div className="min-w-0">
-        <h3 className="line-clamp-2 font-heading text-[18px] font-bold leading-tight text-secondary">
-          {item.tour.tourName}
-        </h3>
-        <p className="mt-2 flex items-center gap-2 font-sans text-[11px] font-semibold text-secondary/62">
-          <CalendarDays className="size-3.5 text-primary" strokeWidth={1.8} />
-          {formatDateRange(item.departure)}
-        </p>
-        <p className="mt-1 flex items-center gap-2 font-sans text-[11px] font-semibold text-secondary/62">
-          <MapPin className="size-3.5 text-primary" strokeWidth={1.8} />
-          {getDestinationName(item)}
-        </p>
-      </div>
-
-      <MetricBlock label="Seats Left" value={item.departure.seatsAvailable.toString()} />
-      <MetricBlock label="per person" value={formatPrice(item.departure.priceAdult)} />
-
-      <div className="grid gap-2 xl:justify-items-end">
-        <Link
-          href={getTourHref(item.tour)}
-          className="inline-flex h-8 items-center justify-center gap-2 rounded-[6px] border border-primary bg-white px-3 font-sans text-[11px] font-bold text-primary shadow-[0_6px_14px_rgba(212,114,32,0.08)] transition-all hover:bg-primary hover:text-white hover:shadow-[0_10px_18px_rgba(212,114,32,0.22)] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
-        >
-          View Details
-          <ArrowRight className="size-3.5" />
-        </Link>
-        <div className="flex items-center gap-2 xl:justify-end">
-          <ExpertAvatar expert={item.expert} index={index} size="small" />
-          <span className="min-w-0 font-sans">
-            <span className="block text-[9px] font-semibold uppercase text-secondary/48">
-              Expert
-            </span>
-            <span className="block max-w-[118px] truncate text-[10px] font-bold text-secondary">
-              {getExpertName(item)}
-            </span>
-            <Link
-              href="/about"
-              className="inline-flex items-center gap-1 text-[9px] font-bold text-primary transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
-            >
-              View Profile
-            </Link>
+    <article className="rounded-[12px] border border-[#e8cbaa] bg-white p-3 shadow-[0_14px_32px_rgba(67,43,27,0.08)] transition-all hover:-translate-y-0.5 hover:border-primary/55 hover:shadow-[0_20px_44px_rgba(67,43,27,0.12)] sm:p-3.5">
+      <div className="grid gap-2.5 xl:grid-cols-[190px_minmax(0,1fr)] xl:items-start">
+        <div className="relative h-[145px] overflow-hidden rounded-[8px] bg-muted sm:h-[160px] xl:h-[122px]">
+          <Image
+            src={getTourImage(item.tour)}
+            alt={item.tour.tourName}
+            fill
+            sizes="(min-width: 1280px) 190px, 100vw"
+            className="object-cover"
+          />
+          <span
+            className={cn(
+              "absolute left-2.5 top-2.5 rounded-[6px] px-2 py-1 font-sans text-[13px] font-bold leading-none",
+              statusBadgeClassName(status)
+            )}
+          >
+            {getDurationBadge(item.tour)}
           </span>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_210px]">
+          <div className="min-w-0">
+            <h3 className="max-w-[310px] font-heading text-[20px] font-bold leading-[1.08] tracking-normal text-secondary sm:text-[23px]">
+              {item.tour.tourName}
+            </h3>
+
+            <div className="mt-2.5 grid gap-3 sm:grid-cols-[180px_60px_92px] sm:items-start">
+              <div className="space-y-2 font-sans text-[13px] font-semibold leading-tight text-secondary/70 sm:text-[12px]">
+                <p className="flex min-w-0 items-center gap-1.5">
+                  <CalendarDays className="size-3.5 shrink-0 text-primary" strokeWidth={2} />
+                  <span className="min-w-0 whitespace-nowrap">{formatDateRange(item.departure)}</span>
+                </p>
+                <p className="flex min-w-0 items-center gap-1.5">
+                  <MapPin className="size-3.5 shrink-0 text-primary" strokeWidth={2} />
+                  <span className="truncate">{getDestinationName(item)}</span>
+                </p>
+              </div>
+
+              <span className="font-sans">
+                <strong className="block text-[15px] font-bold leading-none text-secondary sm:text-[16px]">
+                  {item.departure.seatsAvailable}
+                </strong>
+                <span className="mt-1 block text-[10px] font-medium leading-none text-secondary/58 sm:text-[11px]">
+                  Seats Left
+                </span>
+              </span>
+
+              <span className="font-sans">
+                <strong className="block text-[15px] font-bold leading-none text-secondary sm:text-[16px]">
+                  {formatPrice(item.departure.priceAdult)}
+                </strong>
+                <span className="mt-1 block text-[10px] font-medium leading-none text-secondary/58 sm:text-[11px]">
+                  per person
+                </span>
+              </span>
+            </div>
+
+            <div className="mt-3 border-t border-[#e8cbaa] pt-2.5 sm:max-w-[356px]">
+              <p className="flex flex-wrap items-center gap-x-3 gap-y-1.5 font-sans text-[12px] font-semibold leading-tight text-secondary/60 sm:text-[13px]">
+                <span className="font-bold text-primary">
+                  {item.departure.seatsAvailable}/{capacity} seats 
+                </span>
+              </p>
+
+              <div className="mt-2 h-1 overflow-hidden rounded-full bg-[#e8edf1]">
+                <span
+                  className="block h-full rounded-full bg-[linear-gradient(90deg,#d47220_0%,#9b3b13_100%)]"
+                  style={{ width: `${availablePercent}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-2.5 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center lg:flex lg:flex-col lg:items-end">
+            <Link
+              href={getTourHref(item.tour)}
+              className={buttonVariants({
+                className:
+                  "h-9 w-full justify-between gap-3 px-3 text-[13px] font-normal hover:border-primary hover:bg-white hover:text-primary hover:shadow-none",
+              })}
+            >
+              View Details
+              <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+            </Link>
+
+            <div className="flex min-w-0 items-center gap-2 lg:mt-3 lg:w-full lg:justify-end">
+              <ExpertAvatar expert={item.expert} index={index} size="compact" />
+              <span className="min-w-0 font-sans lg:text-right">
+                <span className="block text-[9px] font-semibold uppercase leading-none text-secondary/48">
+                  Expert
+                </span>
+                <span className="mt-1 block truncate text-[13px] font-bold leading-none text-secondary">
+                  {getExpertName(item)}
+                </span>
+                <Link
+                  href="/about"
+                  className="mt-1 inline-flex text-[13px] font-bold leading-none text-primary transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+                >
+                  View Profile
+                </Link>
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </article>
-  );
-}
-
-function ScheduledTourCard({ item }: { item: EnrichedDeparture }) {
-  return (
-    <TourShowcaseCard
-      durationLabel={getDurationBadge(item.tour)}
-      favoriteLabel={`Save ${item.tour.tourName}`}
-      href={getTourHref(item.tour)}
-      image={getTourImage(item.tour)}
-      imageSizes="(min-width: 1024px) 275px, (min-width: 640px) 50vw, 100vw"
-      nextDepartureLabel={
-        item.departure.departureDate
-          ? formatFullDate(item.departure.departureDate)
-          : "Coming Soon"
-      }
-      priceLabel={formatPrice(item.departure.priceAdult)}
-      title={item.tour.tourName}
-    />
   );
 }
 
@@ -1343,7 +1507,7 @@ function ExpertAvatar({
 }: {
   expert?: PublicExpert;
   index: number;
-  size?: "default" | "small";
+  size?: "default" | "compact" | "small";
 }) {
   const image = getExpertImage(expert, index);
 
@@ -1351,7 +1515,9 @@ function ExpertAvatar({
     <span
       className={cn(
         "relative shrink-0 overflow-hidden rounded-full bg-[#efe2d4]",
-        size === "small" ? "size-9" : "size-16"
+        size === "small" && "size-9",
+        size === "compact" && "size-9",
+        size === "default" && "size-16"
       )}
     >
       {image ? (
@@ -1359,7 +1525,7 @@ function ExpertAvatar({
           src={image}
           alt={expert?.fullName || "Tour expert"}
           fill
-          sizes={size === "small" ? "36px" : "64px"}
+          sizes={size === "small" ? "36px" : size === "compact" ? "36px" : "64px"}
           className="object-cover"
         />
       ) : (
@@ -1367,34 +1533,6 @@ function ExpertAvatar({
           {getExpertInitials(expert)}
         </span>
       )}
-    </span>
-  );
-}
-
-function MetricBlock({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="font-sans">
-      <strong className="block text-[13px] font-bold leading-none text-secondary">
-        {value}
-      </strong>
-      <span className="mt-1 block text-[10px] font-medium text-secondary/52">
-        {label}
-      </span>
-    </span>
-  );
-}
-
-function LegendDot({
-  label,
-  status,
-}: {
-  label: string;
-  status: DepartureStatus;
-}) {
-  return (
-    <span className="inline-flex items-center gap-2">
-      <span className={cn("size-2 rounded-full", statusDotClassName(status))} />
-      {label}
     </span>
   );
 }

@@ -174,7 +174,7 @@ export function Calendar({
         <div className="grid min-w-0 flex-1 grid-cols-[1fr_86px] gap-2">
           <Select value={String(viewMonth)} onValueChange={updateViewMonth}>
             <SelectTrigger className="h-9 rounded-[6px] px-3 text-[12px]">
-              <SelectValue />
+              <SelectValue>{monthNames[viewMonth] || "Month"}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {monthNames.map((month, index) => (

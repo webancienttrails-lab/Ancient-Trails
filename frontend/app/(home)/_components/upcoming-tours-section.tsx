@@ -70,7 +70,7 @@ function TourCard({ tour, className, sizes }: TourCardProps) {
           {tour.title}
         </h3>
         <span className="mt-3 inline-flex h-9 items-center rounded-full bg-primary px-4 font-sans text-[13px] font-bold text-white transition-colors group-hover:bg-accent">
-          Read More
+          Book Now
           <ArrowRight className="ml-2 size-4" strokeWidth={2} />
         </span>
       </div>
@@ -117,7 +117,7 @@ export function UpcomingToursSection() {
                 <p className="text-eyebrow font-medium uppercase text-primary">
                   Explore Upcoming Tours
                 </p>
-                <h2 className="mt-2 font-heading text-[34px] font-bold leading-none text-secondary sm:text-[40px] lg:text-title">
+                <h2 className="mt-2 font-heading text-title font-bold leading-none text-secondary">
                   Trails Leaving Soon
                 </h2>
               </div>

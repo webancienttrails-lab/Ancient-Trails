@@ -1,20 +1,20 @@
 import type { Metadata } from "next";
-import { Playfair_Display, Poppins } from "next/font/google";
+import { Montserrat, Playfair_Display } from "next/font/google";
 import { SiteFooter } from "@/components/layout/footer";
 import { ToastProvider } from "@/components/ui/toast";
 import { SiteLoader } from "@/components/layout/site-loader";
 import "./globals.css";
 
+const montserrat = Montserrat({
+  variable: "--font-montserrat",
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700", "800", "900"],
+});
+
 const playfairDisplay = Playfair_Display({
   variable: "--font-playfair-display",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800", "900"],
-});
-
-const poppins = Poppins({
-  variable: "--font-poppins",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -34,7 +34,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${playfairDisplay.variable} ${poppins.variable} h-full antialiased`}
+      className={`${montserrat.variable} ${playfairDisplay.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <ToastProvider>

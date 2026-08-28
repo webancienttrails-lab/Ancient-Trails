@@ -5,26 +5,40 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
+  BedDouble,
+  Bus,
+  Camera,
+  CalendarDays,
+  ChevronLeft,
   ChevronRight,
-  ImageIcon,
-  Landmark,
-  MapPin,
+  Clock3,
+  Expand,
+  Footprints,
+  Heart,
   Play,
-  Route,
+  Share2,
+  ShieldCheck,
+  Shirt,
   Star,
-  TrainFront,
+  Ticket,
+  UserRoundCheck,
+  X,
+  ZoomIn,
+  type LucideIcon,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 
 import { Header } from "@/components/layout/header";
-import { TourShowcaseCard } from "@/components/tours/tour-showcase-card";
 import { Button, ButtonArrow } from "@/components/ui/button";
 import {
   getHomeMediaUrl,
   getTourDestinationIds,
   listPublicDestinations,
+  listPublicExperiences,
   listPublicTourDepartures,
   listPublicTours,
   type PublicDestination,
+  type PublicExperience,
   type PublicTour,
   type PublicTourDeparture,
 } from "@/lib/home-travel";
@@ -37,7 +51,25 @@ const fallbackImages = [
   "/home assets/Khajuraho.webp",
   "/home assets/destination/Udaipur.webp",
   "/home assets/destination/Varanasi.webp",
+  "/home assets/destination/Hoysalas.webp",
 ];
+
+type LightboxState = {
+  activeIndex: number;
+  fallbackImages: string[];
+  images: string[];
+  title: string;
+};
+
+type GalleryImageSize = {
+  height: number;
+  width: number;
+};
+
+const minimumLightboxImageSize: GalleryImageSize = {
+  height: 400,
+  width: 600,
+};
 
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
   currency: "INR",
@@ -78,28 +110,77 @@ function uniqueValues(values: string[]) {
 }
 
 function getPrimaryFocus(destination: PublicDestination) {
-  return destination.primaryHeritageFocus || "Heritage Destination";
+  return destination.primaryHeritageFocus || "Heritage";
 }
 
-function getLocationLabel(destination: PublicDestination) {
-  return uniqueValues([
-    destination.city,
-    destination.state,
-    destination.countryRegion,
-  ]).join(", ");
+function getRegionLabel(destination: PublicDestination) {
+  return destination.region || destination.state || destination.countryRegion;
 }
 
 function getDestinationImages(
   destination: PublicDestination,
-  tours: PublicTour[] = []
+  tours: PublicTour[] = [],
+  experiences: PublicExperience[] = []
 ) {
   const images = uniqueValues([
     destination.bannerImage,
+    destination.thumbnailImage || "",
     ...destination.galleryImages,
-    ...tours.flatMap((tour) => [tour.bannerImage, ...tour.galleryImages]),
+    ...(destination.keyLandmarkImages || []),
+    ...experiences.flatMap((experience) => experience.travellerPhotoGallery),
+    ...tours.flatMap((tour) => [
+      tour.thumbnailImage || "",
+      tour.bannerImage,
+      ...tour.galleryImages,
+    ]),
   ]).map(getHomeMediaUrl);
 
   return images.length > 0 ? images : fallbackImages;
+}
+
+function getDestinationGalleryImages(destination: PublicDestination) {
+  return uniqueValues(destination.galleryImages).map(getHomeMediaUrl).filter(Boolean);
+}
+
+function getExperiencePhotoGallery(experience?: PublicExperience) {
+  return uniqueValues(experience?.travellerPhotoGallery || [])
+    .map(getHomeMediaUrl)
+    .filter(Boolean);
+}
+
+function getExperienceGalleryImages(experiences: PublicExperience[]) {
+  return uniqueValues(
+    experiences.flatMap((experience) => experience.travellerPhotoGallery)
+  )
+    .map(getHomeMediaUrl)
+    .filter(Boolean);
+}
+
+function getLightboxImageStyle(imageSize?: GalleryImageSize) {
+  if (!imageSize?.width || !imageSize.height) {
+    return undefined;
+  }
+
+  return {
+    maxHeight: `min(calc(100vh - 9rem), ${imageSize.height}px)`,
+    maxWidth: `min(calc(100vw - 3rem), ${imageSize.width}px)`,
+  };
+}
+
+function isSmallLightboxImage(imageSize?: GalleryImageSize) {
+  return Boolean(
+    imageSize &&
+      (imageSize.width < minimumLightboxImageSize.width ||
+        imageSize.height < minimumLightboxImageSize.height)
+  );
+}
+
+function getIndexedFallbackImage(images: string[], index: number) {
+  if (images.length === 0) {
+    return "";
+  }
+
+  return images[index % images.length] || images[0] || "";
 }
 
 function formatPrice(value: number) {
@@ -160,19 +241,6 @@ function getNextTourDeparture(
   );
 }
 
-function getLandmarkDescription(landmark: string, destination: PublicDestination) {
-  const focus = getPrimaryFocus(destination).toLowerCase();
-
-  return `${landmark} anchors the ${focus} story of ${destination.destinationName}.`;
-}
-
-function isTourLinkedToDestination(
-  tour: PublicTour,
-  destination: PublicDestination
-) {
-  return getTourDestinationIds(tour).includes(destination.destinationId);
-}
-
 function getRelatedDepartures(
   tours: PublicTour[],
   departures: PublicTourDeparture[]
@@ -182,8 +250,338 @@ function getRelatedDepartures(
   return departures.filter((departure) => tourIds.has(departure.tourId));
 }
 
+function isTourLinkedToDestination(
+  tour: PublicTour,
+  destination: PublicDestination
+) {
+  return getTourDestinationIds(tour).includes(destination.destinationId);
+}
+
+function getRecommendedDayNightLabel(destination: PublicDestination) {
+  const days = Math.max(1, Number(destination.recommendedDurationDays) || 1);
+
+  return days > 1 ? `${days}D/${days - 1}N` : "1 Day";
+}
+
+function getBestSeason(destination: PublicDestination, tours: PublicTour[]) {
+  if (destination.bestTimeToVisit?.trim()) {
+    return destination.bestTimeToVisit.trim();
+  }
+
+  const season = tours.find((tour) => tour.bestSeason.trim())?.bestSeason;
+
+  if (season) {
+    return season;
+  }
+
+  if (destination.destinationType === "Domestic") {
+    return "September-November";
+  }
+
+  return "Year round";
+}
+
+function getHeritageIntro(destination: PublicDestination) {
+  if (destination.shortDescription.trim()) {
+    return destination.shortDescription;
+  }
+
+  return `${destination.destinationName} brings together ${getPrimaryFocus(
+    destination
+  ).toLowerCase()}, local stories and carefully paced heritage exploration.`;
+}
+
+function getLandmarkRows(destination: PublicDestination, images: string[]) {
+  const labels =
+    destination.keyLandmarks.length > 0
+      ? destination.keyLandmarks
+      : uniqueValues([
+          destination.primaryHeritageFocus,
+          destination.city,
+          destination.state,
+          destination.unescoSite ? "UNESCO Heritage" : "",
+        ]);
+
+  return labels.slice(0, 8).map((label, index) => ({
+    image:
+      getHomeMediaUrl(destination.keyLandmarkImages?.[index] || "") ||
+      images[(index + 1) % images.length] ||
+      fallbackImages[index % fallbackImages.length],
+    label,
+  }));
+}
+
+function isHampiDestination(destination: PublicDestination) {
+  return (
+    normalizeCode(destination.destinationId) === "HAMPI" ||
+    slugify(destination.destinationName) === "hampi"
+  );
+}
+
+function getAttractionSummary(destination: PublicDestination) {
+  if (isHampiDestination(destination)) {
+    return "History of Vijaynagara Kingdom, Temple Architecture, Caves";
+  }
+
+  return (
+    uniqueValues([
+      destination.primaryHeritageFocus,
+      ...destination.keyLandmarks.slice(0, 2),
+    ]).join(", ") || getPrimaryFocus(destination)
+  );
+}
+
+function getFeaturedLandmarkRows(
+  destination: PublicDestination,
+  images: string[]
+) {
+  const landmarks = getLandmarkRows(destination, images);
+
+  if (!isHampiDestination(destination)) {
+    return landmarks;
+  }
+
+  const findLandmark = (keyword: string, fallbackIndex: number) =>
+    landmarks.find((landmark) =>
+      landmark.label.toLowerCase().includes(keyword)
+    ) || landmarks[fallbackIndex];
+
+  const virupaksha = findLandmark("virup", 0);
+  const lotus = findLandmark("lotus", 1);
+  const pushkarini = findLandmark("pushkar", 2);
+
+  const featuredLandmarks = [
+    {
+      image: virupaksha?.image || images[1] || fallbackImages[0],
+      label: "Virupaksh Temple",
+    },
+    {
+      image: lotus?.image || images[2] || fallbackImages[1],
+      label: "Lotus Mahal",
+    },
+    {
+      image: pushkarini?.image || images[3] || fallbackImages[2],
+      label: "Pushkarini",
+    },
+  ];
+  const featuredKeywords = ["virup", "lotus", "pushkar"];
+  const remainingLandmarks = landmarks.filter(
+    (landmark) =>
+      !featuredKeywords.some((keyword) =>
+        landmark.label.toLowerCase().includes(keyword)
+      )
+  );
+
+  return [...featuredLandmarks, ...remainingLandmarks];
+}
+
+function getPlanningItems(destination: PublicDestination) {
+  const items = [
+    destination.dressCode || "No dress code.",
+    destination.footwear || "Comfortable walking shoes or floaters",
+    destination.restrictions || "Photography allowed without tripods.",
+    destination.idRequirement || "Not Required",
+    destination.permits || "Standard entry ticket only",
+  ];
+
+  return uniqueValues(items).slice(0, 5);
+}
+
+function getAverageExperienceRating(experiences: PublicExperience[]) {
+  if (experiences.length === 0) {
+    return 4.9;
+  }
+
+  const total = experiences.reduce(
+    (sum, experience) => sum + experience.overallRating,
+    0
+  );
+
+  return Number((total / experiences.length).toFixed(1));
+}
+
+function getPublishedExperienceCount(experiences: PublicExperience[]) {
+  return experiences.length;
+}
+
+function getExperienceImage(
+  experience: PublicExperience | undefined,
+  fallbackImage: string
+) {
+  return getHomeMediaUrl(experience?.travellerPhotoGallery?.[0] || "") || fallbackImage;
+}
+
+function isExperienceUploadImage(image: string) {
+  return image.includes("/uploads/experiences/");
+}
+
+function getDisplayFallbackImages(images: string[]) {
+  const displayImages = images.filter(
+    (image) => image && !isExperienceUploadImage(image)
+  );
+
+  return displayImages.length > 0 ? displayImages : fallbackImages;
+}
+
+function getDisplayFallbackImage(images: string[], preferredIndex = 0) {
+  const displayImages = getDisplayFallbackImages(images);
+
+  return (
+    displayImages[preferredIndex] ||
+    displayImages[0] ||
+    fallbackImages[preferredIndex] ||
+    fallbackImages[0]
+  );
+}
+
+function getTravellerInitials(name: string) {
+  const initials = name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  return initials || "AT";
+}
+
 function getTourImage(tour: PublicTour, fallbackImage: string) {
-  return getHomeMediaUrl(tour.bannerImage || tour.galleryImages[0] || fallbackImage);
+  return getHomeMediaUrl(
+    tour.thumbnailImage || tour.bannerImage || tour.galleryImages[0] || fallbackImage
+  );
+}
+
+function getTourLocationCount(tour: PublicTour, destination: PublicDestination) {
+  return Math.max(
+    getTourDestinationIds(tour).length,
+    destination.keyLandmarks.length || 1
+  );
+}
+
+function getOrdinalSuffix(day: number) {
+  if (day > 3 && day < 21) {
+    return "th";
+  }
+
+  switch (day % 10) {
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
+  }
+}
+
+function formatOrdinalDate(value: string | null | undefined) {
+  if (!value) {
+    return "Coming Soon";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Coming Soon";
+  }
+
+  const parts = shortDateFormatter.formatToParts(date);
+  const day = Number(parts.find((part) => part.type === "day")?.value || 0);
+  const month = parts.find((part) => part.type === "month")?.value || "";
+  const year = parts.find((part) => part.type === "year")?.value || "";
+
+  if (!day || !month || !year) {
+    return formatDate(value);
+  }
+
+  return `${day}${getOrdinalSuffix(day)} ${month} ${year}`;
+}
+
+function compactDurationLabel(value: string, fallbackDays: number) {
+  const source = value.trim();
+  const fallbackLabel =
+    fallbackDays > 1 ? `${fallbackDays}D/${fallbackDays - 1}N` : "1 Day";
+
+  if (!source) {
+    return fallbackLabel;
+  }
+
+  const dayNightMatch = source.match(
+    /(\d+)\s*(?:days?|d)\b\s*(?:[/,-]|and)?\s*(\d+)\s*(?:nights?|n)\b/i
+  );
+
+  if (dayNightMatch) {
+    return `${dayNightMatch[1]}D/${dayNightMatch[2]}N`;
+  }
+
+  const dayMatch = source.match(/(\d+)\s*(?:days?|d)\b/i);
+
+  if (dayMatch) {
+    const days = Number(dayMatch[1]);
+
+    return days > 1 ? `${days}D/${days - 1}N` : "1 Day";
+  }
+
+  return source.replace(/\s*\/\s*/g, "/").replace(/\s+/g, " ");
+}
+
+function getNightCountFromDuration(value: string) {
+  const nightMatch = value.match(/(\d+)\s*(?:nights?|n)\b/i);
+
+  if (nightMatch) {
+    return Number(nightMatch[1]);
+  }
+
+  const dayMatch = value.match(/(\d+)\s*(?:days?|d)\b/i);
+
+  if (dayMatch) {
+    return Math.max(Number(dayMatch[1]) - 1, 0);
+  }
+
+  return 0;
+}
+
+function getTourHotelCount(tour: PublicTour, destination: PublicDestination) {
+  const nights = getNightCountFromDuration(
+    tour.durationDn || getRecommendedDayNightLabel(destination)
+  );
+
+  if (nights === 0) {
+    return 0;
+  }
+
+  return Math.max(1, Math.min(getTourDestinationIds(tour).length || 1, nights));
+}
+
+function getTourTransferCount(tour: PublicTour) {
+  const inclusionText = tour.inclusions.join(" ").toLowerCase();
+  const transferKeywords = ["transfer", "transport", "coach", "bus", "cab", "car"];
+  const hasTransfer = transferKeywords.some((keyword) =>
+    inclusionText.includes(keyword)
+  );
+
+  if (!hasTransfer) {
+    return 0;
+  }
+
+  return Math.max(1, getTourDestinationIds(tour).length - 1);
+}
+
+function getTourBadgeLabel(tour: PublicTour) {
+  const label = [tour.category, tour.tourType].find((value) =>
+    /best|popular|featured|recommended|trending/i.test(value)
+  );
+
+  return (label || "Bestseller").trim().toUpperCase();
+}
+
+function getTourDifficultyLabel(tour: PublicTour) {
+  const difficulty = tour.difficulty.trim() || "Moderate";
+
+  return /activity\s*level/i.test(difficulty)
+    ? difficulty
+    : `${difficulty} Activity Level`;
 }
 
 export function SingleDestinationPage({
@@ -194,6 +592,8 @@ export function SingleDestinationPage({
   const [destination, setDestination] = useState<PublicDestination | null>(null);
   const [relatedTours, setRelatedTours] = useState<PublicTour[]>([]);
   const [departures, setDepartures] = useState<PublicTourDeparture[]>([]);
+  const [experiences, setExperiences] = useState<PublicExperience[]>([]);
+  const [lightbox, setLightbox] = useState<LightboxState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -221,16 +621,21 @@ export function SingleDestinationPage({
             setDestination(null);
             setRelatedTours([]);
             setDepartures([]);
+            setExperiences([]);
             setLoadError("Destination not found.");
           }
 
           return;
         }
 
-        const [toursResponse, departuresResponse] = await Promise.all([
-          listPublicTours(matchedDestination.destinationId),
-          listPublicTourDepartures(),
-        ]);
+        const [toursResponse, departuresResponse, experiencesResponse] =
+          await Promise.all([
+            listPublicTours(matchedDestination.destinationId),
+            listPublicTourDepartures(),
+            listPublicExperiences(matchedDestination.destinationId).catch(() => ({
+              data: { experiences: [] as PublicExperience[] },
+            })),
+          ]);
         const tours = toursResponse.data.tours.filter((tour) =>
           isTourLinkedToDestination(tour, matchedDestination)
         );
@@ -239,6 +644,7 @@ export function SingleDestinationPage({
           setDestination(matchedDestination);
           setRelatedTours(tours);
           setDepartures(getRelatedDepartures(tours, departuresResponse.data.departures));
+          setExperiences(experiencesResponse.data.experiences);
         }
       } catch (error) {
         if (isMounted) {
@@ -259,13 +665,43 @@ export function SingleDestinationPage({
   }, [destinationId]);
 
   const images = useMemo(
-    () => (destination ? getDestinationImages(destination, relatedTours) : fallbackImages),
-    [destination, relatedTours]
+    () =>
+      destination
+        ? getDestinationImages(destination, relatedTours, experiences)
+        : fallbackImages,
+    [destination, experiences, relatedTours]
   );
+  const destinationGalleryImages = useMemo(
+    () => (destination ? getDestinationGalleryImages(destination) : []),
+    [destination]
+  );
+  const experienceGalleryImages = useMemo(
+    () => getExperienceGalleryImages(experiences),
+    [experiences]
+  );
+
+  function openLightbox(
+    galleryImages: string[],
+    title: string,
+    activeIndex = 0,
+    lightboxFallbackImages = fallbackImages
+  ) {
+    if (galleryImages.length === 0) {
+      return;
+    }
+
+    setLightbox({
+      activeIndex: Math.min(Math.max(activeIndex, 0), galleryImages.length - 1),
+      fallbackImages: lightboxFallbackImages,
+      images: galleryImages,
+      title,
+    });
+  }
+
   if (isLoading) {
     return (
       <main className="min-h-screen overflow-x-hidden bg-background text-secondary">
-        <LoadingHero />
+        <LoadingDestination />
       </main>
     );
   }
@@ -273,19 +709,19 @@ export function SingleDestinationPage({
   if (!destination || loadError) {
     return (
       <main className="min-h-screen overflow-x-hidden bg-background text-secondary">
-        <section className="relative min-h-[520px] px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-8">
-          <Header />
-          <div className="mx-auto mt-16 max-w-[720px] rounded-[8px] border border-primary/15 bg-card p-8 text-center shadow-[0_18px_44px_rgba(50,50,50,0.08)]">
-            <h1 className="font-heading text-[34px] font-bold text-secondary">
+        <TopBackdrop />
+        <section className="mx-auto mt-10 max-w-[720px] px-5 pb-20">
+          <div className="rounded-[8px] border border-[#ead8c5] bg-white p-8 text-center shadow-[0_18px_44px_rgba(50,50,50,0.08)]">
+            <h1 className="font-heading text-title font-bold leading-none tracking-normal text-secondary">
               Destination not found
             </h1>
-            <p className="mx-auto mt-3 max-w-[460px] font-sans text-[13px] leading-[1.7] text-secondary/62">
+            <p className="mx-auto mt-4 max-w-[460px] font-sans text-description text-secondary/70">
               {loadError ||
                 "This destination is not available in the current destination records."}
             </p>
             <Link
               href="/destinations"
-              className="mt-6 inline-flex h-10 items-center gap-3 rounded-[7px] bg-primary px-5 font-sans text-[12px] font-bold text-white transition-colors hover:bg-accent"
+              className="mt-6 inline-flex h-10 items-center gap-3 rounded-full bg-primary px-5 font-sans text-[14px] font-bold text-white transition-colors hover:bg-accent"
             >
               Back to Destinations
               <ArrowRight className="size-4" />
@@ -298,419 +734,933 @@ export function SingleDestinationPage({
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-background text-secondary">
-      <DestinationHero
-        destination={destination}
-        heroImage={images[0]}
-        images={images}
-      />
-      <LandmarksSection destination={destination} />
-      <ActualExperiencesSection
-        destination={destination}
-        images={images}
-        tours={relatedTours}
-      />
-      <ToursSection
-        departures={departures}
-        destination={destination}
-        images={images}
-        tours={relatedTours}
-      />
+      <TopBackdrop />
+
+      <div className="mx-auto mt-8 w-[calc(100%-2.5rem)] max-w-[1300px] pb-16">
+        <DestinationOverview
+          destination={destination}
+          images={images}
+          onGalleryOpen={(index) =>
+            openLightbox(
+              destinationGalleryImages,
+              `${destination.destinationName} gallery`,
+              index
+            )
+          }
+          tours={relatedTours}
+        />
+
+        <ExploreAndPlan
+          destination={destination}
+          images={images}
+        />
+
+        <TravellerExperienceSection
+          destination={destination}
+          experiences={experiences}
+          experienceGalleryImages={experienceGalleryImages}
+          images={images}
+          onExperienceGalleryOpen={(galleryImages, title, activeIndex) =>
+            openLightbox(
+              galleryImages,
+              title,
+              activeIndex,
+              getDisplayFallbackImages(images)
+            )
+          }
+        />
+
+        <ToursSection
+          departures={departures}
+          destination={destination}
+          images={images}
+          tours={relatedTours}
+        />
+
+        {lightbox ? (
+          <GalleryLightbox
+            activeIndex={lightbox.activeIndex}
+            fallbackImages={lightbox.fallbackImages}
+            images={lightbox.images}
+            title={lightbox.title}
+            onClose={() => setLightbox(null)}
+            onIndexChange={(index) =>
+              setLightbox((current) =>
+                current ? { ...current, activeIndex: index } : current
+              )
+            }
+          />
+        ) : null}
+      </div>
     </main>
   );
 }
 
-function LoadingHero() {
+function LoadingDestination() {
   return (
-    <section className="relative min-h-[640px] bg-muted px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-8">
-      <Header />
-      <div className="mx-auto mt-14 grid w-full max-w-[1300px] gap-6 md:grid-cols-[0.8fr_1fr]">
-        <div className="space-y-5">
-          <div className="h-8 w-44 animate-pulse rounded-full bg-border" />
-          <div className="h-20 w-80 max-w-full animate-pulse rounded bg-border" />
-          <div className="h-4 w-full max-w-[420px] animate-pulse rounded bg-border" />
-          <div className="h-4 w-72 animate-pulse rounded bg-border" />
+    <>
+      <TopBackdrop />
+      <section className="mx-auto mt-8 w-[calc(100%-2.5rem)] max-w-[1300px] pb-16">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(380px,0.95fr)]">
+          <div className="h-[320px] animate-pulse rounded-[8px] bg-muted xl:h-[360px]" />
+          <div className="h-[320px] animate-pulse rounded-[8px] bg-muted xl:h-[360px]" />
         </div>
-        <div className="h-[360px] animate-pulse rounded-[8px] bg-border" />
-      </div>
-    </section>
+        <div className="mt-8 grid gap-8 md:grid-cols-2">
+          <div className="h-52 animate-pulse rounded-[8px] bg-muted" />
+          <div className="h-52 animate-pulse rounded-[8px] bg-muted" />
+        </div>
+      </section>
+    </>
   );
 }
 
-function DestinationHero({
-  destination,
-  heroImage,
-  images,
-}: {
-  destination: PublicDestination;
-  heroImage: string;
-  images: string[];
-}) {
-  const locationLabel =
-    getLocationLabel(destination) || destination.countryRegion || "Ancient Trails";
-
+function TopBackdrop() {
   return (
-    <section className="relative overflow-hidden bg-background">
+    <section className="relative h-[200px] overflow-hidden bg-secondary">
       <Image
-        src={heroImage}
-        alt={destination.destinationName}
+        src="/home assets/Heritage Banner.webp"
+        alt="Ancient Trails heritage landscape"
         fill
         priority
         sizes="100vw"
         className="object-cover object-center"
       />
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.98)_0%,rgba(255,255,255,0.88)_40%,rgba(255,255,255,0.36)_72%,rgba(255,255,255,0.14)_100%)]" />
-      <div className="absolute inset-x-0 bottom-0 h-28 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,#ffffff_100%)]" />
-
-      <div className="relative z-10 mx-auto flex min-h-[670px] w-full max-w-[1300px] flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0">
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(35,18,9,0.34)_100%)]" />
+      <div className="relative z-10 mx-auto w-full max-w-[1300px] px-5 sm:px-8 lg:px-0">
         <Header />
-
-        <div className="grid flex-1 items-center gap-8 pb-10 pt-8">
-          <div className="max-w-[650px]">
-            <DestinationBreadcrumbs destination={destination} />
-
-            <p className="mt-8 text-eyebrow font-medium uppercase text-primary">
-              {getPrimaryFocus(destination)}
-            </p>
-            <h1 className="mt-3 font-heading text-[42px] font-bold leading-none tracking-normal text-secondary sm:text-[58px] lg:text-[76px]">
-              {destination.destinationName}
-            </h1>
-
-            <p className="mt-6 flex items-center gap-3 font-sans text-description font-medium text-accent">
-              <MapPin className="size-5 shrink-0 fill-primary text-primary" strokeWidth={0} />
-              {locationLabel}
-            </p>
-
-            <p className="mt-6 max-w-[470px] font-sans text-description text-secondary">
-              {destination.shortDescription ||
-                `${destination.destinationName} is a ${destination.destinationType.toLowerCase()} destination shaped by ${getPrimaryFocus(destination).toLowerCase()}.`}
-            </p>
-
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Button
-                nativeButton={false}
-                render={<Link href={getTourCalendarHref({ destination })} />}
-                className="h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:min-w-[210px]"
-              >
-                View Tour Calendar
-                <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        <GalleryStrip destination={destination} images={images} />
       </div>
     </section>
   );
 }
 
-function DestinationBreadcrumbs({
-  destination,
-}: {
-  destination: PublicDestination;
-}) {
-  return (
-    <nav className="flex flex-wrap items-center gap-2 font-sans text-[13px] font-bold text-secondary">
-      <Link href="/" className="transition-colors hover:text-primary">
-        Home
-      </Link>
-      <ChevronRight className="size-4 text-secondary/50" />
-      <Link href="/destinations" className="transition-colors hover:text-primary">
-        Destinations
-      </Link>
-      {destination.state ? (
-        <>
-          <ChevronRight className="size-4 text-secondary/50" />
-          <span>{destination.state}</span>
-        </>
-      ) : null}
-      <ChevronRight className="size-4 text-secondary/50" />
-      <span>{destination.destinationName}</span>
-    </nav>
-  );
-}
-
-function GalleryStrip({
+function DestinationOverview({
   destination,
   images,
-}: {
-  destination: PublicDestination;
-  images: string[];
-}) {
-  const galleryImages = Array.from({ length: 5 }, (_item, index) =>
-    images[index] || fallbackImages[index % fallbackImages.length]
-  );
-
-  return (
-    <section className="grid gap-4 md:grid-cols-5">
-      {galleryImages.map((image, index) => (
-        <article
-          key={`${image}-${index}`}
-          className="group relative h-[180px] overflow-hidden rounded-[8px] bg-muted shadow-[0_12px_26px_rgba(50,50,50,0.08)] ring-1 ring-white/70"
-        >
-          <Image
-            src={image}
-            alt={`${destination.destinationName} gallery ${index + 1}`}
-            fill
-            sizes="(min-width: 1024px) 250px, 50vw"
-            className="object-cover transition-transform duration-700 group-hover:scale-105"
-          />
-          {index === galleryImages.length - 1 ? (
-            <div className="absolute inset-0 grid place-items-center bg-black/38 text-center text-white">
-              <span>
-                <span className="mx-auto grid size-12 place-items-center rounded-[8px] bg-white/88 text-primary">
-                  <ImageIcon className="size-7" strokeWidth={1.6} />
-                </span>
-                <span className="mt-3 block font-sans text-[15px] font-bold">
-                  View All Photos
-                </span>
-              </span>
-            </div>
-          ) : null}
-        </article>
-      ))}
-    </section>
-  );
-}
-
-function LandmarksSection({ destination }: { destination: PublicDestination }) {
-  const landmarks =
-    destination.keyLandmarks.length > 0
-      ? destination.keyLandmarks
-      : uniqueValues([
-          destination.city,
-          destination.state,
-          destination.primaryHeritageFocus,
-          destination.unescoSite ? "UNESCO Heritage" : "",
-        ]);
-
-  if (landmarks.length === 0) {
-    return null;
-  }
-
-  return (
-    <section
-      id="key-landmarks"
-      className="mx-auto w-full max-w-[1300px] px-5 pb-10 pt-3 sm:px-8 lg:px-0"
-    >
-      <p className="font-sans text-description font-medium uppercase text-primary">
-        Explore the trail
-      </p>
-      <h2 className="mt-1 font-heading text-[34px] font-bold leading-none text-secondary sm:text-[40px] lg:text-title">
-        Key Landmarks
-      </h2>
-      <span className="mt-3 block h-0.5 w-10 bg-primary" />
-
-      <div className="mt-9 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-        {landmarks.slice(0, 4).map((landmark, index) => (
-          <LandmarkCard
-            key={`${landmark}-${index}`}
-            destination={destination}
-            index={index}
-            landmark={landmark}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function LandmarkCard({
-  destination,
-  index,
-  landmark,
-}: {
-  destination: PublicDestination;
-  index: number;
-  landmark: string;
-}) {
-  const icons = [Landmark, Route, MapPin, TrainFront];
-  const Icon = icons[index % icons.length];
-
-  return (
-    <article
-      className={cn(
-        "px-7 text-center",
-        index > 0 && "lg:border-l lg:border-border"
-      )}
-    >
-      <span className="mx-auto grid size-16 place-items-center rounded-full border border-primary/15 bg-white text-primary shadow-[0_10px_22px_rgba(50,50,50,0.06)]">
-        <Icon className="size-8" strokeWidth={1.45} />
-      </span>
-      <h3 className="mt-5 min-h-[42px] font-heading text-[17px] font-bold leading-tight text-secondary">
-        {landmark}
-      </h3>
-      <p className="mx-auto mt-2 max-w-[210px] font-sans text-[12px] font-medium leading-[1.65] text-secondary/70">
-        {getLandmarkDescription(landmark, destination)}
-      </p>
-    </article>
-  );
-}
-
-function ActualExperiencesSection({
-  destination,
-  images,
+  onGalleryOpen,
   tours,
 }: {
   destination: PublicDestination;
   images: string[];
+  onGalleryOpen: (index: number) => void;
   tours: PublicTour[];
 }) {
-  const featuredTour = tours[0];
-  const video = featuredTour?.video ? getHomeMediaUrl(featuredTour.video) : "";
-  const videoTitle =
-    featuredTour?.tourName || `Sunrise at the ${getPrimaryFocus(destination)}`;
-  const videoDescription =
-    featuredTour?.description ||
-    destination.shortDescription ||
-    `Watch ${destination.destinationName} come alive through stone, light and story.`;
+  const galleryImages = Array.from({ length: 5 }, (_item, index) =>
+    images[index + 1] || images[index] || fallbackImages[index % fallbackImages.length]
+  );
 
   return (
-    <section
-      id="experiences"
-      className="mx-auto w-full max-w-[1300px] px-5 py-11 sm:px-8 lg:px-0"
-    >
-      <p className="font-sans text-description font-medium uppercase text-primary">
-        Travel moments
-      </p>
-      <h2 className="mt-1 font-heading text-[34px] font-bold leading-none text-secondary sm:text-[40px] lg:text-title">
-        Actual Experiences in {destination.destinationName}
-      </h2>
-      <span className="mt-3 block h-0.5 w-10 bg-primary" />
+    <section className="grid items-stretch gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(380px,0.95fr)]">
+      <article className="relative h-[410px] overflow-hidden rounded-[8px] bg-secondary shadow-[0_14px_30px_rgba(34,25,18,0.15)] sm:h-[430px] lg:h-full lg:min-h-[410px] xl:min-h-[430px]">
+        <Image
+          src={images[0] || fallbackImages[0]}
+          alt={destination.destinationName}
+          fill
+          priority
+          sizes="(min-width: 1280px) 780px, (min-width: 1024px) 58vw, 100vw"
+          className="object-cover"
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.62)_0%,rgba(0,0,0,0.38)_22%,rgba(20,13,8,0.04)_48%,rgba(20,13,8,0.78)_100%)]" />
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-[1.35fr_0.8fr_0.8fr]">
-        <VideoExperienceCard
-          description={videoDescription}
-          image={images[1] || images[0]}
-          title={videoTitle}
-          video={video}
-        />
-        <QuoteExperienceCard destination={destination} />
-        <PhotoExperienceCard
-          destination={destination}
-          image={images[2] || images[0]}
-        />
+        <div className="absolute left-5 top-4 max-w-[calc(100%-12rem)] text-white sm:max-w-[70%]">
+          <h1 className="break-words font-heading text-title font-bold italic leading-none tracking-normal drop-shadow-sm">
+            {destination.destinationName}
+          </h1>
+          <p className="mt-1 font-sans text-description font-medium text-white/86">
+            {getRegionLabel(destination)}
+          </p>
+        </div>
+
+        <span className="absolute right-4 top-4  px-4 py-2 font-sans text-[14px] font-bold text-white ">
+          Recommended Days: {getRecommendedDayNightLabel(destination)}
+        </span>
+
+        <div className="absolute inset-x-4 bottom-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="font-sans text-[14px] font-bold text-white">
+            Best Time To Visit - {getBestSeason(destination, tours)}
+          </p>
+          {destination.unescoSite ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 font-sans text-[14px] font-bold text-white">
+              <ShieldCheck className="size-4" />
+              Unesco Site
+            </span>
+          ) : null}
+        </div>
+      </article>
+
+      <aside className="min-w-0 rounded-[8px] bg-background lg:flex lg:h-full lg:flex-col">
+        <div className="grid gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            {galleryImages.slice(0, 2).map((image, index) => (
+              <GalleryThumb
+                key={`${image}-${index}`}
+                alt={`${destination.destinationName} gallery ${index + 1}`}
+                image={image}
+                size="large"
+                isOverlay={index === 1}
+                onOpen={onGalleryOpen}
+              />
+            ))}
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {galleryImages.slice(2, 5).map((image, index) => (
+              <GalleryThumb
+                key={`${image}-${index + 2}`}
+                alt={`${destination.destinationName} gallery ${index + 3}`}
+                image={image}
+                size="small"
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-[8px] bg-background">
+          <h2 className="font-heading text-title font-bold italic leading-none tracking-normal text-secondary">
+            Heritage
+            <span className="ml-2 font-sans text-description font-medium not-italic text-secondary/70">
+              at {destination.destinationName}
+            </span>
+          </h2>
+          <p className="mt-4 max-w-[470px] font-sans text-description text-secondary/70">
+            {getHeritageIntro(destination)}
+          </p>
+        </div>
+      </aside>
+    </section>
+  );
+}
+
+function GalleryThumb({
+  alt,
+  image,
+  isOverlay = false,
+  onOpen,
+  size,
+}: {
+  alt: string;
+  image: string;
+  isOverlay?: boolean;
+  onOpen?: (index: number) => void;
+  size: "large" | "small";
+}) {
+  const galleryIndex = isOverlay ? 1 : 0;
+
+  return (
+    <article
+      className={cn(
+        "relative overflow-hidden rounded-[8px] bg-muted shadow-sm",
+        size === "large" ? "h-[150px] xl:h-[168px]" : "h-[100px] xl:h-[116px]"
+      )}
+    >
+      <Image
+        src={image || fallbackImages[0]}
+        alt={alt}
+        fill
+        sizes={size === "large" ? "(min-width: 1280px) 300px, 220px" : "(min-width: 1280px) 190px, 145px"}
+        className="object-cover"
+      />
+      {isOverlay ? (
+        <button
+          type="button"
+          onClick={() => onOpen?.(galleryIndex)}
+          className="absolute inset-0 grid place-items-center bg-black/54 px-3 text-center transition-colors hover:bg-black/62"
+        >
+          <span className="font-sans text-description font-bold leading-tight text-white">
+            View all Photos
+          </span>
+        </button>
+      ) : null}
+    </article>
+  );
+}
+
+function GalleryLightbox({
+  activeIndex,
+  fallbackImages: lightboxFallbackImages,
+  images,
+  onClose,
+  onIndexChange,
+  title,
+}: {
+  activeIndex: number;
+  fallbackImages: string[];
+  images: string[];
+  onClose: () => void;
+  onIndexChange: (index: number) => void;
+  title: string;
+}) {
+  const galleryImages =
+    images.length > 0
+      ? images
+      : lightboxFallbackImages.length > 0
+        ? lightboxFallbackImages
+        : fallbackImages;
+  const boundedIndex = Math.min(Math.max(activeIndex, 0), galleryImages.length - 1);
+  const sourceImage = galleryImages[boundedIndex] || fallbackImages[0];
+  const [imageSizes, setImageSizes] = useState<Record<string, GalleryImageSize>>(
+    {}
+  );
+  const highResolutionFallbackImage =
+    getIndexedFallbackImage(lightboxFallbackImages, boundedIndex) ||
+    fallbackImages[boundedIndex % fallbackImages.length] ||
+    fallbackImages[0];
+  const shouldUseFallbackImage =
+    isExperienceUploadImage(sourceImage) &&
+    highResolutionFallbackImage !== sourceImage &&
+    isSmallLightboxImage(imageSizes[sourceImage]);
+  const activeImage = shouldUseFallbackImage
+    ? highResolutionFallbackImage
+    : sourceImage;
+  const activeImageStyle = getLightboxImageStyle(imageSizes[activeImage]);
+
+  function updateImageSize(image: HTMLImageElement) {
+    const imageSource = image.currentSrc || image.src || activeImage;
+    const naturalSize = {
+      height: image.naturalHeight,
+      width: image.naturalWidth,
+    };
+
+    if (!naturalSize.height || !naturalSize.width) {
+      return;
+    }
+
+    setImageSizes((currentSizes) => {
+      const currentSize = currentSizes[imageSource];
+
+      if (
+        currentSize?.height === naturalSize.height &&
+        currentSize.width === naturalSize.width
+      ) {
+        return currentSizes;
+      }
+
+      return {
+        ...currentSizes,
+        [activeImage]: naturalSize,
+        [imageSource]: naturalSize,
+      };
+    });
+  }
+
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+
+      if (event.key === "ArrowLeft") {
+        onIndexChange(
+          boundedIndex === 0 ? galleryImages.length - 1 : boundedIndex - 1
+        );
+      }
+
+      if (event.key === "ArrowRight") {
+        onIndexChange(
+          boundedIndex === galleryImages.length - 1 ? 0 : boundedIndex + 1
+        );
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [boundedIndex, galleryImages.length, onClose, onIndexChange]);
+
+  function showPreviousImage() {
+    onIndexChange(boundedIndex === 0 ? galleryImages.length - 1 : boundedIndex - 1);
+  }
+
+  function showNextImage() {
+    onIndexChange(boundedIndex === galleryImages.length - 1 ? 0 : boundedIndex + 1);
+  }
+
+  return createPortal(
+    <section
+      aria-label={`${title} gallery`}
+      aria-modal="true"
+      role="dialog"
+      className="fixed inset-0 bg-black/82 text-white"
+      style={{ zIndex: 2147483647 }}
+    >
+      <button
+        type="button"
+        aria-label="Close gallery backdrop"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+      />
+
+      <div className="relative z-10 flex h-full flex-col">
+        <div className="flex h-[70px] items-center justify-between px-5 md:px-8">
+          <p className="font-sans text-[18px] font-semibold tracking-wide text-white/92">
+            {boundedIndex + 1} / {galleryImages.length}
+          </p>
+          <div className="flex items-center gap-5 text-white/88">
+            <button
+              type="button"
+              aria-label="Fullscreen gallery"
+              className="transition-colors hover:text-primary"
+            >
+              <Expand className="size-6" strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              aria-label="Zoom gallery image"
+              className="transition-colors hover:text-primary"
+            >
+              <ZoomIn className="size-6" strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              aria-label="Share gallery image"
+              className="transition-colors hover:text-primary"
+            >
+              <Share2 className="size-6" strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              aria-label="Close gallery"
+              onClick={onClose}
+              className="transition-colors hover:text-primary"
+            >
+              <X className="size-7" strokeWidth={2} />
+            </button>
+          </div>
+        </div>
+
+        <div className="relative flex min-h-0 flex-1 items-center justify-center px-5 pb-16 md:px-24">
+          <button
+            type="button"
+            aria-label="Previous gallery image"
+            onClick={showPreviousImage}
+            className="absolute left-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-primary md:left-10"
+          >
+            <ChevronLeft className="size-8" strokeWidth={2.4} />
+          </button>
+
+          <div
+            className="relative h-[calc(100vh-9rem)] w-full max-w-[1120px]"
+            style={activeImageStyle}
+          >
+            <Image
+              src={activeImage}
+              alt={`${title} gallery image ${boundedIndex + 1}`}
+              fill
+              priority
+              unoptimized
+              sizes="(min-width: 1280px) 1120px, calc(100vw - 3rem)"
+              onLoad={(event) => updateImageSize(event.currentTarget)}
+              className="object-contain object-center drop-shadow-[0_18px_42px_rgba(0,0,0,0.26)]"
+            />
+          </div>
+
+          <button
+            type="button"
+            aria-label="Next gallery image"
+            onClick={showNextImage}
+            className="absolute right-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-primary md:right-10"
+          >
+            <ChevronRight className="size-8" strokeWidth={2.4} />
+          </button>
+        </div>
+
+        <p className="absolute bottom-6 left-1/2 z-20 w-[min(90vw,520px)] -translate-x-1/2 truncate text-center font-sans text-[18px] font-bold text-white/92">
+          {title} {boundedIndex + 1}
+        </p>
+      </div>
+    </section>,
+    document.body
+  );
+}
+
+function ExploreAndPlan({
+  destination,
+  images,
+}: {
+  destination: PublicDestination;
+  images: string[];
+}) {
+  const landmarks = getFeaturedLandmarkRows(destination, images);
+  const planningItems = getPlanningItems(destination);
+  const attractionSummary = getAttractionSummary(destination);
+  const planningIcons = [Shirt, Footprints, Camera, ShieldCheck, Ticket];
+  const attractionItems =
+    landmarks.length > 0
+      ? landmarks
+      : [
+          {
+            image: images[1] || fallbackImages[0],
+            label: destination.destinationName,
+          },
+          {
+            image: images[2] || fallbackImages[1],
+            label: getPrimaryFocus(destination),
+          },
+          {
+            image: images[3] || fallbackImages[2],
+            label: getRegionLabel(destination),
+          },
+        ];
+  const [attractionSlideIndex, setAttractionSlideIndex] = useState(0);
+  const [nextAttractionSlideIndex, setNextAttractionSlideIndex] = useState<
+    number | null
+  >(null);
+  const nextSlideIndex =
+    attractionItems.length > 1
+      ? (attractionSlideIndex + 1) % attractionItems.length
+      : attractionSlideIndex;
+  const isAttractionSliding = nextAttractionSlideIndex !== null;
+  const attractionTrack = getVisibleAttractionTrack(
+    attractionItems,
+    attractionSlideIndex
+  );
+
+  useEffect(() => {
+    if (attractionItems.length <= 1 || nextAttractionSlideIndex !== null) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setNextAttractionSlideIndex(nextSlideIndex);
+    }, 5000);
+
+    return () => window.clearInterval(interval);
+  }, [attractionItems.length, nextAttractionSlideIndex, nextSlideIndex]);
+
+  useEffect(() => {
+    if (nextAttractionSlideIndex === null) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setAttractionSlideIndex(nextAttractionSlideIndex);
+      setNextAttractionSlideIndex(null);
+    }, 1400);
+
+    return () => window.clearTimeout(timeout);
+  }, [nextAttractionSlideIndex]);
+
+  return (
+    <section className="mt-10 grid gap-10 py-8 lg:grid-cols-[minmax(0,1.12fr)_minmax(400px,0.88fr)] xl:grid-cols-[minmax(0,750px)_minmax(430px,1fr)] xl:gap-[40px]">
+      <div className="min-w-0">
+        <div className="grid gap-5 sm:grid-cols-[280px_minmax(0,1fr)] sm:items-start">
+          <div className="pt-0.5">
+            <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+              Explore with us
+            </p>
+            <h2 className="mt-2 font-heading text-title font-bold leading-none tracking-normal text-secondary">
+              Top Attractions
+            </h2>
+          </div>
+          <p className="max-w-[390px] border-l border-[#a8a8a8] pl-7 font-sans text-description italic text-secondary/80 sm:mt-[31px]">
+            {attractionSummary}
+          </p>
+        </div>
+
+        <div className="mt-7 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="min-w-[700px] overflow-hidden lg:min-w-0">
+            <div
+              className={cn(
+                "flex gap-6",
+                isAttractionSliding &&
+                  "transition-transform duration-[1400ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+              )}
+              style={{
+                transform: isAttractionSliding
+                  ? "translateX(calc((100% + 1.5rem) / -3))"
+                  : "translateX(0)",
+              }}
+            >
+              {attractionTrack.map((landmark, index) => (
+                <div
+                  key={`${landmark.label}-${attractionSlideIndex}-${index}`}
+                  className="shrink-0"
+                  style={{ width: "calc((100% - 3rem) / 3)" }}
+                >
+                  <AttractionCard
+                    image={landmark.image}
+                    label={landmark.label}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="min-w-0 lg:pl-1 xl:pl-0">
+        <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+          Planning a trip to {destination.destinationName.toUpperCase()}?
+        </p>
+        <h2 className="mt-2 font-heading text-title font-bold leading-none tracking-normal text-secondary">
+          Things to remember
+        </h2>
+
+        <div className="mt-7">
+          <ul className="grid gap-5">
+            {planningItems.map((item, index) => (
+              <li
+                key={item}
+                className="flex items-center gap-6 font-sans text-description font-medium leading-snug text-secondary/80"
+              >
+                <PlanningIconBullet
+                  icon={planningIcons[index % planningIcons.length]}
+                />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </section>
   );
 }
 
-function VideoExperienceCard({
-  description,
-  image,
+function getVisibleAttractionTrack(
+  attractions: Array<{ image: string; label: string }>,
+  startIndex: number
+) {
+  return Array.from({ length: 4 }, (_item, index) => {
+    const attractionIndex = (startIndex + index) % attractions.length;
+
+    return attractions[attractionIndex];
+  });
+}
+
+function AttractionCard({ image, label }: { image: string; label: string }) {
+  return (
+    <article className="min-w-0">
+      <div className="relative h-[220px] overflow-hidden rounded-[8px] bg-muted shadow-[0_10px_20px_rgba(67,43,27,0.08)] lg:h-[250px] xl:h-[273px]">
+        <Image
+          src={image || fallbackImages[0]}
+          alt={label}
+          fill
+          sizes="(min-width: 1280px) 235px, (min-width: 1024px) 18vw, 230px"
+          className="object-cover transition-transform duration-700 hover:scale-105"
+        />
+      </div>
+      <h3 className="mt-5 truncate font-sans text-description font-medium leading-none text-secondary/90">
+        {label}
+      </h3>
+    </article>
+  );
+}
+
+function PlanningIconBullet({ icon: Icon }: { icon: LucideIcon }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="grid size-10 shrink-0 place-items-center rounded-full bg-[#fff4ee] text-primary"
+    >
+      <Icon className="size-[19px]" strokeWidth={1.9} />
+    </span>
+  );
+}
+
+function TravellerExperienceSection({
+  destination,
+  experiences,
+  experienceGalleryImages,
+  images,
+  onExperienceGalleryOpen,
+}: {
+  destination: PublicDestination;
+  experiences: PublicExperience[];
+  experienceGalleryImages: string[];
+  images: string[];
+  onExperienceGalleryOpen: (
+    galleryImages: string[],
+    title: string,
+    activeIndex?: number
+  ) => void;
+}) {
+  if (experiences.length === 0) {
+    return null;
+  }
+
+  const averageRating = getAverageExperienceRating(experiences);
+  const featuredExperience = experiences[0];
+  const reviewExperiences = experiences.slice(0, 2);
+  const displayFallbackImages = getDisplayFallbackImages(images);
+  const featuredFallbackImage = getDisplayFallbackImage(images, 3);
+  const featuredImage = getExperienceImage(featuredExperience, featuredFallbackImage);
+
+  function getTravellerReviewCount(experience: PublicExperience) {
+    const travellerKey =
+      experience.travellerEmail.trim().toLowerCase() ||
+      experience.travellerName.trim().toLowerCase();
+
+    if (!travellerKey) {
+      return 1;
+    }
+
+    return Math.max(
+      experiences.filter((item) => {
+        const itemKey =
+          item.travellerEmail.trim().toLowerCase() ||
+          item.travellerName.trim().toLowerCase();
+
+        return itemKey === travellerKey;
+      }).length,
+      1
+    );
+  }
+
+  return (
+    <section className="mt-12 grid gap-8 lg:grid-cols-[minmax(310px,1fr)_minmax(260px,0.82fr)_minmax(320px,0.95fr)] lg:items-start xl:gap-10">
+      <div className="pt-2">
+        <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+          What Travellers say on -
+        </p>
+        <h2 className="mt-2 font-heading text-title font-bold leading-none tracking-normal text-secondary">
+          Exploring {destination.destinationName} with Us
+        </h2>
+        <Link
+          href="/experiences"
+          className="mt-4 inline-flex items-center gap-2 font-sans text-description font-medium uppercase text-primary"
+        >
+          Reviews & Experiences
+          <ArrowRight className="size-4" />
+        </Link>
+
+        <div className="mt-8">
+          <p className="font-sans text-description font-medium uppercase text-secondary/48">
+            Rating
+          </p>
+          <div className="mt-1 flex items-end gap-2">
+            <strong className="font-sans text-[42px] font-medium leading-none text-primary">
+              {averageRating.toFixed(1)}
+            </strong>
+            <span className="pb-1.5 font-sans text-description font-medium text-primary">
+              /5
+            </span>
+          </div>
+          <p className="mt-1 max-w-[220px] font-sans text-description italic text-secondary/46">
+            Based on {getPublishedExperienceCount(experiences)} verified
+            review{getPublishedExperienceCount(experiences) === 1 ? "" : "s"}
+          </p>
+        </div>
+
+        <MiniMediaRow
+          displayFallbackImages={displayFallbackImages}
+          experienceGalleryImages={experienceGalleryImages}
+          title={`${destination.destinationName} traveller photos`}
+          onPhotosOpen={onExperienceGalleryOpen}
+        />
+      </div>
+
+      <article className="relative h-[420px] overflow-hidden rounded-[8px] bg-[#f3eee9] shadow-[0_14px_30px_rgba(67,43,27,0.12)] xl:h-[460px]">
+        <Image
+          src={featuredImage || fallbackImages[0]}
+          alt={featuredExperience?.title || destination.destinationName}
+          fill
+          unoptimized
+          sizes="(min-width: 1280px) 340px, (min-width: 1024px) 28vw, 100vw"
+          className="object-cover object-center"
+        />
+      </article>
+
+      <div className="grid gap-3">
+        <div className="grid gap-4">
+          <p className="max-w-[360px] font-sans text-description font-medium text-primary">
+            Every Journey we organise is built on trust, safety and unforgettable
+            memories
+          </p>
+
+          {reviewExperiences.map((experience) => (
+            <ReviewCard
+              key={experience.id}
+              experience={experience}
+              reviewCount={getTravellerReviewCount(experience)}
+              onPhotoOpen={onExperienceGalleryOpen}
+            />
+          ))}
+        </div>
+
+        <div className="pt-5">
+          <p className="font-sans text-description font-medium text-secondary/70">
+            Ready to plan your Journey?
+            <span className="block">Let&apos;s get started!</span>
+          </p>
+          <Link
+            href={getTourCalendarHref({ destination })}
+            className="mt-3 inline-flex h-9 items-center gap-3 rounded-full bg-primary px-5 font-sans text-[14px] font-bold text-white transition-colors hover:bg-accent"
+          >
+            Plan your trip
+            <ArrowRight className="size-4" />
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MiniMediaRow({
+  displayFallbackImages,
+  experienceGalleryImages,
+  onPhotosOpen,
   title,
-  video,
 }: {
-  description: string;
-  image: string;
+  displayFallbackImages: string[];
+  experienceGalleryImages: string[];
+  onPhotosOpen: (
+    galleryImages: string[],
+    title: string,
+    activeIndex?: number
+  ) => void;
   title: string;
-  video: string;
 }) {
+  const fallbackPhoto =
+    displayFallbackImages[1] ||
+    displayFallbackImages[0] ||
+    fallbackImages[0];
+  const previewFallbackPhoto =
+    displayFallbackImages[2] ||
+    displayFallbackImages[0] ||
+    fallbackImages[0];
+  const photo =
+    experienceGalleryImages[1] ||
+    experienceGalleryImages[0] ||
+    fallbackPhoto;
+  const previewPhoto = experienceGalleryImages[0] || previewFallbackPhoto;
+
   return (
-    <article className="group relative min-h-[305px] overflow-hidden rounded-[8px] bg-secondary shadow-[0_18px_40px_rgba(50,50,50,0.12)]">
-      {video ? (
-        <video
-          src={video}
-          className="absolute inset-0 size-full object-cover"
-          muted
-          playsInline
-          controls
+    <div className="mt-8 grid grid-cols-2 gap-3">
+      <div className="relative h-[180px] overflow-hidden rounded-[8px] bg-[#f3eee9]">
+        <Image
+          src={photo || fallbackPhoto}
+          alt="Traveller memory"
+          fill
+          unoptimized
+          sizes="180px"
+          className="object-cover object-center"
         />
+      </div>
+      <button
+        type="button"
+        onClick={() => onPhotosOpen(experienceGalleryImages, title, 0)}
+        className="relative grid h-[180px] place-items-center overflow-hidden rounded-[8px] bg-[#2b241f] text-white"
+      >
+        <Image
+          src={previewPhoto}
+          alt=""
+          fill
+          unoptimized
+          sizes="180px"
+          className="object-cover object-center"
+        />
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 bg-black/38"
+        />
+        <span className="relative grid size-9 place-items-center rounded-full bg-white/22">
+          <Play className="ml-0.5 size-4 fill-current" strokeWidth={0} />
+        </span>
+        <span className="absolute bottom-2 left-2 right-2 truncate text-center font-sans text-description font-bold text-white">
+          View all Photos
+        </span>
+      </button>
+    </div>
+  );
+}
+
+function RatingStars({
+  className,
+  value,
+}: {
+  className?: string;
+  value: number;
+}) {
+  const filledCount = Math.round(value);
+
+  return (
+    <div className={cn("flex items-center gap-0.5 text-primary", className)}>
+      {Array.from({ length: 5 }, (_item, index) => (
+        <Star
+          key={index}
+          className={cn(
+            "size-4",
+            index < filledCount ? "fill-current" : "text-white/80"
+          )}
+          strokeWidth={index < filledCount ? 0 : 1.4}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ReviewCard({
+  experience,
+  onPhotoOpen,
+  reviewCount,
+}: {
+  experience: PublicExperience;
+  onPhotoOpen?: (
+    galleryImages: string[],
+    title: string,
+    activeIndex?: number
+  ) => void;
+  reviewCount: number;
+}) {
+  const name = experience.travellerName.trim() || "Traveller";
+  const photoGallery = getExperiencePhotoGallery(experience);
+  const photoCount = photoGallery.length;
+  const reviewText = experience.writtenReview || experience.title;
+  const reviewMeta = `${reviewCount} review${reviewCount === 1 ? "" : "s"} - ${photoCount} photo${photoCount === 1 ? "" : "s"}`;
+  const avatarImage = photoGallery[0] || "";
+  const identity = (
+    <>
+      {avatarImage ? (
+        <span className="relative size-10 shrink-0 overflow-hidden rounded-full bg-primary/10">
+          <Image
+            src={avatarImage}
+            alt={name}
+            fill
+            unoptimized
+            sizes="40px"
+            className="object-cover"
+          />
+        </span>
       ) : (
-        <Image
-          src={image}
-          alt={title}
-          fill
-          sizes="(min-width: 1024px) 590px, 100vw"
-          className="object-cover transition-transform duration-700 group-hover:scale-105"
-        />
+        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary font-sans text-description font-bold text-white">
+          {getTravellerInitials(name)}
+        </span>
       )}
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(20,12,7,0.04)_0%,rgba(20,12,7,0.78)_100%)]" />
-      <span className="absolute bottom-[88px] left-5 font-sans text-[10px] font-bold uppercase text-white">
-        Video
-      </span>
-      <span className="absolute left-1/2 top-1/2 grid size-20 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-white bg-white/18 text-white backdrop-blur">
-        <Play className="ml-1 size-9 fill-current" strokeWidth={0} />
-      </span>
-      <div className="absolute inset-x-0 bottom-0 p-5 text-white">
-        <h3 className="font-heading text-[21px] font-bold leading-tight">
-          {title}
-        </h3>
-        <p className="mt-2 line-clamp-2 max-w-[520px] font-sans text-[12px] font-medium leading-[1.6] text-white/84">
-          {description}
-        </p>
-      </div>
-    </article>
-  );
-}
-
-function QuoteExperienceCard({
-  destination,
-}: {
-  destination: PublicDestination;
-}) {
-  return (
-    <article className="rounded-[8px] border border-primary/15 bg-white p-7 shadow-[0_14px_32px_rgba(50,50,50,0.07)]">
-      <p className="font-heading text-[48px] font-bold leading-none text-primary">
-        &ldquo;
-      </p>
-      <p className="mt-2 font-sans text-[14px] font-medium leading-[1.75] text-secondary">
-        Exploring {destination.destinationName} feels like stepping into a
-        living chapter of India&apos;s heritage. The monuments, stories and
-        quiet corners make it unforgettable.
-      </p>
-      <div className="mt-8 flex items-center gap-3">
-        <span className="grid size-10 place-items-center rounded-full bg-primary/12 font-sans text-[12px] font-bold text-primary">
-          AT
+      <span className="min-w-0">
+        <strong className="block truncate font-sans text-description font-bold leading-tight text-secondary">
+          {name}
+        </strong>
+        <span className="block truncate font-sans text-[12px] font-semibold leading-tight text-secondary/58">
+          {reviewMeta}
         </span>
-        <span className="font-sans">
-          <strong className="block text-[13px] text-secondary">
-            Ancient Trails Traveller
-          </strong>
-          <span className="block text-[11px] font-medium text-secondary/58">
-            {destination.state || destination.countryRegion}
-          </span>
-        </span>
-      </div>
-      <div className="mt-5 flex gap-1 text-primary">
-        {Array.from({ length: 5 }).map((_item, index) => (
-          <Star key={index} className="size-4 fill-current" strokeWidth={0} />
-        ))}
-      </div>
-    </article>
+      </span>
+    </>
   );
-}
 
-function PhotoExperienceCard({
-  destination,
-  image,
-}: {
-  destination: PublicDestination;
-  image: string;
-}) {
   return (
-    <article className="overflow-hidden rounded-[8px] border border-primary/15 bg-white shadow-[0_14px_32px_rgba(50,50,50,0.07)]">
-      <div className="relative h-[175px] overflow-hidden bg-muted">
-        <Image
-          src={image}
-          alt={`${destination.destinationName} photo story`}
-          fill
-          sizes="(min-width: 1024px) 320px, 100vw"
-          className="object-cover"
-        />
-      </div>
-      <div className="p-5">
-        <p className="font-sans text-[10px] font-bold uppercase text-primary">
-          Photo Story
-        </p>
-        <h3 className="mt-2 font-heading text-[20px] font-bold leading-tight text-secondary">
-          Tranquil Afternoons
-        </h3>
-        <p className="mt-3 font-sans text-[13px] font-medium leading-[1.7] text-secondary/70">
-          Peaceful moments around {destination.destinationName}, surrounded by
-          timeless beauty.
-        </p>
-      </div>
+    <article className="rounded-[8px] border border-[#eee5dd] bg-white px-4 py-4 shadow-[0_7px_16px_rgba(50,50,50,0.1)]">
+      <RatingStars value={experience.overallRating} className="text-[#ffb000]" />
+      <p className="mt-2 font-sans text-description font-medium text-secondary/78">
+        {reviewText}
+      </p>
+      {photoCount > 0 && onPhotoOpen ? (
+        <button
+          type="button"
+          onClick={() => onPhotoOpen(photoGallery, `${name} photos`)}
+          className="mt-4 flex w-full min-w-0 items-center gap-3 text-left"
+        >
+          {identity}
+        </button>
+      ) : (
+        <div className="mt-4 flex min-w-0 items-center gap-3">
+          {identity}
+        </div>
+      )}
     </article>
   );
 }
@@ -731,33 +1681,28 @@ function ToursSection({
   }
 
   return (
-    <section
-      id="tours"
-      className="relative mx-auto w-full max-w-[1300px] px-5 py-11 sm:px-8 lg:px-0"
-    >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="font-sans text-description font-medium uppercase text-primary">
-            Plan your visit
-          </p>
-          <h2 className="mt-1 font-heading text-[34px] font-bold leading-none text-secondary sm:text-[40px] lg:text-title">
-            Tours in {destination.destinationName}
-          </h2>
-        </div>
+    <section className="mt-10">
+      <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+        Plan your visit
+      </p>
+      <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <h2 className="font-heading text-title font-bold leading-none tracking-normal text-secondary">
+          Tours in {destination.destinationName.toUpperCase()}
+        </h2>
         <Link
           href={getTourCalendarHref({ destination })}
-          className="inline-flex w-fit items-center gap-3 font-sans text-[15px] font-bold text-primary transition-colors hover:text-accent"
+          className="inline-flex w-fit items-center gap-2 font-sans text-description font-medium uppercase text-primary"
         >
-          View All Tours
-          <ArrowRight className="size-5" />
+          View all tours
+          <ArrowRight className="size-4" />
         </Link>
       </div>
-      <span className="mt-3 block h-0.5 w-10 bg-primary" />
 
-      <div className="mt-7 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-        {tours.slice(0, 4).map((tour, index) => (
-          <TourCard
+      <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        {tours.slice(0, 3).map((tour, index) => (
+          <DestinationTourCard
             key={tour.id || tour.tourId}
+            destination={destination}
             fallbackImage={images[index % images.length] || fallbackImages[0]}
             nextDeparture={getNextTourDeparture(tour, departures)}
             price={getLowestTourPrice(tour, departures)}
@@ -769,27 +1714,209 @@ function ToursSection({
   );
 }
 
-function TourCard({
+function DestinationTourCard({
+  destination,
   fallbackImage,
   nextDeparture,
   price,
   tour,
 }: {
+  destination: PublicDestination;
   fallbackImage: string;
   nextDeparture?: PublicTourDeparture;
   price: number;
   tour: PublicTour;
 }) {
+  const duration = compactDurationLabel(
+    tour.durationDn,
+    destination.recommendedDurationDays || 1
+  );
+  const locationCount = getTourLocationCount(tour, destination);
+  const hotelCount = getTourHotelCount(tour, destination);
+  const transferCount = getTourTransferCount(tour);
+  const tourHref = getTourHref(tour);
+  const tourIncludes = [
+    { icon: BedDouble, label: "Accommodation" },
+    { icon: Camera, label: "Sightseeing" },
+    { icon: UserRoundCheck, label: "Expert guide" },
+    { icon: Bus, label: "Local transport" },
+  ];
+
   return (
-    <TourShowcaseCard
-      durationLabel={tour.durationDn || "Duration soon"}
-      favoriteLabel={`Save ${tour.tourName}`}
-      href={getTourHref(tour)}
-      image={getTourImage(tour, fallbackImage)}
-      imageSizes="(min-width: 1280px) 305px, (min-width: 640px) 50vw, 100vw"
-      nextDepartureLabel={formatDate(nextDeparture?.departureDate)}
-      priceLabel={price > 0 ? formatPrice(price) : "Price on request"}
-      title={tour.tourName}
-    />
+    <article className="group overflow-hidden rounded-[22px] border border-[#e8dfd8] bg-white shadow-[0_15px_30px_rgba(50,50,50,0.14)]">
+      <div className="relative aspect-[1.6/1] overflow-hidden bg-muted">
+        <Image
+          src={getTourImage(tour, fallbackImage)}
+          alt={tour.tourName}
+          fill
+          sizes="(min-width: 1280px) 410px, (min-width: 768px) 50vw, 100vw"
+          className="object-cover transition-transform duration-700 group-hover:scale-[1.035]"
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.12)_0%,rgba(18,12,8,0.02)_48%,rgba(18,12,8,0.35)_100%)]" />
+
+        <div className="absolute left-7 top-0 flex h-[52px] items-stretch">
+          <span
+            aria-hidden="true"
+            className="grid w-[44px] place-items-center rounded-b-[16px] bg-primary/72 text-white shadow-[0_10px_22px_rgba(35,23,15,0.2)] backdrop-blur-[2px]"
+          >
+            <BestsellerBadgeIcon />
+          </span>
+          <span className="inline-flex max-w-[130px] items-center truncate px-3.5 font-sans text-[11px] font-extrabold uppercase leading-none text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.55)]">
+            {getTourBadgeLabel(tour)}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          className="absolute right-4 top-4 grid size-12 place-items-center rounded-full bg-[#2b241f]/80 text-white shadow-[0_10px_24px_rgba(35,23,15,0.28)] backdrop-blur-[2px] transition-colors hover:bg-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-white/45"
+          aria-label={`Save ${tour.tourName}`}
+        >
+          <Heart className="size-5" strokeWidth={1.9} />
+        </button>
+
+        <span className="absolute bottom-5 left-5 inline-flex h-10 max-w-[calc(100%-2.5rem)] items-center gap-2.5 rounded-full bg-[#2b241f]/80 px-5 font-sans text-[14px] font-medium leading-none text-white shadow-[0_10px_22px_rgba(35,23,15,0.24)] backdrop-blur-[2px]">
+          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-white text-[#2b241f]">
+            <Clock3 className="size-3" strokeWidth={2.3} />
+          </span>
+          <span className="truncate">{duration}</span>
+        </span>
+
+        <span className="absolute bottom-5 right-5 hidden h-10 max-w-[52%] items-center rounded-full bg-[#2b241f]/80 px-5 font-sans text-[14px] font-medium leading-none text-white shadow-[0_10px_22px_rgba(35,23,15,0.24)] backdrop-blur-[2px] sm:inline-flex">
+          <span className="truncate">{getTourDifficultyLabel(tour)}</span>
+        </span>
+      </div>
+
+      <div className="px-5 pb-6 pt-5 sm:px-6">
+        <h3 className="line-clamp-2 font-heading text-[27px] font-bold leading-[1.05] tracking-normal text-secondary">
+          {tour.tourName}
+        </h3>
+
+        <span className="mt-4 block h-px w-full bg-primary/65" />
+
+        <div className="mt-2 grid gap-3 font-sans lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+          <div className="min-w-0">
+            <p className="text-[13px] font-medium leading-none text-secondary/86">
+              Upcoming Departure
+            </p>
+            <time className="mt-2 block truncate text-[18px] font-medium leading-none text-primary sm:text-[20px]">
+              {formatOrdinalDate(nextDeparture?.departureDate)}
+            </time>
+          </div>
+          <Link
+            href={getTourCalendarHref({ destination, tour })}
+            className="inline-flex w-fit items-center gap-2 pt-0.5 text-[13px] font-medium leading-none text-secondary transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20 sm:text-[14px] lg:justify-self-end"
+          >
+            <span className="whitespace-nowrap">View all departures</span>
+            <CalendarDays className="size-6 shrink-0 text-primary" strokeWidth={1.8} />
+          </Link>
+        </div>
+
+        <div className="mt-8 flex flex-nowrap items-center justify-between gap-2 font-sans text-secondary sm:gap-4">
+          <TourCardStat label="Locations" value={locationCount} />
+          <TourCardStat label="Hotels" value={hotelCount} />
+          <TourCardStat label="Transfer" value={transferCount} />
+          <Link
+            href={`${tourHref}#itinerary`}
+            className="shrink-0 whitespace-nowrap text-[14px] font-medium leading-none text-primary transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20 sm:text-[16px]"
+          >
+            Itinerary
+          </Link>
+        </div>
+
+        <div className="mt-4 border-y border-[#d6d1cb]">
+          <div className="flex items-center justify-between gap-3 py-3">
+            <span className="font-sans text-[16px] font-medium leading-none text-secondary">
+              Tour Includes
+            </span>
+            <div className="flex shrink-0 items-center gap-3 text-primary sm:gap-4">
+              {tourIncludes.map(({ icon, label }) => (
+                <TourIncludeIcon key={label} icon={icon} label={label} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-nowrap items-center justify-between gap-3">
+          <span className="min-w-0 flex-1 font-sans">
+            <span className="block text-[14px] font-medium leading-none text-secondary/72">
+              Starting from
+            </span>
+            <strong
+              className={cn(
+                "mt-0 block truncate font-sans font-bold leading-none text-primary",
+                price > 0 ? "text-[26px] sm:text-[28px]" : "text-[22px]"
+              )}
+            >
+              {price > 0 ? `${formatPrice(price)} +` : "On request"}
+            </strong>
+          </span>
+
+          <Button
+            nativeButton={false}
+            render={<Link href={tourHref} />}
+            className="h-[54px] min-w-[158px] shrink-0 gap-5 px-5 text-[18px] font-bold shadow-[0_12px_24px_rgba(212,114,32,0.24)] sm:min-w-[170px] sm:text-[19px]"
+          >
+            Book Now
+            <ButtonArrow className="h-3 w-7 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+          </Button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function BestsellerBadgeIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 64 64"
+      className="size-7"
+      fill="none"
+    >
+      <path
+        fill="currentColor"
+        d="M20.1 38.6 8 58.2l12.3-3.1 6.4 10 8.1-19.5"
+      />
+      <path
+        fill="currentColor"
+        d="M43.9 38.6 56 58.2l-12.3-3.1-6.4 10-8.1-19.5"
+      />
+      <path
+        fill="currentColor"
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M32 2C20.4 2 11 11.4 11 23s9.4 21 21 21 21-9.4 21-21S43.6 2 32 2Zm0 11.2 3.2 6.4 7.1 1-5.2 5 1.2 7-6.3-3.3-6.3 3.3 1.2-7-5.2-5 7.1-1 3.2-6.4Z"
+      />
+    </svg>
+  );
+}
+
+function TourCardStat({ label, value }: { label: string; value: number }) {
+  return (
+    <span className="inline-flex shrink-0 items-baseline gap-1 whitespace-nowrap text-[12px] font-medium leading-none text-secondary sm:gap-1.5 sm:text-[14px]">
+      <strong className="text-[18px] font-bold leading-none text-secondary sm:text-[20px]">
+        {value}
+      </strong>
+      <span>{label}</span>
+    </span>
+  );
+}
+
+function TourIncludeIcon({
+  icon: Icon,
+  label,
+}: {
+  icon: LucideIcon;
+  label: string;
+}) {
+  return (
+    <span
+      aria-label={label}
+      role="img"
+      title={label}
+      className="grid size-5 place-items-center text-primary"
+    >
+      <Icon className="size-[18px]" strokeWidth={2.5} />
+    </span>
   );
 }

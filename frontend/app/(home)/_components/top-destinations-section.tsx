@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, MapPin, X } from "lucide-react";
+import { CalendarDays, Compass, Landmark, MapPin, Users } from "lucide-react";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
 import { getDestinationHref } from "@/lib/routes";
@@ -159,13 +159,110 @@ const topDestinations: [TopDestination, ...TopDestination[]] = [
 
 const defaultDestinationId = "HOYSALAS";
 
+const fallbackTourCategories = [
+  "Heritage",
+  "Monuments",
+  "Temples",
+  "Adventure",
+  "Architecture",
+  "Culture",
+  "Nature",
+  "Festival Trails",
+];
+
 function getDestinationHighlights(destination: TopDestination) {
   return [
-    destination.landmarks[0] || "Top Attraction",
-    destination.duration || "Popular Trail",
-    destination.bestSeason || "Best Time",
-    destination.tourName || `Explore ${destination.name}`,
+    {
+      icon: Landmark,
+      label: "Top Attraction",
+    },
+    {
+      icon: MapPin,
+      label: destination.duration || "Popular Trail",
+    },
+    {
+      icon: Compass,
+      label: "Best Time",
+    },
+    {
+      icon: CalendarDays,
+      label: destination.bestSeason || "Best Time",
+    },
+    {
+      icon: Users,
+      label: "Popular Tours",
+    },
   ];
+}
+
+function getUniqueFocusLabel(value: string) {
+  const seen = new Set<string>();
+  const labels = value
+    .split(/[,/|]+/)
+    .map((label) => label.trim())
+    .filter((label) => {
+      const key = label.toLowerCase();
+
+      if (!key || seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+
+      return true;
+    });
+
+  return labels.length > 0 ? labels.join(", ") : value;
+}
+
+function getUniqueTourCategories(categories: string[]) {
+  const seen = new Set<string>();
+
+  return categories.filter((category) => {
+    const key = category.trim().toLowerCase();
+
+    if (!key || seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+
+    return true;
+  });
+}
+
+function TourCategorySlider({ categories }: { categories: string[] }) {
+  const displayedCategories = getUniqueTourCategories(categories);
+  const sliderCategories =
+    displayedCategories.length > 0 ? displayedCategories : fallbackTourCategories;
+  const trackCategories = [...sliderCategories, ...sliderCategories];
+
+  return (
+    <div className="mt-10 mb-6 overflow-hidden">
+      <div className="flex w-max items-center gap-5 motion-safe:animate-[tour-category-slide_34s_linear_infinite] motion-reduce:flex-wrap">
+        {trackCategories.map((category, index) => (
+          <span
+            key={`${category}-${index}`}
+            className="inline-flex h-9 min-w-[118px] items-center justify-center rounded-full bg-[#f4f4f4] px-6 font-sans text-[14px] font-medium leading-none text-secondary/62"
+          >
+            {category}
+          </span>
+        ))}
+      </div>
+
+      <style>{`
+        @keyframes tour-category-slide {
+          from {
+            transform: translateX(0);
+          }
+
+          to {
+            transform: translateX(-50%);
+          }
+        }
+      `}</style>
+    </div>
+  );
 }
 
 function MapPushPin({ active }: { active?: boolean }) {
@@ -194,8 +291,10 @@ function MapPushPin({ active }: { active?: boolean }) {
 
 export function TopDestinationsSection({
   destinations = topDestinations,
+  tourCategories = fallbackTourCategories,
 }: {
   destinations?: TopDestination[];
+  tourCategories?: string[];
 }) {
   const displayedDestinations = useMemo(() => {
     const sourceDestinations =
@@ -243,10 +342,6 @@ export function TopDestinationsSection({
     }, 120);
   }
 
-  function resetDestinationCard() {
-    setActiveDestinationId(initialDestinationId);
-  }
-
   return (
     <section className="bg-background py-10">
       <div className="mx-auto w-full max-w-[1300px] px-5 sm:px-0">
@@ -259,7 +354,7 @@ export function TopDestinationsSection({
                     Explore India
                   </p>
                 </div>
-                <h2 className="font-heading text-[34px] font-bold leading-none text-secondary sm:text-[40px] lg:text-title">
+                <h2 className="font-heading text-title font-bold leading-none text-secondary">
                   <span className="block">Top Trending</span>
                   <span className="block text-primary">Destinations</span>
                 </h2>
@@ -293,6 +388,8 @@ export function TopDestinationsSection({
             <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
           </Button>
         </div>
+
+        <TourCategorySlider categories={tourCategories} />
 
         <div className="mt-6 grid items-start gap-6 lg:grid-cols-[250px_minmax(0,1fr)_300px]">
           <aside className="pt-4">
@@ -440,15 +537,6 @@ export function TopDestinationsSection({
                   : "translate-y-0 opacity-100"
               )}
             >
-              <button
-                type="button"
-                aria-label={`Close ${activeDestination.name} card`}
-                onClick={resetDestinationCard}
-                className="absolute right-5 top-5 z-10 grid size-6 place-items-center rounded-full bg-white text-secondary shadow-[0_4px_12px_rgba(50,50,50,0.2)] transition-colors hover:text-primary"
-              >
-                <X className="size-4" strokeWidth={2} />
-              </button>
-
               <div className="relative h-[128px] overflow-hidden rounded-[6px]">
                 <Image
                   src={activeDestination.tourImage || activeDestination.image}
@@ -466,26 +554,22 @@ export function TopDestinationsSection({
                 <p className="mt-1 break-words font-sans text-description font-medium text-primary">
                   {activeDestination.state}
                 </p>
-                <span className="mt-3 inline-flex max-w-full rounded-[4px] border border-primary/20 px-2 py-1 font-sans text-[11px] font-semibold leading-snug text-primary">
-                  {activeDestination.focus}
+                <span className="mt-3 inline-flex max-w-full rounded-[4px] border border-primary/20 px-2 py-1 font-sans text-[13px] font-semibold leading-snug text-primary">
+                  {getUniqueFocusLabel(activeDestination.focus)}
                 </span>
 
-                <p className="mt-3 line-clamp-3 font-sans text-[12px] leading-[1.45] text-secondary">
+                <p className="mt-3 line-clamp-3 font-sans text-[14px] leading-[1.45] text-secondary">
                   {activeDestination.description}
                 </p>
 
                 <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2.5">
-                  {activeHighlights.map((highlight) => (
+                  {activeHighlights.map(({ icon: Icon, label }) => (
                     <div
-                      key={highlight}
-                      className="flex min-w-0 items-center gap-2 font-sans text-[11px] font-medium text-secondary"
+                      key={label}
+                      className="flex min-w-0 items-center gap-2 font-sans text-[14px] font-medium text-secondary"
                     >
-                      {highlight.includes("-") ? (
-                        <CalendarDays className="size-3.5 shrink-0 text-primary" />
-                      ) : (
-                        <MapPin className="size-3.5 shrink-0 text-primary" />
-                      )}
-                      <span className="truncate">{highlight}</span>
+                      <Icon className="size-3.5 shrink-0 text-primary" />
+                      <span className="truncate">{label}</span>
                     </div>
                   ))}
                 </div>

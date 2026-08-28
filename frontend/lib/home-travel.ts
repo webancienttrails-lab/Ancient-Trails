@@ -16,6 +16,7 @@ export type PublicTour = {
   exclusions: string[];
   expertId: string;
   notes: string;
+  thumbnailImage?: string;
   bannerImage: string;
   galleryImages: string[];
   video: string;
@@ -96,11 +97,14 @@ export type PublicDestination = {
   destinationName: string;
   destinationType: "Domestic" | "International";
   countryRegion: string;
+  region?: string;
   state: string;
   city: string;
   primaryHeritageFocus: string;
+  bestTimeToVisit?: string;
   unescoSite: boolean;
   keyLandmarks: string[];
+  keyLandmarkImages?: string[];
   recommendedDurationDays: number;
   shortDescription: string;
   dressCode: string;
@@ -108,8 +112,31 @@ export type PublicDestination = {
   permits: string;
   idRequirement: string;
   restrictions: string;
+  thumbnailImage?: string;
   bannerImage: string;
   galleryImages: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PublicExperience = {
+  id: string;
+  experienceId: string;
+  destinationId: string;
+  destinationName: string;
+  travellerName: string;
+  travellerEmail: string;
+  title: string;
+  writtenReview: string;
+  thingsToKnow: string[];
+  travellerPhotoGallery: string[];
+  travellerVideos: string[];
+  ratingItinerary: number;
+  ratingLocalTransport: number;
+  ratingAccommodation: number;
+  ratingTourExpert: number;
+  overallRating: number;
+  status: "Draft" | "Published";
   createdAt: string;
   updatedAt: string;
 };
@@ -133,6 +160,46 @@ export type HomePageContent = {
   id: string;
   upcomingTours: HomeUpcomingTourSetting[];
   trendingDestinations: HomeTrendingDestinationSetting[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PublicMegaMenuReference = {
+  id: string;
+  referenceId: string;
+  sortOrder: number;
+};
+
+export type PublicMegaMenuTourReference = PublicMegaMenuReference & {
+  description: string;
+  image: string;
+  tourId: string;
+  tourName: string;
+};
+
+export type PublicMegaMenuDestinationReference = PublicMegaMenuReference & {
+  city: string;
+  countryRegion: string;
+  description: string;
+  destinationId: string;
+  destinationName: string;
+  href: string;
+  image: string;
+  state: string;
+  title: string;
+};
+
+export type PublicMegaMenuContent = {
+  id: string;
+  tourMenu: {
+    heritageTours: PublicMegaMenuTourReference[];
+    shortTrails: PublicMegaMenuTourReference[];
+  };
+  destinationMenu: {
+    india: PublicMegaMenuDestinationReference[];
+    international: PublicMegaMenuDestinationReference[];
+    topCities: PublicMegaMenuDestinationReference[];
+  };
   createdAt: string;
   updatedAt: string;
 };
@@ -406,6 +473,7 @@ function getMarkerSearchText(destination: PublicDestination) {
     destination.state,
     destination.countryRegion,
     destination.primaryHeritageFocus,
+    destination.bestTimeToVisit || "",
   ]
     .join(" ")
     .toLowerCase();
@@ -468,10 +536,52 @@ function formatTravelDate(value: string | null): string {
 
 function getTourImage(tour: PublicTour | undefined, fallbackImage: string) {
   return getHomeMediaUrl(
-    tour?.bannerImage ||
+    tour?.thumbnailImage ||
+      tour?.bannerImage ||
       tour?.galleryImages?.[0] ||
       fallbackImage
   );
+}
+
+function getDestinationPlaceCountLabel(
+  destination: PublicDestination,
+  fallbackLabel: string
+) {
+  const landmarkCount = Array.from(
+    new Set(
+      (destination.keyLandmarks || [])
+        .map((landmark) => landmark.trim())
+        .filter(Boolean)
+    )
+  ).length;
+  const landmarkImageCount = (destination.keyLandmarkImages || []).filter(
+    (image) => image.trim()
+  ).length;
+  const placeCount = landmarkCount || landmarkImageCount;
+
+  if (placeCount > 0) {
+    return `${placeCount} ${placeCount === 1 ? "Place" : "Places"}`;
+  }
+
+  return fallbackLabel;
+}
+
+function getDestinationTourCategoryLabel(
+  relatedTours: PublicTour[],
+  fallbackLabel: string
+) {
+  const categories = Array.from(
+    new Set(
+      relatedTours
+        .map((tour) => tour.category || tour.tourType)
+        .map((category) => category.trim())
+        .filter(Boolean)
+    )
+  );
+
+  return categories.length > 0
+    ? categories.slice(0, 3).join(", ")
+    : fallbackLabel;
 }
 
 export function getTourDestinationIds(
@@ -545,8 +655,22 @@ export async function listPublicDestinations() {
   return apiRequest<{ destinations: PublicDestination[] }>("/api/destinations");
 }
 
+export async function listPublicExperiences(destinationId = "") {
+  const query = destinationId.trim()
+    ? `?destinationId=${encodeURIComponent(destinationId.trim())}`
+    : "";
+
+  return apiRequest<{ experiences: PublicExperience[] }>(
+    `/api/experiences${query}`
+  );
+}
+
 export async function getHomePageContent() {
   return apiRequest<{ home: HomePageContent }>("/api/home");
+}
+
+export async function listPublicMegaMenu() {
+  return apiRequest<{ megaMenu: PublicMegaMenuContent }>("/api/mega-menu");
 }
 
 export function buildUpcomingTourCards(
@@ -653,13 +777,14 @@ export function buildTrendingDestinationCards(
   limit = 8,
   selectedTrendingDestinations: HomeTrendingDestinationSetting[] = []
 ): HomeDestinationCard[] {
-  const toursByDestination = new Map<string, PublicTour>();
+  const toursByDestination = new Map<string, PublicTour[]>();
 
   tours.forEach((tour) => {
     getTourDestinationIds(tour).forEach((destinationId) => {
-      if (!toursByDestination.has(destinationId)) {
-        toursByDestination.set(destinationId, tour);
-      }
+      toursByDestination.set(destinationId, [
+        ...(toursByDestination.get(destinationId) || []),
+        tour,
+      ]);
     });
   });
   const destinationById = new Map(
@@ -702,27 +827,34 @@ export function buildTrendingDestinationCards(
 
   return sourceDestinations.slice(0, limit).map((item) => {
     const { destination, markerX, markerY, sourceIndex } = item;
-    const relatedTour = toursByDestination.get(destination.destinationId);
+    const relatedTours = toursByDestination.get(destination.destinationId) || [];
+    const relatedTour = relatedTours[0];
     const fallback =
       fallbackTrendingDestinations[sourceIndex % fallbackTrendingDestinations.length];
     const image = getHomeMediaUrl(
-      destination.bannerImage ||
+      destination.thumbnailImage ||
+        destination.bannerImage ||
         destination.galleryImages?.[0] ||
         relatedTour?.bannerImage ||
         fallback.image
     );
 
     return {
-      bestSeason: relatedTour?.bestSeason || fallback.bestSeason,
+      bestSeason:
+        destination.bestTimeToVisit ||
+        relatedTour?.bestSeason ||
+        fallback.bestSeason,
       description:
         destination.shortDescription ||
         relatedTour?.description ||
         fallback.description,
       destinationId: destination.destinationId,
-      duration: relatedTour?.durationDn || `${destination.recommendedDurationDays} Days`,
-      focus:
+      duration: getDestinationPlaceCountLabel(destination, fallback.duration),
+      focus: getDestinationTourCategoryLabel(
+        relatedTours,
         destination.primaryHeritageFocus ||
-        (destination.unescoSite ? "UNESCO Heritage" : destination.destinationType),
+          (destination.unescoSite ? "UNESCO Heritage" : destination.destinationType)
+      ),
       image,
       landmarks:
         destination.keyLandmarks.length > 0

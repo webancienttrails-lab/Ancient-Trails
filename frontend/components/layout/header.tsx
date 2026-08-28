@@ -7,16 +7,13 @@ import {
   ArrowRight,
   Binoculars,
   CalendarCheck,
-  Gift,
   Globe2,
   Landmark,
   LogOut,
   MapPin,
   Mountain,
   Plane,
-  PlayCircle,
   Route,
-  ShoppingCart,
   User,
   UserRound,
 } from "lucide-react";
@@ -25,9 +22,11 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 
 import { ButtonArrow } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -37,7 +36,18 @@ import {
   listenForTravellerSessionChanges,
   type TravellerUser,
 } from "@/lib/auth";
-import { getDestinationsHref, getTourCalendarHref } from "@/lib/routes";
+import {
+  getHomeMediaUrl,
+  listPublicMegaMenu,
+  type PublicMegaMenuContent,
+  type PublicMegaMenuDestinationReference,
+  type PublicMegaMenuTourReference,
+} from "@/lib/home-travel";
+import {
+  getDestinationHref,
+  getDestinationsHref,
+  getTourCalendarHref,
+} from "@/lib/routes";
 
 const navItems = [
   { label: "Home", href: "/" },
@@ -64,24 +74,6 @@ const accountMenuItems = [
     description: "See booking details.",
     href: "/me/bookings",
     icon: CalendarCheck,
-  },
-  {
-    title: "My Holiday Cart",
-    description: "Complete your pending payments here.",
-    href: "/me/holiday-cart",
-    icon: ShoppingCart,
-  },
-  {
-    title: "Gift Cards",
-    description: "Your purchase history.",
-    href: "/me/gift-cards",
-    icon: Gift,
-  },
-  {
-    title: "Pre-departure Videos",
-    description: "Key tips for a smooth journey",
-    href: "/experiences",
-    icon: PlayCircle,
   },
 ];
 
@@ -233,6 +225,91 @@ const topCities = [
     href: getDestinationsHref("Rome"),
   },
 ];
+
+type TourMenuColumn = (typeof tourColumns)[number];
+type DestinationMenuItem = {
+  description: string;
+  href: string;
+  image: string;
+  title: string;
+};
+type CityMenuItem = (typeof topCities)[number];
+
+function hasMegaMenuSettings(content: PublicMegaMenuContent | null) {
+  if (!content) {
+    return false;
+  }
+
+  return (
+    content.tourMenu.heritageTours.length > 0 ||
+    content.tourMenu.shortTrails.length > 0 ||
+    content.destinationMenu.india.length > 0 ||
+    content.destinationMenu.international.length > 0 ||
+    content.destinationMenu.topCities.length > 0
+  );
+}
+
+function resolveMegaMenuImage(source: string, fallback: string) {
+  return getHomeMediaUrl(source || fallback);
+}
+
+function buildTourMenuItems(
+  items: PublicMegaMenuTourReference[],
+  fallbackImages: string[]
+) {
+  return items.map((item, index) => ({
+    href: getTourCalendarHref({
+      tour: {
+        tourId: item.tourId,
+        tourName: item.tourName,
+      },
+    }),
+    image: resolveMegaMenuImage(
+      item.image,
+      fallbackImages[index % fallbackImages.length] || fallbackImages[0]
+    ),
+    title: item.tourName,
+  }));
+}
+
+function buildDestinationMenuItems(
+  items: PublicMegaMenuDestinationReference[],
+  fallbackImages: string[]
+): DestinationMenuItem[] {
+  return items.map((item, index) => ({
+    description: item.description,
+    href:
+      item.href ||
+      (item.destinationId
+        ? getDestinationHref({
+            destinationId: item.destinationId,
+            destinationName: item.destinationName,
+          })
+        : getDestinationsHref(item.title || item.destinationName)),
+    image: resolveMegaMenuImage(
+      item.image,
+      fallbackImages[index % fallbackImages.length] || fallbackImages[0]
+    ),
+    title: item.title || item.destinationName,
+  }));
+}
+
+function buildCityMenuItems(
+  items: PublicMegaMenuDestinationReference[],
+  fallbackImages: string[]
+): CityMenuItem[] {
+  return items.map((item, index) => ({
+    href: getDestinationHref({
+      destinationId: item.destinationId,
+      destinationName: item.destinationName,
+    }),
+    image: resolveMegaMenuImage(
+      item.image,
+      fallbackImages[index % fallbackImages.length] || fallbackImages[0]
+    ),
+    title: item.city || item.destinationName,
+  }));
+}
 
 function MenuArrow({ className = "" }: { className?: string }) {
   return <ArrowRight className={`size-4 ${className}`} strokeWidth={1.8} />;
@@ -404,10 +481,16 @@ function CityTile({
 }
 
 export function DestinationsMegaMenu({
+  cityItems = topCities,
+  indianItems = indianDestinations,
+  internationalItems = internationalDestinations,
   isOpen,
   onMouseEnter,
   onMouseLeave,
 }: {
+  cityItems?: CityMenuItem[];
+  indianItems?: DestinationMenuItem[];
+  internationalItems?: DestinationMenuItem[];
   isOpen: boolean;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
@@ -455,14 +538,14 @@ export function DestinationsMegaMenu({
               className="pointer-events-none translate-y-24 object-cover object-left-bottom opacity-10 mix-blend-multiply"
             />
             <Link
-              href="/destinations"
+              href={getDestinationsHref("UNESCO sites")}
               className="group/button relative mt-[210px] flex h-9 w-[192px] items-center justify-between gap-2 rounded-full border border-primary bg-white px-3 font-sans text-[12px] font-semibold text-primary shadow-[0_8px_18px_rgba(212,114,32,0.16)] transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-white"
             >
               <span
                 className={megaTextRevealClass(isOpen, "whitespace-nowrap")}
                 style={megaTextRevealStyle(isOpen, 280)}
               >
-                View all Destinations
+                View UNESCO sites
               </span>
               <ButtonArrow className="h-2.5 w-6 shrink-0 group-hover/button:brightness-0 group-hover/button:invert" />
             </Link>
@@ -472,7 +555,7 @@ export function DestinationsMegaMenu({
             icon={Plane}
             title="India"
             subtitle="Explore Incredible India"
-            items={indianDestinations}
+            items={indianItems}
             footer="View all Indian states"
             footerHref={getDestinationsHref("India")}
             isOpen={isOpen}
@@ -484,7 +567,7 @@ export function DestinationsMegaMenu({
               icon={Globe2}
               title="International"
               subtitle="Discover the World"
-              items={internationalDestinations}
+              items={internationalItems}
               footer="View all countries"
               footerHref={getDestinationsHref("International")}
               isOpen={isOpen}
@@ -520,7 +603,7 @@ export function DestinationsMegaMenu({
             </div>
 
             <div className="mt-5 grid grid-cols-2 gap-3">
-              {topCities.map((city, index) => (
+              {cityItems.map((city, index) => (
                 <CityTile
                   key={city.title}
                   city={city}
@@ -531,7 +614,7 @@ export function DestinationsMegaMenu({
             </div>
 
             <Link
-              href="/destinations"
+              href={getDestinationsHref("Popular cities")}
               className={megaTextRevealClass(
                 isOpen,
                 "mt-4 flex items-center justify-between font-sans text-[14px] font-bold text-primary"
@@ -549,13 +632,17 @@ export function DestinationsMegaMenu({
 }
 
 export function ToursMegaMenu({
+  featuredItems = featuredTours,
   isOpen,
   onMouseEnter,
   onMouseLeave,
+  tourMenuColumns = tourColumns,
 }: {
+  featuredItems?: typeof featuredTours;
   isOpen: boolean;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
+  tourMenuColumns?: TourMenuColumn[];
 }) {
   return (
     <div
@@ -622,7 +709,7 @@ export function ToursMegaMenu({
           </Link>
         </div>
 
-        {tourColumns.map(({ title, icon: Icon, items }, columnIndex) => {
+        {tourMenuColumns.map(({ title, icon: Icon, items }, columnIndex) => {
           const baseDelay = 120 + columnIndex * 70;
 
           return (
@@ -690,7 +777,7 @@ export function ToursMegaMenu({
           );
         })}
 
-        {featuredTours.map(({ title, subtitle, image, icon: Icon, href }, columnIndex) => {
+        {featuredItems.map(({ title, subtitle, image, icon: Icon, href }, columnIndex) => {
           const baseDelay = 260 + columnIndex * 70;
 
           return (
@@ -842,8 +929,11 @@ export function Header() {
   const [travellerUser, setTravellerUser] = useState<TravellerUser | null>(
     null
   );
+  const [megaMenuContent, setMegaMenuContent] =
+    useState<PublicMegaMenuContent | null>(null);
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
   const [hasScrolled, setHasScrolled] = useState(false);
+  const [isHeaderPortaled, setIsHeaderPortaled] = useState(false);
   const [underlineStyle, setUnderlineStyle] = useState({
     opacity: 0,
     transform: "translate3d(0, 0, 0)",
@@ -857,6 +947,59 @@ export function Header() {
   const scrollFrameRef = useRef(0);
   const megaMenuCloseTimeoutRef = useRef(0);
   const accountMenuCloseTimeoutRef = useRef(0);
+  const hasConfiguredMegaMenu = hasMegaMenuSettings(megaMenuContent);
+  const activeTourColumns = useMemo<TourMenuColumn[]>(() => {
+    if (!hasConfiguredMegaMenu || !megaMenuContent) {
+      return tourColumns;
+    }
+
+    return [
+      {
+        ...tourColumns[0],
+        items: buildTourMenuItems(
+          megaMenuContent.tourMenu.heritageTours,
+          tourColumns[0].items.map((item) => item.image)
+        ),
+      },
+      {
+        ...tourColumns[1],
+        items: buildTourMenuItems(
+          megaMenuContent.tourMenu.shortTrails,
+          tourColumns[1].items.map((item) => item.image)
+        ),
+      },
+    ];
+  }, [hasConfiguredMegaMenu, megaMenuContent]);
+  const activeIndianDestinations = useMemo(
+    () =>
+      hasConfiguredMegaMenu && megaMenuContent
+        ? buildDestinationMenuItems(
+            megaMenuContent.destinationMenu.india,
+            indianDestinations.map((item) => item.image)
+          )
+        : indianDestinations,
+    [hasConfiguredMegaMenu, megaMenuContent]
+  );
+  const activeInternationalDestinations = useMemo(
+    () =>
+      hasConfiguredMegaMenu && megaMenuContent
+        ? buildDestinationMenuItems(
+            megaMenuContent.destinationMenu.international,
+            internationalDestinations.map((item) => item.image)
+          )
+        : internationalDestinations,
+    [hasConfiguredMegaMenu, megaMenuContent]
+  );
+  const activeTopCities = useMemo(
+    () =>
+      hasConfiguredMegaMenu && megaMenuContent
+        ? buildCityMenuItems(
+            megaMenuContent.destinationMenu.topCities,
+            topCities.map((item) => item.image)
+          )
+        : topCities,
+    [hasConfiguredMegaMenu, megaMenuContent]
+  );
 
   const updateUnderline = useCallback(() => {
     const nav = navRef.current;
@@ -906,7 +1049,17 @@ export function Header() {
       window.clearTimeout(accountMenuCloseTimeoutRef.current);
       window.removeEventListener("resize", updateUnderline);
     };
-  }, [updateUnderline]);
+  }, [isHeaderPortaled, updateUnderline]);
+
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      setIsHeaderPortaled(true);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, []);
 
   useEffect(() => {
     lastScrollYRef.current = window.scrollY;
@@ -961,6 +1114,30 @@ export function Header() {
     };
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadMegaMenu() {
+      try {
+        const response = await listPublicMegaMenu();
+
+        if (isMounted) {
+          setMegaMenuContent(response.data.megaMenu);
+        }
+      } catch {
+        if (isMounted) {
+          setMegaMenuContent(null);
+        }
+      }
+    }
+
+    loadMegaMenu();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handleSignOut = () => {
     clearTravellerSession();
     setTravellerUser(null);
@@ -1008,11 +1185,7 @@ export function Header() {
     ? "top-[clamp(0.5rem,2vh,1rem)]"
     : "top-[clamp(1rem,4vh,2.25rem)]";
 
-  return (
-    <div
-      style={headerLayerStyle}
-      className="relative isolate z-[2147483647] h-[60px] sm:h-[84px] [@media(max-height:600px)]:sm:h-[76px]"
-    >
+  const headerContent = (
     <header
       style={headerLayerStyle}
       onMouseEnter={keepMegaMenuOpen}
@@ -1080,11 +1253,15 @@ export function Header() {
         />
       ) : null}
       <ToursMegaMenu
+        tourMenuColumns={activeTourColumns}
         isOpen={hoveredItem === "Tours"}
         onMouseEnter={keepMegaMenuOpen}
         onMouseLeave={closeMegaMenu}
       />
       <DestinationsMegaMenu
+        cityItems={activeTopCities}
+        indianItems={activeIndianDestinations}
+        internationalItems={activeInternationalDestinations}
         isOpen={hoveredItem === "Destinations"}
         onMouseEnter={keepMegaMenuOpen}
         onMouseLeave={closeMegaMenu}
@@ -1127,6 +1304,14 @@ export function Header() {
         ) : null}
       </div>
     </header>
+  );
+
+  return (
+    <div
+      style={headerLayerStyle}
+      className="relative isolate z-[2147483647] h-[60px] sm:h-[84px] [@media(max-height:600px)]:sm:h-[76px]"
+    >
+      {isHeaderPortaled ? createPortal(headerContent, document.body) : headerContent}
     </div>
   );
 }

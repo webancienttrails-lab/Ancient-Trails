@@ -2,27 +2,29 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
-  BadgeCheck,
   ChevronDown,
-  Globe2,
-  Landmark,
-  MapPin,
   Search,
   SlidersHorizontal,
-  Sparkles,
-  type LucideIcon,
 } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
-import { getHomeMediaUrl, listPublicDestinations, type PublicDestination } from "@/lib/home-travel";
+import {
+  getHomeMediaUrl,
+  getTourDestinationIds,
+  listPublicMegaMenu,
+  listPublicDestinations,
+  listPublicTours,
+  type PublicMegaMenuContent,
+  type PublicDestination,
+  type PublicTour,
+} from "@/lib/home-travel";
 import { getDestinationHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
-type CategoryFilter = "all" | "india" | "international" | "unesco-site";
-type SortMode = "recommended" | "newest" | "name" | "duration";
+type CategoryFilter = "india" | "international" | "popular-cities" | "unesco-sites";
 
 type CountOption = {
   count: number;
@@ -30,7 +32,7 @@ type CountOption = {
   value: string;
 };
 
-const pageSize = 12;
+const pageSize = 6;
 
 const fallbackImages = [
   "/home assets/destination/Hampi.webp",
@@ -41,11 +43,93 @@ const fallbackImages = [
   "/home assets/destination/Hoysalas.webp",
 ];
 
-const sortOptions: Array<{ label: string; value: SortMode }> = [
-  { label: "Recommended", value: "recommended" },
-  { label: "Newest", value: "newest" },
-  { label: "Name A-Z", value: "name" },
-  { label: "Duration", value: "duration" },
+const categoryTabs: Array<{ id: CategoryFilter; label: string }> = [
+  { id: "india", label: "India" },
+  { id: "international", label: "International" },
+  { id: "popular-cities", label: "Popular cities" },
+  { id: "unesco-sites", label: "UNESCO sites" },
+];
+
+const interestTabs = [
+  "Heritage",
+  "Spiritual",
+  "Cultural",
+  "Archaeological",
+  "Art Heritage",
+  "Architecture",
+  "Food Heritage",
+  "Tribal Heritage",
+  "Unesco Heritage",
+  "Photography",
+  "History",
+  "Temples",
+  "Nature",
+  "Shopping",
+].map((label) => ({
+  label,
+  value: normalizeKey(label),
+  keywords: getInterestKeywords(label),
+}));
+
+const indianRegionMap = [
+  {
+    label: "Central India",
+    keywords: ["madhya pradesh", "chhattisgarh", "jharkhand"],
+  },
+  {
+    label: "North India",
+    keywords: [
+      "delhi",
+      "haryana",
+      "himachal pradesh",
+      "jammu",
+      "kashmir",
+      "ladakh",
+      "punjab",
+      "uttar pradesh",
+      "uttarakhand",
+    ],
+  },
+  {
+    label: "West India",
+    keywords: ["rajasthan", "gujarat", "maharashtra", "goa", "daman", "diu"],
+  },
+  {
+    label: "East India",
+    keywords: [
+      "assam",
+      "bihar",
+      "odisha",
+      "west bengal",
+      "sikkim",
+      "arunachal pradesh",
+      "manipur",
+      "meghalaya",
+      "mizoram",
+      "nagaland",
+      "tripura",
+    ],
+  },
+  {
+    label: "South India",
+    keywords: [
+      "andhra pradesh",
+      "karnataka",
+      "kerala",
+      "lakshadweep",
+      "puducherry",
+      "tamil nadu",
+      "telangana",
+    ],
+  },
+];
+
+const regionOrder = [
+  "central india",
+  "north india",
+  "west india",
+  "east india",
+  "south india",
 ];
 
 function getErrorMessage(error: unknown) {
@@ -64,6 +148,10 @@ function normalizeKey(value: string) {
   return normalizeValue(value).toLowerCase();
 }
 
+function normalizeId(value: string) {
+  return value.trim().toUpperCase();
+}
+
 function splitLabels(value: string) {
   return value
     .split(/[,/|]+/)
@@ -71,8 +159,66 @@ function splitLabels(value: string) {
     .filter(Boolean);
 }
 
+function uniqueLabels(labels: string[]) {
+  const seen = new Set<string>();
+
+  return labels.filter((label) => {
+    const key = normalizeKey(label);
+
+    if (!key || seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+
+    return true;
+  });
+}
+
+function getInterestKeywords(label: string) {
+  switch (normalizeKey(label)) {
+    case "spiritual":
+      return ["spiritual", "sacred", "pilgrim", "ghat", "temple", "shrine"];
+    case "cultural":
+      return ["cultural", "culture", "festival", "tradition", "living heritage"];
+    case "archaeological":
+      return ["archaeological", "archaeology", "ruins", "caves", "excavation"];
+    case "art heritage":
+      return ["art", "sculpture", "painting", "craft", "carving"];
+    case "architecture":
+      return ["architecture", "architectural", "palace", "fort", "temple", "monument"];
+    case "food heritage":
+      return ["food", "cuisine", "culinary", "kitchen", "bazaar"];
+    case "tribal heritage":
+      return ["tribal", "indigenous", "folk"];
+    case "unesco heritage":
+      return ["unesco", "world heritage"];
+    case "photography":
+      return ["photo", "photography", "landscape", "view", "sunset"];
+    case "history":
+      return ["history", "historic", "historical", "ancient", "medieval"];
+    case "temples":
+      return ["temple", "mandir", "shrine"];
+    case "nature":
+      return ["nature", "river", "lake", "forest", "hill", "mountain", "landscape"];
+    case "shopping":
+      return ["shopping", "market", "bazaar", "craft", "souvenir"];
+    default:
+      return ["heritage", "monument", "temple", "palace", "fort", "ancient"];
+  }
+}
+
 function getFocusLabels(destination: PublicDestination) {
-  return splitLabels(destination.primaryHeritageFocus);
+  const labels = splitLabels(destination.primaryHeritageFocus);
+
+  if (
+    destination.unescoSite &&
+    !labels.some((label) => normalizeKey(label).includes("unesco"))
+  ) {
+    labels.push("Unesco Heritage");
+  }
+
+  return uniqueLabels(labels);
 }
 
 function isIndiaDestination(destination: PublicDestination) {
@@ -82,9 +228,29 @@ function isIndiaDestination(destination: PublicDestination) {
   );
 }
 
+function getRegionLabels(destination: PublicDestination) {
+  const explicitRegions = splitLabels(destination.region || "");
+
+  if (explicitRegions.length > 0) {
+    return uniqueLabels(explicitRegions);
+  }
+
+  if (!isIndiaDestination(destination)) {
+    return uniqueLabels(splitLabels(destination.countryRegion || "International"));
+  }
+
+  const stateKey = normalizeKey(destination.state);
+  const matchedRegion = indianRegionMap.find((region) =>
+    region.keywords.some((keyword) => stateKey.includes(keyword))
+  );
+
+  return [matchedRegion?.label || "India"];
+}
+
 function getDestinationImage(destination: PublicDestination, index: number) {
   return getHomeMediaUrl(
-    destination.bannerImage ||
+    destination.thumbnailImage ||
+      destination.bannerImage ||
       destination.galleryImages?.[0] ||
       fallbackImages[index % fallbackImages.length] ||
       fallbackImages[0]
@@ -97,9 +263,12 @@ function getDestinationSearchText(destination: PublicDestination) {
     destination.destinationName,
     destination.destinationType,
     destination.countryRegion,
+    destination.region,
+    getRegionLabels(destination).join(" "),
     destination.state,
     destination.city,
     destination.primaryHeritageFocus,
+    destination.bestTimeToVisit || "",
     destination.shortDescription,
     destination.keyLandmarks.join(" "),
     destination.dressCode,
@@ -119,7 +288,7 @@ function createCountOptions(
   const counts = new Map<string, CountOption>();
 
   destinations.forEach((destination) => {
-    getValues(destination).forEach((rawValue) => {
+    uniqueLabels(getValues(destination)).forEach((rawValue) => {
       const label = normalizeValue(rawValue);
 
       if (!label) {
@@ -142,28 +311,35 @@ function createCountOptions(
   );
 }
 
-function getCategoryCount(
-  destinations: PublicDestination[],
-  category: CategoryFilter
-) {
-  return destinations.filter((destination) =>
-    matchesCategory(destination, category)
-  ).length;
+function sortRegionOptions(options: CountOption[]) {
+  return [...options].sort((left, right) => {
+    const leftIndex = regionOrder.indexOf(left.value);
+    const rightIndex = regionOrder.indexOf(right.value);
+
+    if (leftIndex !== -1 || rightIndex !== -1) {
+      return (leftIndex === -1 ? 999 : leftIndex) - (rightIndex === -1 ? 999 : rightIndex);
+    }
+
+    return left.label.localeCompare(right.label);
+  });
 }
 
 function matchesCategory(
   destination: PublicDestination,
-  category: CategoryFilter
+  category: CategoryFilter,
+  topCityDestinationIds: Set<string>
 ) {
   switch (category) {
     case "india":
       return isIndiaDestination(destination);
     case "international":
       return !isIndiaDestination(destination);
-    case "unesco-site":
+    case "popular-cities":
+      return topCityDestinationIds.size > 0
+        ? topCityDestinationIds.has(normalizeId(destination.destinationId))
+        : Boolean(destination.city.trim());
+    case "unesco-sites":
       return destination.unescoSite;
-    case "all":
-      return true;
   }
 }
 
@@ -177,82 +353,189 @@ function toggleSelection(selection: string[], value: string) {
     : [...selection, value];
 }
 
-function matchesOption(
-  selection: string[],
-  values: string[]
-) {
+function matchesOption(selection: string[], values: string[]) {
   if (selection.length === 0) {
     return true;
   }
 
   const normalizedValues = values.map(normalizeKey).filter(Boolean);
+  const joinedValues = normalizedValues.join(" ");
 
   return selection.some((selectedValue) =>
-    normalizedValues.includes(selectedValue)
+    normalizedValues.some(
+      (value) =>
+        value === selectedValue ||
+        value.includes(selectedValue) ||
+        selectedValue.includes(value)
+    ) || joinedValues.includes(selectedValue)
   );
+}
+
+function matchesInterests(selection: string[], destination: PublicDestination) {
+  if (selection.length === 0) {
+    return true;
+  }
+
+  const destinationText = getDestinationSearchText(destination);
+
+  return selection.some((selectedValue) => {
+    const tab = interestTabs.find((item) => item.value === selectedValue);
+
+    if (!tab) {
+      return destinationText.includes(selectedValue);
+    }
+
+    if (tab.value === "unesco heritage" && destination.unescoSite) {
+      return true;
+    }
+
+    if (tab.value === "heritage") {
+      return true;
+    }
+
+    return tab.keywords.some((keyword) => destinationText.includes(keyword));
+  });
 }
 
 function getRecommendedScore(destination: PublicDestination) {
   return (
     (destination.unescoSite ? 8 : 0) +
-    (destination.bannerImage ? 5 : 0) +
+    (destination.thumbnailImage || destination.bannerImage ? 5 : 0) +
     Math.min(destination.galleryImages.length, 4) +
     Math.min(destination.keyLandmarks.length, 4) +
     (destination.shortDescription ? 1 : 0)
   );
 }
 
-function getDateValue(value: string) {
-  const timestamp = new Date(value).getTime();
+function getDestinationTourCategoryLabels(tours: PublicTour[]) {
+  const categoryLabelsByDestinationId = new Map<string, string[]>();
 
-  return Number.isNaN(timestamp) ? 0 : timestamp;
-}
+  tours.forEach((tour) => {
+    const tourCategories = uniqueLabels([
+      ...splitLabels(tour.category || ""),
+      ...splitLabels(tour.tourType || ""),
+    ]);
 
-function sortDestinations(destinations: PublicDestination[], sortMode: SortMode) {
-  return [...destinations].sort((left, right) => {
-    if (sortMode === "name") {
-      return left.destinationName.localeCompare(right.destinationName);
+    if (tourCategories.length === 0) {
+      return;
     }
 
-    if (sortMode === "duration") {
-      return left.recommendedDurationDays - right.recommendedDurationDays;
-    }
+    const destinationIds = new Set(getTourDestinationIds(tour).map(normalizeId));
 
-    if (sortMode === "newest") {
-      return getDateValue(right.updatedAt) - getDateValue(left.updatedAt);
-    }
-
-    return getRecommendedScore(right) - getRecommendedScore(left);
+    destinationIds.forEach((destinationId) => {
+      categoryLabelsByDestinationId.set(
+        destinationId,
+        uniqueLabels([
+          ...(categoryLabelsByDestinationId.get(destinationId) || []),
+          ...tourCategories,
+        ])
+      );
+    });
   });
+
+  return categoryLabelsByDestinationId;
 }
 
-function formatShowingRange(currentPage: number, totalCount: number) {
-  if (totalCount === 0) {
-    return "Showing 0 destinations";
+function keepAvailableSelections(
+  selection: string[],
+  options: CountOption[]
+) {
+  if (selection.length === 0) {
+    return selection;
   }
 
-  const start = (currentPage - 1) * pageSize + 1;
-  const end = Math.min(currentPage * pageSize, totalCount);
+  const availableValues = new Set(options.map((option) => option.value));
+  const nextSelection = selection.filter((value) => availableValues.has(value));
 
-  return `Showing ${start} - ${end} of ${totalCount} destinations`;
+  return nextSelection.length === selection.length ? selection : nextSelection;
 }
 
-function createPaginationPages(currentPage: number, totalPages: number) {
-  if (totalPages <= 5) {
-    return Array.from({ length: totalPages }, (_item, index) => index + 1);
+function sortDestinations(destinations: PublicDestination[]) {
+  return [...destinations].sort(
+    (left, right) => getRecommendedScore(right) - getRecommendedScore(left)
+  );
+}
+
+function getInitialCategory(searchQuery: string): CategoryFilter {
+  const query = normalizeKey(searchQuery);
+
+  if (query.includes("international")) {
+    return "international";
   }
 
-  const pages = new Set([1, totalPages, currentPage]);
-
-  if (currentPage > 1) {
-    pages.add(currentPage - 1);
+  if (query.includes("popular")) {
+    return "popular-cities";
   }
 
-  if (currentPage < totalPages) {
-    pages.add(currentPage + 1);
+  if (query.includes("unesco")) {
+    return "unesco-sites";
   }
 
-  return Array.from(pages).sort((left, right) => left - right);
+  return "india";
+}
+
+function isPopularCitiesQuery(searchQuery: string) {
+  const query = normalizeKey(searchQuery).replace(/[-_]+/g, " ");
+
+  return query === "popular cities" || query === "top cities";
+}
+
+function isUnescoSitesQuery(searchQuery: string) {
+  const query = normalizeKey(searchQuery).replace(/[-_]+/g, " ");
+
+  return query === "unesco" || query === "unesco sites";
+}
+
+function getInitialSearchQuery(searchQuery: string) {
+  return isPopularCitiesQuery(searchQuery) || isUnescoSitesQuery(searchQuery)
+    ? ""
+    : searchQuery;
+}
+
+function getTopCityDestinationIds(content: PublicMegaMenuContent | null) {
+  return Array.from(
+    new Set(
+      (content?.destinationMenu.topCities || [])
+        .map((item) => normalizeId(item.destinationId || item.referenceId))
+        .filter(Boolean)
+    )
+  );
+}
+
+function getInitialRegionOption(
+  searchQuery: string,
+  regionOptions: CountOption[]
+) {
+  const query = normalizeKey(searchQuery);
+
+  if (!query) {
+    return undefined;
+  }
+
+  return regionOptions.find(
+    (option) => option.value === query || normalizeKey(option.label) === query
+  );
+}
+
+function getCategoryForRegion(
+  regionValue: string,
+  destinations: PublicDestination[]
+): CategoryFilter {
+  const matchingDestinations = destinations.filter((destination) =>
+    getRegionLabels(destination).some(
+      (regionLabel) => normalizeKey(regionLabel) === regionValue
+    )
+  );
+  const hasInternationalDestination = matchingDestinations.some(
+    (destination) => !isIndiaDestination(destination)
+  );
+  const hasIndiaDestination = matchingDestinations.some(isIndiaDestination);
+
+  if (hasInternationalDestination && !hasIndiaDestination) {
+    return "international";
+  }
+
+  return "india";
 }
 
 export function DestinationsPage({
@@ -261,13 +544,21 @@ export function DestinationsPage({
   initialSearchQuery?: string;
 }) {
   const [destinations, setDestinations] = useState<PublicDestination[]>([]);
-  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
-  const [activeCategory, setActiveCategory] = useState<CategoryFilter>("all");
+  const [tours, setTours] = useState<PublicTour[]>([]);
+  const [topCityDestinationIds, setTopCityDestinationIds] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState(() =>
+    getInitialSearchQuery(initialSearchQuery)
+  );
+  const [activeCategory, setActiveCategory] = useState<CategoryFilter>(() =>
+    getInitialCategory(initialSearchQuery)
+  );
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
+  const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
   const [selectedStates, setSelectedStates] = useState<string[]>([]);
   const [selectedFocuses, setSelectedFocuses] = useState<string[]>([]);
-  const [sortMode, setSortMode] = useState<SortMode>("recommended");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [isFilterCollapsed, setIsFilterCollapsed] = useState(false);
+  const [visibleDestinationCount, setVisibleDestinationCount] =
+    useState(pageSize);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -279,10 +570,38 @@ export function DestinationsPage({
       setLoadError("");
 
       try {
-        const response = await listPublicDestinations();
+        const [destinationsResponse, megaMenuResponse, toursResponse] =
+          await Promise.all([
+          listPublicDestinations(),
+          listPublicMegaMenu().catch(() => null),
+            listPublicTours().catch(() => null),
+          ]);
 
         if (isMounted) {
-          setDestinations(response.data.destinations);
+          const loadedDestinations = destinationsResponse.data.destinations;
+          const loadedRegionOptions = sortRegionOptions(
+            createCountOptions(loadedDestinations, (destination) =>
+              getRegionLabels(destination)
+            )
+          );
+          const initialRegion = getInitialRegionOption(
+            initialSearchQuery,
+            loadedRegionOptions
+          );
+
+          setDestinations(loadedDestinations);
+          setTours(toursResponse?.data.tours || []);
+          setTopCityDestinationIds(
+            getTopCityDestinationIds(megaMenuResponse?.data.megaMenu || null)
+          );
+
+          if (initialRegion) {
+            setSearchQuery("");
+            setSelectedRegions([initialRegion.value]);
+            setActiveCategory(
+              getCategoryForRegion(initialRegion.value, loadedDestinations)
+            );
+          }
         }
       } catch (error) {
         if (isMounted) {
@@ -300,45 +619,54 @@ export function DestinationsPage({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [initialSearchQuery]);
 
+  const topCityDestinationIdSet = useMemo(
+    () => new Set(topCityDestinationIds),
+    [topCityDestinationIds]
+  );
+  const filterOptionDestinations = useMemo(
+    () =>
+      destinations.filter((destination) =>
+        matchesCategory(destination, activeCategory, topCityDestinationIdSet)
+      ),
+    [activeCategory, destinations, topCityDestinationIdSet]
+  );
+  const regionOptions = useMemo(
+    () =>
+      sortRegionOptions(
+        createCountOptions(filterOptionDestinations, (destination) =>
+          getRegionLabels(destination)
+        )
+      ),
+    [filterOptionDestinations]
+  );
   const stateOptions = useMemo(
-    () => createCountOptions(destinations, (destination) => [destination.state]),
-    [destinations]
+    () =>
+      createCountOptions(filterOptionDestinations, (destination) => [
+        destination.state,
+      ]),
+    [filterOptionDestinations]
   );
   const focusOptions = useMemo(
-    () => createCountOptions(destinations, getFocusLabels),
-    [destinations]
+    () => createCountOptions(filterOptionDestinations, getFocusLabels),
+    [filterOptionDestinations]
   );
-
-  const categoryTabs = useMemo(
-    () => [
-      {
-        icon: Sparkles,
-        id: "all" as const,
-        label: "All",
-        count: getCategoryCount(destinations, "all"),
-      },
-      {
-        icon: MapPin,
-        id: "india" as const,
-        label: "India",
-        count: getCategoryCount(destinations, "india"),
-      },
-      {
-        icon: Globe2,
-        id: "international" as const,
-        label: "International",
-        count: getCategoryCount(destinations, "international"),
-      },
-      {
-        icon: BadgeCheck,
-        id: "unesco-site" as const,
-        label: "UNESCO Site",
-        count: getCategoryCount(destinations, "unesco-site"),
-      },
-    ],
-    [destinations]
+  const tourCategoriesByDestinationId = useMemo(
+    () => getDestinationTourCategoryLabels(tours),
+    [tours]
+  );
+  const activeSelectedRegions = useMemo(
+    () => keepAvailableSelections(selectedRegions, regionOptions),
+    [regionOptions, selectedRegions]
+  );
+  const activeSelectedStates = useMemo(
+    () => keepAvailableSelections(selectedStates, stateOptions),
+    [selectedStates, stateOptions]
+  );
+  const activeSelectedFocuses = useMemo(
+    () => keepAvailableSelections(selectedFocuses, focusOptions),
+    [focusOptions, selectedFocuses]
   );
 
   const filteredDestinations = useMemo(() => {
@@ -346,89 +674,143 @@ export function DestinationsPage({
     const filtered = destinations.filter((destination) => {
       const matchesSearch =
         !query || getDestinationSearchText(destination).includes(query);
-      const matchesState = matchesOption(selectedStates, [destination.state]);
+      const matchesRegion = matchesOption(
+        activeSelectedRegions,
+        getRegionLabels(destination)
+      );
+      const matchesState = matchesOption(activeSelectedStates, [
+        destination.state,
+      ]);
       const matchesFocus = matchesOption(
-        selectedFocuses,
+        activeSelectedFocuses,
         getFocusLabels(destination)
       );
 
       return (
-        matchesCategory(destination, activeCategory) &&
+        matchesCategory(destination, activeCategory, topCityDestinationIdSet) &&
         matchesSearch &&
+        matchesRegion &&
         matchesState &&
-        matchesFocus
+        matchesFocus &&
+        matchesInterests(selectedInterests, destination)
       );
     });
 
-    return sortDestinations(filtered, sortMode);
+    return sortDestinations(filtered);
   }, [
     activeCategory,
+    activeSelectedFocuses,
+    activeSelectedRegions,
+    activeSelectedStates,
     destinations,
     searchQuery,
-    selectedFocuses,
-    selectedStates,
-    sortMode,
+    selectedInterests,
+    topCityDestinationIdSet,
   ]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredDestinations.length / pageSize));
-  const activePage = Math.min(currentPage, totalPages);
-  const visibleDestinations = filteredDestinations.slice(
-    (activePage - 1) * pageSize,
-    activePage * pageSize
+  const visibleDestinations = useMemo(
+    () => filteredDestinations.slice(0, visibleDestinationCount),
+    [filteredDestinations, visibleDestinationCount]
   );
-  const activeFilterCount = selectedStates.length + selectedFocuses.length;
+  const hasMoreDestinations =
+    visibleDestinationCount < filteredDestinations.length;
 
-  function clearFilters() {
-    setSelectedStates([]);
-    setSelectedFocuses([]);
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+    const shouldLoadMore = visibleDestinationCount < filteredDestinations.length;
+
+    if (!sentinel || !shouldLoadMore) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) {
+          return;
+        }
+
+        setVisibleDestinationCount((current) =>
+          Math.min(current + pageSize, filteredDestinations.length)
+        );
+      },
+      {
+        rootMargin: "320px 0px",
+      }
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [filteredDestinations.length, visibleDestinationCount]);
+
+  function resetVisibleDestinations() {
+    setVisibleDestinationCount(pageSize);
+  }
+
+  function updateSearchQuery(value: string) {
+    resetVisibleDestinations();
+    setSearchQuery(value);
+  }
+
+  function updateCategory(category: CategoryFilter) {
+    resetVisibleDestinations();
+    setActiveCategory(category);
+  }
+
+  function toggleInterest(value: string) {
+    resetVisibleDestinations();
+    setSelectedInterests((current) => toggleSelection(current, value));
+  }
+
+  function toggleRegion(value: string) {
+    resetVisibleDestinations();
+    setSelectedRegions((current) => toggleSelection(current, value));
+  }
+
+  function toggleState(value: string) {
+    resetVisibleDestinations();
+    setSelectedStates((current) => toggleSelection(current, value));
+  }
+
+  function toggleFocus(value: string) {
+    resetVisibleDestinations();
+    setSelectedFocuses((current) => toggleSelection(current, value));
   }
 
   return (
     <main className="min-h-screen bg-background text-secondary">
-      <HeroSection
-        categoryTabs={categoryTabs}
+      <HeaderBand />
+
+      <DestinationTopBar
         activeCategory={activeCategory}
         searchQuery={searchQuery}
-        onCategoryChange={setActiveCategory}
-        onSearchQueryChange={setSearchQuery}
+        onCategoryChange={updateCategory}
+        onSearchQueryChange={updateSearchQuery}
       />
 
-      <section
-        className={cn(
-          "mx-auto grid w-full max-w-[1300px] items-start gap-6 px-5 pb-12 pt-8 transition-[grid-template-columns] duration-300 sm:px-8 lg:px-0",
-          isFilterCollapsed
-            ? "lg:grid-cols-[76px_minmax(0,1fr)] xl:grid-cols-[84px_minmax(0,1fr)]"
-            : "lg:grid-cols-[270px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]"
-        )}
-      >
+      <section className="mx-auto w-[calc(100%-2.5rem)] max-w-[1300px] pt-6">
+        <InterestFilter
+          selectedInterests={selectedInterests}
+          onInterestToggle={toggleInterest}
+        />
+      </section>
+
+      <section className="mx-auto grid w-[calc(100%-2.5rem)] max-w-[1300px] items-start gap-10 pb-14 pt-7 lg:grid-cols-[280px_minmax(0,1fr)] xl:gap-12">
         <DestinationSidebar
-          activeFilterCount={activeFilterCount}
           focusOptions={focusOptions}
-          isCollapsed={isFilterCollapsed}
-          selectedFocuses={selectedFocuses}
-          selectedStates={selectedStates}
+          regionOptions={regionOptions}
+          selectedFocuses={activeSelectedFocuses}
+          selectedRegions={activeSelectedRegions}
+          selectedStates={activeSelectedStates}
           stateOptions={stateOptions}
-          onClearFilters={clearFilters}
-          onCollapsedChange={setIsFilterCollapsed}
-          onFocusToggle={(value) =>
-            setSelectedFocuses((current) => toggleSelection(current, value))
-          }
-          onStateToggle={(value) =>
-            setSelectedStates((current) => toggleSelection(current, value))
-          }
+          onFocusToggle={toggleFocus}
+          onRegionToggle={toggleRegion}
+          onStateToggle={toggleState}
         />
 
         <section className="min-w-0">
-          <ResultsHeader
-            currentPage={activePage}
-            destinationCount={filteredDestinations.length}
-            isLoading={isLoading}
-            sortMode={sortMode}
-            activeCategoryLabel={
-              categoryTabs.find((tab) => tab.id === activeCategory)?.label || "All"
-            }
-            onSortModeChange={setSortMode}
-          />
+          <ResultsIntro />
 
           {loadError ? (
             <EmptyState
@@ -438,264 +820,179 @@ export function DestinationsPage({
           ) : null}
 
           {!loadError ? (
-            <DestinationGrid
-              destinations={visibleDestinations}
-              isLoading={isLoading}
-            />
+          <DestinationGrid
+            destinations={visibleDestinations}
+            isLoading={isLoading}
+            tourCategoriesByDestinationId={tourCategoriesByDestinationId}
+          />
+          ) : null}
+
+          {!isLoading && !loadError && hasMoreDestinations ? (
+            <div
+              ref={loadMoreRef}
+              className="mt-8 flex h-10 items-center justify-center font-sans text-[12px] font-semibold text-secondary/45"
+            >
+              Loading more destinations...
+            </div>
           ) : null}
 
           {!isLoading && !loadError && filteredDestinations.length === 0 ? (
             <EmptyState
               title="No destinations found"
-              message="Try changing search text or clearing filters."
+              message="Try changing search text or unticking a filter."
             />
           ) : null}
 
-          {!isLoading && !loadError && filteredDestinations.length > pageSize ? (
-            <Pagination
-              currentPage={activePage}
-              totalPages={totalPages}
-              onPageChange={setCurrentPage}
-            />
-          ) : null}
         </section>
       </section>
     </main>
   );
 }
 
-function HeroSection({
-  activeCategory,
-  categoryTabs,
-  onCategoryChange,
-  onSearchQueryChange,
-  searchQuery,
-}: {
-  activeCategory: CategoryFilter;
-  categoryTabs: Array<{
-    count: number;
-    icon: LucideIcon;
-    id: CategoryFilter;
-    label: string;
-  }>;
-  onCategoryChange: (category: CategoryFilter) => void;
-  onSearchQueryChange: (value: string) => void;
-  searchQuery: string;
-}) {
+function HeaderBand() {
   return (
-    <section className="relative overflow-hidden bg-[#fff2e5]">
+    <section className="relative h-[200px] overflow-hidden bg-secondary">
       <Image
         src="/home assets/Heritage Banner.webp"
-        alt="Ancient temple destination landscape"
+        alt="Ancient Trails heritage landscape"
         fill
         priority
         sizes="100vw"
         className="object-cover object-center"
       />
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,248,240,0.96)_0%,rgba(255,248,240,0.84)_38%,rgba(255,248,240,0.32)_72%,rgba(255,248,240,0.1)_100%)]" />
-      <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,rgba(255,248,240,0)_0%,#fff8f0_100%)]" />
-
-      <div className="relative z-10 mx-auto flex min-h-[370px] w-full max-w-[1300px] flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-8 lg:px-0">
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(35,18,9,0.34)_100%)]" />
+      <div className="relative z-10 mx-auto w-full max-w-[1300px] px-5 sm:px-8 lg:px-0">
         <Header />
-
-        <div className="grid flex-1 items-center gap-8 pb-14 pt-8 md:grid-cols-[minmax(0,0.95fr)_minmax(320px,0.65fr)]">
-          <div className="max-w-[600px]">
-            <p className="font-sans text-[11px] font-bold uppercase tracking-normal text-primary">
-              Explore timeless destinations
-            </p>
-            <h1 className="mt-4 font-heading text-[40px] font-bold leading-[1.05] tracking-normal text-secondary sm:text-[56px]">
-              Discover places that
-              <span className="block">inspire your journey</span>
-            </h1>
-            <p className="mt-5 max-w-[430px] font-sans text-[13px] leading-[1.75] text-secondary/78 sm:text-[14px]">
-              From ancient monuments to spiritual retreats, explore places
-              shaped by living heritage and local stories.
-            </p>
-          </div>
-
-          <label className="relative self-end md:justify-self-end">
-            <span className="sr-only">Search destinations</span>
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(event) => onSearchQueryChange(event.target.value)}
-              placeholder="Search destinations, places..."
-              className="h-13 w-full rounded-full border border-[#ead8c5] bg-white px-5 pr-12 font-sans text-[13px] font-semibold text-secondary shadow-[0_16px_38px_rgba(67,43,27,0.14)] outline-none transition-colors placeholder:text-secondary/42 focus:border-primary focus:ring-3 focus:ring-primary/18 md:w-[360px]"
-            />
-            <Search className="pointer-events-none absolute right-5 top-1/2 size-4 -translate-y-1/2 text-primary" />
-          </label>
-        </div>
       </div>
+    </section>
+  );
+}
 
-      <div className="relative z-20 mx-auto -mt-7 w-full max-w-[1300px] px-5 sm:px-8 lg:px-0">
-        <div className="flex flex-wrap gap-3 rounded-[8px] border border-[#ead8c5] bg-white/95 p-3 shadow-[0_18px_44px_rgba(67,43,27,0.12)] backdrop-blur">
-          {categoryTabs.map(({ count, icon: Icon, id, label }) => (
+function DestinationTopBar({
+  activeCategory,
+  onCategoryChange,
+  onSearchQueryChange,
+  searchQuery,
+}: {
+  activeCategory: CategoryFilter;
+  onCategoryChange: (category: CategoryFilter) => void;
+  onSearchQueryChange: (value: string) => void;
+  searchQuery: string;
+}) {
+  return (
+    <section className="border-b border-[#ece7e2] bg-[#f4f4f4]">
+      <div className="mx-auto flex w-[calc(100%-2.5rem)] max-w-[1300px] flex-col gap-4 py-6 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-wrap items-center gap-4">
+          {categoryTabs.map((tab) => (
             <button
-              key={id}
+              key={tab.id}
               type="button"
-              onClick={() => onCategoryChange(id)}
-              aria-pressed={activeCategory === id}
+              aria-pressed={activeCategory === tab.id}
+              onClick={() => onCategoryChange(tab.id)}
               className={cn(
-                "inline-flex h-10 items-center gap-2 rounded-full border px-4 font-sans text-[12px] font-bold transition-all",
-                activeCategory === id
-                  ? "border-primary bg-primary text-white shadow-[0_10px_24px_rgba(212,114,32,0.24)]"
-                  : "border-[#ead8c5] bg-white text-secondary hover:border-primary hover:text-primary"
+                "inline-flex h-8 items-center justify-center rounded-full border px-5 font-sans text-[15px] font-semibold leading-none transition-colors",
+                activeCategory === tab.id
+                  ? "border-primary bg-primary text-white shadow-[0_6px_15px_rgba(212,114,32,0.2)]"
+                  : "border-primary/70 bg-white text-primary hover:bg-primary hover:text-white"
               )}
             >
-              <Icon className="size-4" strokeWidth={1.8} />
-              {label}
-              <span
-                className={cn(
-                  "rounded-full px-1.5 py-0.5 text-[10px]",
-                  activeCategory === id ? "bg-white/20 text-white" : "bg-[#fff1e5] text-primary"
-                )}
-              >
-                {count}
-              </span>
+              {tab.label}
             </button>
           ))}
         </div>
+
+        <label className="relative w-full md:w-[235px]">
+          <span className="sr-only">Search Destination</span>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => onSearchQueryChange(event.target.value)}
+            placeholder="Search Destination"
+            className="h-8 w-full rounded-full border border-primary/55 bg-white px-5 pr-10 font-sans text-[15px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/50 focus:border-primary focus:ring-2 focus:ring-primary/15"
+          />
+          <Search className="pointer-events-none absolute right-4 top-1/2 size-3.5 -translate-y-1/2 text-primary" />
+        </label>
       </div>
     </section>
   );
 }
 
 function DestinationSidebar({
-  activeFilterCount,
   focusOptions,
-  isCollapsed,
-  onClearFilters,
-  onCollapsedChange,
   onFocusToggle,
+  onRegionToggle,
   onStateToggle,
+  regionOptions,
   selectedFocuses,
+  selectedRegions,
   selectedStates,
   stateOptions,
 }: {
-  activeFilterCount: number;
   focusOptions: CountOption[];
-  isCollapsed: boolean;
+  regionOptions: CountOption[];
   selectedFocuses: string[];
+  selectedRegions: string[];
   selectedStates: string[];
   stateOptions: CountOption[];
-  onClearFilters: () => void;
-  onCollapsedChange: (value: boolean) => void;
   onFocusToggle: (value: string) => void;
+  onRegionToggle: (value: string) => void;
   onStateToggle: (value: string) => void;
 }) {
-  if (isCollapsed) {
-    return (
-      <aside className="lg:sticky lg:top-5 lg:z-20 lg:self-start">
-        <div className="flex items-center justify-center gap-2 rounded-[8px] border border-[#ead8c5] bg-white p-2 shadow-[0_12px_32px_rgba(67,43,27,0.07)] lg:flex-col">
-          <button
-            type="button"
-            aria-label="Maximize destination filters"
-            onClick={() => onCollapsedChange(false)}
-            className="grid size-10 place-items-center rounded-[7px] border border-primary/25 bg-primary/8 text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
-          >
-            <SlidersHorizontal className="size-4" strokeWidth={1.9} />
-          </button>
-          <button
-            type="button"
-            aria-label="Open state filters"
-            onClick={() => onCollapsedChange(false)}
-            className="relative grid size-10 place-items-center rounded-[7px] text-secondary transition-colors hover:bg-primary/8 hover:text-primary"
-          >
-            <Landmark className="size-4" strokeWidth={1.8} />
-            {selectedStates.length > 0 ? (
-              <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" />
-            ) : null}
-          </button>
-          <button
-            type="button"
-            aria-label="Open heritage focus filters"
-            onClick={() => onCollapsedChange(false)}
-            className="relative grid size-10 place-items-center rounded-[7px] text-secondary transition-colors hover:bg-primary/8 hover:text-primary"
-          >
-            <Sparkles className="size-4" strokeWidth={1.8} />
-            {selectedFocuses.length > 0 ? (
-              <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" />
-            ) : null}
-          </button>
-        </div>
-      </aside>
-    );
-  }
+  const [isStateFilterOpen, setIsStateFilterOpen] = useState(false);
+  const [isFocusFilterOpen, setIsFocusFilterOpen] = useState(false);
 
   return (
-    <aside className="space-y-3 lg:sticky lg:top-5 lg:z-20 lg:self-start">
-      <div className="rounded-[8px] border border-[#ead8c5] bg-white p-4 shadow-[0_12px_32px_rgba(67,43,27,0.07)] transition-[box-shadow,transform] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="font-sans text-[14px] font-bold text-secondary">
-            Filter Destinations
-          </h2>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClearFilters}
-              disabled={activeFilterCount === 0}
-              className="font-sans text-[11px] font-bold text-primary transition-colors hover:text-accent disabled:pointer-events-none disabled:text-secondary/35"
-            >
-              Reset All
-            </button>
-            <button
-              type="button"
-              aria-controls="destination-filter-panel"
-              aria-expanded={!isCollapsed}
-              onClick={() => onCollapsedChange(true)}
-              className="inline-flex h-7 items-center gap-1 rounded-[6px] border border-primary/25 bg-primary/5 px-2 font-sans text-[11px] font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
-            >
-              Minimize
-              <ChevronDown
-                className="size-3.5 rotate-90 transition-transform"
-                strokeWidth={2}
-              />
-            </button>
-          </div>
-        </div>
+    <aside className="lg:sticky lg:top-[118px] lg:self-start">
+      <div className="mb-4 flex items-center gap-2 font-sans text-[15px] font-medium text-primary">
+        <SlidersHorizontal className="size-4" strokeWidth={1.8} />
+        <span>Filter your search</span>
+      </div>
 
-        <div id="destination-filter-panel">
-          <div className="mt-4 space-y-5">
-            <FilterOptionGroup
-              icon={Landmark}
-              options={stateOptions}
-              selectedValues={selectedStates}
-              title="By State"
-              onToggle={onStateToggle}
-            />
-            <FilterOptionGroup
-              icon={Sparkles}
-              options={focusOptions}
-              selectedValues={selectedFocuses}
-              title="Heritage Focus"
-              onToggle={onFocusToggle}
-            />
-          </div>
-
-          <button
-            type="button"
-            className="mt-5 inline-flex h-9 w-full items-center justify-center gap-2 rounded-[7px] border border-primary bg-white px-4 font-sans text-[11px] font-bold text-primary transition-colors hover:bg-primary hover:text-white"
-          >
-            <SlidersHorizontal className="size-4" />
-            Apply Filters
-          </button>
-        </div>
+      <div className="rounded-[4px] border border-[#e8dfd8] bg-white px-5 py-5 shadow-[0_8px_18px_rgba(50,50,50,0.045)]">
+        <FilterOptionGroup
+          options={regionOptions}
+          selectedValues={selectedRegions}
+          title="Regions"
+          onToggle={onRegionToggle}
+        />
+        <FilterOptionGroup
+          options={stateOptions}
+          selectedValues={selectedStates}
+          title="States"
+          isCollapsible
+          isOpen={isStateFilterOpen}
+          onOpenToggle={() => setIsStateFilterOpen((current) => !current)}
+          onToggle={onStateToggle}
+        />
+        <FilterOptionGroup
+          options={focusOptions}
+          selectedValues={selectedFocuses}
+          title="Heritage Focus"
+          isCollapsible
+          isOpen={isFocusFilterOpen}
+          onOpenToggle={() => setIsFocusFilterOpen((current) => !current)}
+          onToggle={onFocusToggle}
+        />
       </div>
     </aside>
   );
 }
 
 function FilterOptionGroup({
-  icon: Icon,
+  isCollapsible = false,
+  isOpen = true,
+  onOpenToggle,
   options,
   onToggle,
   selectedValues,
   title,
 }: {
-  icon: LucideIcon;
+  isCollapsible?: boolean;
+  isOpen?: boolean;
   options: CountOption[];
   selectedValues: string[];
   title: string;
+  onOpenToggle?: () => void;
   onToggle: (value: string) => void;
 }) {
   if (options.length === 0) {
@@ -703,76 +1000,107 @@ function FilterOptionGroup({
   }
 
   return (
-    <section>
-      <h3 className="flex items-center gap-2 font-sans text-[12px] font-bold text-secondary">
-        <Icon className="size-4 text-primary" strokeWidth={1.8} />
-        {title}
-      </h3>
-      <div className="mt-3 space-y-1.5">
-        {options.map((option) => (
-          <label
-            key={option.value}
-            className="flex cursor-pointer items-center gap-3 rounded-[6px] px-1 py-1 font-sans text-[11px] font-semibold text-secondary/72 transition-colors hover:text-primary"
-          >
-            <input
-              checked={hasSelection(selectedValues, option.value)}
-              onChange={() => onToggle(option.value)}
-              type="checkbox"
-              className="size-4 rounded border-[#d7b89a] accent-primary"
-            />
-            <span className="min-w-0 flex-1 truncate">{option.label}</span>
-            <span className="text-secondary/42">{option.count}</span>
-          </label>
-        ))}
-      </div>
+    <section className="border-b border-[#f1ebe6] py-4 first:pt-0 last:border-b-0 last:pb-0">
+      {isCollapsible ? (
+        <button
+          type="button"
+          aria-expanded={isOpen}
+          onClick={onOpenToggle}
+          className="flex w-full items-center justify-between gap-3 font-sans text-[15px] font-semibold leading-none text-primary"
+        >
+          <span>{title}</span>
+          <ChevronDown
+            className={cn(
+              "size-4 transition-transform duration-200",
+              isOpen ? "rotate-180" : "rotate-0"
+            )}
+            strokeWidth={1.8}
+          />
+        </button>
+      ) : (
+        <h3 className="font-sans text-[15px] font-semibold leading-none text-primary">
+          {title}
+        </h3>
+      )}
+
+      {isOpen ? (
+        <div className="mt-3 space-y-2">
+          {options.map((option) => (
+            <label
+              key={option.value}
+              className="flex cursor-pointer items-center gap-2.5 font-sans text-[15px] font-medium leading-[1.25] text-secondary/68 transition-colors hover:text-primary"
+            >
+              <input
+                checked={hasSelection(selectedValues, option.value)}
+                onChange={() => onToggle(option.value)}
+                type="checkbox"
+                className="size-4 rounded-[2px] border-[#d9cdc3] accent-primary"
+              />
+              <span className="min-w-0 flex-1 truncate">{option.label}</span>
+              <span className="text-[12px] text-secondary/38">{option.count}</span>
+            </label>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }
 
-function ResultsHeader({
-  activeCategoryLabel,
-  currentPage,
-  destinationCount,
-  isLoading,
-  onSortModeChange,
-  sortMode,
+function InterestFilter({
+  onInterestToggle,
+  selectedInterests,
 }: {
-  activeCategoryLabel: string;
-  currentPage: number;
-  destinationCount: number;
-  isLoading: boolean;
-  sortMode: SortMode;
-  onSortModeChange: (value: SortMode) => void;
+  selectedInterests: string[];
+  onInterestToggle: (value: string) => void;
 }) {
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-3 border-b border-primary/70 pb-5">
+      <p className="font-sans text-[15px] font-medium leading-[1.1] text-secondary/70">
+        Pick your interest
+      </p>
+      <div className="flex flex-wrap gap-x-4 gap-y-3">
+        {interestTabs.map((tab) => {
+          const isActive = hasSelection(selectedInterests, tab.value);
+
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              aria-pressed={isActive}
+              onClick={() => onInterestToggle(tab.value)}
+              className={cn(
+                "inline-flex h-9 min-w-[116px] items-center justify-center gap-2 rounded-full border px-5 font-sans text-[15px] font-semibold leading-none transition-colors",
+                isActive
+                  ? "border-primary bg-primary text-white shadow-[0_6px_14px_rgba(212,114,32,0.18)]"
+                  : "border-primary/70 bg-white text-primary hover:bg-primary hover:text-white"
+              )}
+            >
+              <span>{tab.label}</span>
+              <span aria-hidden="true">{isActive ? "-" : "+"}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ResultsIntro() {
+  return (
+    <div className="mt-7 grid gap-4 md:grid-cols-[minmax(0,1fr)_310px] md:items-start">
       <div>
-        <p className="font-sans text-[11px] font-bold uppercase tracking-normal text-primary">
-          {activeCategoryLabel}
+        <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+          Explore heritage beyond borders
         </p>
-        <h2 className="mt-1 font-heading text-[30px] font-bold leading-tight text-secondary sm:text-[36px]">
-          Top Destinations
-        </h2>
-        <p className="mt-1 font-sans text-[12px] font-semibold text-secondary/56">
-          {isLoading ? "Loading live destinations..." : formatShowingRange(currentPage, destinationCount)}
-        </p>
+        <h1 className="mt-3 max-w-[360px] font-heading text-title font-bold leading-none tracking-normal text-secondary">
+          Find your perfect experience
+        </h1>
       </div>
 
-      <label className="flex h-10 w-full items-center gap-3 rounded-[7px] border border-[#ead8c5] bg-white px-3 font-sans text-[11px] font-bold text-secondary shadow-[0_8px_20px_rgba(67,43,27,0.05)] sm:w-auto">
-        <span className="whitespace-nowrap text-secondary/52">Sort by:</span>
-        <select
-          value={sortMode}
-          onChange={(event) => onSortModeChange(event.target.value as SortMode)}
-          className="min-w-0 bg-transparent font-sans text-[11px] font-bold text-secondary outline-none"
-        >
-          {sortOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <ChevronDown className="pointer-events-none size-4 text-primary" />
-      </label>
+      <p className="max-w-[360px] font-sans text-description font-medium text-secondary/68 md:justify-self-end md:pt-6">
+        Guides, local transport, accommodation, and like-minded travelers are
+        always included. Book securely & flexibly.
+      </p>
     </div>
   );
 }
@@ -780,17 +1108,19 @@ function ResultsHeader({
 function DestinationGrid({
   destinations,
   isLoading,
+  tourCategoriesByDestinationId,
 }: {
   destinations: PublicDestination[];
   isLoading: boolean;
+  tourCategoriesByDestinationId: Map<string, string[]>;
 }) {
   if (isLoading) {
     return (
-      <div className="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 8 }).map((_item, index) => (
+      <div className="mt-6 grid gap-x-6 gap-y-7 sm:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: pageSize }).map((_item, index) => (
           <div
             key={index}
-            className="aspect-[1.04/1] min-h-[300px] animate-pulse rounded-[16px] bg-[#ead8c5]/65"
+            className="aspect-[0.95/1] min-h-[230px] animate-pulse rounded-[8px] bg-[#e7ddd5]"
           />
         ))}
       </div>
@@ -802,10 +1132,15 @@ function DestinationGrid({
   }
 
   return (
-    <div className="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="mt-6 grid gap-x-6 gap-y-7 sm:grid-cols-2 xl:grid-cols-3">
       {destinations.map((destination, index) => (
         <DestinationCard
           key={destination.id || destination.destinationId}
+          categoryPills={
+            tourCategoriesByDestinationId.get(
+              normalizeId(destination.destinationId)
+            ) || []
+          }
           destination={destination}
           image={getDestinationImage(destination, index)}
         />
@@ -815,42 +1150,63 @@ function DestinationGrid({
 }
 
 function DestinationCard({
+  categoryPills,
   destination,
   image,
 }: {
+  categoryPills: string[];
   destination: PublicDestination;
   image: string;
 }) {
   const title = destination.destinationName;
 
   return (
-    <article className="group relative aspect-[1.04/1] min-h-[300px] overflow-hidden rounded-[16px] bg-secondary shadow-[0_16px_34px_rgba(67,43,27,0.11)]">
-      <Image
-        src={image}
-        alt={title}
-        fill
-        sizes="(min-width: 1280px) 310px, (min-width: 640px) 50vw, 100vw"
-        className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
-      />
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.46)_0%,rgba(18,12,8,0.08)_48%,rgba(18,12,8,0.44)_100%)]" />
+    <Link
+      href={getDestinationHref(destination)}
+      aria-label={`Customize journey to ${title}`}
+      className="group block"
+    >
+      <article className="relative aspect-[0.95/1] min-h-[230px] overflow-hidden rounded-[8px] bg-secondary shadow-[0_12px_24px_rgba(50,50,50,0.11)]">
+        <Image
+          src={image}
+          alt={title}
+          fill
+          sizes="(min-width: 1280px) 250px, (min-width: 640px) 50vw, 100vw"
+          className="object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(17,13,10,0.38)_0%,rgba(17,13,10,0.08)_46%,rgba(17,13,10,0.22)_100%)]" />
 
-      <div className="absolute inset-x-0 top-0 p-6">
-        <h3 className="min-w-0 truncate font-sans text-[20px] font-semibold leading-none text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.3)]">
-          {title}
-        </h3>
-      </div>
+        <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-4 p-4">
+          <h3 className="min-w-0 truncate font-sans text-[18px] font-medium leading-none text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]">
+            {title}
+          </h3>
+          <span className="grid size-7 shrink-0 place-items-center rounded-full text-white transition-transform duration-300 group-hover:translate-x-0.5">
+            <ArrowRight className="size-5" strokeWidth={1.8} />
+          </span>
+        </div>
 
-      <Link
-        href={getDestinationHref(destination)}
-        aria-label={`Explore ${title}`}
-        className="absolute bottom-7 left-7 inline-flex h-12 items-center gap-2 rounded-full border border-white/30 bg-secondary/62 pl-5 pr-1.5 font-sans text-[14px] font-semibold text-white shadow-[0_14px_32px_rgba(35,23,15,0.24)] backdrop-blur transition-colors hover:bg-primary/90"
-      >
-        Explore
-        <span className="grid size-9 place-items-center rounded-full bg-white text-secondary transition-transform duration-300 group-hover:translate-x-0.5">
-          <ArrowRight className="size-4 -rotate-45 transition-transform duration-300 group-hover:rotate-0" strokeWidth={2.2} />
+        {categoryPills.length > 0 ? (
+          <div className="absolute inset-x-4 bottom-[68px] flex flex-wrap justify-start gap-1.5 opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100">
+            {categoryPills.map((label) => (
+              <span
+                key={label}
+                title={label}
+                className="inline-flex max-w-full items-center gap-1 rounded-full border border-primary/15 bg-white px-3 py-2 font-sans text-[12px] font-semibold leading-none text-primary shadow-[0_5px_12px_rgba(0,0,0,0.16)]"
+              >
+                <span className="truncate">{label}</span>
+                <span aria-hidden="true" className="shrink-0">
+                  +
+                </span>
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        <span className="absolute bottom-4 left-4 inline-flex h-10 max-w-[calc(100%-2rem)] items-center rounded-full bg-[#2b241f]/80 px-5 font-sans text-[13px] font-bold leading-none text-white shadow-[0_10px_22px_rgba(35,23,15,0.28)] backdrop-blur-[2px] transition-colors group-hover:bg-[#2b241f]/80">
+          <span className="truncate">Customize </span>
         </span>
-      </Link>
-    </article>
+      </article>
+    </Link>
   );
 }
 
@@ -862,99 +1218,13 @@ function EmptyState({
   title: string;
 }) {
   return (
-    <div className="mt-6 rounded-[8px] border border-dashed border-[#ead8c5] bg-white/72 px-5 py-10 text-center">
-      <h3 className="font-heading text-[24px] font-bold text-secondary">
+    <div className="mt-6 rounded-[8px] border border-dashed border-[#e0d3c8] bg-white/75 px-5 py-10 text-center">
+      <h3 className="font-sans text-[24px] font-semibold text-secondary">
         {title}
       </h3>
-      <p className="mx-auto mt-2 max-w-[420px] font-sans text-[13px] leading-[1.65] text-secondary/62">
+      <p className="mx-auto mt-2 max-w-[420px] font-sans text-[12px] leading-[1.65] text-secondary/62">
         {message}
       </p>
     </div>
-  );
-}
-
-function Pagination({
-  currentPage,
-  onPageChange,
-  totalPages,
-}: {
-  currentPage: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
-}) {
-  const pages = createPaginationPages(currentPage, totalPages);
-
-  return (
-    <nav
-      aria-label="Destination pagination"
-      className="mt-8 flex items-center justify-center gap-2"
-    >
-      {currentPage > 1 ? (
-        <PaginationButton
-          label="Previous destinations page"
-          onClick={() => onPageChange(currentPage - 1)}
-        >
-          <ArrowRight className="size-3.5 rotate-180" />
-        </PaginationButton>
-      ) : null}
-
-      {pages.map((page, index) => {
-        const previousPage = pages[index - 1];
-        const showGap = previousPage !== undefined && page - previousPage > 1;
-
-        return (
-          <span key={page} className="flex items-center gap-2">
-            {showGap ? (
-              <span className="font-sans text-[11px] font-bold text-secondary/42">
-                ...
-              </span>
-            ) : null}
-            <PaginationButton
-              active={currentPage === page}
-              label={`Go to destinations page ${page}`}
-              onClick={() => onPageChange(page)}
-            >
-              {page}
-            </PaginationButton>
-          </span>
-        );
-      })}
-
-      {currentPage < totalPages ? (
-        <PaginationButton
-          label="Next destinations page"
-          onClick={() => onPageChange(currentPage + 1)}
-        >
-          <ArrowRight className="size-3.5" />
-        </PaginationButton>
-      ) : null}
-    </nav>
-  );
-}
-
-function PaginationButton({
-  active,
-  children,
-  label,
-  onClick,
-}: {
-  active?: boolean;
-  children: React.ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-current={active ? "page" : undefined}
-      onClick={onClick}
-      className={cn(
-        "grid size-8 place-items-center rounded-full border border-[#ead8c5] bg-white font-sans text-[11px] font-bold text-secondary transition-colors hover:border-primary hover:text-primary",
-        active && "border-primary bg-primary text-white hover:text-white"
-      )}
-    >
-      {children}
-    </button>
   );
 }

@@ -15,8 +15,10 @@ import { WhyChooseUsSection } from "./why-choose-us-section";
 
 export function HomePage({
   topDestinations,
+  tourCategories,
 }: {
   topDestinations?: HomeDestinationCard[];
+  tourCategories?: string[];
 }) {
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -44,7 +46,7 @@ export function HomePage({
 
               <TextReveal trigger="load" delay={280}>
                 <div className="flex items-end">
-                  <h1 className="font-heading text-[36px] font-bold leading-none tracking-normal text-secondary sm:text-[44px] lg:text-title [@media(max-height:600px)]:text-[38px]">
+                  <h1 className="font-heading text-title font-bold leading-none tracking-normal text-secondary">
                     <span className="block">Travel Deeper</span>
                     <span className="flex items-center gap-3">
                       Into Places
@@ -72,7 +74,10 @@ export function HomePage({
 
       <AboutSection />
 
-      <TopDestinationsSection destinations={topDestinations} />
+      <TopDestinationsSection
+        destinations={topDestinations}
+        tourCategories={tourCategories}
+      />
 
       <EgyptExperiencesSection />
 

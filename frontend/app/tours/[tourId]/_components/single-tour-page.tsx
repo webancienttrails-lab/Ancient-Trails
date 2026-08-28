@@ -2,17 +2,19 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   type Dispatch,
   type FormEvent,
   type ReactNode,
   type SetStateAction,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import {
   ArrowRight,
   BarChart3,
@@ -20,6 +22,7 @@ import {
   BookOpen,
   CalendarDays,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -54,16 +57,28 @@ import {
 } from "@/lib/home-travel";
 import {
   calculateBalance,
+  calculateAgeOnDate,
   calculateBalanceDueDate,
   calculateDeposit,
-  generateAccommodationOptions,
+  generateOccupancyOptions,
   ROOM_TYPES,
   validateDepartureForBooking,
   type AccommodationOption,
   type PricedDeparture,
   type PricingCategory,
-  type Traveller,
 } from "@/lib/tour-booking";
+import {
+  cancelBookingPaymentOrder,
+  createBookingPaymentOrder,
+  verifyBookingPayment,
+  type BookingPayload,
+  type BookingPaymentOrder,
+} from "@/lib/booking-payment";
+import {
+  getTravellerSession,
+  listenForTravellerSessionChanges,
+  type TravellerUser,
+} from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
 import { Button, ButtonArrow } from "@/components/ui/button";
@@ -98,6 +113,7 @@ type ItineraryDay = {
 type TravellerCounts = {
   adults: number;
   children: number;
+  infants: number;
 };
 
 type TravellerCountKey = keyof TravellerCounts;
@@ -108,6 +124,7 @@ type TravellerDetailForm = {
   firstName: string;
   gender: "" | "female" | "male";
   lastName: string;
+  mobileNumber: string;
   nationality: string;
   panNumber: string;
   phoneCountryCode: string;
@@ -121,6 +138,7 @@ type TravellerDetailTab = {
   heading: string;
   id: string;
   label: string;
+  travellerType: "adult" | "child" | "infant";
 };
 
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
@@ -134,6 +152,80 @@ const shortDateFormatter = new Intl.DateTimeFormat("en-GB", {
   month: "short",
   year: "numeric",
 });
+
+const datePickerMonthLabels = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+const datePickerWeekdayLabels = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+type CheckoutStatus = "idle" | "creating" | "gateway_open" | "verifying";
+
+type RazorpayPaymentResponse = {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+};
+
+type RazorpayFailureResponse = {
+  error?: {
+    description?: string;
+    reason?: string;
+  };
+};
+
+type RazorpayCheckoutInstance = {
+  on: (
+    event: "payment.failed",
+    handler: (response: RazorpayFailureResponse) => void
+  ) => void;
+  open: () => void;
+};
+
+type RazorpayCheckoutOptions = {
+  amount: number;
+  currency: string;
+  description: string;
+  handler: (response: RazorpayPaymentResponse) => void;
+  key: string;
+  modal: {
+    ondismiss: () => void;
+  };
+  name: string;
+  order_id: string;
+  prefill: {
+    contact: string;
+    email: string;
+    name: string;
+  };
+  retry: {
+    enabled: boolean;
+  };
+  theme: {
+    color: string;
+  };
+};
+
+declare global {
+  interface Window {
+    Razorpay?: new (
+      options: RazorpayCheckoutOptions
+    ) => RazorpayCheckoutInstance;
+  }
+}
+
+let razorpayCheckoutScriptPromise: Promise<void> | null = null;
 
 const fallbackGalleryImages = [
   "/home assets/Khajuraho.webp",
@@ -216,6 +308,38 @@ function formatDate(value: string | null) {
   return shortDateFormatter.format(date).replace(",", "");
 }
 
+function formatDatePickerValue(value: string) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return shortDateFormatter.format(date).replace(",", "");
+}
+
+function formatDatePickerStorageValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function parseDatePickerValue(value: string) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(`${value}T00:00:00`);
+
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function getDateValue(value: string | null) {
   if (!value) {
     return 0;
@@ -230,8 +354,80 @@ function getDepartureIdentifier(departure: PublicTourDeparture) {
   return departure.id || departure.departureId || departure.departureDate || "";
 }
 
+function isClientFallbackDeparture(departure: PublicTourDeparture) {
+  return departure.id.startsWith("fallback-departure-");
+}
+
+function sortDeparturesByDate(departures: PublicTourDeparture[]) {
+  return departures
+    .slice()
+    .sort(
+      (left, right) =>
+        getDateValue(left.departureDate) - getDateValue(right.departureDate)
+    );
+}
+
+function isUpcomingDeparture(departure: PublicTourDeparture) {
+  const departureDate = getDateValue(departure.departureDate);
+
+  if (!departureDate) {
+    return false;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return departureDate >= today.getTime();
+}
+
+function validateDeparturePaymentReadiness(
+  departure: PublicTourDeparture,
+  requestedTravellers: number
+) {
+  const errors = validateDepartureForBooking(
+    toPricedDeparture(departure),
+    requestedTravellers
+  );
+
+  if (isClientFallbackDeparture(departure)) {
+    errors.push("Live departure details are required before payment.");
+  }
+
+  if (!departure.departureId.trim()) {
+    errors.push("Departure ID is missing.");
+  }
+
+  if (!Number.isFinite(departure.priceAdult) || departure.priceAdult <= 0) {
+    errors.push("Adult pricing is required before payment.");
+  }
+
+  return Array.from(new Set(errors));
+}
+
+function isDeparturePaymentReady(
+  departure: PublicTourDeparture,
+  requestedTravellers = 1
+) {
+  return validateDeparturePaymentReadiness(departure, requestedTravellers).length === 0;
+}
+
+function getSelectedDeparture(
+  departures: PublicTourDeparture[],
+  selectedDepartureId: string
+) {
+  const selectedDeparture = departures.find(
+    (departure) => getDepartureIdentifier(departure) === selectedDepartureId
+  );
+
+  if (selectedDeparture) {
+    return selectedDeparture;
+  }
+
+  return getBestDeparture(departures);
+}
+
 function getTotalTravellers(counts: TravellerCounts) {
-  return counts.adults + counts.children;
+  return counts.adults + counts.children + counts.infants;
 }
 
 const defaultTravellerDetailForm: TravellerDetailForm = {
@@ -240,6 +436,7 @@ const defaultTravellerDetailForm: TravellerDetailForm = {
   firstName: "",
   gender: "",
   lastName: "",
+  mobileNumber: "",
   nationality: "India",
   panNumber: "",
   phoneCountryCode: "India +91",
@@ -268,7 +465,7 @@ function formatOrdinal(value: number) {
 function createTravellerDetailTabs(
   counts: TravellerCounts
 ): TravellerDetailTab[] {
-  return Array.from({ length: counts.adults }, (_item, index) => {
+  const adultTabs = Array.from({ length: counts.adults }, (_item, index) => {
     const travellerNumber = index + 1;
     const isLeadTraveller = index === 0;
 
@@ -283,8 +480,401 @@ function createTravellerDetailTabs(
       description: isLeadTraveller
         ? "This traveller will serve as the contact person for the booking."
         : "Add this traveller's details for the booking.",
+      travellerType: "adult" as const,
     };
   });
+
+  const childTabs = Array.from({ length: counts.children }, (_item, index) => {
+    const travellerNumber = counts.adults + index + 1;
+
+    return {
+      id: `child-${index + 1}`,
+      label: `${formatOrdinal(travellerNumber)} Traveller`,
+      heading: `${formatOrdinal(travellerNumber)} Traveller`,
+      description: "Add this child traveller's details for the booking.",
+      travellerType: "child" as const,
+    };
+  });
+
+  const infantTabs = Array.from({ length: counts.infants }, (_item, index) => {
+    const travellerNumber = counts.adults + counts.children + index + 1;
+
+    return {
+      id: `infant-${index + 1}`,
+      label: `${formatOrdinal(travellerNumber)} Traveller`,
+      heading: `${formatOrdinal(travellerNumber)} Traveller`,
+      description: "Add this infant traveller's details for the booking.",
+      travellerType: "infant" as const,
+    };
+  });
+
+  return [...adultTabs, ...childTabs, ...infantTabs];
+}
+
+function getCompleteTravellerDetailForms(
+  counts: TravellerCounts,
+  forms: Record<string, TravellerDetailForm>
+) {
+  return Object.fromEntries(
+    createTravellerDetailTabs(counts).map((tab) => [
+      tab.id,
+      {
+        ...defaultTravellerDetailForm,
+        ...(forms[tab.id] || {}),
+      },
+    ])
+  ) as Record<string, TravellerDetailForm>;
+}
+
+function getProfileMobileDigits(value?: string) {
+  return (value || "").replace(/\D/g, "");
+}
+
+function getProfilePhoneCountryCode(value?: string) {
+  const digits = getProfileMobileDigits(value);
+
+  if (digits.length > 10) {
+    if (digits.startsWith("44")) {
+      return "UK +44";
+    }
+
+    if (digits.startsWith("61")) {
+      return "Australia +61";
+    }
+
+    if (digits.startsWith("1")) {
+      return "US +1";
+    }
+  }
+
+  return "India +91";
+}
+
+function getProfileMobileNumber(value?: string) {
+  let digits = getProfileMobileDigits(value);
+  const countryCode = getProfilePhoneCountryCode(value);
+
+  if (digits.length > 10) {
+    if (countryCode === "India +91" && digits.startsWith("91")) {
+      digits = digits.slice(2);
+    } else if (countryCode === "UK +44" && digits.startsWith("44")) {
+      digits = digits.slice(2);
+    } else if (countryCode === "Australia +61" && digits.startsWith("61")) {
+      digits = digits.slice(2);
+    } else if (countryCode === "US +1" && digits.startsWith("1")) {
+      digits = digits.slice(1);
+    }
+  }
+
+  if (digits.length > 10 && digits.startsWith("0")) {
+    digits = digits.slice(1);
+  }
+
+  return digits.slice(0, 15);
+}
+
+function getTravellerProfileGender(gender?: string): TravellerDetailForm["gender"] {
+  const normalizedGender = gender?.trim().toLowerCase();
+
+  if (normalizedGender === "male") {
+    return "male";
+  }
+
+  if (normalizedGender === "female") {
+    return "female";
+  }
+
+  return "";
+}
+
+function getTravellerProfileNationality(nationality?: string) {
+  const trimmedNationality = nationality?.trim() || "";
+
+  if (!trimmedNationality || trimmedNationality === "Indian") {
+    return "India";
+  }
+
+  const supportedNationalities = new Set([
+    "India",
+    "United States",
+    "United Kingdom",
+    "Australia",
+    "Other",
+  ]);
+
+  return supportedNationalities.has(trimmedNationality)
+    ? trimmedNationality
+    : "Other";
+}
+
+function getTravellerProfileDateOfBirth(value?: string) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return formatDatePickerStorageValue(date);
+}
+
+function isValidStoredBirthDate(value: string) {
+  const date = parseDatePickerValue(value);
+
+  if (!date) {
+    return false;
+  }
+
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+
+  return date <= today;
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function isValidMobileNumber(value: string) {
+  return /^[0-9\s-]{5,20}$/.test(sanitizeMobileNumber(value));
+}
+
+function isTravellerDetailFormComplete(form: TravellerDetailForm) {
+  return Boolean(
+    form.firstName.trim() &&
+      form.lastName.trim() &&
+      isValidEmail(form.email) &&
+      form.nationality.trim() &&
+      extractPhoneCountryCode(form.phoneCountryCode) &&
+      isValidMobileNumber(form.mobileNumber) &&
+      form.gender &&
+      isValidStoredBirthDate(form.dateOfBirth)
+  );
+}
+
+function hasCompletedTravellerProfile(user: TravellerUser | null) {
+  if (!user) {
+    return false;
+  }
+
+  return Boolean(
+    user.firstName?.trim() &&
+      user.lastName?.trim() &&
+      user.email?.trim() &&
+      getProfileMobileNumber(user.mobileNumber)
+  );
+}
+
+function getLeadTravellerFormFromProfile(
+  user: TravellerUser | null
+): TravellerDetailForm | null {
+  if (!hasCompletedTravellerProfile(user)) {
+    return null;
+  }
+
+  const gender = getTravellerProfileGender(user?.gender);
+
+  return {
+    ...defaultTravellerDetailForm,
+    title: gender === "female" ? "Ms" : "Mr",
+    firstName: user?.firstName?.trim() || "",
+    lastName: user?.lastName?.trim() || "",
+    email: user?.email?.trim() || "",
+    mobileNumber: getProfileMobileNumber(user?.mobileNumber),
+    phoneCountryCode: getProfilePhoneCountryCode(user?.mobileNumber),
+    gender,
+    nationality: getTravellerProfileNationality(user?.nationality),
+    dateOfBirth: getTravellerProfileDateOfBirth(user?.dateOfBirth),
+  };
+}
+
+function createInitialTravellerDetailForms(): Record<string, TravellerDetailForm> {
+  const leadTravellerForm = getLeadTravellerFormFromProfile(
+    getTravellerSession()?.user ?? null
+  );
+
+  return leadTravellerForm ? { "adult-1": leadTravellerForm } : {};
+}
+
+function hasEditedLeadTravellerForm(form?: TravellerDetailForm) {
+  if (!form) {
+    return false;
+  }
+
+  return Boolean(
+    form.firstName.trim() ||
+      form.lastName.trim() ||
+      form.email.trim() ||
+      form.mobileNumber.trim() ||
+      form.panNumber.trim() ||
+      form.gender ||
+      form.dateOfBirth.trim()
+  );
+}
+
+function extractPhoneCountryCode(value: string) {
+  return value.match(/\+[0-9]{1,4}/)?.[0] || "+91";
+}
+
+function sanitizeMobileNumber(value: string) {
+  return value.replace(/[^\d\s-]/g, "").trim();
+}
+
+function createAccommodationDetails(option?: AccommodationOption) {
+  const singleRooms =
+    option?.rooms.filter((room) => room.roomType === "single").length || 0;
+
+  return {
+    singleOccupancyOneRoom: singleRooms === 1 ? 1 : 0,
+    singleOccupancyTwoRooms: singleRooms > 1 ? singleRooms : 0,
+    doubleOccupancy:
+      option?.rooms.filter((room) => room.roomType === "double").length || 0,
+    twinOccupancy:
+      option?.rooms.filter((room) => room.roomType === "twin").length || 0,
+    tripleOccupancy:
+      option?.rooms.filter((room) => room.roomType.startsWith("triple")).length ||
+      0,
+  };
+}
+
+function getTravellerAgeOnDeparture(
+  form: TravellerDetailForm,
+  departure: PublicTourDeparture
+) {
+  if (!form.dateOfBirth || !departure.departureDate) {
+    return 0;
+  }
+
+  try {
+    return calculateAgeOnDate(form.dateOfBirth, departure.departureDate);
+  } catch {
+    return 0;
+  }
+}
+
+function createBookingPayload({
+  accommodationOption,
+  departure,
+  forms,
+  tour,
+  travellerCounts,
+}: {
+  accommodationOption: AccommodationOption;
+  departure: PublicTourDeparture;
+  forms: Record<string, TravellerDetailForm>;
+  tour: PublicTour;
+  travellerCounts: TravellerCounts;
+}): BookingPayload {
+  const travellerTabs = createTravellerDetailTabs(travellerCounts);
+  const totalGuests = getTotalTravellers(travellerCounts);
+  const childTabs = travellerTabs.filter((tab) => tab.travellerType !== "adult");
+
+  return {
+    tourId: tour.tourId,
+    departureId: departure.departureId,
+    selectedAccommodationOptionId: accommodationOption.id,
+    totalGuest: totalGuests,
+    adultCount: travellerCounts.adults,
+    childCount: travellerCounts.children + travellerCounts.infants,
+    childDetails: childTabs.map((tab) => ({
+      age: getTravellerAgeOnDeparture(forms[tab.id], departure),
+    })),
+    guestDetails: travellerTabs.map((tab) => {
+      const form = forms[tab.id];
+      const address = form.nationality
+        ? `Nationality: ${form.nationality}`
+        : "Not provided";
+
+      return {
+        title: form.title,
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        countryCode: extractPhoneCountryCode(form.phoneCountryCode),
+        mobileNumber: sanitizeMobileNumber(form.mobileNumber),
+        email: form.email.trim(),
+        dateOfBirth: form.dateOfBirth,
+        gender: form.gender,
+        address,
+        panNumber: form.panNumber.trim(),
+      };
+    }),
+    travellers: travellerTabs.map((tab) => {
+      const form = forms[tab.id];
+      const countryCode = extractPhoneCountryCode(form.phoneCountryCode);
+      const mobileNumber = sanitizeMobileNumber(form.mobileNumber);
+
+      return {
+        id: tab.id,
+        type: tab.travellerType === "adult" ? "adult" : "child",
+        title: form.title,
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        countryCode,
+        mobileNumber,
+        email: form.email.trim(),
+        dateOfBirth: form.dateOfBirth,
+        gender: form.gender,
+        address: form.nationality
+          ? `Nationality: ${form.nationality}`
+          : "Not provided",
+        panNumber: form.panNumber.trim(),
+        ageOnDeparture:
+          tab.travellerType === "adult"
+            ? undefined
+            : getTravellerAgeOnDeparture(form, departure),
+      };
+    }),
+    accommodationDetails: createAccommodationDetails(accommodationOption),
+    gstPercentage: GST_PERCENTAGE,
+  };
+}
+
+function loadRazorpayCheckoutScript() {
+  if (typeof window === "undefined") {
+    return Promise.reject(new Error("Razorpay checkout is available in browser only"));
+  }
+
+  if (window.Razorpay) {
+    return Promise.resolve();
+  }
+
+  if (razorpayCheckoutScriptPromise) {
+    return razorpayCheckoutScriptPromise;
+  }
+
+  razorpayCheckoutScriptPromise = new Promise((resolve, reject) => {
+    const existingScript = document.querySelector<HTMLScriptElement>(
+      'script[src="https://checkout.razorpay.com/v1/checkout.js"]'
+    );
+
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve(), { once: true });
+      existingScript.addEventListener(
+        "error",
+        () => {
+          razorpayCheckoutScriptPromise = null;
+          reject(new Error("Razorpay checkout could not be loaded"));
+        },
+        { once: true }
+      );
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => {
+      razorpayCheckoutScriptPromise = null;
+      reject(new Error("Razorpay checkout could not be loaded"));
+    };
+    document.body.appendChild(script);
+  });
+
+  return razorpayCheckoutScriptPromise;
 }
 
 function parseDurationDays(duration: string) {
@@ -353,6 +943,7 @@ function getTourImages(
   destinations: PublicDestination[]
 ) {
   const images = uniqueValues([
+    tour.thumbnailImage,
     tour.bannerImage,
     ...tour.galleryImages,
     ...destinations.flatMap((destination) => [
@@ -366,50 +957,29 @@ function getTourImages(
 }
 
 function getBestDeparture(departures: PublicTourDeparture[]) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const sortedDepartures = sortDeparturesByDate(departures);
 
   return (
-    departures
-      .filter((departure) => getDateValue(departure.departureDate) >= today.getTime())
-      .sort(
-        (left, right) =>
-          getDateValue(left.departureDate) - getDateValue(right.departureDate)
-      )[0] ||
-    departures
-      .slice()
-      .sort(
-        (left, right) =>
-          getDateValue(left.departureDate) - getDateValue(right.departureDate)
-      )[0]
+    sortedDepartures.find(
+      (departure) =>
+        isUpcomingDeparture(departure) && isDeparturePaymentReady(departure)
+    ) ||
+    sortedDepartures.find((departure) => isDeparturePaymentReady(departure)) ||
+    sortedDepartures[0]
   );
 }
 
 function getLowestPrice(departures: PublicTourDeparture[]) {
-  const prices = departures
+  const payableDepartures = departures.filter((departure) =>
+    isDeparturePaymentReady(departure)
+  );
+  const priceSource =
+    payableDepartures.length > 0 ? payableDepartures : departures;
+  const prices = priceSource
     .map((departure) => departure.priceAdult)
     .filter((price) => price > 0);
 
   return prices.length > 0 ? Math.min(...prices) : 0;
-}
-
-function getDiscountPercent(departure?: PublicTourDeparture) {
-  const offerText = departure?.earlyBirdOffer || "";
-  const percentMatch = offerText.match(/(\d+(?:\.\d+)?)\s*%/);
-
-  if (percentMatch) {
-    return Math.round(Number(percentMatch[1]));
-  }
-
-  return departure?.tourId === "WALKING-AMALFI-COAST" ? 11 : 0;
-}
-
-function getOldPrice(price: number, discountPercent: number) {
-  if (!price || !discountPercent || discountPercent >= 100) {
-    return 0;
-  }
-
-  return Math.round(price / (1 - discountPercent / 100));
 }
 
 function createFallbackExpert(): PublicExpert {
@@ -870,6 +1440,7 @@ function findRequestedTour(tours: PublicTour[], requestedTourId: string) {
 }
 
 export function SingleTourPage({ tourId }: { tourId: string }) {
+  const router = useRouter();
   const fallbackDetail = useMemo(() => createFallbackDetail(tourId), [tourId]);
   const [detail, setDetail] = useState<TourDetailData>(fallbackDetail);
   const [activeTab, setActiveTab] = useState<TourTab>("summary");
@@ -879,10 +1450,21 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
   const [travellerCounts, setTravellerCounts] = useState<TravellerCounts>({
     adults: 1,
     children: 0,
+    infants: 0,
   });
-  const [childBirthDates, setChildBirthDates] = useState<string[]>([]);
   const [selectedAccommodationOptionId, setSelectedAccommodationOptionId] =
     useState("");
+  const [acceptedBookingTermsKey, setAcceptedBookingTermsKey] = useState("");
+  const [areTravellerDetailsComplete, setAreTravellerDetailsComplete] =
+    useState(false);
+  const [travellerDetailForms, setTravellerDetailForms] = useState<
+    Record<string, TravellerDetailForm>
+  >({});
+  const [checkoutStatus, setCheckoutStatus] =
+    useState<CheckoutStatus>("idle");
+  const [paymentFeedback, setPaymentFeedback] = useState("");
+  const paymentOrderRef = useRef<BookingPaymentOrder | null>(null);
+  const pendingPaymentCancellationRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -946,39 +1528,53 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
     [detail.departures]
   );
   const price = getLowestPrice(detail.departures);
-  const selectedDeparture =
-    detail.departures.find(
-      (departure) => getDepartureIdentifier(departure) === selectedDepartureId
-    ) || detail.departures[0];
+  const selectedDeparture = useMemo(
+    () => getSelectedDeparture(detail.departures, selectedDepartureId),
+    [detail.departures, selectedDepartureId]
+  );
+  const selectedDepartureKey = selectedDeparture
+    ? getDepartureIdentifier(selectedDeparture)
+    : "";
   const selectedPricedDeparture = useMemo(
     () => (selectedDeparture ? toPricedDeparture(selectedDeparture) : null),
     [selectedDeparture]
   );
-  const selectedTravellers = useMemo(
-    () => createTravellers(travellerCounts, childBirthDates),
-    [childBirthDates, travellerCounts]
+  const selectedChildren = useMemo(
+    () =>
+      createChildInputs(
+        travellerCounts.children,
+        travellerCounts.infants,
+        travellerDetailForms
+      ),
+    [
+      travellerCounts.children,
+      travellerCounts.infants,
+      travellerDetailForms,
+    ]
   );
   const totalTravellers = getTotalTravellers(travellerCounts);
+  const completeTravellerDetailForms = useMemo(
+    () => getCompleteTravellerDetailForms(travellerCounts, travellerDetailForms),
+    [travellerCounts, travellerDetailForms]
+  );
+  const travellerDetailsKey = useMemo(
+    () => JSON.stringify(completeTravellerDetailForms),
+    [completeTravellerDetailForms]
+  );
+  const bookingValidationErrors = selectedDeparture
+    ? validateDeparturePaymentReadiness(selectedDeparture, totalTravellers)
+    : ["Select a scheduled departure."];
+  const bookingValidationKey = bookingValidationErrors.join("|");
   const selectedAccommodationOption = useMemo(() => {
-    if (!selectedPricedDeparture) {
-      return undefined;
-    }
-
-    const departureValidationErrors = validateDepartureForBooking(
-      selectedPricedDeparture,
-      totalTravellers
-    );
-
-    if (departureValidationErrors.length > 0) {
+    if (!selectedPricedDeparture || bookingValidationKey) {
       return undefined;
     }
 
     try {
-      const accommodationOptions = generateAccommodationOptions({
-        travellers: selectedTravellers,
-        departure: selectedPricedDeparture,
-        childPricingRules: selectedPricedDeparture.childPricingRules,
-        roomPolicy: selectedPricedDeparture.roomPolicy,
+      const accommodationOptions = generateOccupancyOptions({
+        adults: travellerCounts.adults,
+        children: selectedChildren,
+        selectedDeparture: selectedPricedDeparture,
       });
 
       return (
@@ -990,16 +1586,37 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
       return undefined;
     }
   }, [
+    bookingValidationKey,
     selectedAccommodationOptionId,
     selectedPricedDeparture,
-    selectedTravellers,
-    totalTravellers,
+    selectedChildren,
+    travellerCounts.adults,
   ]);
-  const bookingSubtotal =
-    selectedAccommodationOption?.totalPrice ??
-    (price > 0 ? price * totalTravellers : 0);
-  const discountPercent = getDiscountPercent(bestDeparture);
-  const oldPrice = getOldPrice(price, discountPercent);
+  const bookingSubtotal = selectedAccommodationOption?.total ?? 0;
+  const resolvedSelectedAccommodationOptionId =
+    selectedAccommodationOption?.id || selectedAccommodationOptionId;
+  const isAccommodationSelected = Boolean(resolvedSelectedAccommodationOptionId);
+  const canBookSeat = Boolean(
+    !isLoading &&
+      selectedDepartureKey &&
+      isAccommodationSelected &&
+      areTravellerDetailsComplete &&
+      selectedAccommodationOption &&
+      bookingSubtotal > 0 &&
+      bookingValidationErrors.length === 0
+  );
+  const bookingCompletionKey = canBookSeat
+    ? [
+        selectedDepartureKey,
+        resolvedSelectedAccommodationOptionId,
+        totalTravellers,
+        bookingSubtotal,
+        travellerDetailsKey,
+      ].join("|")
+    : "";
+  const hasAcceptedBookingTerms = Boolean(
+    bookingCompletionKey && acceptedBookingTermsKey === bookingCompletionKey
+  );
   const facts = useMemo(
     () =>
       createFacts(
@@ -1014,6 +1631,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
     () => createItineraryDays(detail.tour, detail.destinations, detail.itinerary),
     [detail]
   );
+
   useEffect(() => {
     const root = document.documentElement;
     let frameId = 0;
@@ -1048,6 +1666,70 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
     };
   }, []);
 
+  const cancelPaymentOrder = useCallback((orderId: string) => {
+    const cancellation = cancelBookingPaymentOrder(orderId)
+      .catch(() => undefined)
+      .then(() => undefined);
+
+    pendingPaymentCancellationRef.current = cancellation;
+
+    void cancellation.finally(() => {
+      if (pendingPaymentCancellationRef.current === cancellation) {
+        pendingPaymentCancellationRef.current = null;
+      }
+    });
+
+    return cancellation;
+  }, []);
+
+  const clearPaymentOrderState = useCallback(() => {
+    paymentOrderRef.current = null;
+
+    setPaymentFeedback("");
+  }, []);
+
+  const resetPaymentAttempt = useCallback(() => {
+    const orderId = paymentOrderRef.current?.checkout.orderId;
+
+    if (orderId) {
+      void cancelPaymentOrder(orderId);
+    }
+
+    clearPaymentOrderState();
+  }, [cancelPaymentOrder, clearPaymentOrderState]);
+
+  const handleSelectedDepartureIdChange = useCallback(
+    (value: SetStateAction<string>) => {
+      resetPaymentAttempt();
+      setSelectedDepartureId(value);
+    },
+    [resetPaymentAttempt]
+  );
+
+  const handleSelectedAccommodationOptionIdChange = useCallback(
+    (value: SetStateAction<string>) => {
+      resetPaymentAttempt();
+      setSelectedAccommodationOptionId(value);
+    },
+    [resetPaymentAttempt]
+  );
+
+  const handleTravellerCountsChange = useCallback(
+    (value: SetStateAction<TravellerCounts>) => {
+      resetPaymentAttempt();
+      setTravellerCounts(value);
+    },
+    [resetPaymentAttempt]
+  );
+
+  const handleTravellerDetailsChange = useCallback(
+    (forms: Record<string, TravellerDetailForm>) => {
+      resetPaymentAttempt();
+      setTravellerDetailForms(forms);
+    },
+    [resetPaymentAttempt]
+  );
+
   function handleSelectDeparture() {
     setActiveTab("pricing");
     window.requestAnimationFrame(() => {
@@ -1055,6 +1737,126 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
         .getElementById("departure-pricing")
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
+  }
+
+  async function openRazorpayCheckout(order: BookingPaymentOrder) {
+    await loadRazorpayCheckoutScript();
+
+    if (!window.Razorpay) {
+      throw new Error("Razorpay checkout could not be opened");
+    }
+
+    const cancelOpenPaymentOrder = () => {
+      void cancelPaymentOrder(order.checkout.orderId);
+      clearPaymentOrderState();
+    };
+    let didReceivePaymentResponse = false;
+    const checkout = new window.Razorpay({
+      amount: order.checkout.amount,
+      currency: order.checkout.currency,
+      description: order.checkout.description,
+      key: order.checkout.key,
+      name: order.checkout.name,
+      order_id: order.checkout.orderId,
+      prefill: order.checkout.prefill,
+      retry: {
+        enabled: false,
+      },
+      theme: {
+        color: "#d47220",
+      },
+      handler: (paymentResponse) => {
+        didReceivePaymentResponse = true;
+        setCheckoutStatus("verifying");
+        setPaymentFeedback("Verifying payment and confirming your booking...");
+
+        verifyBookingPayment(paymentResponse)
+          .then((verificationResponse) => {
+            const { booking, confirmationToken } = verificationResponse.data;
+
+            router.push(
+              `/booking-confirmed/${booking.id}?token=${encodeURIComponent(
+                confirmationToken
+              )}`
+            );
+          })
+          .catch((error: unknown) => {
+            setCheckoutStatus("idle");
+            setPaymentFeedback(
+              error instanceof Error
+                ? error.message
+                : "Payment verification failed. Please contact support."
+            );
+          });
+      },
+      modal: {
+        ondismiss: () => {
+          if (didReceivePaymentResponse) {
+            return;
+          }
+
+          setCheckoutStatus("idle");
+          cancelOpenPaymentOrder();
+          setPaymentFeedback(
+            "Payment cancelled. You can start a new payment from this page."
+          );
+        },
+      },
+    });
+
+    checkout.on("payment.failed", (failureResponse) => {
+      setCheckoutStatus("idle");
+      cancelOpenPaymentOrder();
+      setPaymentFeedback(
+        failureResponse.error?.description ||
+          failureResponse.error?.reason ||
+          "Payment failed. You can start a new payment from this page."
+      );
+    });
+
+    flushSync(() => setCheckoutStatus("gateway_open"));
+    checkout.open();
+  }
+
+  async function handleBookSeat() {
+    if (
+      !canBookSeat ||
+      !hasAcceptedBookingTerms ||
+      !selectedAccommodationOption ||
+      !selectedDeparture ||
+      checkoutStatus !== "idle"
+    ) {
+      return;
+    }
+
+    setCheckoutStatus("creating");
+    setPaymentFeedback("");
+
+    try {
+      await pendingPaymentCancellationRef.current;
+
+      const order = (
+        await createBookingPaymentOrder(
+          createBookingPayload({
+            accommodationOption: selectedAccommodationOption,
+            departure: selectedDeparture,
+            forms: completeTravellerDetailForms,
+            tour: detail.tour,
+            travellerCounts,
+          })
+        )
+      ).data;
+
+      paymentOrderRef.current = order;
+      await openRazorpayCheckout(order);
+    } catch (error) {
+      setCheckoutStatus("idle");
+      setPaymentFeedback(
+        error instanceof Error
+          ? error.message
+          : "Payment could not be started. Please try again."
+      );
+    }
   }
 
   return (
@@ -1069,6 +1871,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
         `}
       </style>
       <Header />
+      <PaymentProceedingOverlay checkoutStatus={checkoutStatus} />
 
       <section className="mx-auto grid w-full max-w-[1300px] gap-5 px-5 pb-7 pt-10 sm:pt-12 lg:grid-cols-[minmax(0,1fr)_306px] lg:px-0">
         <div className="min-w-0">
@@ -1076,7 +1879,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
 
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h1 className="font-heading text-[34px] font-bold leading-none tracking-normal text-secondary sm:text-[40px] lg:text-title">
+              <h1 className="font-heading text-title font-bold leading-none tracking-normal text-secondary">
                 {detail.tour.tourName}
               </h1>
               <TourMeta
@@ -1101,7 +1904,6 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
 
           <TourTabs
             activeTab={activeTab}
-            childBirthDates={childBirthDates}
             departures={detail.departures}
             facts={facts}
             itineraryDays={itineraryDays}
@@ -1111,10 +1913,13 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
             expert={detail.expert}
             selectedAccommodationOptionId={selectedAccommodationOptionId}
             selectedDepartureId={selectedDepartureId}
-            setChildBirthDates={setChildBirthDates}
-            setSelectedAccommodationOptionId={setSelectedAccommodationOptionId}
-            setSelectedDepartureId={setSelectedDepartureId}
-            setTravellerCounts={setTravellerCounts}
+            setSelectedAccommodationOptionId={
+              handleSelectedAccommodationOptionIdChange
+            }
+            setSelectedDepartureId={handleSelectedDepartureIdChange}
+            setTravellerCounts={handleTravellerCountsChange}
+            onTravellerDetailsCompleteChange={setAreTravellerDetailsComplete}
+            onTravellerDetailsChange={handleTravellerDetailsChange}
             tour={detail.tour}
             travellerCounts={travellerCounts}
           />
@@ -1123,8 +1928,6 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
         <aside className="space-y-2.5 lg:sticky lg:top-3 lg:self-start">
           <PriceCard
             bestDeparture={bestDeparture}
-            discountPercent={discountPercent}
-            oldPrice={oldPrice}
             price={price}
             onSelectDeparture={handleSelectDeparture}
             tour={detail.tour}
@@ -1136,6 +1939,16 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
             tour={detail.tour}
             travellerCounts={travellerCounts}
           />
+          <SeatBookingActionCard
+            accepted={hasAcceptedBookingTerms}
+            canBook={canBookSeat}
+            checkoutStatus={checkoutStatus}
+            onAcceptedChange={(accepted) =>
+              setAcceptedBookingTermsKey(accepted ? bookingCompletionKey : "")
+            }
+            onBook={handleBookSeat}
+            paymentFeedback={paymentFeedback}
+          />
           <HelpCard />
         </aside>
       </section>
@@ -1143,9 +1956,64 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
   );
 }
 
+function PaymentProceedingOverlay({
+  checkoutStatus,
+}: {
+  checkoutStatus: CheckoutStatus;
+}) {
+  const shouldShowOverlay =
+    checkoutStatus === "creating" || checkoutStatus === "verifying";
+
+  useEffect(() => {
+    if (!shouldShowOverlay) {
+      return;
+    }
+
+    const originalBodyOverflow = document.body.style.overflow;
+    const originalHtmlOverflow = document.documentElement.style.overflow;
+
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = originalBodyOverflow;
+      document.documentElement.style.overflow = originalHtmlOverflow;
+    };
+  }, [shouldShowOverlay]);
+
+  if (!shouldShowOverlay || typeof document === "undefined") {
+    return null;
+  }
+
+  const message =
+    checkoutStatus === "verifying"
+      ? "Confirming your payment. Please wait..."
+      : "Please wait while we open the secure payment window.";
+
+  return createPortal(
+    <div
+      aria-live="polite"
+      aria-busy="true"
+      className="fixed inset-0 z-[2147483647] grid place-items-center bg-white px-5 text-center text-secondary"
+      role="status"
+    >
+      <div className="grid max-w-[360px] place-items-center">
+        <span className="size-14 animate-spin rounded-full border-4 border-primary/18 border-t-primary" />
+        <h2 className="mt-5 font-heading text-[28px] font-bold leading-tight">
+          Payment proceeding...
+        </h2>
+        <p className="mt-3 font-sans text-[14px] font-medium leading-[1.6] text-secondary/68">
+          {message}
+        </p>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function Breadcrumbs({ tourName }: { tourName: string }) {
   return (
-    <nav className="flex flex-wrap items-center gap-2.5 font-sans text-[14px] font-medium text-accent">
+    <nav className="flex flex-wrap items-center gap-2.5 font-sans text-[15px] font-medium text-accent">
       <Link href="/" className="transition-colors hover:text-primary">
         Home
       </Link>
@@ -1169,7 +2037,7 @@ function TourMeta({
   tour: PublicTour;
 }) {
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 font-sans text-[14px] font-semibold text-secondary">
+    <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 font-sans text-[15px] font-semibold text-secondary">
       <MetaItem icon={Clock3} label={getDurationLabel(tour)} />
       <MetaItem
         icon={Users}
@@ -1231,7 +2099,7 @@ function TourGallery({
           className="object-cover"
         />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0)_58%,rgba(0,0,0,0.42)_100%)]" />
-        <span className="absolute bottom-4 left-4 inline-flex items-center gap-2 rounded-[6px] border border-white/45 bg-secondary/75 px-3 py-2 font-sans text-[14px] font-bold text-white shadow-[0_10px_20px_rgba(0,0,0,0.18)] backdrop-blur-sm">
+        <span className="absolute bottom-4 left-4 inline-flex items-center gap-2 rounded-[6px] border border-white/45 bg-secondary/75 px-3 py-2 font-sans text-[15px] font-bold text-white shadow-[0_10px_20px_rgba(0,0,0,0.18)] backdrop-blur-sm">
           <Landmark className="size-4" strokeWidth={1.7} />
           {tourType || "Heritage Walk"}
         </span>
@@ -1285,7 +2153,6 @@ function TourGallery({
 
 function TourTabs({
   activeTab,
-  childBirthDates,
   departures,
   expert,
   facts,
@@ -1295,15 +2162,15 @@ function TourTabs({
   primaryDestination,
   selectedAccommodationOptionId,
   selectedDepartureId,
-  setChildBirthDates,
   setSelectedAccommodationOptionId,
   setSelectedDepartureId,
   setTravellerCounts,
+  onTravellerDetailsCompleteChange,
+  onTravellerDetailsChange,
   tour,
   travellerCounts,
 }: {
   activeTab: TourTab;
-  childBirthDates: string[];
   departures: PublicTourDeparture[];
   expert: PublicExpert;
   facts: TourFact[];
@@ -1313,10 +2180,11 @@ function TourTabs({
   primaryDestination: PublicDestination;
   selectedAccommodationOptionId: string;
   selectedDepartureId: string;
-  setChildBirthDates: Dispatch<SetStateAction<string[]>>;
   setSelectedAccommodationOptionId: Dispatch<SetStateAction<string>>;
   setSelectedDepartureId: Dispatch<SetStateAction<string>>;
   setTravellerCounts: Dispatch<SetStateAction<TravellerCounts>>;
+  onTravellerDetailsCompleteChange: (isComplete: boolean) => void;
+  onTravellerDetailsChange: (forms: Record<string, TravellerDetailForm>) => void;
   tour: PublicTour;
   travellerCounts: TravellerCounts;
 }) {
@@ -1393,7 +2261,7 @@ function TourTabs({
         data-tour-tabs
         className="sticky top-0 z-[2147483647] overflow-x-auto rounded-[8px] border border-border bg-card shadow-[0_14px_34px_rgba(67,43,27,0.09)]"
       >
-        <div className="grid min-w-[760px] grid-cols-5">
+        <div className="grid min-w-[940px] grid-cols-[0.9fr_0.95fr_1.3fr_1.35fr_1fr]">
           {tabs.map((tab) => {
             const { icon: Icon, label, value } = tab;
 
@@ -1405,14 +2273,16 @@ function TourTabs({
                 aria-pressed={activeTab === value}
                 onClick={() => handleTabClick(tab)}
                 className={cn(
-                  "relative flex min-h-12 items-center justify-center gap-2 border-r border-border px-2 font-sans text-[13px] font-bold transition-colors last:border-r-0",
+                  "relative flex min-h-12 items-center justify-center gap-2 border-r border-border px-3 font-sans text-[15px] font-bold transition-colors last:border-r-0",
                   activeTab === value
                     ? "bg-muted/45 text-primary"
                     : "text-secondary hover:bg-primary/5 hover:text-primary"
                 )}
               >
-                <Icon className="size-4" strokeWidth={1.8} />
-                <span className="text-center leading-tight">{label}</span>
+                <Icon className="size-4 shrink-0" strokeWidth={1.8} />
+                <span className="whitespace-nowrap text-center leading-tight">
+                  {label}
+                </span>
                 {activeTab === value ? (
                   <span className="absolute bottom-0 left-5 right-5 h-0.5 bg-primary" />
                 ) : null}
@@ -1457,14 +2327,14 @@ function TourTabs({
           className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4 shadow-[0_12px_30px_rgba(67,43,27,0.07)] sm:p-5"
         >
           <PricingPanel
-            childBirthDates={childBirthDates}
             departures={departures}
             selectedAccommodationOptionId={selectedAccommodationOptionId}
             selectedDepartureId={selectedDepartureId}
-            setChildBirthDates={setChildBirthDates}
             setSelectedAccommodationOptionId={setSelectedAccommodationOptionId}
             setSelectedDepartureId={setSelectedDepartureId}
             setTravellerCounts={setTravellerCounts}
+            onTravellerDetailsCompleteChange={onTravellerDetailsCompleteChange}
+            onTravellerDetailsChange={onTravellerDetailsChange}
             tour={tour}
             travellerCounts={travellerCounts}
           />
@@ -1491,12 +2361,12 @@ function SummaryPanel({
   return (
     <>
       <SectionTitle title="Tour Overview" />
-      <p className="mt-3 max-w-[820px] font-sans text-[14px] font-medium leading-[1.7] text-secondary/82">
+      <p className="mt-3 max-w-[820px] font-sans text-[15px] font-medium leading-[1.7] text-secondary/82">
         {tour.description ||
           "A thoughtfully designed tour with expert-led storytelling, local culture and curated heritage experiences."}
       </p>
       {tour.notes ? (
-        <p className="mt-3 max-w-[820px] rounded-[6px] bg-muted px-3 py-2 font-sans text-[14px] font-semibold leading-[1.6] text-accent">
+        <p className="mt-3 max-w-[820px] rounded-[6px] bg-muted px-3 py-2 font-sans text-[15px] font-semibold leading-[1.6] text-accent">
           {tour.notes}
         </p>
       ) : null}
@@ -1566,7 +2436,7 @@ function ExpandableItinerarySummary({ text }: { text: string }) {
       <p
         ref={summaryRef}
         className={cn(
-          "font-sans text-[14px] font-medium leading-[1.7] text-secondary/78",
+          "font-sans text-[15px] font-medium leading-[1.7] text-secondary/78",
           !isExpanded && "line-clamp-5"
         )}
       >
@@ -1576,7 +2446,7 @@ function ExpandableItinerarySummary({ text }: { text: string }) {
         <button
           type="button"
           onClick={() => setIsExpanded((current) => !current)}
-          className="mt-2 font-sans text-[14px] font-bold text-primary transition-colors hover:text-accent"
+          className="mt-2 font-sans text-[15px] font-bold text-primary transition-colors hover:text-accent"
         >
           {isExpanded ? "Read Less" : "Read More"}
         </button>
@@ -1642,21 +2512,25 @@ function toPricedDeparture(departure: PublicTourDeparture): PricedDeparture {
   };
 }
 
-function createTravellers(
-  counts: TravellerCounts,
-  childBirthDates: string[]
-): Traveller[] {
-  return [
-    ...Array.from({ length: counts.adults }, (_item, index) => ({
-      id: `adult-${index + 1}`,
-      type: "adult" as const,
-    })),
-    ...Array.from({ length: counts.children }, (_item, index) => ({
-      id: `child-${index + 1}`,
-      type: "child" as const,
-      dateOfBirth: childBirthDates[index] || undefined,
-    })),
-  ];
+function createChildInputs(
+  childCount: number,
+  infantCount = 0,
+  travellerDetailForms?: Record<string, TravellerDetailForm>
+) {
+  const childInputs = Array.from({ length: childCount }, (_item, index) => {
+    const id = `child-${index + 1}`;
+    const dateOfBirth = travellerDetailForms?.[id]?.dateOfBirth.trim();
+
+    return dateOfBirth ? { id, dateOfBirth } : { id, age: 7 };
+  });
+  const infantInputs = Array.from({ length: infantCount }, (_item, index) => {
+    const id = `infant-${index + 1}`;
+    const dateOfBirth = travellerDetailForms?.[id]?.dateOfBirth.trim();
+
+    return dateOfBirth ? { id, dateOfBirth } : { id, age: 2 };
+  });
+
+  return [...childInputs, ...infantInputs];
 }
 
 function formatTravellerSummary(counts: TravellerCounts) {
@@ -1666,6 +2540,9 @@ function formatTravellerSummary(counts: TravellerCounts) {
       : "",
     counts.children
       ? `${counts.children} ${counts.children === 1 ? "Child" : "Children"}`
+      : "",
+    counts.infants
+      ? `${counts.infants} ${counts.infants === 1 ? "Infant" : "Infants"}`
       : "",
   ]
     .filter(Boolean)
@@ -1682,6 +2559,8 @@ function formatPricingCategory(category: PricingCategory) {
       return "Child Without Extra Bed";
     case "single_occupancy":
       return "Single Occupancy";
+    case "free_child":
+      return "Complimentary Child";
   }
 }
 
@@ -1697,6 +2576,7 @@ const pricingCategorySortOrder: Record<PricingCategory, number> = {
   extra_bed: 2,
   child_without_extra_bed: 3,
   single_occupancy: 4,
+  free_child: 5,
 };
 
 function getPricingRows(option: AccommodationOption) {
@@ -1738,33 +2618,210 @@ function formatBalanceDueDate(value: Date | null) {
   return value ? formatDate(value.toISOString()) : "-";
 }
 
+function DateOfBirthPicker({
+  ariaLabel,
+  onChange,
+  value,
+}: {
+  ariaLabel: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  const selectedDate = parseDatePickerValue(value);
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const defaultBirthYear = currentYear - 30;
+  const [isOpen, setIsOpen] = useState(false);
+  const [visibleMonth, setVisibleMonth] = useState(
+    selectedDate?.getMonth() ?? today.getMonth()
+  );
+  const [visibleYear, setVisibleYear] = useState(
+    selectedDate?.getFullYear() ?? defaultBirthYear
+  );
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const daysInMonth = new Date(visibleYear, visibleMonth + 1, 0).getDate();
+  const firstWeekday = new Date(visibleYear, visibleMonth, 1).getDay();
+  const selectedValue = selectedDate ? formatDatePickerStorageValue(selectedDate) : "";
+  const displayValue = formatDatePickerValue(value);
+  const yearOptions = Array.from({ length: 101 }, (_item, index) => currentYear - index);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!pickerRef.current?.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [isOpen]);
+
+  function selectDate(day: number) {
+    const nextDate = new Date(visibleYear, visibleMonth, day);
+
+    if (nextDate > today) {
+      return;
+    }
+
+    onChange(formatDatePickerStorageValue(nextDate));
+    setIsOpen(false);
+  }
+
+  function moveMonth(direction: number) {
+    const nextMonthDate = new Date(visibleYear, visibleMonth + direction, 1);
+
+    setVisibleMonth(nextMonthDate.getMonth());
+    setVisibleYear(nextMonthDate.getFullYear());
+  }
+
+  return (
+    <div ref={pickerRef} className="relative">
+      <button
+        type="button"
+        aria-expanded={isOpen}
+        aria-label={ariaLabel}
+        onClick={() => setIsOpen((current) => !current)}
+        className={cn(
+          "flex h-11 w-full items-center justify-between rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15",
+          displayValue ? "text-secondary" : "text-secondary/40",
+          isOpen && "border-primary ring-3 ring-primary/15"
+        )}
+      >
+        <span>{displayValue || "Date of Birth *"}</span>
+        <CalendarDays className="size-4 text-primary" strokeWidth={1.8} />
+      </button>
+
+      {isOpen ? (
+        <div className="absolute left-0 top-[calc(100%+8px)] z-50 w-[min(320px,calc(100vw-2rem))] rounded-[8px] border border-primary/25 bg-card p-3 font-sans text-secondary shadow-[0_18px_42px_rgba(67,43,27,0.16)]">
+          <div className="flex items-center gap-2">
+            <label className="relative min-w-0 flex-1">
+              <span className="sr-only">Select month</span>
+              <select
+                aria-label="Select birth month"
+                className="h-9 w-full appearance-none rounded-[6px] border border-border bg-background px-2 pr-7 text-[13px] font-medium text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+                value={visibleMonth}
+                onChange={(event) => setVisibleMonth(Number(event.target.value))}
+              >
+                {datePickerMonthLabels.map((month, index) => (
+                  <option key={month} value={index}>
+                    {month}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-primary" />
+            </label>
+
+            <label className="relative w-[96px]">
+              <span className="sr-only">Select year</span>
+              <select
+                aria-label="Select birth year"
+                className="h-9 w-full appearance-none rounded-[6px] border border-border bg-background px-2 pr-7 text-[13px] font-medium text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+                value={visibleYear}
+                onChange={(event) => setVisibleYear(Number(event.target.value))}
+              >
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-primary" />
+            </label>
+
+            <button
+              type="button"
+              aria-label="Previous month"
+              onClick={() => moveMonth(-1)}
+              className="grid size-9 shrink-0 place-items-center rounded-full border border-border bg-white text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <button
+              type="button"
+              aria-label="Next month"
+              onClick={() => moveMonth(1)}
+              className="grid size-9 shrink-0 place-items-center rounded-full border border-border bg-white text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+
+          <div className="mt-3 grid grid-cols-7 gap-1 text-center">
+            {datePickerWeekdayLabels.map((weekday) => (
+              <span
+                key={weekday}
+                className="py-1 text-[11px] font-semibold uppercase text-secondary/48"
+              >
+                {weekday}
+              </span>
+            ))}
+            {Array.from({ length: firstWeekday }, (_item, index) => (
+              <span key={`empty-${index}`} aria-hidden="true" />
+            ))}
+            {Array.from({ length: daysInMonth }, (_item, index) => {
+              const day = index + 1;
+              const date = new Date(visibleYear, visibleMonth, day);
+              const storageValue = formatDatePickerStorageValue(date);
+              const isSelected = storageValue === selectedValue;
+              const isFutureDate = date > today;
+
+              return (
+                <button
+                  key={storageValue}
+                  type="button"
+                  disabled={isFutureDate}
+                  onClick={() => selectDate(day)}
+                  className={cn(
+                    "grid size-8 place-items-center rounded-full text-[12px] font-medium transition-colors",
+                    isSelected
+                      ? "bg-primary text-white"
+                      : "text-secondary hover:bg-primary/10 hover:text-primary",
+                    isFutureDate &&
+                      "cursor-not-allowed text-secondary/28 hover:bg-transparent hover:text-secondary/28"
+                  )}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function PricingPanel({
-  childBirthDates,
   departures,
   selectedAccommodationOptionId,
   selectedDepartureId,
-  setChildBirthDates,
   setSelectedAccommodationOptionId,
   setSelectedDepartureId,
   setTravellerCounts,
+  onTravellerDetailsCompleteChange,
+  onTravellerDetailsChange,
   tour,
   travellerCounts,
 }: {
-  childBirthDates: string[];
   departures: PublicTourDeparture[];
   selectedAccommodationOptionId: string;
   selectedDepartureId: string;
-  setChildBirthDates: Dispatch<SetStateAction<string[]>>;
   setSelectedAccommodationOptionId: Dispatch<SetStateAction<string>>;
   setSelectedDepartureId: Dispatch<SetStateAction<string>>;
   setTravellerCounts: Dispatch<SetStateAction<TravellerCounts>>;
+  onTravellerDetailsCompleteChange: (isComplete: boolean) => void;
+  onTravellerDetailsChange: (forms: Record<string, TravellerDetailForm>) => void;
   tour: PublicTour;
   travellerCounts: TravellerCounts;
 }) {
-  const selectedDeparture =
-    departures.find(
-      (departure) => getDepartureIdentifier(departure) === selectedDepartureId
-    ) || departures[0];
+  const selectedDeparture = getSelectedDeparture(departures, selectedDepartureId);
   const pricedDeparture = selectedDeparture
     ? toPricedDeparture(selectedDeparture)
     : null;
@@ -1791,7 +2848,7 @@ function PricingPanel({
     useState("adult-1");
   const [travellerDetailForms, setTravellerDetailForms] = useState<
     Record<string, TravellerDetailForm>
-  >({});
+  >(createInitialTravellerDetailForms);
   const activeTravellerDetailTab =
     travellerDetailTabs.find((tab) => tab.id === activeTravellerDetailId) ||
     travellerDetailTabs[0] || {
@@ -1799,17 +2856,35 @@ function PricingPanel({
       heading: "Lead Traveller",
       id: "adult-1",
       label: "Lead Traveller",
+      travellerType: "adult",
     };
   const activeTravellerDetails = {
     ...defaultTravellerDetailForm,
     ...(travellerDetailForms[activeTravellerDetailTab.id] || {}),
   };
-  const travellers = useMemo(
-    () => createTravellers(travellerCounts, childBirthDates),
-    [childBirthDates, travellerCounts]
+  const areAllTravellerDetailsComplete = useMemo(
+    () =>
+      travellerDetailTabs.length > 0 &&
+      travellerDetailTabs.every((tab) => {
+        const travellerDetails = {
+          ...defaultTravellerDetailForm,
+          ...(travellerDetailForms[tab.id] || {}),
+        };
+        return isTravellerDetailFormComplete(travellerDetails);
+      }),
+    [travellerDetailForms, travellerDetailTabs]
   );
-  const departureValidationErrors = pricedDeparture
-    ? validateDepartureForBooking(pricedDeparture, totalTravellers)
+  const childInputs = useMemo(
+    () =>
+      createChildInputs(
+        travellerCounts.children,
+        travellerCounts.infants,
+        travellerDetailForms
+      ),
+    [travellerCounts.children, travellerCounts.infants, travellerDetailForms]
+  );
+  const departureValidationErrors = selectedDeparture
+    ? validateDeparturePaymentReadiness(selectedDeparture, totalTravellers)
     : ["Select a scheduled departure."];
   const accommodationResult = (() => {
     if (!pricedDeparture || departureValidationErrors.length > 0) {
@@ -1821,11 +2896,10 @@ function PricingPanel({
 
     try {
       return {
-        options: generateAccommodationOptions({
-          travellers,
-          departure: pricedDeparture,
-          childPricingRules: pricedDeparture.childPricingRules,
-          roomPolicy: pricedDeparture.roomPolicy,
+        options: generateOccupancyOptions({
+          adults: travellerCounts.adults,
+          children: childInputs,
+          selectedDeparture: pricedDeparture,
         }),
         error: "",
       };
@@ -1846,7 +2920,7 @@ function PricingPanel({
     ) || accommodationOptions[0];
   const resolvedSelectedAccommodationOptionId =
     selectedAccommodationOption?.id || "";
-  const subtotal = selectedAccommodationOption?.totalPrice ?? 0;
+  const subtotal = selectedAccommodationOption?.total ?? 0;
   const gstAmount = Math.round((subtotal * GST_PERCENTAGE) / 100);
   const grandTotal = subtotal + gstAmount;
   const depositAmount =
@@ -1866,6 +2940,41 @@ function PricingPanel({
         pricedDeparture.balanceDueDaysBefore
       )
     : null;
+
+  useEffect(
+    () =>
+      listenForTravellerSessionChanges(() => {
+        const leadTravellerForm = getLeadTravellerFormFromProfile(
+          getTravellerSession()?.user ?? null
+        );
+
+        if (!leadTravellerForm) {
+          return;
+        }
+
+        setTravellerDetailForms((current) => {
+          if (hasEditedLeadTravellerForm(current["adult-1"])) {
+            return current;
+          }
+
+          return {
+            ...current,
+            "adult-1": leadTravellerForm,
+          };
+        });
+      }),
+    []
+  );
+
+  useEffect(() => {
+    onTravellerDetailsCompleteChange(areAllTravellerDetailsComplete);
+  }, [areAllTravellerDetailsComplete, onTravellerDetailsCompleteChange]);
+
+  useEffect(() => {
+    onTravellerDetailsChange(
+      getCompleteTravellerDetailForms(travellerCounts, travellerDetailForms)
+    );
+  }, [onTravellerDetailsChange, travellerCounts, travellerDetailForms]);
 
   function updateTravellerCount(key: TravellerCountKey, delta: number) {
     setTravellerCounts((current) => {
@@ -1894,16 +3003,6 @@ function PricingPanel({
       departures.length;
 
     setSelectedDepartureId(getDepartureIdentifier(departures[nextIndex]));
-  }
-
-  function updateChildBirthDate(index: number, value: string) {
-    setChildBirthDates((current) =>
-      Array.from(
-        { length: travellerCounts.children },
-        (_item, currentIndex) =>
-          currentIndex === index ? value : current[currentIndex] || ""
-      )
-    );
   }
 
   function updateActiveTravellerDetail(
@@ -1989,12 +3088,12 @@ function PricingPanel({
                       <Users className="size-4" strokeWidth={1.7} />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-[10px] font-bold uppercase leading-tight text-secondary/58">
+                      <span className="block text-[14px] font-medium uppercase leading-tight text-secondary/58">
                         {hasSeats ? "Seats Left" : "Availability"}
                       </span>
                       <strong
                         className={cn(
-                          "mt-0.5 block text-[12px] font-bold leading-none",
+                          "mt-0.5 block text-[14px] font-medium leading-none",
                           hasSeats ? "text-[#159447]" : "text-destructive"
                         )}
                       >
@@ -2029,9 +3128,9 @@ function PricingPanel({
       </BookingStep>
 
       <BookingStep step="2" title="Add Traveller Details">
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           <TravellerCounter
-            ageLabel="Above 12 yrs"
+            ageLabel="Above 12 years"
             label="Adult"
             minimum={1}
             value={travellerCounts.adults}
@@ -2039,43 +3138,25 @@ function PricingPanel({
             onIncrease={() => updateTravellerCount("adults", 1)}
           />
           <TravellerCounter
-            ageLabel="DOB required"
+            ageLabel="Above 6 to 12 years"
             label="Child"
             value={travellerCounts.children}
             onDecrease={() => updateTravellerCount("children", -1)}
             onIncrease={() => updateTravellerCount("children", 1)}
           />
+          <TravellerCounter
+            ageLabel="Below 6 years"
+            label="Infant"
+            value={travellerCounts.infants}
+            onDecrease={() => updateTravellerCount("infants", -1)}
+            onIncrease={() => updateTravellerCount("infants", 1)}
+          />
         </div>
 
-        {travellerCounts.children > 0 ? (
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {Array.from({ length: travellerCounts.children }, (_item, index) => (
-              <label
-                key={`child-dob-${index + 1}`}
-                className="flex min-w-0 flex-col gap-1.5 font-sans"
-              >
-                <span className="text-[14px] font-bold uppercase text-secondary/58">
-                  Child {index + 1} Date of Birth
-                </span>
-                <input
-                  required
-                  aria-label={`Child ${index + 1} date of birth`}
-                  className="h-11 rounded-[6px] border border-border bg-background px-3 text-[14px] font-semibold text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
-                  type="date"
-                  value={childBirthDates[index] || ""}
-                  onChange={(event) =>
-                    updateChildBirthDate(index, event.target.value)
-                  }
-                />
-              </label>
-            ))}
-          </div>
-        ) : null}
-
-        <div className="mt-4 flex items-start gap-2 rounded-[6px] bg-muted px-3 py-2 font-sans text-[14px] font-semibold leading-[1.5] text-secondary/72">
+        <div className="mt-4 flex items-start gap-2 rounded-[6px] bg-muted px-3 py-2 font-sans text-[14px] font-medium leading-[1.5] text-secondary/72">
           <Info className="mt-0.5 size-3.5 shrink-0 text-accent" />
           <span>
-            <strong className="text-secondary">Please Note :</strong> Traveller
+            <strong className="font-medium text-secondary">Please Note :</strong> Traveller
             details should match information on passport.
           </span>
         </div>
@@ -2095,7 +3176,7 @@ function PricingPanel({
                   aria-controls={`traveller-panel-${travellerTab.id}`}
                   aria-selected={isSelected}
                   className={cn(
-                    "h-9 shrink-0 rounded-[6px] px-3 font-sans text-[14px] font-bold transition-colors focus:outline-none focus:ring-3 focus:ring-primary/15",
+                    "h-9 shrink-0 rounded-[6px] px-3 font-sans text-[14px] font-medium transition-colors focus:outline-none focus:ring-3 focus:ring-primary/15",
                     isSelected
                       ? "bg-primary text-white shadow-[0_5px_12px_rgba(212,114,32,0.18)]"
                       : "text-secondary/68 hover:bg-background hover:text-secondary"
@@ -2132,7 +3213,7 @@ function PricingPanel({
           <div className="mt-3 grid gap-3 md:grid-cols-[0.55fr_1.25fr_1.25fr]">
             <select
               aria-label={`${activeTravellerDetailTab.label} title`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
               value={activeTravellerDetails.title}
               onChange={(event) =>
                 updateActiveTravellerDetail("title", event.target.value)
@@ -2145,7 +3226,7 @@ function PricingPanel({
             </select>
             <input
               aria-label={`${activeTravellerDetailTab.label} first name`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
               value={activeTravellerDetails.firstName}
               onChange={(event) =>
                 updateActiveTravellerDetail("firstName", event.target.value)
@@ -2155,7 +3236,7 @@ function PricingPanel({
             />
             <input
               aria-label={`${activeTravellerDetailTab.label} last name`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
               value={activeTravellerDetails.lastName}
               onChange={(event) =>
                 updateActiveTravellerDetail("lastName", event.target.value)
@@ -2168,7 +3249,7 @@ function PricingPanel({
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             <input
               aria-label={`${activeTravellerDetailTab.label} email`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
               value={activeTravellerDetails.email}
               onChange={(event) =>
                 updateActiveTravellerDetail("email", event.target.value)
@@ -2176,18 +3257,17 @@ function PricingPanel({
               placeholder="Email *"
               type="email"
             />
-            <input
-              aria-label={`${activeTravellerDetailTab.label} date of birth`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary outline-none transition-colors text-secondary/70 focus:border-primary focus:ring-3 focus:ring-primary/15"
+            <DateOfBirthPicker
+              key={`${activeTravellerDetailTab.id}-date-of-birth`}
+              ariaLabel={`${activeTravellerDetailTab.label} date of birth`}
               value={activeTravellerDetails.dateOfBirth}
-              onChange={(event) =>
-                updateActiveTravellerDetail("dateOfBirth", event.target.value)
+              onChange={(nextValue) =>
+                updateActiveTravellerDetail("dateOfBirth", nextValue)
               }
-              type="date"
             />
             <select
               aria-label={`${activeTravellerDetailTab.label} nationality`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
               value={activeTravellerDetails.nationality}
               onChange={(event) =>
                 updateActiveTravellerDetail("nationality", event.target.value)
@@ -2201,10 +3281,10 @@ function PricingPanel({
             </select>
           </div>
 
-          <div className="mt-3 grid gap-3 md:grid-cols-3">
+          <div className="mt-3 grid gap-3 md:grid-cols-[0.9fr_1fr_1fr_1.2fr]">
             <select
               aria-label={`${activeTravellerDetailTab.label} phone country code`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
               value={activeTravellerDetails.phoneCountryCode}
               onChange={(event) =>
                 updateActiveTravellerDetail(
@@ -2219,17 +3299,27 @@ function PricingPanel({
               <option>Australia +61</option>
             </select>
             <input
+              aria-label={`${activeTravellerDetailTab.label} mobile number`}
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              value={activeTravellerDetails.mobileNumber}
+              onChange={(event) =>
+                updateActiveTravellerDetail("mobileNumber", event.target.value)
+              }
+              placeholder="Mobile Number *"
+              type="tel"
+            />
+            <input
               aria-label={`${activeTravellerDetailTab.label} PAN number`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
               value={activeTravellerDetails.panNumber}
               onChange={(event) =>
                 updateActiveTravellerDetail("panNumber", event.target.value)
               }
-              placeholder="PAN Number *"
+              placeholder="PAN Number"
               type="text"
             />
-            <div className="flex h-11 items-center gap-4 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-semibold text-secondary">
-              <span className="font-bold">Gender *</span>
+            <div className="flex h-11 items-center gap-4 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary">
+              <span className="font-medium">Gender *</span>
               <label className="inline-flex items-center gap-1.5">
                 <input
                   checked={activeTravellerDetails.gender === "male"}
@@ -2255,8 +3345,8 @@ function PricingPanel({
         </div>
 
         <p className="mt-4 font-sans text-[14px] font-medium text-secondary/72">
-          {travellerCounts.adults > 1
-            ? "Traveller details can be completed for each adult before payment."
+          {totalTravellers > 1
+            ? "Traveller details can be completed for each traveller before payment."
             : "You will fill the remaining traveller data after payment."}
         </p>
       </BookingStep>
@@ -2267,12 +3357,12 @@ function PricingPanel({
           {totalTravellers === 1 ? "" : "s"}.
         </p>
         {departureValidationErrors.length > 0 ? (
-          <div className="mt-3 rounded-[7px] border border-destructive/20 bg-destructive/5 px-3 py-2 font-sans text-[14px] font-semibold text-destructive">
+          <div className="mt-3 rounded-[7px] border border-destructive/20 bg-destructive/5 px-3 py-2 font-sans text-[14px] font-medium text-destructive">
             {departureValidationErrors[0]}
           </div>
         ) : null}
         {accommodationResult.error ? (
-          <div className="mt-3 rounded-[7px] border border-accent/20 bg-muted px-3 py-2 font-sans text-[14px] font-semibold text-accent">
+          <div className="mt-3 rounded-[7px] border border-accent/20 bg-muted px-3 py-2 font-sans text-[14px] font-medium text-accent">
             {accommodationResult.error}
           </div>
         ) : null}
@@ -2324,10 +3414,10 @@ function DepartureMetric({
         <Icon className="size-4" strokeWidth={1.7} />
       </span>
       <span className="min-w-0">
-        <span className="block text-[10px] font-bold uppercase leading-tight text-secondary/58">
+        <span className="block text-[14px] font-medium uppercase leading-tight text-secondary/58">
           {label}
         </span>
-        <strong className="mt-1 block text-[12px] font-bold leading-none text-secondary">
+        <strong className="mt-1 block text-[14px] font-medium leading-none text-secondary">
           {value}
         </strong>
       </span>
@@ -2347,7 +3437,7 @@ function BookingStep({
   title: string;
 }) {
   return (
-    <section className="rounded-[8px] border border-border bg-background p-4 shadow-[0_10px_24px_rgba(67,43,27,0.04)]">
+    <section className="rounded-[8px] border border-border bg-background p-4 text-[14px] shadow-[0_10px_24px_rgba(67,43,27,0.04)]">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="grid size-7 shrink-0 place-items-center rounded-[5px] bg-primary font-sans text-[14px] font-bold leading-none text-white">
@@ -2384,7 +3474,7 @@ function AccommodationOptionCard({
   return (
     <label
       className={cn(
-        "grid cursor-pointer gap-3 rounded-[8px] border bg-background p-3 font-sans transition-colors hover:bg-muted/40 sm:grid-cols-[22px_minmax(0,1fr)_minmax(160px,0.42fr)]",
+        "grid cursor-pointer gap-3 rounded-[8px] border bg-background p-3 font-sans transition-colors hover:bg-muted/40 sm:grid-cols-[22px_minmax(0,1fr)_minmax(300px,0.48fr)]",
         selected ? "border-primary ring-3 ring-primary/15" : "border-border"
       )}
     >
@@ -2397,28 +3487,23 @@ function AccommodationOptionCard({
       />
       <span className="min-w-0">
         <span className="flex flex-wrap items-center gap-2">
-          <strong className="font-heading text-[18px] leading-tight text-secondary">
+          <strong className="font-heading text-[15px] font-semibold leading-tight text-secondary">
             {option.title}
           </strong>
           {option.recommended ? (
-            <span className="rounded-full bg-primary/10 px-2 py-1 text-[14px] font-bold uppercase text-primary">
+            <span className="rounded-full bg-primary/10 px-2 py-1 text-[12px] font-medium uppercase text-primary">
               Recommended
             </span>
           ) : null}
-          {option.requiresRoommateMatching ? (
-            <span className="rounded-full bg-muted px-2 py-1 text-[14px] font-bold uppercase text-accent">
-              Matching Needed
-            </span>
-          ) : null}
         </span>
-        <span className="mt-1 block text-[14px] font-semibold text-secondary/64">
+        <span className="mt-1 block text-[14px] font-medium text-secondary/64">
           {option.description}
         </span>
         <span className="mt-2 flex flex-wrap gap-2">
           {Object.entries(roomCounts).map(([roomType, count]) => (
             <span
               key={roomType}
-              className="inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-white px-2 py-1 text-[14px] font-bold text-secondary/72"
+              className="inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-white px-2 py-1 text-[14px] font-medium text-secondary/72"
             >
               <BedDouble className="size-3.5 text-primary" />
               {ROOM_TYPES[roomType as keyof typeof ROOM_TYPES].title}
@@ -2427,23 +3512,23 @@ function AccommodationOptionCard({
           ))}
         </span>
       </span>
-      <span className="grid gap-1.5 rounded-[7px] bg-muted/45 p-3 text-[14px] text-secondary">
+      <span className="grid gap-1.5 rounded-[7px] bg-muted/45 p-3 text-[14px] text-secondary sm:min-w-[300px]">
         {getPricingRows(option).map((row) => (
           <span
             key={row.key}
             className="flex items-center justify-between gap-3"
           >
-            <span className="font-semibold">
+            <span className="whitespace-nowrap font-medium">
               {formatPricingCategory(row.category)}
             </span>
-            <span className="font-bold">
+            <span className="whitespace-nowrap font-medium">
               {row.count} x {formatCurrency(row.unitPrice)}
             </span>
           </span>
         ))}
         <span className="mt-1 flex items-center justify-between border-t border-border pt-2 text-[14px]">
-          <strong>Total</strong>
-          <strong>{formatCurrency(option.totalPrice)}</strong>
+          <strong className="font-medium">Total</strong>
+          <strong className="font-medium">{formatCurrency(option.total)}</strong>
         </span>
       </span>
     </label>
@@ -2542,8 +3627,12 @@ function SummaryLine({
         strong && "mt-1 border-t border-border pt-2 text-[14px]"
       )}
     >
-      <span className={cn("font-semibold", strong && "font-bold")}>{label}</span>
-      <span className="font-bold">{value}</span>
+      <span className={cn("font-medium", strong && "font-semibold")}>
+        {label}
+      </span>
+      <span className={cn("font-medium", strong && "font-semibold")}>
+        {value}
+      </span>
     </span>
   );
 }
@@ -2566,7 +3655,7 @@ function TravellerCounter({
   return (
     <div className="flex items-center justify-between gap-3 rounded-[7px] border border-border bg-background px-3 py-2.5">
       <span className="min-w-0 font-sans">
-        <span className="block text-[14px] font-bold leading-tight text-secondary">
+        <span className="block text-[14px] font-medium leading-tight text-secondary">
           {label}
         </span>
         <span className="mt-0.5 block text-[14px] font-medium leading-tight text-secondary/56">
@@ -2583,7 +3672,7 @@ function TravellerCounter({
         >
           <Minus className="size-3.5" />
         </button>
-        <strong className="w-5 text-center font-sans text-[14px] text-secondary">
+        <strong className="w-5 text-center font-sans text-[14px] font-medium text-secondary">
           {value}
         </strong>
         <button
@@ -2623,10 +3712,10 @@ function FactGrid({ facts }: { facts: TourFact[] }) {
         >
           <fact.icon className="size-7 shrink-0 text-primary" strokeWidth={1.7} />
           <span className="font-sans">
-            <span className="block text-[14px] font-medium text-secondary/72">
+            <span className="block text-[15px] font-medium text-secondary/72">
               {fact.label}
             </span>
-            <strong className="mt-1 block text-[14px] leading-tight text-secondary">
+            <strong className="mt-1 block text-[15px] leading-tight text-secondary">
               {fact.value}
             </strong>
           </span>
@@ -2688,14 +3777,14 @@ function DailyItinerary({ days }: { days: ItineraryDay[] }) {
                 onClick={() => setOpenDayNumber(day.dayNumber)}
                 className="grid w-full gap-2 px-3 py-3 text-left font-sans transition-colors hover:bg-muted/35 sm:grid-cols-[58px_minmax(0,1fr)_32px] sm:items-start"
               >
-                <span className="inline-flex h-7 w-14 items-center justify-center rounded-[5px] bg-accent font-sans text-[14px] font-bold text-white">
+                <span className="inline-flex h-7 w-14 items-center justify-center rounded-[5px] bg-accent font-sans text-[15px] font-bold text-white">
                   Day {day.dayNumber}
                 </span>
                 <span className="min-w-0">
-                  <strong className="block text-[14px] leading-tight text-secondary">
+                  <strong className="block text-[15px] leading-tight text-secondary">
                     {day.title}
                   </strong>
-                  <span className="mt-1 block text-[14px] font-medium leading-[1.55] text-secondary/72">
+                  <span className="mt-1 block text-[15px] font-medium leading-[1.55] text-secondary/72">
                     {isOpen ? day.summary : "View day details"}
                   </span>
                 </span>
@@ -2718,7 +3807,7 @@ function DailyItinerary({ days }: { days: ItineraryDay[] }) {
                       {metaItems.map((item) => (
                         <span
                           key={`${day.dayNumber}-${item.label}`}
-                          className="rounded-full bg-muted px-2.5 py-1.5 text-[14px] font-semibold leading-tight text-accent"
+                          className="rounded-full bg-muted px-2.5 py-1.5 text-[15px] font-semibold leading-tight text-accent"
                         >
                           <strong className="text-secondary">{item.label}:</strong>{" "}
                           {item.value}
@@ -2750,7 +3839,7 @@ function ListBlock({
       <h3 className="font-heading text-[20px] font-bold text-secondary">
         {title}
       </h3>
-      <ul className="mt-3 space-y-2.5 font-sans text-[14px] font-semibold leading-[1.55] text-secondary/78">
+      <ul className="mt-3 space-y-2.5 font-sans text-[15px] font-semibold leading-[1.55] text-secondary/78">
         {items.map((item) => (
           <li key={item} className="flex items-start gap-3">
             <Icon className="mt-0.5 size-4 shrink-0 text-primary" strokeWidth={2.1} />
@@ -2764,20 +3853,17 @@ function ListBlock({
 
 function PriceCard({
   bestDeparture,
-  discountPercent,
-  oldPrice,
   onSelectDeparture,
   price,
   tour,
 }: {
   bestDeparture?: PublicTourDeparture;
-  discountPercent: number;
-  oldPrice: number;
   onSelectDeparture: () => void;
   price: number;
   tour: PublicTour;
 }) {
   const [isEnquiryOpen, setIsEnquiryOpen] = useState(false);
+  const offerText = bestDeparture?.earlyBirdOffer?.trim();
 
   return (
     <>
@@ -2785,26 +3871,20 @@ function PriceCard({
       <div className="border-b border-border bg-[#fff8f1] px-3 py-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 font-sans">
-            <span className="block text-[14px] font-semibold text-secondary/72">
+            <span className="block text-[15px] font-semibold text-secondary/72">
               Starts From
             </span>
             <strong className="mt-1 flex flex-wrap items-end gap-x-2 gap-y-1 text-[27px] font-bold leading-none text-secondary">
               {formatCurrency(price)}
-              <span className="pb-0.5 text-[14px] font-bold leading-none text-secondary/62">
+              <span className="pb-0.5 text-[15px] font-bold leading-none text-secondary/62">
                 per person
               </span>
             </strong>
-            {oldPrice > 0 ? (
-              <span className="mt-1 block text-[14px] font-semibold text-secondary/58">
-                Usually{" "}
-                <span className="line-through">{formatCurrency(oldPrice)}</span>
-              </span>
-            ) : null}
           </div>
 
-        {discountPercent > 0 ? (
-          <span className="shrink-0 rounded-full bg-accent px-2 py-1 font-sans text-[14px] font-bold text-white">
-            -{discountPercent}%
+        {offerText ? (
+          <span className="shrink-0 rounded-full bg-accent px-2 py-1 font-sans text-[15px] font-bold text-white">
+            {offerText}
           </span>
         ) : null}
         </div>
@@ -2815,7 +3895,7 @@ function PriceCard({
           <Button
             type="button"
             onClick={onSelectDeparture}
-            className="h-10 px-3 text-[14px] font-semibold"
+            className="h-10 px-3 text-[15px] font-semibold"
           >
             Book Now
           </Button>
@@ -2823,14 +3903,14 @@ function PriceCard({
             type="button"
             variant="outline"
             onClick={() => setIsEnquiryOpen(true)}
-            className="h-10 px-3 text-[14px] font-semibold"
+            className="h-10 px-3 text-[15px] font-semibold"
           >
             Enquire Now
           </Button>
         </div>
 
       {bestDeparture ? (
-        <p className="mt-2 flex items-center gap-1.5 font-sans text-[14px] font-semibold text-secondary/58">
+        <p className="mt-2 flex items-center gap-1.5 font-sans text-[15px] font-semibold text-secondary/58">
           <CalendarDays className="size-3 text-primary" strokeWidth={1.9} />
           Next departure: {formatDate(bestDeparture.departureDate)}
         </p>
@@ -2903,7 +3983,7 @@ function EnquiryModal({
             <h2 className="font-heading text-[28px] font-bold leading-tight text-secondary">
               Enquire Now
             </h2>
-            <p className="mt-0.5 font-sans text-[14px] font-bold text-primary">
+            <p className="mt-0.5 font-sans text-[15px] font-bold text-primary">
               {tourName}
             </p>
           </div>
@@ -2918,7 +3998,7 @@ function EnquiryModal({
         </div>
 
         <div className="px-4 py-4">
-          <p className="max-w-[780px] font-sans text-[14px] font-medium leading-[1.55] text-secondary/78">
+          <p className="max-w-[780px] font-sans text-[15px] font-medium leading-[1.55] text-secondary/78">
             Do you have any questions before you book? Complete the form below
             and our tour team will get back to you shortly.
           </p>
@@ -2963,12 +4043,12 @@ function EnquiryModal({
           </EnquiryField>
 
           {isSubmitted ? (
-            <p className="mt-3 rounded-[8px] border border-primary/20 bg-primary/8 px-3 py-2 font-sans text-[14px] font-bold text-primary">
+            <p className="mt-3 rounded-[8px] border border-primary/20 bg-primary/8 px-3 py-2 font-sans text-[15px] font-bold text-primary">
               Thank you. Your enquiry has been captured for this tour.
             </p>
           ) : null}
 
-          <Button type="submit" className="mt-4 h-10 px-7 text-[14px] font-semibold">
+          <Button type="submit" className="mt-4 h-10 px-7 text-[15px] font-semibold">
             Send Question
           </Button>
         </div>
@@ -2994,10 +4074,10 @@ function EnquiryField({
 }) {
   return (
     <label className={cn("block font-sans", className)}>
-      <span className="mb-1 block text-[14px] font-bold text-secondary/58">
+      <span className="mb-1 block text-[15px] font-bold text-secondary/58">
         {label}
       </span>
-      <span className="block [&>input]:h-10 [&>input]:w-full [&>input]:rounded-[8px] [&>input]:border [&>input]:border-border [&>input]:bg-background [&>input]:px-3 [&>input]:text-[14px] [&>input]:font-semibold [&>input]:text-secondary [&>input]:outline-none [&>input]:transition-colors [&>input]:placeholder:text-secondary/38 focus-within:[&>input]:border-primary focus-within:[&>input]:ring-3 focus-within:[&>input]:ring-primary/15 [&>select]:h-10 [&>select]:w-full [&>select]:rounded-[8px] [&>select]:border [&>select]:border-border [&>select]:bg-background [&>select]:px-3 [&>select]:text-[14px] [&>select]:font-semibold [&>select]:text-secondary [&>select]:outline-none [&>select]:transition-colors focus-within:[&>select]:border-primary focus-within:[&>select]:ring-3 focus-within:[&>select]:ring-primary/15 [&>textarea]:w-full [&>textarea]:rounded-[8px] [&>textarea]:border [&>textarea]:border-border [&>textarea]:bg-background [&>textarea]:px-3 [&>textarea]:py-2.5 [&>textarea]:text-[14px] [&>textarea]:font-semibold [&>textarea]:text-secondary [&>textarea]:outline-none [&>textarea]:transition-colors [&>textarea]:placeholder:text-secondary/38 focus-within:[&>textarea]:border-primary focus-within:[&>textarea]:ring-3 focus-within:[&>textarea]:ring-primary/15">
+      <span className="block [&>input]:h-10 [&>input]:w-full [&>input]:rounded-[8px] [&>input]:border [&>input]:border-border [&>input]:bg-background [&>input]:px-3 [&>input]:text-[15px] [&>input]:font-semibold [&>input]:text-secondary [&>input]:outline-none [&>input]:transition-colors [&>input]:placeholder:text-secondary/38 focus-within:[&>input]:border-primary focus-within:[&>input]:ring-3 focus-within:[&>input]:ring-primary/15 [&>select]:h-10 [&>select]:w-full [&>select]:rounded-[8px] [&>select]:border [&>select]:border-border [&>select]:bg-background [&>select]:px-3 [&>select]:text-[15px] [&>select]:font-semibold [&>select]:text-secondary [&>select]:outline-none [&>select]:transition-colors focus-within:[&>select]:border-primary focus-within:[&>select]:ring-3 focus-within:[&>select]:ring-primary/15 [&>textarea]:w-full [&>textarea]:rounded-[8px] [&>textarea]:border [&>textarea]:border-border [&>textarea]:bg-background [&>textarea]:px-3 [&>textarea]:py-2.5 [&>textarea]:text-[15px] [&>textarea]:font-semibold [&>textarea]:text-secondary [&>textarea]:outline-none [&>textarea]:transition-colors [&>textarea]:placeholder:text-secondary/38 focus-within:[&>textarea]:border-primary focus-within:[&>textarea]:ring-3 focus-within:[&>textarea]:ring-primary/15">
         {children}
       </span>
     </label>
@@ -3080,7 +4160,7 @@ function SidebarSummaryItem({
           {label}
         </span>
       </span>
-      <strong className="min-w-0 break-words text-right text-[14px] leading-tight text-secondary">
+      <strong className="min-w-0 break-words text-right text-[14px] font-medium leading-tight text-secondary">
         {value}
       </strong>
     </div>
@@ -3111,19 +4191,108 @@ function SidebarAmountLine({
   );
 }
 
+function SeatBookingActionCard({
+  accepted,
+  canBook,
+  checkoutStatus,
+  onAcceptedChange,
+  onBook,
+  paymentFeedback,
+}: {
+  accepted: boolean;
+  canBook: boolean;
+  checkoutStatus: CheckoutStatus;
+  onAcceptedChange: (accepted: boolean) => void;
+  onBook: () => void;
+  paymentFeedback: string;
+}) {
+  const isBusy = checkoutStatus !== "idle";
+  const isEnabled = accepted && canBook && !isBusy;
+  const buttonLabel =
+    checkoutStatus === "creating"
+      ? "Opening Payment..."
+      : checkoutStatus === "verifying"
+        ? "Confirming Booking..."
+        : checkoutStatus === "gateway_open"
+          ? "Complete Payment..."
+          : "Book Your Seat";
+  const buttonClassName =
+    "inline-flex h-11 w-full items-center justify-center rounded-full font-sans text-[14px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20";
+
+  return (
+    <article className="rounded-[8px] border border-border bg-card p-3 shadow-[0_10px_24px_rgba(67,43,27,0.05)]">
+      <label
+        className={cn(
+          "flex items-start gap-2 font-sans text-[14px] font-medium leading-[1.45]",
+          canBook ? "text-secondary" : "text-secondary/48"
+        )}
+      >
+        <input
+          checked={accepted}
+          className="mt-0.5 size-4 shrink-0 accent-primary disabled:cursor-not-allowed disabled:opacity-55"
+          disabled={!canBook}
+          onChange={(event) => onAcceptedChange(event.target.checked)}
+          type="checkbox"
+        />
+        <span>
+          I have read and agreed to the Ancient Trail&apos;s{" "}
+          {canBook ? (
+            <Link
+              href="#"
+              className="font-semibold text-primary transition-colors hover:text-accent"
+            >
+              Terms & Conditions.
+            </Link>
+          ) : (
+            <span className="font-semibold text-primary/45">
+              Terms & Conditions.
+            </span>
+          )}
+        </span>
+      </label>
+
+      <button
+        type="button"
+        disabled={!isEnabled}
+        onClick={onBook}
+        className={cn(
+          buttonClassName,
+          "mt-3 text-white",
+          isEnabled
+            ? "bg-primary hover:bg-accent"
+            : "cursor-not-allowed bg-primary/40"
+        )}
+      >
+        {buttonLabel}
+      </button>
+
+      {!canBook ? (
+        <p className="mt-2 font-sans text-[12px] font-medium leading-[1.4] text-secondary/58">
+          Complete date selection, traveller details, and accommodation to continue.
+        </p>
+      ) : null}
+
+      {paymentFeedback ? (
+        <div className="mt-3 rounded-[7px] border border-primary/15 bg-muted/45 px-3 py-2 font-sans text-[12px] font-medium leading-[1.45] text-secondary/72">
+          <p>{paymentFeedback}</p>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
 function HelpCard() {
   return (
     <article className="flex items-center gap-3 rounded-[8px] border border-border bg-card p-4 shadow-[0_10px_24px_rgba(67,43,27,0.05)]">
-      <UserRound className="size-9 shrink-0 text-secondary" strokeWidth={1.5} />
       <div className="font-sans text-secondary">
         <h2 className="font-heading text-[18px] font-bold">Need Help?</h2>
-        <p className="mt-1.5 flex flex-wrap items-center gap-x-1 text-[12px] font-semibold">
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-1 text-[14px] font-semibold">
           <PhoneCall className="size-3.5 text-primary" />
-          Call us : 011-43033003 | 43131313
+          Call us:011-43033003 | 43131313
         </p>
-        <p className="mt-1 flex flex-wrap items-center gap-x-1 text-[12px] font-semibold">
+        <p className="mt-1 flex flex-wrap items-center gap-x-1 text-[14px] font-semibold">
           <Mail className="size-3.5 text-primary" />
-          Mail us : Holidays@easemytrip.com
+          Mail us:Holidays@ancient.com
         </p>
       </div>
     </article>
@@ -3150,23 +4319,23 @@ function ExpertPanel({ expert }: { expert: PublicExpert }) {
         <h3 className="mt-4 font-heading text-[26px] font-bold leading-tight text-secondary">
           {expert.fullName}
         </h3>
-        <p className="mt-2 font-sans text-[14px] font-bold text-primary">
+        <p className="mt-2 font-sans text-[15px] font-bold text-primary">
           {getExpertRole(expert)}
         </p>
-        <p className="mt-4 font-sans text-[14px] font-medium leading-[1.75] text-secondary/82">
+        <p className="mt-4 font-sans text-[15px] font-medium leading-[1.75] text-secondary/82">
           {getExpertBio(expert)}
         </p>
 
         <div className="mt-4 flex flex-wrap items-center gap-4 text-primary">
-          <span className="inline-flex items-center gap-2 font-sans text-[14px] font-bold text-secondary">
+          <span className="inline-flex items-center gap-2 font-sans text-[15px] font-bold text-secondary">
             <Landmark className="size-5 text-primary" strokeWidth={1.5} />
             Heritage Context
           </span>
-          <span className="inline-flex items-center gap-2 font-sans text-[14px] font-bold text-secondary">
+          <span className="inline-flex items-center gap-2 font-sans text-[15px] font-bold text-secondary">
             <BookOpen className="size-5 text-primary" strokeWidth={1.5} />
             Storytelling
           </span>
-          <span className="inline-flex items-center gap-2 font-sans text-[14px] font-bold text-secondary">
+          <span className="inline-flex items-center gap-2 font-sans text-[15px] font-bold text-secondary">
             <Clock3 className="size-5 text-primary" strokeWidth={1.5} />
             Field Experience
           </span>
@@ -3176,7 +4345,7 @@ function ExpertPanel({ expert }: { expert: PublicExpert }) {
           nativeButton={false}
           render={<Link href="/about" />}
           variant="outline"
-          className="mt-5 justify-between px-5 text-[14px] font-normal"
+          className="mt-5 justify-between px-5 text-[15px] font-normal"
         >
           View Profile
           <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />

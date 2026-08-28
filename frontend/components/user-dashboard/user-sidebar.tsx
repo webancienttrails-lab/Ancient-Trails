@@ -5,13 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CalendarCheck,
-  Gift,
   Heart,
   Home,
   LogOut,
   Mail,
   Phone,
-  ShoppingCart,
   UserRound,
   type LucideIcon,
 } from "lucide-react";
@@ -31,9 +29,7 @@ type UserSidebarItem = {
 const defaultSidebarItems: UserSidebarItem[] = [
   { label: "My Dashboard", href: "/me", icon: Home },
   { label: "My Bookings", href: "/me/bookings", icon: CalendarCheck },
-  { label: "My Holiday Cart", href: "/me/holiday-cart", icon: ShoppingCart, badge: "1" },
   { label: "Wishlist", href: "/me/wishlist", icon: Heart },
-  { label: "Gift Cards", href: "/me/gift-cards", icon: Gift },
   { label: "My Account", href: "/me/account", icon: UserRound },
  
 ];
