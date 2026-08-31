@@ -413,7 +413,16 @@ function formatTour(tour: TourDocument) {
   };
 }
 
-function formatTourDeparture(departure: TourDepartureDocument) {
+function formatTourDeparture(
+  departure: TourDepartureDocument,
+  filledSeats = 0
+) {
+  const normalizedFilledSeats = Math.max(0, Math.trunc(filledSeats));
+  const totalSeats = Math.max(
+    departure.seatsAvailable,
+    departure.seatsAvailable + normalizedFilledSeats
+  );
+
   return {
     id: departure._id.toString(),
     departureId: departure.departureId,
@@ -422,6 +431,8 @@ function formatTourDeparture(departure: TourDepartureDocument) {
     departureDate: departure.departureDate,
     returnDate: departure.returnDate,
     seatsAvailable: departure.seatsAvailable,
+    filledSeats: normalizedFilledSeats,
+    totalSeats,
     priceAdult: departure.priceAdult,
     priceExtraBed: departure.priceExtraBed,
     priceChildWithoutExtraBed: departure.priceChildWithoutExtraBed,
@@ -451,6 +462,67 @@ function formatTourDeparture(departure: TourDepartureDocument) {
     createdAt: departure.createdAt,
     updatedAt: departure.updatedAt,
   };
+}
+
+async function getFilledSeatsByDepartureId(departureIds: string[]) {
+  if (departureIds.length === 0) {
+    return new Map<string, number>();
+  }
+
+  const filledSeats = await Booking.aggregate<{
+    _id: string;
+    filledSeats: number;
+  }>([
+    {
+      $match: {
+        amountPaid: { $gt: 0 },
+        paymentStatus: "paid",
+        $or: [
+          { departureId: { $in: departureIds } },
+          { "pricingSnapshot.departureId": { $in: departureIds } },
+        ],
+      },
+    },
+    {
+      $project: {
+        departureId: {
+          $cond: [
+            {
+              $gt: [
+                {
+                  $strLenCP: {
+                    $ifNull: ["$departureId", ""],
+                  },
+                },
+                0,
+              ],
+            },
+            "$departureId",
+            "$pricingSnapshot.departureId",
+          ],
+        },
+        totalGuest: 1,
+      },
+    },
+    {
+      $match: {
+        departureId: { $in: departureIds },
+      },
+    },
+    {
+      $group: {
+        _id: "$departureId",
+        filledSeats: { $sum: "$totalGuest" },
+      },
+    },
+  ]);
+
+  return new Map(
+    filledSeats.map((item) => [
+      item._id,
+      Math.max(0, Math.trunc(item.filledSeats || 0)),
+    ])
+  );
 }
 
 function formatTourItinerary(itinerary: TourItineraryDocument) {
@@ -946,12 +1018,20 @@ export async function listTourDepartures(
   const departures = await TourDeparture.find(filters)
     .sort({ departureDate: 1, createdAt: -1 })
     .limit(300);
+  const filledSeatsByDepartureId = await getFilledSeatsByDepartureId(
+    departures.map((departure) => departure.departureId)
+  );
 
   response.status(200).json({
     success: true,
     message: "Tour departures fetched successfully",
     data: {
-      departures: departures.map(formatTourDeparture),
+      departures: departures.map((departure) =>
+        formatTourDeparture(
+          departure,
+          filledSeatsByDepartureId.get(departure.departureId) || 0
+        )
+      ),
     },
   });
 }

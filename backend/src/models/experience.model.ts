@@ -21,6 +21,8 @@ export interface IExperience {
   thingsToKnow: string[];
   travellerPhotoGallery: string[];
   travellerVideos: string[];
+  travellerVideoTitles: string[];
+  attractionPhotoGallery: ExperienceAttractionPhoto[];
   ratingItinerary: number;
   ratingLocalTransport: number;
   ratingAccommodation: number;
@@ -32,6 +34,11 @@ export interface IExperience {
 }
 
 export type ExperienceDocument = HydratedDocument<IExperience>;
+
+export type ExperienceAttractionPhoto = {
+  image: string;
+  name: string;
+};
 
 const trimmedString = {
   type: String,
@@ -50,6 +57,12 @@ const trimmedStringList = {
   default: [],
   set: (values: string[] = []) =>
     Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))),
+};
+
+const indexedTrimmedStringList = {
+  type: [String],
+  default: [],
+  set: (values: string[] = []) => values.map((value) => value.trim()),
 };
 
 const ratingField = {
@@ -81,6 +94,22 @@ export function calculateExperienceOverallRating(
   return Number((total / values.length).toFixed(1));
 }
 
+const attractionPhotoSchema = new Schema<ExperienceAttractionPhoto>(
+  {
+    image: {
+      ...requiredTrimmedString,
+      maxlength: 500,
+    },
+    name: {
+      ...trimmedString,
+      maxlength: 120,
+    },
+  },
+  {
+    _id: false,
+  }
+);
+
 const experienceSchema = new Schema<IExperience>(
   {
     experienceId: {
@@ -103,7 +132,7 @@ const experienceSchema = new Schema<IExperience>(
       maxlength: 160,
     },
     title: {
-      ...requiredTrimmedString,
+      ...trimmedString,
       maxlength: 160,
     },
     writtenReview: {
@@ -113,6 +142,11 @@ const experienceSchema = new Schema<IExperience>(
     thingsToKnow: trimmedStringList,
     travellerPhotoGallery: trimmedStringList,
     travellerVideos: trimmedStringList,
+    travellerVideoTitles: indexedTrimmedStringList,
+    attractionPhotoGallery: {
+      type: [attractionPhotoSchema],
+      default: [],
+    },
     ratingItinerary: ratingField,
     ratingLocalTransport: ratingField,
     ratingAccommodation: ratingField,
@@ -141,10 +175,10 @@ experienceSchema.index({ destinationId: 1 });
 experienceSchema.index({ status: 1 });
 experienceSchema.index({
   destinationId: "text",
-  experienceId: "text",
-  title: "text",
   travellerName: "text",
   writtenReview: "text",
+  travellerVideoTitles: "text",
+  "attractionPhotoGallery.name": "text",
 });
 
 experienceSchema.pre("validate", function syncOverallRating() {

@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import {
+  archiveBooking,
   cancelBookingPaymentOrder,
   createBookingBalancePaymentOrder,
   createBooking,
@@ -30,6 +31,7 @@ const router = Router();
 router.use(requireAdmin);
 
 router.get("/", listBookings);
+router.patch("/:id/archive", archiveBooking);
 router.patch("/:id", updateBooking);
 router.delete("/:id", deleteBooking);
 router.post("/", createBooking);

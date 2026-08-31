@@ -1,4 +1,5 @@
 import { mkdirSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import type { Request, Response } from "express";
@@ -24,6 +25,17 @@ const requiredCodeField = (fieldName: string, max: number) =>
       `${fieldName} can contain letters, numbers, hyphens, and underscores only`
     )
     .transform((value) => value.toUpperCase());
+const optionalCodeField = (fieldName: string, max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .refine(
+      (value) => !value || /^[A-Za-z0-9_-]+$/.test(value),
+      `${fieldName} can contain letters, numbers, hyphens, and underscores only`
+    )
+    .transform((value) => value.toUpperCase())
+    .default("");
 const ratingPayloadField = (fieldName: string) =>
   z.coerce
     .number()
@@ -115,9 +127,49 @@ const mediaListSchema = z
   .max(60)
   .default([])
   .transform((values) => Array.from(new Set(values)));
+const indexedTextListSchema = z
+  .array(z.string().trim().max(160))
+  .max(60)
+  .default([]);
+const attractionPhotoListSchema = z
+  .array(
+    z.preprocess(
+      (value) =>
+        typeof value === "string"
+          ? {
+              image: value,
+              name: "",
+            }
+          : value,
+      z.object({
+        image: z.string().trim().min(1, "Attraction photo is required").max(500),
+        name: textField(120),
+      })
+    )
+  )
+  .max(60)
+  .default([])
+  .transform((items) => {
+    const seenImages = new Set<string>();
+
+    return items
+      .map((item) => ({
+        image: item.image.trim(),
+        name: item.name.trim(),
+      }))
+      .filter((item) => {
+        if (!item.image || seenImages.has(item.image)) {
+          return false;
+        }
+
+        seenImages.add(item.image);
+
+        return true;
+      });
+  });
 
 const experiencePayloadSchema = z.object({
-  experienceId: requiredCodeField("Experience ID", 40),
+  experienceId: optionalCodeField("Experience ID", 40),
   destinationId: requiredCodeField("Destination ID", 40),
   travellerName: textField(120),
   travellerEmail: z
@@ -127,11 +179,13 @@ const experiencePayloadSchema = z.object({
     .max(160)
     .or(z.literal(""))
     .default(""),
-  title: requiredTextField("Experience title", 160),
+  title: textField(160),
   writtenReview: textField(3000),
   thingsToKnow: stringListSchema,
   travellerPhotoGallery: mediaListSchema,
   travellerVideos: mediaListSchema,
+  travellerVideoTitles: indexedTextListSchema,
+  attractionPhotoGallery: attractionPhotoListSchema,
   ratingItinerary: ratingPayloadField("Itinerary rating"),
   ratingLocalTransport: ratingPayloadField("Local transport rating"),
   ratingAccommodation: ratingPayloadField("Accommodation rating"),
@@ -208,6 +262,29 @@ async function createDestinationNameMap(destinationIds: string[]) {
   );
 }
 
+function createGeneratedExperienceId(destinationId: string): string {
+  const prefix =
+    destinationId
+      .replace(/[^A-Z0-9_-]+/g, "")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 24) || "EXP";
+  const suffix = randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase();
+
+  return `${prefix}-${suffix}`.slice(0, 40);
+}
+
+function createGeneratedExperienceTitle(
+  payload: z.infer<typeof experiencePayloadSchema>
+): string {
+  const travellerName = payload.travellerName.trim();
+
+  if (travellerName) {
+    return `${travellerName} traveller experience`;
+  }
+
+  return `${payload.destinationId} traveller experience`;
+}
+
 function formatExperience(
   experience: ExperienceDocument,
   destinationNameById = new Map<string, string>()
@@ -224,6 +301,8 @@ function formatExperience(
     thingsToKnow: experience.thingsToKnow,
     travellerPhotoGallery: experience.travellerPhotoGallery,
     travellerVideos: experience.travellerVideos,
+    travellerVideoTitles: experience.travellerVideoTitles || [],
+    attractionPhotoGallery: experience.attractionPhotoGallery || [],
     ratingItinerary: experience.ratingItinerary,
     ratingLocalTransport: experience.ratingLocalTransport,
     ratingAccommodation: experience.ratingAccommodation,
@@ -236,11 +315,39 @@ function formatExperience(
 }
 
 function createExperiencePayload(
-  payload: z.infer<typeof experiencePayloadSchema>
+  payload: z.infer<typeof experiencePayloadSchema>,
+  mode: "create" | "update"
 ) {
-  return {
-    ...payload,
+  const experiencePayload = {
+    destinationId: payload.destinationId,
+    travellerName: payload.travellerName,
+    travellerEmail: payload.travellerEmail,
+    writtenReview: payload.writtenReview,
+    thingsToKnow: payload.thingsToKnow,
+    travellerPhotoGallery: payload.travellerPhotoGallery,
+    travellerVideos: payload.travellerVideos,
+    travellerVideoTitles: payload.travellerVideoTitles,
+    attractionPhotoGallery: payload.attractionPhotoGallery,
+    ratingItinerary: payload.ratingItinerary,
+    ratingLocalTransport: payload.ratingLocalTransport,
+    ratingAccommodation: payload.ratingAccommodation,
+    ratingTourExpert: payload.ratingTourExpert,
     overallRating: calculateExperienceOverallRating(payload),
+    status: payload.status,
+  };
+
+  return {
+    ...experiencePayload,
+    ...(payload.experienceId
+      ? { experienceId: payload.experienceId }
+      : mode === "create"
+        ? { experienceId: createGeneratedExperienceId(payload.destinationId) }
+        : {}),
+    ...(payload.title
+      ? { title: payload.title }
+      : mode === "create"
+        ? { title: createGeneratedExperienceTitle(payload) }
+        : {}),
   };
 }
 
@@ -261,13 +368,13 @@ export async function listExperiences(
   if (search) {
     filterClauses.push({
       $or: [
-        { experienceId: new RegExp(search, "i") },
         { destinationId: new RegExp(search, "i") },
         { travellerName: new RegExp(search, "i") },
         { travellerEmail: new RegExp(search, "i") },
-        { title: new RegExp(search, "i") },
         { writtenReview: new RegExp(search, "i") },
         { thingsToKnow: new RegExp(search, "i") },
+        { travellerVideoTitles: new RegExp(search, "i") },
+        { "attractionPhotoGallery.name": new RegExp(search, "i") },
       ],
     });
   }
@@ -373,7 +480,9 @@ export async function createExperience(
   try {
     await assertDestinationExists(payload.destinationId);
 
-    const experience = await Experience.create(createExperiencePayload(payload));
+    const experience = await Experience.create(
+      createExperiencePayload(payload, "create")
+    );
     const destinationNameById = await createDestinationNameMap([
       experience.destinationId,
     ]);
@@ -387,7 +496,7 @@ export async function createExperience(
     });
   } catch (error) {
     if (isDuplicateKeyError(error)) {
-      throw new HttpError(409, "Experience ID already exists");
+      throw new HttpError(409, "Experience already exists");
     }
 
     throw error;
@@ -405,7 +514,7 @@ export async function updateExperience(
 
     const experience = await Experience.findByIdAndUpdate(
       request.params.id,
-      createExperiencePayload(payload),
+      createExperiencePayload(payload, "update"),
       {
         new: true,
         runValidators: true,
@@ -429,7 +538,7 @@ export async function updateExperience(
     });
   } catch (error) {
     if (isDuplicateKeyError(error)) {
-      throw new HttpError(409, "Experience ID already exists");
+      throw new HttpError(409, "Experience already exists");
     }
 
     if (isCastError(error)) {
@@ -479,14 +588,22 @@ export async function uploadExperienceMedia(
     | {
         travellerPhotoGallery?: Express.Multer.File[];
         travellerVideos?: Express.Multer.File[];
+        attractionPhotoGallery?: Express.Multer.File[];
       }
     | undefined;
   const travellerPhotoGallery = (files?.travellerPhotoGallery || []).map(
     getUploadUrl
   );
   const travellerVideos = (files?.travellerVideos || []).map(getUploadUrl);
+  const attractionPhotoGallery = (files?.attractionPhotoGallery || []).map(
+    getUploadUrl
+  );
 
-  if (travellerPhotoGallery.length === 0 && travellerVideos.length === 0) {
+  if (
+    travellerPhotoGallery.length === 0 &&
+    travellerVideos.length === 0 &&
+    attractionPhotoGallery.length === 0
+  ) {
     throw new HttpError(400, "Please select at least one file to upload");
   }
 
@@ -496,6 +613,7 @@ export async function uploadExperienceMedia(
     data: {
       travellerPhotoGallery,
       travellerVideos,
+      attractionPhotoGallery,
     },
   });
 }

@@ -21,6 +21,7 @@ router.post(
   experienceMediaUpload.fields([
     { name: "travellerPhotoGallery" },
     { name: "travellerVideos" },
+    { name: "attractionPhotoGallery" },
   ]),
   uploadExperienceMedia
 );

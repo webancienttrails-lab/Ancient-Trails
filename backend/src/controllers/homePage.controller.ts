@@ -2,9 +2,12 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 
 import { Destination } from "../models/destination.model";
+import { Experience, ExperienceStatus } from "../models/experience.model";
 import {
   HomePage,
   type HomePageDocument,
+  type IHomeCustomisedTourDestination,
+  type IHomeExperience,
   type IHomeTrendingDestination,
   type IHomeUpcomingTour,
 } from "../models/homePage.model";
@@ -102,12 +105,27 @@ const homeTrendingDestinationPayloadSchema = z.object({
   sortOrder: sortOrderField,
 });
 
+const homeCustomisedTourDestinationPayloadSchema = z.object({
+  destinationId: requiredCodeField("Destination ID", 40),
+  sortOrder: sortOrderField,
+});
+
+const homeExperiencePayloadSchema = z.object({
+  experienceId: requiredCodeField("Experience ID", 40),
+  sortOrder: sortOrderField,
+});
+
 const homePagePayloadSchema = z.object({
   upcomingTours: z.array(homeUpcomingTourPayloadSchema).max(6).default([]),
   trendingDestinations: z
     .array(homeTrendingDestinationPayloadSchema)
     .max(8)
     .default([]),
+  customisedTourDestinations: z
+    .array(homeCustomisedTourDestinationPayloadSchema)
+    .max(3)
+    .default([]),
+  homeExperiences: z.array(homeExperiencePayloadSchema).max(5).default([]),
 });
 
 type HomePagePayload = z.infer<typeof homePagePayloadSchema>;
@@ -171,6 +189,20 @@ function formatHomePage(page: HomePageDocument) {
         markerX: destination.markerX,
         markerY: destination.markerY,
         sortOrder: destination.sortOrder,
+      })
+    ),
+    customisedTourDestinations: sortBySortOrder(
+      page.customisedTourDestinations || []
+    ).map((destination, index) => ({
+      id: getSubdocumentId(destination, `home-customised-destination-${index}`),
+      destinationId: destination.destinationId,
+      sortOrder: destination.sortOrder,
+    })),
+    homeExperiences: sortBySortOrder(page.homeExperiences || []).map(
+      (experience, index) => ({
+        id: getSubdocumentId(experience, `home-experience-${index}`),
+        experienceId: experience.experienceId,
+        sortOrder: experience.sortOrder,
       })
     ),
     createdAt: page.createdAt,
@@ -267,6 +299,28 @@ async function createDefaultTrendingDestinations(): Promise<
   });
 }
 
+async function createDefaultCustomisedTourDestinations(): Promise<
+  IHomeCustomisedTourDestination[]
+> {
+  const destinations = await Destination.find({}).sort({ createdAt: -1 }).limit(3);
+
+  return destinations.map((destination, index) => ({
+    destinationId: destination.destinationId,
+    sortOrder: index,
+  }));
+}
+
+async function createDefaultHomeExperiences(): Promise<IHomeExperience[]> {
+  const experiences = await Experience.find({ status: ExperienceStatus.PUBLISHED })
+    .sort({ updatedAt: -1, createdAt: -1 })
+    .limit(5);
+
+  return experiences.map((experience, index) => ({
+    experienceId: experience.experienceId,
+    sortOrder: index,
+  }));
+}
+
 async function getOrCreateHomePage(): Promise<HomePageDocument> {
   const existingPage = await HomePage.findOne({ pageKey: homePageKey });
 
@@ -274,15 +328,24 @@ async function getOrCreateHomePage(): Promise<HomePageDocument> {
     return existingPage;
   }
 
-  const [upcomingTours, trendingDestinations] = await Promise.all([
-    createDefaultUpcomingTours(),
-    createDefaultTrendingDestinations(),
-  ]);
+  const [
+    upcomingTours,
+    trendingDestinations,
+    customisedTourDestinations,
+    homeExperiences,
+  ] = await Promise.all([
+      createDefaultUpcomingTours(),
+      createDefaultTrendingDestinations(),
+      createDefaultCustomisedTourDestinations(),
+      createDefaultHomeExperiences(),
+    ]);
 
   return HomePage.create({
     pageKey: homePageKey,
     upcomingTours,
     trendingDestinations,
+    customisedTourDestinations,
+    homeExperiences,
   });
 }
 
@@ -347,12 +410,71 @@ async function validateTrendingDestinations(
   return errors;
 }
 
+async function validateCustomisedTourDestinations(
+  customisedTourDestinations: HomePagePayload["customisedTourDestinations"]
+) {
+  const errors: Array<{ path: string; message: string }> = [];
+
+  await Promise.all(
+    customisedTourDestinations.map(async (destination, index) => {
+      const destinationExists = await Destination.exists({
+        destinationId: destination.destinationId,
+      });
+
+      if (!destinationExists) {
+        errors.push({
+          path: `customisedTourDestinations.${index}.destinationId`,
+          message: `Destination ID ${destination.destinationId} does not exist`,
+        });
+      }
+    })
+  );
+
+  return errors;
+}
+
+async function validateHomeExperiences(
+  homeExperiences: HomePagePayload["homeExperiences"]
+) {
+  const errors: Array<{ path: string; message: string }> = [];
+
+  await Promise.all(
+    homeExperiences.map(async (experience, index) => {
+      const experienceExists = await Experience.exists({
+        experienceId: experience.experienceId,
+        status: ExperienceStatus.PUBLISHED,
+      });
+
+      if (!experienceExists) {
+        errors.push({
+          path: `homeExperiences.${index}.experienceId`,
+          message: `Published experience ID ${experience.experienceId} does not exist`,
+        });
+      }
+    })
+  );
+
+  return errors;
+}
+
 async function validateHomePayload(payload: HomePagePayload) {
-  const [upcomingErrors, destinationErrors] = await Promise.all([
-    validateUpcomingTours(payload.upcomingTours),
-    validateTrendingDestinations(payload.trendingDestinations),
-  ]);
-  const errors = [...upcomingErrors, ...destinationErrors];
+  const [
+    upcomingErrors,
+    destinationErrors,
+    customisedDestinationErrors,
+    homeExperienceErrors,
+  ] = await Promise.all([
+      validateUpcomingTours(payload.upcomingTours),
+      validateTrendingDestinations(payload.trendingDestinations),
+      validateCustomisedTourDestinations(payload.customisedTourDestinations),
+      validateHomeExperiences(payload.homeExperiences),
+    ]);
+  const errors = [
+    ...upcomingErrors,
+    ...destinationErrors,
+    ...customisedDestinationErrors,
+    ...homeExperienceErrors,
+  ];
 
   if (errors.length > 0) {
     throw new HttpError(400, "Validation failed", errors);
@@ -388,6 +510,8 @@ export async function updateHomePage(
       $set: {
         upcomingTours: payload.upcomingTours,
         trendingDestinations: payload.trendingDestinations,
+        customisedTourDestinations: payload.customisedTourDestinations,
+        homeExperiences: payload.homeExperiences,
       },
       $setOnInsert: {
         pageKey: homePageKey,

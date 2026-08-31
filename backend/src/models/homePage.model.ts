@@ -19,7 +19,19 @@ export interface IHomeTrendingDestination {
   sortOrder: number;
 }
 
+export interface IHomeCustomisedTourDestination {
+  destinationId: string;
+  sortOrder: number;
+}
+
+export interface IHomeExperience {
+  experienceId: string;
+  sortOrder: number;
+}
+
 export interface IHomePage {
+  customisedTourDestinations: IHomeCustomisedTourDestination[];
+  homeExperiences: IHomeExperience[];
   pageKey: string;
   trendingDestinations: IHomeTrendingDestination[];
   upcomingTours: IHomeUpcomingTour[];
@@ -92,6 +104,33 @@ const homeTrendingDestinationSchema = new Schema<IHomeTrendingDestination>(
   }
 );
 
+const homeCustomisedTourDestinationSchema =
+  new Schema<IHomeCustomisedTourDestination>(
+    {
+      destinationId: {
+        ...requiredCodeString,
+        maxlength: 40,
+      },
+      sortOrder: sortOrderField,
+    },
+    {
+      _id: true,
+    }
+  );
+
+const homeExperienceSchema = new Schema<IHomeExperience>(
+  {
+    experienceId: {
+      ...requiredCodeString,
+      maxlength: 40,
+    },
+    sortOrder: sortOrderField,
+  },
+  {
+    _id: true,
+  }
+);
+
 const homePageSchema = new Schema<IHomePage>(
   {
     pageKey: {
@@ -106,6 +145,14 @@ const homePageSchema = new Schema<IHomePage>(
     },
     trendingDestinations: {
       type: [homeTrendingDestinationSchema],
+      default: [],
+    },
+    customisedTourDestinations: {
+      type: [homeCustomisedTourDestinationSchema],
+      default: [],
+    },
+    homeExperiences: {
+      type: [homeExperienceSchema],
       default: [],
     },
   },

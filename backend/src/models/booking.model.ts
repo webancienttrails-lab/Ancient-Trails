@@ -77,6 +77,7 @@ export interface IBooking {
   amountPaid?: number;
   paymentCapturedAt?: Date | null;
   confirmationToken?: string;
+  archivedAt?: Date | null;
   emailBookingConfirmationStatus?:
     | "pending"
     | "sending"
@@ -400,6 +401,10 @@ const bookingSchema = new Schema<IBooking>(
       ...trimmedString,
       maxlength: 128,
     },
+    archivedAt: {
+      type: Date,
+      default: null,
+    },
     emailBookingConfirmationStatus: {
       type: String,
       enum: ["pending", "sending", "sent", "failed"],
@@ -463,6 +468,7 @@ bookingSchema.index({ "guestDetails.email": 1 });
 bookingSchema.index({ paymentOrderId: 1 }, { sparse: true });
 bookingSchema.index({ paymentId: 1 }, { sparse: true });
 bookingSchema.index({ confirmationToken: 1 }, { sparse: true });
+bookingSchema.index({ archivedAt: 1 });
 bookingSchema.index({ emailBookingConfirmationStatus: 1 });
 bookingSchema.index({ whatsappBookingConfirmationStatus: 1 });
 bookingSchema.index({

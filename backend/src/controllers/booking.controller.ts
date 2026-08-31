@@ -475,6 +475,7 @@ function formatBooking(booking: BookingDocument) {
     paymentCurrency: booking.paymentCurrency || "",
     amountPaid: booking.amountPaid || 0,
     paymentCapturedAt: booking.paymentCapturedAt,
+    archivedAt: booking.archivedAt || null,
     createdAt: booking.createdAt,
     updatedAt: booking.updatedAt,
   };
@@ -2220,6 +2221,7 @@ export async function listBookings(
       ? request.query.tourId.trim().toUpperCase()
       : "";
   const filters: Record<string, unknown> = createPaidBookingFilter();
+  filters.archivedAt = null;
 
   if (search) {
     filters.$or = [
@@ -2345,6 +2347,42 @@ export async function updateBooking(
     response.status(200).json({
       success: true,
       message: "Booking updated successfully",
+      data: {
+        booking: formatBooking(booking),
+      },
+    });
+  } catch (error) {
+    if (isCastError(error)) {
+      throw new HttpError(400, "Invalid booking ID");
+    }
+
+    throw error;
+  }
+}
+
+export async function archiveBooking(
+  request: Request,
+  response: Response
+): Promise<void> {
+  try {
+    const booking = await Booking.findByIdAndUpdate(
+      request.params.id,
+      {
+        archivedAt: new Date(),
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    response.status(200).json({
+      success: true,
+      message: "Booking archived successfully",
       data: {
         booking: formatBooking(booking),
       },
