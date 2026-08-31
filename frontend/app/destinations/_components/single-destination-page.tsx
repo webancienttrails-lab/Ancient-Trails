@@ -34,10 +34,12 @@ import {
   getHomeMediaUrl,
   getTourDestinationIds,
   listPublicDestinations,
+  listPublicExperts,
   listPublicExperiences,
   listPublicTourDepartures,
   listPublicTours,
   type PublicDestination,
+  type PublicExpert,
   type PublicExperience,
   type PublicTour,
   type PublicTourDeparture,
@@ -411,6 +413,12 @@ function getExperienceImage(
   return getHomeMediaUrl(experience?.travellerPhotoGallery?.[0] || "") || fallbackImage;
 }
 
+function getExperienceVideo(experience: PublicExperience | undefined) {
+  return getHomeMediaUrl(
+    experience?.travellerVideos.find((video) => video.trim()) || ""
+  );
+}
+
 function isExperienceUploadImage(image: string) {
   return image.includes("/uploads/experiences/");
 }
@@ -448,13 +456,6 @@ function getTravellerInitials(name: string) {
 function getTourImage(tour: PublicTour, fallbackImage: string) {
   return getHomeMediaUrl(
     tour.thumbnailImage || tour.bannerImage || tour.galleryImages[0] || fallbackImage
-  );
-}
-
-function getTourLocationCount(tour: PublicTour, destination: PublicDestination) {
-  return Math.max(
-    getTourDestinationIds(tour).length,
-    destination.keyLandmarks.length || 1
   );
 }
 
@@ -526,48 +527,6 @@ function compactDurationLabel(value: string, fallbackDays: number) {
   return source.replace(/\s*\/\s*/g, "/").replace(/\s+/g, " ");
 }
 
-function getNightCountFromDuration(value: string) {
-  const nightMatch = value.match(/(\d+)\s*(?:nights?|n)\b/i);
-
-  if (nightMatch) {
-    return Number(nightMatch[1]);
-  }
-
-  const dayMatch = value.match(/(\d+)\s*(?:days?|d)\b/i);
-
-  if (dayMatch) {
-    return Math.max(Number(dayMatch[1]) - 1, 0);
-  }
-
-  return 0;
-}
-
-function getTourHotelCount(tour: PublicTour, destination: PublicDestination) {
-  const nights = getNightCountFromDuration(
-    tour.durationDn || getRecommendedDayNightLabel(destination)
-  );
-
-  if (nights === 0) {
-    return 0;
-  }
-
-  return Math.max(1, Math.min(getTourDestinationIds(tour).length || 1, nights));
-}
-
-function getTourTransferCount(tour: PublicTour) {
-  const inclusionText = tour.inclusions.join(" ").toLowerCase();
-  const transferKeywords = ["transfer", "transport", "coach", "bus", "cab", "car"];
-  const hasTransfer = transferKeywords.some((keyword) =>
-    inclusionText.includes(keyword)
-  );
-
-  if (!hasTransfer) {
-    return 0;
-  }
-
-  return Math.max(1, getTourDestinationIds(tour).length - 1);
-}
-
 function getTourBadgeLabel(tour: PublicTour) {
   const label = [tour.category, tour.tourType].find((value) =>
     /best|popular|featured|recommended|trending/i.test(value)
@@ -584,6 +543,27 @@ function getTourDifficultyLabel(tour: PublicTour) {
     : `${difficulty} Activity Level`;
 }
 
+function getReadableExpertName(expertId: string) {
+  const value = expertId.trim();
+
+  if (!value) {
+    return "Ancient Trails Expert";
+  }
+
+  return value
+    .replace(/[-_]+/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getTourExpertName(tour: PublicTour, experts: PublicExpert[]) {
+  const matchedExpert = experts.find(
+    (expert) => normalizeCode(expert.expertId) === normalizeCode(tour.expertId)
+  );
+
+  return matchedExpert?.fullName.trim() || getReadableExpertName(tour.expertId);
+}
+
 export function SingleDestinationPage({
   destinationId,
 }: {
@@ -592,6 +572,7 @@ export function SingleDestinationPage({
   const [destination, setDestination] = useState<PublicDestination | null>(null);
   const [relatedTours, setRelatedTours] = useState<PublicTour[]>([]);
   const [departures, setDepartures] = useState<PublicTourDeparture[]>([]);
+  const [experts, setExperts] = useState<PublicExpert[]>([]);
   const [experiences, setExperiences] = useState<PublicExperience[]>([]);
   const [lightbox, setLightbox] = useState<LightboxState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -621,6 +602,7 @@ export function SingleDestinationPage({
             setDestination(null);
             setRelatedTours([]);
             setDepartures([]);
+            setExperts([]);
             setExperiences([]);
             setLoadError("Destination not found.");
           }
@@ -628,12 +610,15 @@ export function SingleDestinationPage({
           return;
         }
 
-        const [toursResponse, departuresResponse, experiencesResponse] =
+        const [toursResponse, departuresResponse, experiencesResponse, expertsResponse] =
           await Promise.all([
             listPublicTours(matchedDestination.destinationId),
             listPublicTourDepartures(),
             listPublicExperiences(matchedDestination.destinationId).catch(() => ({
               data: { experiences: [] as PublicExperience[] },
+            })),
+            listPublicExperts().catch(() => ({
+              data: { experts: [] as PublicExpert[] },
             })),
           ]);
         const tours = toursResponse.data.tours.filter((tour) =>
@@ -644,6 +629,7 @@ export function SingleDestinationPage({
           setDestination(matchedDestination);
           setRelatedTours(tours);
           setDepartures(getRelatedDepartures(tours, departuresResponse.data.departures));
+          setExperts(expertsResponse.data.experts);
           setExperiences(experiencesResponse.data.experiences);
         }
       } catch (error) {
@@ -773,6 +759,7 @@ export function SingleDestinationPage({
         <ToursSection
           departures={departures}
           destination={destination}
+          experts={experts}
           images={images}
           tours={relatedTours}
         />
@@ -1325,6 +1312,10 @@ function getVisibleAttractionTrack(
   attractions: Array<{ image: string; label: string }>,
   startIndex: number
 ) {
+  if (attractions.length <= 1) {
+    return attractions;
+  }
+
   return Array.from({ length: 4 }, (_item, index) => {
     const attractionIndex = (startIndex + index) % attractions.length;
 
@@ -1389,6 +1380,7 @@ function TravellerExperienceSection({
   const displayFallbackImages = getDisplayFallbackImages(images);
   const featuredFallbackImage = getDisplayFallbackImage(images, 3);
   const featuredImage = getExperienceImage(featuredExperience, featuredFallbackImage);
+  const featuredVideo = getExperienceVideo(featuredExperience);
 
   function getTravellerReviewCount(experience: PublicExperience) {
     const travellerKey =
@@ -1412,7 +1404,7 @@ function TravellerExperienceSection({
   }
 
   return (
-    <section className="mt-12 grid gap-8 lg:grid-cols-[minmax(310px,1fr)_minmax(260px,0.82fr)_minmax(320px,0.95fr)] lg:items-start xl:gap-10">
+    <section className="mt-12 grid gap-8 lg:grid-cols-[minmax(280px,1fr)_minmax(180px,0.58fr)_minmax(290px,0.95fr)] lg:items-start xl:gap-10">
       <div className="pt-2">
         <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
           What Travellers say on -
@@ -1455,14 +1447,28 @@ function TravellerExperienceSection({
       </div>
 
       <article className="relative h-[420px] overflow-hidden rounded-[8px] bg-[#f3eee9] shadow-[0_14px_30px_rgba(67,43,27,0.12)] xl:h-[460px]">
-        <Image
-          src={featuredImage || fallbackImages[0]}
-          alt={featuredExperience?.title || destination.destinationName}
-          fill
-          unoptimized
-          sizes="(min-width: 1280px) 340px, (min-width: 1024px) 28vw, 100vw"
-          className="object-cover object-center"
-        />
+        {featuredVideo ? (
+          <video
+            autoPlay
+            className="size-full object-cover object-center"
+            controls
+            loop
+            muted
+            playsInline
+            poster={featuredImage || fallbackImages[0]}
+            preload="metadata"
+            src={featuredVideo}
+          />
+        ) : (
+          <Image
+            src={featuredImage || fallbackImages[0]}
+            alt={featuredExperience?.title || destination.destinationName}
+            fill
+            unoptimized
+            sizes="(min-width: 1280px) 340px, (min-width: 1024px) 28vw, 100vw"
+            className="object-cover object-center"
+          />
+        )}
       </article>
 
       <div className="grid gap-3">
@@ -1610,7 +1616,8 @@ function ReviewCard({
   const name = experience.travellerName.trim() || "Traveller";
   const photoGallery = getExperiencePhotoGallery(experience);
   const photoCount = photoGallery.length;
-  const reviewText = experience.writtenReview || experience.title;
+  const reviewText =
+    experience.writtenReview || experience.title || "Traveller experience";
   const reviewMeta = `${reviewCount} review${reviewCount === 1 ? "" : "s"} - ${photoCount} photo${photoCount === 1 ? "" : "s"}`;
   const avatarImage = photoGallery[0] || "";
   const identity = (
@@ -1668,11 +1675,13 @@ function ReviewCard({
 function ToursSection({
   departures,
   destination,
+  experts,
   images,
   tours,
 }: {
   departures: PublicTourDeparture[];
   destination: PublicDestination;
+  experts: PublicExpert[];
   images: string[];
   tours: PublicTour[];
 }) {
@@ -1698,12 +1707,13 @@ function ToursSection({
         </Link>
       </div>
 
-      <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-5 grid justify-items-center gap-5 md:grid-cols-2 xl:grid-cols-3">
         {tours.slice(0, 3).map((tour, index) => (
           <DestinationTourCard
             key={tour.id || tour.tourId}
             destination={destination}
             fallbackImage={images[index % images.length] || fallbackImages[0]}
+            expertName={getTourExpertName(tour, experts)}
             nextDeparture={getNextTourDeparture(tour, departures)}
             price={getLowestTourPrice(tour, departures)}
             tour={tour}
@@ -1716,12 +1726,14 @@ function ToursSection({
 
 function DestinationTourCard({
   destination,
+  expertName,
   fallbackImage,
   nextDeparture,
   price,
   tour,
 }: {
   destination: PublicDestination;
+  expertName: string;
   fallbackImage: string;
   nextDeparture?: PublicTourDeparture;
   price: number;
@@ -1731,9 +1743,6 @@ function DestinationTourCard({
     tour.durationDn,
     destination.recommendedDurationDays || 1
   );
-  const locationCount = getTourLocationCount(tour, destination);
-  const hotelCount = getTourHotelCount(tour, destination);
-  const transferCount = getTourTransferCount(tour);
   const tourHref = getTourHref(tour);
   const tourIncludes = [
     { icon: BedDouble, label: "Accommodation" },
@@ -1743,7 +1752,7 @@ function DestinationTourCard({
   ];
 
   return (
-    <article className="group overflow-hidden rounded-[22px] border border-[#e8dfd8] bg-white shadow-[0_15px_30px_rgba(50,50,50,0.14)]">
+    <article className="group w-full max-w-[410px] overflow-hidden rounded-[20px] border border-[#e8dfd8] bg-white shadow-[0_12px_26px_rgba(50,50,50,0.12)]">
       <div className="relative aspect-[1.6/1] overflow-hidden bg-muted">
         <Image
           src={getTourImage(tour, fallbackImage)}
@@ -1754,81 +1763,78 @@ function DestinationTourCard({
         />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.12)_0%,rgba(18,12,8,0.02)_48%,rgba(18,12,8,0.35)_100%)]" />
 
-        <div className="absolute left-7 top-0 flex h-[52px] items-stretch">
+        <div className="absolute left-5 top-0 flex h-[46px] items-stretch">
           <span
             aria-hidden="true"
-            className="grid w-[44px] place-items-center rounded-b-[16px] bg-primary/72 text-white shadow-[0_10px_22px_rgba(35,23,15,0.2)] backdrop-blur-[2px]"
+            className="grid w-[40px] place-items-center rounded-b-[14px] bg-primary/72 text-white shadow-[0_10px_22px_rgba(35,23,15,0.2)] backdrop-blur-[2px]"
           >
             <BestsellerBadgeIcon />
           </span>
-          <span className="inline-flex max-w-[130px] items-center truncate px-3.5 font-sans text-[11px] font-extrabold uppercase leading-none text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.55)]">
+          <span className="inline-flex max-w-[118px] items-center truncate px-3 font-sans text-[10px] font-extrabold uppercase leading-none text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.55)]">
             {getTourBadgeLabel(tour)}
           </span>
         </div>
 
         <button
           type="button"
-          className="absolute right-4 top-4 grid size-12 place-items-center rounded-full bg-[#2b241f]/80 text-white shadow-[0_10px_24px_rgba(35,23,15,0.28)] backdrop-blur-[2px] transition-colors hover:bg-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-white/45"
+          className="absolute right-3 top-3 grid size-10 place-items-center rounded-full bg-[#2b241f]/80 text-white shadow-[0_10px_24px_rgba(35,23,15,0.28)] backdrop-blur-[2px] transition-colors hover:bg-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-white/45"
           aria-label={`Save ${tour.tourName}`}
         >
-          <Heart className="size-5" strokeWidth={1.9} />
+          <Heart className="size-[18px]" strokeWidth={1.9} />
         </button>
 
-        <span className="absolute bottom-5 left-5 inline-flex h-10 max-w-[calc(100%-2.5rem)] items-center gap-2.5 rounded-full bg-[#2b241f]/80 px-5 font-sans text-[14px] font-medium leading-none text-white shadow-[0_10px_22px_rgba(35,23,15,0.24)] backdrop-blur-[2px]">
-          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-white text-[#2b241f]">
+        <span className="absolute bottom-4 left-4 inline-flex h-9 max-w-[calc(100%-2rem)] items-center gap-2 rounded-full bg-[#2b241f]/80 px-4 font-sans text-[13px] font-medium leading-none text-white shadow-[0_10px_22px_rgba(35,23,15,0.24)] backdrop-blur-[2px]">
+          <span className="grid size-[18px] shrink-0 place-items-center rounded-full bg-white text-[#2b241f]">
             <Clock3 className="size-3" strokeWidth={2.3} />
           </span>
           <span className="truncate">{duration}</span>
         </span>
 
-        <span className="absolute bottom-5 right-5 hidden h-10 max-w-[52%] items-center rounded-full bg-[#2b241f]/80 px-5 font-sans text-[14px] font-medium leading-none text-white shadow-[0_10px_22px_rgba(35,23,15,0.24)] backdrop-blur-[2px] sm:inline-flex">
+        <span className="absolute bottom-4 right-4 hidden h-9 max-w-[50%] items-center rounded-full bg-[#2b241f]/80 px-4 font-sans text-[13px] font-medium leading-none text-white shadow-[0_10px_22px_rgba(35,23,15,0.24)] backdrop-blur-[2px] sm:inline-flex">
           <span className="truncate">{getTourDifficultyLabel(tour)}</span>
         </span>
       </div>
 
-      <div className="px-5 pb-6 pt-5 sm:px-6">
-        <h3 className="line-clamp-2 font-heading text-[27px] font-bold leading-[1.05] tracking-normal text-secondary">
+      <div className="px-4 pb-5 pt-4 sm:px-5">
+        <h3 className="line-clamp-2 font-heading text-[24px] font-bold leading-[1.06] tracking-normal text-secondary sm:text-[25px]">
           {tour.tourName}
         </h3>
 
-        <span className="mt-4 block h-px w-full bg-primary/65" />
+        <span className="mt-3 block h-px w-full bg-primary/65" />
 
-        <div className="mt-2 grid gap-3 font-sans lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+        <div className="mt-2 grid gap-2 font-sans lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
           <div className="min-w-0">
-            <p className="text-[13px] font-medium leading-none text-secondary/86">
+            <p className="text-[12px] font-medium leading-none text-secondary/86">
               Upcoming Departure
             </p>
-            <time className="mt-2 block truncate text-[18px] font-medium leading-none text-primary sm:text-[20px]">
+            <time className="mt-1.5 block truncate text-[16px] font-medium leading-none text-primary">
               {formatOrdinalDate(nextDeparture?.departureDate)}
             </time>
           </div>
           <Link
             href={getTourCalendarHref({ destination, tour })}
-            className="inline-flex w-fit items-center gap-2 pt-0.5 text-[13px] font-medium leading-none text-secondary transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20 sm:text-[14px] lg:justify-self-end"
+            className="inline-flex w-fit items-center gap-2 pt-0.5 text-[12px] font-medium leading-none text-secondary transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20 sm:text-[13px] lg:justify-self-end"
           >
             <span className="whitespace-nowrap">View all departures</span>
-            <CalendarDays className="size-6 shrink-0 text-primary" strokeWidth={1.8} />
+            <CalendarDays className="size-5 shrink-0 text-primary" strokeWidth={1.8} />
           </Link>
         </div>
 
-        <div className="mt-8 flex flex-nowrap items-center justify-between gap-2 font-sans text-secondary sm:gap-4">
-          <TourCardStat label="Locations" value={locationCount} />
-          <TourCardStat label="Hotels" value={hotelCount} />
-          <TourCardStat label="Transfer" value={transferCount} />
-          <Link
-            href={`${tourHref}#itinerary`}
-            className="shrink-0 whitespace-nowrap text-[14px] font-medium leading-none text-primary transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20 sm:text-[16px]"
-          >
-            Itinerary
-          </Link>
+        <div className="mt-4 flex min-w-0 items-baseline justify-between gap-3 font-sans text-secondary">
+          <span className="shrink-0 text-[12px] font-medium leading-none text-secondary/62 sm:text-[13px]">
+            Tour Expert
+          </span>
+          <strong className="min-w-0 truncate text-right text-[14px] font-semibold leading-none text-secondary sm:text-[15px]">
+            {expertName}
+          </strong>
         </div>
 
-        <div className="mt-4 border-y border-[#d6d1cb]">
-          <div className="flex items-center justify-between gap-3 py-3">
-            <span className="font-sans text-[16px] font-medium leading-none text-secondary">
+        <div className="mt-2 border-y border-[#d6d1cb]">
+          <div className="flex items-center justify-between gap-3 py-2">
+            <span className="font-sans text-[14px] font-medium leading-none text-secondary">
               Tour Includes
             </span>
-            <div className="flex shrink-0 items-center gap-3 text-primary sm:gap-4">
+            <div className="flex shrink-0 items-center gap-2.5 text-primary sm:gap-3">
               {tourIncludes.map(({ icon, label }) => (
                 <TourIncludeIcon key={label} icon={icon} label={label} />
               ))}
@@ -1836,15 +1842,15 @@ function DestinationTourCard({
           </div>
         </div>
 
-        <div className="mt-4 flex flex-nowrap items-center justify-between gap-3">
+        <div className="mt-4 flex flex-nowrap items-center justify-between gap-2.5">
           <span className="min-w-0 flex-1 font-sans">
-            <span className="block text-[14px] font-medium leading-none text-secondary/72">
+            <span className="block text-[12px] font-medium leading-none text-secondary/72 sm:text-[13px]">
               Starting from
             </span>
             <strong
               className={cn(
-                "mt-0 block truncate font-sans font-bold leading-none text-primary",
-                price > 0 ? "text-[26px] sm:text-[28px]" : "text-[22px]"
+                "mt-0 block truncate font-sans font-semibold leading-none text-primary",
+                price > 0 ? "text-[22px] sm:text-[24px]" : "text-[20px]"
               )}
             >
               {price > 0 ? `${formatPrice(price)} +` : "On request"}
@@ -1854,10 +1860,10 @@ function DestinationTourCard({
           <Button
             nativeButton={false}
             render={<Link href={tourHref} />}
-            className="h-[54px] min-w-[158px] shrink-0 gap-5 px-5 text-[18px] font-bold shadow-[0_12px_24px_rgba(212,114,32,0.24)] sm:min-w-[170px] sm:text-[19px]"
+            className="h-[42px] min-w-[134px] shrink-0 gap-4 px-4 text-[16px] font-normal shadow-[0_12px_24px_rgba(212,114,32,0.22)] sm:min-w-[144px] sm:text-[16px]"
           >
             Book Now
-            <ButtonArrow className="h-3 w-7 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+            <ButtonArrow className="h-2.5 w-6 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
           </Button>
         </div>
       </div>
@@ -1870,35 +1876,18 @@ function BestsellerBadgeIcon() {
     <svg
       aria-hidden="true"
       viewBox="0 0 64 64"
-      className="size-7"
+      className="size-6"
       fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="4"
     >
       <path
-        fill="currentColor"
-        d="M20.1 38.6 8 58.2l12.3-3.1 6.4 10 8.1-19.5"
+        d="m32 4.5 5.3 4 6.6-.9 2.8 6 6 2.8-.9 6.6 4 5.3-4 5.3.9 6.6-6 2.8-2.8 6-6.6-.9-5.3 4-5.3-4-6.6.9-2.8-6-6-2.8.9-6.6-4-5.3 4-5.3-.9-6.6 6-2.8 2.8-6 6.6.9 5.3-4Z"
       />
-      <path
-        fill="currentColor"
-        d="M43.9 38.6 56 58.2l-12.3-3.1-6.4 10-8.1-19.5"
-      />
-      <path
-        fill="currentColor"
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M32 2C20.4 2 11 11.4 11 23s9.4 21 21 21 21-9.4 21-21S43.6 2 32 2Zm0 11.2 3.2 6.4 7.1 1-5.2 5 1.2 7-6.3-3.3-6.3 3.3 1.2-7-5.2-5 7.1-1 3.2-6.4Z"
-      />
+      <path d="m32 17.4 3.7 7.5 8.3 1.2-6 5.8 1.4 8.2-7.4-3.9-7.4 3.9 1.4-8.2-6-5.8 8.3-1.2L32 17.4Z" />
     </svg>
-  );
-}
-
-function TourCardStat({ label, value }: { label: string; value: number }) {
-  return (
-    <span className="inline-flex shrink-0 items-baseline gap-1 whitespace-nowrap text-[12px] font-medium leading-none text-secondary sm:gap-1.5 sm:text-[14px]">
-      <strong className="text-[18px] font-bold leading-none text-secondary sm:text-[20px]">
-        {value}
-      </strong>
-      <span>{label}</span>
-    </span>
   );
 }
 
@@ -1914,9 +1903,9 @@ function TourIncludeIcon({
       aria-label={label}
       role="img"
       title={label}
-      className="grid size-5 place-items-center text-primary"
+      className="grid size-[18px] place-items-center text-primary"
     >
-      <Icon className="size-[18px]" strokeWidth={2.5} />
+      <Icon className="size-4" strokeWidth={2.4} />
     </span>
   );
 }

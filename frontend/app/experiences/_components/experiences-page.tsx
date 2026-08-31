@@ -167,10 +167,29 @@ const instagramImages = [
   "/home assets/Special_Tour/Sketching.png",
 ];
 
+function HeaderBand() {
+  return (
+    <section className="relative h-[200px] overflow-hidden bg-secondary">
+      <Image
+        src="/home assets/Heritage Banner.webp"
+        alt="Ancient Trails heritage landscape"
+        fill
+        priority
+        sizes="100vw"
+        className="object-cover object-center"
+      />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(35,18,9,0.34)_100%)]" />
+      <div className="relative z-10 mx-auto w-full max-w-[1300px] px-5 sm:px-0">
+        <Header />
+      </div>
+    </section>
+  );
+}
+
 export function ExperiencesPage() {
   return (
     <main className="min-h-screen overflow-hidden bg-background text-secondary">
-      <HeroSection />
+      <HeaderBand />
       <CategoryStrip />
       <TravellerStoriesSection />
       <VoicesSection />
@@ -198,7 +217,7 @@ function HeroSection() {
       <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,rgba(255,248,240,0)_0%,#fff8f0_100%)]" />
 
       <div className="relative z-10 mx-auto flex min-h-[500px] w-full max-w-[1300px] flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0">
-        <Header />
+        <HeaderBand />
 
         <div className="flex flex-1 items-center px-0 pb-20 pt-8 sm:px-8">
           <div className="max-w-[520px]">

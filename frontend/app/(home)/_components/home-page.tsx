@@ -2,7 +2,11 @@ import Image from "next/image";
 
 import { Header } from "@/components/layout/header";
 import { PlanTripLauncher } from "@/components/plan-trip-launcher";
-import type { HomeDestinationCard } from "@/lib/home-travel";
+import type {
+  HomeCustomisedTourCard,
+  HomeDestinationCard,
+  HomeExperienceCard,
+} from "@/lib/home-travel";
 import { AboutSection } from "./about-section";
 import { CustomisedToursSection } from "./customised-tours-section";
 import { EgyptExperiencesSection } from "./egypt-experiences-section";
@@ -14,9 +18,13 @@ import { UpcomingToursSection } from "./upcoming-tours-section";
 import { WhyChooseUsSection } from "./why-choose-us-section";
 
 export function HomePage({
+  customisedTourDestinations,
+  homeExperiences,
   topDestinations,
   tourCategories,
 }: {
+  customisedTourDestinations?: HomeCustomisedTourCard[];
+  homeExperiences?: HomeExperienceCard[];
   topDestinations?: HomeDestinationCard[];
   tourCategories?: string[];
 }) {
@@ -79,11 +87,11 @@ export function HomePage({
         tourCategories={tourCategories}
       />
 
-      <EgyptExperiencesSection />
+      <EgyptExperiencesSection experiences={homeExperiences} />
 
       <WhyChooseUsSection />
 
-      <CustomisedToursSection />
+      <CustomisedToursSection destinations={customisedTourDestinations} />
 
       <SpecialisedToursSection />
 

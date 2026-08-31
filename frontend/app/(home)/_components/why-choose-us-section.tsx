@@ -5,33 +5,38 @@ import { TextReveal } from "./reveal-on-view";
 const whyChooseUsFeatures = [
   {
     title: "Mentor Led Trails",
+    titleLines: ["Mentor Led", "Trails"],
     description:
       "Travel with people who understand history, archaeology and culture.",
-    icon: "/home assets/icons/Mentor.png",
+    icon: "/home assets/icons/Mentor Led Trails.png",
   },
   {
     title: "Tour Expert on Every Trip",
+    titleLines: ["Tour Expert on Every", "Trip"],
     description:
       "A well managed itinerary, so you stay fully present in the experience.",
-    icon: "/home assets/icons/Tour_trip.png",
+    icon: "/home assets/icons/Tour Expert.png",
   },
   {
     title: "Learning with Leisure",
+    titleLines: ["Learning with", "Leisure"],
     description:
       "The pace is thoughtful. The travel stays comfortable and never rushed.",
-    icon: "/home assets/icons/Learning.png",
+    icon: "/home assets/icons/Learning with Leisure.png",
   },
   {
     title: "Curated Across Interests",
+    titleLines: ["Curated Across", "Interests"],
     description:
       "Choose from heritage trips, short trails, international journeys and specialized tours.",
-    icon: "/home assets/icons/Internet.png",
+    icon: "/home assets/icons/Curated Interests.png",
   },
   {
     title: "Safe and Smooth Planning",
+    titleLines: ["Safe and Smooth", "Planning"],
     description:
       "Clear itineraries, easy bookings, guided support that help instill confidence in travellers.",
-    icon: "/home assets/icons/Planning.png",
+    icon: "/home assets/icons/Safe Planning.png",
   },
 ];
 
@@ -102,7 +107,11 @@ export function WhyChooseUsSection() {
 
               <TextReveal delay={120 + index * 70}>
                 <h3 className="mt-5 min-h-[46px] max-w-[240px] font-sans text-[16px] font-normal leading-[1.35] text-secondary lg:max-w-[190px]">
-                  {feature.title}
+                  {feature.titleLines.map((line) => (
+                    <span key={line} className="block">
+                      {line}
+                    </span>
+                  ))}
                 </h3>
                 <p className="mt-4 max-w-[240px] text-[13px] italic leading-[1.25] text-secondary/75 lg:max-w-[190px]">
                   {feature.description}

@@ -32,6 +32,8 @@ export type PublicTourDeparture = {
   departureDate: string | null;
   returnDate: string | null;
   seatsAvailable: number;
+  filledSeats?: number;
+  totalSeats?: number;
   priceAdult: number;
   priceExtraBed: number;
   priceChildWithoutExtraBed: number;
@@ -119,6 +121,11 @@ export type PublicDestination = {
   updatedAt: string;
 };
 
+export type PublicExperienceAttractionPhoto = {
+  image: string;
+  name: string;
+};
+
 export type PublicExperience = {
   id: string;
   experienceId: string;
@@ -126,11 +133,13 @@ export type PublicExperience = {
   destinationName: string;
   travellerName: string;
   travellerEmail: string;
-  title: string;
+  title?: string;
   writtenReview: string;
   thingsToKnow: string[];
   travellerPhotoGallery: string[];
   travellerVideos: string[];
+  travellerVideoTitles: string[];
+  attractionPhotoGallery: PublicExperienceAttractionPhoto[];
   ratingItinerary: number;
   ratingLocalTransport: number;
   ratingAccommodation: number;
@@ -156,10 +165,24 @@ export type HomeTrendingDestinationSetting = {
   sortOrder: number;
 };
 
+export type HomeCustomisedTourDestinationSetting = {
+  id: string;
+  destinationId: string;
+  sortOrder: number;
+};
+
+export type HomeExperienceSetting = {
+  id: string;
+  experienceId: string;
+  sortOrder: number;
+};
+
 export type HomePageContent = {
   id: string;
   upcomingTours: HomeUpcomingTourSetting[];
   trendingDestinations: HomeTrendingDestinationSetting[];
+  customisedTourDestinations: HomeCustomisedTourDestinationSetting[];
+  homeExperiences: HomeExperienceSetting[];
   createdAt: string;
   updatedAt: string;
 };
@@ -229,6 +252,32 @@ export type HomeDestinationCard = {
   tourName: string;
 };
 
+export type HomeCustomisedTourCard = {
+  destinationId: string;
+  image: string;
+  tags: string[];
+  title: string;
+};
+
+export type HomeExperienceCard = {
+  attractionPhotoGallery: PublicExperienceAttractionPhoto[];
+  destinationId: string;
+  destinationName: string;
+  id: string;
+  experienceId: string;
+  image: string;
+  rating: number;
+  review: string;
+  title: string;
+  travellerPhotoGallery: string[];
+  travellerVideos: string[];
+  travellerVideoTitles: string[];
+  travelledMonth: string;
+  travellerName: string;
+  type: "Album" | "Video";
+  featured?: boolean;
+};
+
 export const fallbackUpcomingTours: HomeTourCard[] = [
   {
     title: "Khajuraho",
@@ -280,13 +329,34 @@ export const fallbackUpcomingTours: HomeTourCard[] = [
   },
 ];
 
+export const fallbackCustomisedTours: HomeCustomisedTourCard[] = [
+  {
+    title: "Kashmir",
+    image: "/home assets/Haridwar.webp",
+    tags: ["Spiritual", "Nature"],
+    destinationId: "KASHMIR",
+  },
+  {
+    title: "Rajasthan",
+    image: "/home assets/destination/hawa-mahal.webp",
+    tags: ["Heritage", "Architecture"],
+    destinationId: "RAJASTHAN",
+  },
+  {
+    title: "Shimla",
+    image: "/home assets/destination/Amritsar.webp",
+    tags: ["Winters", "Honeymoon"],
+    destinationId: "SHIMLA",
+  },
+];
+
 export const fallbackTrendingDestinations: HomeDestinationCard[] = [
   {
     name: "Jaipur",
     state: "Rajasthan",
     image: "/home assets/destination/hawa-mahal.webp",
     destinationId: "JAIPUR",
-    focus: "Heritage",
+    focus: "",
     markerX: 43.3,
     markerY: 42.5,
     description:
@@ -302,7 +372,7 @@ export const fallbackTrendingDestinations: HomeDestinationCard[] = [
     state: "Rajasthan",
     image: "/home assets/destination/Udaipur.webp",
     destinationId: "UDAIPUR",
-    focus: "Lakes & Palaces",
+    focus: "",
     markerX: 41.9,
     markerY: 52.1,
     description:
@@ -318,7 +388,7 @@ export const fallbackTrendingDestinations: HomeDestinationCard[] = [
     state: "Uttar Pradesh",
     image: "/home assets/destination/Varanasi.webp",
     destinationId: "VARANASI",
-    focus: "Sacred Heritage",
+    focus: "",
     markerX: 64.1,
     markerY: 49.7,
     description:
@@ -334,7 +404,7 @@ export const fallbackTrendingDestinations: HomeDestinationCard[] = [
     state: "Karnataka",
     image: "/home assets/destination/Hampi.webp",
     destinationId: "HAMPI",
-    focus: "UNESCO Heritage",
+    focus: "",
     markerX: 51.2,
     markerY: 74.8,
     description:
@@ -350,7 +420,7 @@ export const fallbackTrendingDestinations: HomeDestinationCard[] = [
     state: "Madhya Pradesh",
     image: "/home assets/Khajuraho.webp",
     destinationId: "KHAJURAHO",
-    focus: "Temple Art",
+    focus: "",
     markerX: 58.2,
     markerY: 56.5,
     description:
@@ -366,7 +436,7 @@ export const fallbackTrendingDestinations: HomeDestinationCard[] = [
     state: "Punjab",
     image: "/home assets/destination/Amritsar.webp",
     destinationId: "AMRITSAR",
-    focus: "Living Heritage",
+    focus: "",
     markerX: 37.2,
     markerY: 28.2,
     description:
@@ -382,7 +452,7 @@ export const fallbackTrendingDestinations: HomeDestinationCard[] = [
     state: "Karnataka",
     image: "/home assets/destination/Hoysalas.webp",
     destinationId: "HOYSALAS",
-    focus: "Temple Architecture",
+    focus: "",
     markerX: 51.6,
     markerY: 73.1,
     description:
@@ -398,7 +468,7 @@ export const fallbackTrendingDestinations: HomeDestinationCard[] = [
     state: "Madhya Pradesh",
     image: "/home assets/Khajuraho.webp",
     destinationId: "KHAJURAHO-2",
-    focus: "Cultural Trail",
+    focus: "",
     markerX: 58.2,
     markerY: 56.5,
     description:
@@ -543,6 +613,80 @@ function getTourImage(tour: PublicTour | undefined, fallbackImage: string) {
   );
 }
 
+function getExperienceImage(
+  experience: PublicExperience,
+  fallbackImage: string
+) {
+  return getHomeMediaUrl(
+    experience.travellerPhotoGallery.find((image) => image.trim()) ||
+      experience.attractionPhotoGallery.find((photo) => photo.image.trim())
+        ?.image ||
+      fallbackImage
+  );
+}
+
+function getExperienceTitle(experience: PublicExperience, fallbackTitle: string) {
+  return (
+    experience.title?.trim() ||
+    experience.attractionPhotoGallery.find((photo) => photo.name.trim())?.name ||
+    experience.destinationName ||
+    fallbackTitle
+  );
+}
+
+function getExperienceReview(experience: PublicExperience, fallbackReview: string) {
+  const review =
+    experience.writtenReview.trim() ||
+    experience.thingsToKnow.find((item) => item.trim()) ||
+    fallbackReview;
+
+  return review.length > 190 ? `${review.slice(0, 187).trim()}...` : review;
+}
+
+function getUniqueHomeMedia(values: string[] = []) {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => getHomeMediaUrl(value))
+        .map((value) => value.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function getExperienceAttractionPhotos(
+  photos: PublicExperienceAttractionPhoto[] = []
+) {
+  const seenImages = new Set<string>();
+
+  return photos
+    .map((photo) => ({
+      image: getHomeMediaUrl(photo.image),
+      name: photo.name.trim(),
+    }))
+    .filter((photo) => {
+      if (!photo.image || seenImages.has(photo.image)) {
+        return false;
+      }
+
+      seenImages.add(photo.image);
+
+      return true;
+    });
+}
+
+function formatTravelMonth(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "recently";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    month: "long",
+  }).format(date);
+}
+
 function getDestinationPlaceCountLabel(
   destination: PublicDestination,
   fallbackLabel: string
@@ -566,22 +710,58 @@ function getDestinationPlaceCountLabel(
   return fallbackLabel;
 }
 
-function getDestinationTourCategoryLabel(
-  relatedTours: PublicTour[],
-  fallbackLabel: string
-) {
+function getDestinationTourCategoryLabel(relatedTours: PublicTour[]) {
   const categories = Array.from(
     new Set(
       relatedTours
-        .map((tour) => tour.category || tour.tourType)
+        .flatMap((tour) => (tour.category || "").split(/[,/|]+/))
         .map((category) => category.trim())
         .filter(Boolean)
     )
   );
 
-  return categories.length > 0
-    ? categories.slice(0, 3).join(", ")
-    : fallbackLabel;
+  return categories.join(", ");
+}
+
+function splitHomeLabels(value = "") {
+  return value
+    .split(/[,/|]+/)
+    .map((label) => label.trim())
+    .filter(Boolean);
+}
+
+function getUniqueHomeLabels(labels: string[]) {
+  const seen = new Set<string>();
+
+  return labels.filter((label) => {
+    const key = label.trim().toLowerCase();
+
+    if (!key || seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+
+    return true;
+  });
+}
+
+function getCustomisedDestinationTags(
+  destination: PublicDestination,
+  fallbackTags: string[]
+) {
+  const tags = getUniqueHomeLabels([
+    ...splitHomeLabels(destination.primaryHeritageFocus),
+    ...(destination.unescoSite ? ["UNESCO"] : []),
+    ...splitHomeLabels(destination.region || ""),
+    destination.state,
+    destination.countryRegion,
+    ...destination.keyLandmarks.slice(0, 2),
+    destination.bestTimeToVisit || "",
+    ...fallbackTags,
+  ]);
+
+  return tags.slice(0, 2);
 }
 
 export function getTourDestinationIds(
@@ -850,11 +1030,7 @@ export function buildTrendingDestinationCards(
         fallback.description,
       destinationId: destination.destinationId,
       duration: getDestinationPlaceCountLabel(destination, fallback.duration),
-      focus: getDestinationTourCategoryLabel(
-        relatedTours,
-        destination.primaryHeritageFocus ||
-          (destination.unescoSite ? "UNESCO Heritage" : destination.destinationType)
-      ),
+      focus: getDestinationTourCategoryLabel(relatedTours),
       image,
       landmarks:
         destination.keyLandmarks.length > 0
@@ -866,6 +1042,121 @@ export function buildTrendingDestinationCards(
       state: destination.state || destination.countryRegion || destination.city,
       tourImage: getTourImage(relatedTour, image),
       tourName: relatedTour?.tourName || `Explore ${destination.destinationName}`,
+    };
+  });
+}
+
+export function buildCustomisedTourCards(
+  destinations: PublicDestination[],
+  limit = 3,
+  selectedCustomisedTourDestinations: HomeCustomisedTourDestinationSetting[] = []
+): HomeCustomisedTourCard[] {
+  const destinationById = new Map(
+    destinations.map((destination) => [destination.destinationId, destination])
+  );
+  const sourceDestinations =
+    selectedCustomisedTourDestinations.length > 0
+      ? [...selectedCustomisedTourDestinations]
+          .sort((left, right) => left.sortOrder - right.sortOrder)
+          .map((selection) => destinationById.get(selection.destinationId))
+          .filter(
+            (destination): destination is PublicDestination =>
+              Boolean(destination)
+          )
+      : destinations.slice(0, limit);
+
+  return sourceDestinations.slice(0, limit).map((destination, index) => {
+    const fallback = fallbackCustomisedTours[index % fallbackCustomisedTours.length];
+    const image = getHomeMediaUrl(
+      destination.thumbnailImage ||
+        destination.bannerImage ||
+        destination.galleryImages?.[0] ||
+        fallback.image
+    );
+
+    return {
+      destinationId: destination.destinationId,
+      image,
+      tags: getCustomisedDestinationTags(destination, fallback.tags),
+      title: destination.destinationName,
+    };
+  });
+}
+
+const fallbackHomeExperienceSeeds = [
+  {
+    image: "/home assets/Egypt.webp",
+    review:
+      "Location and quality of hotel in Cairo could be better- felt stranded in Cairo since hotel was a little remote from city (new and old Cairo).",
+    title: "Pyramids of Giza Sunrise Experience",
+  },
+  {
+    image: "/home assets/Egypt/Egypt_2.webp",
+    review: "Exploring Luxor temples felt like walking through living history.",
+    title: "Exploring Luxor Temples",
+  },
+  {
+    image: "/home assets/Egypt/Egypt_3.webp",
+    review: "The Nile cruise moments were calm, beautiful and unforgettable.",
+    title: "Nile Cruise Moments",
+  },
+  {
+    image: "/home assets/Egypt/Egypt_4.webp",
+    review: "Egyptian Museum highlights brought the whole journey together.",
+    title: "Egyptian Museum Highlights",
+  },
+  {
+    image: "/home assets/Egypt/Egypt_5.webp",
+    review: "Khan El Khalili market was full of colour, craft and energy.",
+    title: "Khan El Khalili Market Vibes",
+  },
+];
+
+export function buildHomeExperienceCards(
+  experiences: PublicExperience[],
+  limit = 5,
+  selectedHomeExperiences: HomeExperienceSetting[] = []
+): HomeExperienceCard[] {
+  const experienceById = new Map(
+    experiences.map((experience) => [experience.experienceId, experience])
+  );
+  const sourceExperiences =
+    selectedHomeExperiences.length > 0
+      ? [...selectedHomeExperiences]
+          .sort((left, right) => left.sortOrder - right.sortOrder)
+          .map((selection) => experienceById.get(selection.experienceId))
+          .filter(
+            (experience): experience is PublicExperience =>
+              Boolean(experience)
+          )
+      : experiences.slice(0, limit);
+
+  return sourceExperiences.slice(0, limit).map((experience, index) => {
+    const fallback =
+      fallbackHomeExperienceSeeds[index % fallbackHomeExperienceSeeds.length];
+
+    return {
+      attractionPhotoGallery: getExperienceAttractionPhotos(
+        experience.attractionPhotoGallery
+      ),
+      destinationId: experience.destinationId,
+      destinationName: experience.destinationName,
+      id: experience.id,
+      experienceId: experience.experienceId,
+      featured: index === 0,
+      image: getExperienceImage(experience, fallback.image),
+      rating: Math.min(5, Math.max(1, Number(experience.overallRating) || 5)),
+      review: getExperienceReview(experience, fallback.review),
+      title: getExperienceTitle(experience, fallback.title),
+      travellerPhotoGallery: getUniqueHomeMedia(experience.travellerPhotoGallery),
+      travellerVideos: getUniqueHomeMedia(experience.travellerVideos),
+      travellerVideoTitles: experience.travellerVideos.map(
+        (_video, videoIndex) =>
+          experience.travellerVideoTitles[videoIndex]?.trim() || ""
+      ),
+      travelledMonth: formatTravelMonth(experience.createdAt),
+      travellerName: experience.travellerName.trim() || "Traveller",
+      type: experience.travellerVideos.length > 0 ? "Video" : "Album",
     };
   });
 }
@@ -897,5 +1188,31 @@ export async function getHomeTrendingDestinations(limit = 8) {
     toursResponse.data.tours,
     limit,
     homeResponse.data.home.trendingDestinations
+  );
+}
+
+export async function getHomeCustomisedTourDestinations(limit = 3) {
+  const [homeResponse, destinationsResponse] = await Promise.all([
+    getHomePageContent(),
+    listPublicDestinations(),
+  ]);
+
+  return buildCustomisedTourCards(
+    destinationsResponse.data.destinations,
+    limit,
+    homeResponse.data.home.customisedTourDestinations || []
+  );
+}
+
+export async function getHomeExperienceCards(limit = 5) {
+  const [homeResponse, experiencesResponse] = await Promise.all([
+    getHomePageContent(),
+    listPublicExperiences(),
+  ]);
+
+  return buildHomeExperienceCards(
+    experiencesResponse.data.experiences,
+    limit,
+    homeResponse.data.home.homeExperiences || []
   );
 }

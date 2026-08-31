@@ -4,7 +4,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowRight,
   ChevronDown,
   Search,
   SlidersHorizontal,
@@ -33,6 +32,8 @@ type CountOption = {
 };
 
 const pageSize = 6;
+const pageContainerClassName =
+  "mx-auto w-full max-w-[1300px] px-5 sm:px-8 lg:px-0";
 
 const fallbackImages = [
   "/home assets/destination/Hampi.webp",
@@ -236,7 +237,7 @@ function getRegionLabels(destination: PublicDestination) {
   }
 
   if (!isIndiaDestination(destination)) {
-    return uniqueLabels(splitLabels(destination.countryRegion || "International"));
+    return ["International"];
   }
 
   const stateKey = normalizeKey(destination.state);
@@ -245,6 +246,10 @@ function getRegionLabels(destination: PublicDestination) {
   );
 
   return [matchedRegion?.label || "India"];
+}
+
+function getCountryLabels(destination: PublicDestination) {
+  return uniqueLabels(splitLabels(destination.countryRegion || ""));
 }
 
 function getDestinationImage(destination: PublicDestination, index: number) {
@@ -584,10 +589,19 @@ export function DestinationsPage({
               getRegionLabels(destination)
             )
           );
+          const loadedCountryOptions = createCountOptions(
+            loadedDestinations.filter(
+              (destination) => !isIndiaDestination(destination)
+            ),
+            getCountryLabels
+          );
           const initialRegion = getInitialRegionOption(
             initialSearchQuery,
             loadedRegionOptions
           );
+          const initialCountry = initialRegion
+            ? undefined
+            : getInitialRegionOption(initialSearchQuery, loadedCountryOptions);
 
           setDestinations(loadedDestinations);
           setTours(toursResponse?.data.tours || []);
@@ -601,6 +615,10 @@ export function DestinationsPage({
             setActiveCategory(
               getCategoryForRegion(initialRegion.value, loadedDestinations)
             );
+          } else if (initialCountry) {
+            setSearchQuery("");
+            setSelectedStates([initialCountry.value]);
+            setActiveCategory("international");
           }
         }
       } catch (error) {
@@ -643,10 +661,12 @@ export function DestinationsPage({
   );
   const stateOptions = useMemo(
     () =>
-      createCountOptions(filterOptionDestinations, (destination) => [
-        destination.state,
-      ]),
-    [filterOptionDestinations]
+      createCountOptions(filterOptionDestinations, (destination) =>
+        activeCategory === "international"
+          ? getCountryLabels(destination)
+          : [destination.state]
+      ),
+    [activeCategory, filterOptionDestinations]
   );
   const focusOptions = useMemo(
     () => createCountOptions(filterOptionDestinations, getFocusLabels),
@@ -679,7 +699,9 @@ export function DestinationsPage({
         getRegionLabels(destination)
       );
       const matchesState = matchesOption(activeSelectedStates, [
-        destination.state,
+        ...(activeCategory === "international"
+          ? getCountryLabels(destination)
+          : [destination.state]),
       ]);
       const matchesFocus = matchesOption(
         activeSelectedFocuses,
@@ -789,15 +811,16 @@ export function DestinationsPage({
         onSearchQueryChange={updateSearchQuery}
       />
 
-      <section className="mx-auto w-[calc(100%-2.5rem)] max-w-[1300px] pt-6">
+      <section className={`${pageContainerClassName} pt-6`}>
         <InterestFilter
           selectedInterests={selectedInterests}
           onInterestToggle={toggleInterest}
         />
       </section>
 
-      <section className="mx-auto grid w-[calc(100%-2.5rem)] max-w-[1300px] items-start gap-10 pb-14 pt-7 lg:grid-cols-[280px_minmax(0,1fr)] xl:gap-12">
+      <section className={`${pageContainerClassName} grid items-start gap-8 pb-14 pt-7 lg:grid-cols-[255px_minmax(0,1fr)] xl:gap-10`}>
         <DestinationSidebar
+          activeCategory={activeCategory}
           focusOptions={focusOptions}
           regionOptions={regionOptions}
           selectedFocuses={activeSelectedFocuses}
@@ -861,7 +884,7 @@ function HeaderBand() {
         className="object-cover object-center"
       />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(35,18,9,0.34)_100%)]" />
-      <div className="relative z-10 mx-auto w-full max-w-[1300px] px-5 sm:px-8 lg:px-0">
+      <div className="relative z-10 mx-auto w-full max-w-[1300px] px-5 sm:px-0">
         <Header />
       </div>
     </section>
@@ -880,8 +903,8 @@ function DestinationTopBar({
   searchQuery: string;
 }) {
   return (
-    <section className="border-b border-[#ece7e2] bg-[#f4f4f4]">
-      <div className="mx-auto flex w-[calc(100%-2.5rem)] max-w-[1300px] flex-col gap-4 py-6 md:flex-row md:items-center md:justify-between">
+    <section className="border-b border-border bg-muted/45">
+      <div className={`${pageContainerClassName} flex flex-col gap-4 py-5 md:flex-row md:items-center md:justify-between`}>
         <div className="flex flex-wrap items-center gap-4">
           {categoryTabs.map((tab) => (
             <button
@@ -890,7 +913,7 @@ function DestinationTopBar({
               aria-pressed={activeCategory === tab.id}
               onClick={() => onCategoryChange(tab.id)}
               className={cn(
-                "inline-flex h-8 items-center justify-center rounded-full border px-5 font-sans text-[15px] font-semibold leading-none transition-colors",
+                "inline-flex h-9 items-center justify-center rounded-full border px-5 font-sans text-[15px] font-semibold leading-none transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
                 activeCategory === tab.id
                   ? "border-primary bg-primary text-white shadow-[0_6px_15px_rgba(212,114,32,0.2)]"
                   : "border-primary/70 bg-white text-primary hover:bg-primary hover:text-white"
@@ -908,7 +931,7 @@ function DestinationTopBar({
             value={searchQuery}
             onChange={(event) => onSearchQueryChange(event.target.value)}
             placeholder="Search Destination"
-            className="h-8 w-full rounded-full border border-primary/55 bg-white px-5 pr-10 font-sans text-[15px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/50 focus:border-primary focus:ring-2 focus:ring-primary/15"
+            className="h-9 w-full rounded-full border border-primary/55 bg-white px-5 pr-10 font-sans text-[13px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/50 focus:border-primary focus:ring-3 focus:ring-primary/15"
           />
           <Search className="pointer-events-none absolute right-4 top-1/2 size-3.5 -translate-y-1/2 text-primary" />
         </label>
@@ -918,6 +941,7 @@ function DestinationTopBar({
 }
 
 function DestinationSidebar({
+  activeCategory,
   focusOptions,
   onFocusToggle,
   onRegionToggle,
@@ -928,6 +952,7 @@ function DestinationSidebar({
   selectedStates,
   stateOptions,
 }: {
+  activeCategory: CategoryFilter;
   focusOptions: CountOption[];
   regionOptions: CountOption[];
   selectedFocuses: string[];
@@ -940,15 +965,17 @@ function DestinationSidebar({
 }) {
   const [isStateFilterOpen, setIsStateFilterOpen] = useState(false);
   const [isFocusFilterOpen, setIsFocusFilterOpen] = useState(false);
+  const stateFilterTitle =
+    activeCategory === "international" ? "Countries" : "States";
 
   return (
-    <aside className="lg:sticky lg:top-[118px] lg:self-start">
-      <div className="mb-4 flex items-center gap-2 font-sans text-[15px] font-medium text-primary">
+    <aside className="lg:sticky lg:top-[70px] lg:self-start">
+      <div className="mb-4 flex items-center gap-2 font-sans text-[13px] font-semibold uppercase leading-none text-primary">
         <SlidersHorizontal className="size-4" strokeWidth={1.8} />
         <span>Filter your search</span>
       </div>
 
-      <div className="rounded-[4px] border border-[#e8dfd8] bg-white px-5 py-5 shadow-[0_8px_18px_rgba(50,50,50,0.045)]">
+      <div className="rounded-[4px] border border-border bg-white px-5 py-5 ">
         <FilterOptionGroup
           options={regionOptions}
           selectedValues={selectedRegions}
@@ -958,7 +985,7 @@ function DestinationSidebar({
         <FilterOptionGroup
           options={stateOptions}
           selectedValues={selectedStates}
-          title="States"
+          title={stateFilterTitle}
           isCollapsible
           isOpen={isStateFilterOpen}
           onOpenToggle={() => setIsStateFilterOpen((current) => !current)}
@@ -1006,7 +1033,7 @@ function FilterOptionGroup({
           type="button"
           aria-expanded={isOpen}
           onClick={onOpenToggle}
-          className="flex w-full items-center justify-between gap-3 font-sans text-[15px] font-semibold leading-none text-primary"
+          className="flex w-full items-center justify-between gap-3 font-sans text-[14px] font-semibold leading-none text-primary"
         >
           <span>{title}</span>
           <ChevronDown
@@ -1018,7 +1045,7 @@ function FilterOptionGroup({
           />
         </button>
       ) : (
-        <h3 className="font-sans text-[15px] font-semibold leading-none text-primary">
+        <h3 className="font-sans text-[14px] font-semibold leading-none text-primary">
           {title}
         </h3>
       )}
@@ -1028,7 +1055,7 @@ function FilterOptionGroup({
           {options.map((option) => (
             <label
               key={option.value}
-              className="flex cursor-pointer items-center gap-2.5 font-sans text-[15px] font-medium leading-[1.25] text-secondary/68 transition-colors hover:text-primary"
+              className="flex cursor-pointer items-center gap-2.5 font-sans text-[14px] font-medium leading-[1.25] text-secondary/68 transition-colors hover:text-primary"
             >
               <input
                 checked={hasSelection(selectedValues, option.value)}
@@ -1054,11 +1081,11 @@ function InterestFilter({
   onInterestToggle: (value: string) => void;
 }) {
   return (
-    <div className="space-y-3 border-b border-primary/70 pb-5">
-      <p className="font-sans text-[15px] font-medium leading-[1.1] text-secondary/70">
+    <div className="space-y-3 border-b border-primary/45 pb-5">
+      <p className="font-sans text-description font-medium uppercase leading-none text-primary">
         Pick your interest
       </p>
-      <div className="flex flex-wrap gap-x-4 gap-y-3">
+      <div className="flex flex-wrap gap-x-3 gap-y-3">
         {interestTabs.map((tab) => {
           const isActive = hasSelection(selectedInterests, tab.value);
 
@@ -1069,7 +1096,7 @@ function InterestFilter({
               aria-pressed={isActive}
               onClick={() => onInterestToggle(tab.value)}
               className={cn(
-                "inline-flex h-9 min-w-[116px] items-center justify-center gap-2 rounded-full border px-5 font-sans text-[15px] font-semibold leading-none transition-colors",
+                "inline-flex h-9 min-w-[112px] items-center justify-center gap-2 rounded-full border px-5 font-sans text-[15px] font-semibold leading-none transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
                 isActive
                   ? "border-primary bg-primary text-white shadow-[0_6px_14px_rgba(212,114,32,0.18)]"
                   : "border-primary/70 bg-white text-primary hover:bg-primary hover:text-white"
@@ -1087,17 +1114,18 @@ function InterestFilter({
 
 function ResultsIntro() {
   return (
-    <div className="mt-7 grid gap-4 md:grid-cols-[minmax(0,1fr)_310px] md:items-start">
+    <div className="mt-6 grid gap-5 md:grid-cols-[minmax(0,1fr)_300px] md:items-end">
       <div>
-        <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+        <p className="font-sans text-description font-medium uppercase leading-none tracking-normal text-primary">
           Explore heritage beyond borders
         </p>
-        <h1 className="mt-3 max-w-[360px] font-heading text-title font-bold leading-none tracking-normal text-secondary">
-          Find your perfect experience
+        <h1 className="mt-2 max-w-[420px] font-heading text-title font-bold leading-none tracking-normal text-secondary">
+          <span className="block">Find your perfect</span>
+          <span className="block text-primary">experience</span>
         </h1>
       </div>
 
-      <p className="max-w-[360px] font-sans text-description font-medium text-secondary/68 md:justify-self-end md:pt-6">
+      <p className="max-w-[300px] font-sans text-description italic text-secondary md:justify-self-end">
         Guides, local transport, accommodation, and like-minded travelers are
         always included. Book securely & flexibly.
       </p>
@@ -1116,11 +1144,11 @@ function DestinationGrid({
 }) {
   if (isLoading) {
     return (
-      <div className="mt-6 grid gap-x-6 gap-y-7 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-8 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
         {Array.from({ length: pageSize }).map((_item, index) => (
           <div
             key={index}
-            className="aspect-[0.95/1] min-h-[230px] animate-pulse rounded-[8px] bg-[#e7ddd5]"
+            className="aspect-[0.95/1] min-h-[230px] animate-pulse rounded-[4px] bg-[#e7ddd5]"
           />
         ))}
       </div>
@@ -1132,7 +1160,7 @@ function DestinationGrid({
   }
 
   return (
-    <div className="mt-6 grid gap-x-6 gap-y-7 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="mt-8 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
       {destinations.map((destination, index) => (
         <DestinationCard
           key={destination.id || destination.destinationId}
@@ -1166,45 +1194,40 @@ function DestinationCard({
       aria-label={`Customize journey to ${title}`}
       className="group block"
     >
-      <article className="relative aspect-[0.95/1] min-h-[230px] overflow-hidden rounded-[8px] bg-secondary shadow-[0_12px_24px_rgba(50,50,50,0.11)]">
+      <article className="relative aspect-[0.95/1] min-h-[230px] overflow-hidden rounded-[10px] bg-secondary ">
         <Image
           src={image}
           alt={title}
           fill
           sizes="(min-width: 1280px) 250px, (min-width: 640px) 50vw, 100vw"
-          className="object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+          className="object-cover transition-transform duration-[900ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.035]"
         />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(17,13,10,0.38)_0%,rgba(17,13,10,0.08)_46%,rgba(17,13,10,0.22)_100%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.06)_0%,rgba(18,12,8,0.12)_42%,rgba(18,12,8,0.82)_100%)]" />
 
-        <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-4 p-4">
-          <h3 className="min-w-0 truncate font-sans text-[18px] font-medium leading-none text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]">
+        <div className="absolute inset-x-0 bottom-0 px-4 pb-4 text-white">
+          <h3 className="line-clamp-3 font-heading text-[25px] font-bold leading-[1.04] tracking-normal drop-shadow-[0_1px_4px_rgba(0,0,0,0.6)]">
             {title}
           </h3>
-          <span className="grid size-7 shrink-0 place-items-center rounded-full text-white transition-transform duration-300 group-hover:translate-x-0.5">
-            <ArrowRight className="size-5" strokeWidth={1.8} />
-          </span>
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <span className="inline-flex h-[30px] min-w-[124px] items-center justify-left rounded-[24px] bg-[#2b241f]/88 px-4 font-sans text-[13px] font-medium leading-none text-white shadow-[0_10px_22px_rgba(35,23,15,0.22)] transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:bg-[#2b241f]">
+              <span className="truncate">Customize</span>
+            </span>
+          </div>
         </div>
 
         {categoryPills.length > 0 ? (
-          <div className="absolute inset-x-4 bottom-[68px] flex flex-wrap justify-start gap-1.5 opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100">
+          <div className="absolute inset-x-4 top-4 flex flex-wrap justify-start gap-1.5 opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100">
             {categoryPills.map((label) => (
               <span
                 key={label}
                 title={label}
-                className="inline-flex max-w-full items-center gap-1 rounded-full border border-primary/15 bg-white px-3 py-2 font-sans text-[12px] font-semibold leading-none text-primary shadow-[0_5px_12px_rgba(0,0,0,0.16)]"
+                className="inline-flex max-w-full items-center gap-1 rounded-full border border-primary/15 bg-white px-3 py-2 font-sans text-[11px] font-semibold leading-none text-primary shadow-[0_5px_12px_rgba(0,0,0,0.16)]"
               >
                 <span className="truncate">{label}</span>
-                <span aria-hidden="true" className="shrink-0">
-                  +
-                </span>
               </span>
             ))}
           </div>
         ) : null}
-
-        <span className="absolute bottom-4 left-4 inline-flex h-10 max-w-[calc(100%-2rem)] items-center rounded-full bg-[#2b241f]/80 px-5 font-sans text-[13px] font-bold leading-none text-white shadow-[0_10px_22px_rgba(35,23,15,0.28)] backdrop-blur-[2px] transition-colors group-hover:bg-[#2b241f]/80">
-          <span className="truncate">Customize </span>
-        </span>
       </article>
     </Link>
   );

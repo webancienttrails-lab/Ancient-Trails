@@ -1,8 +1,12 @@
 import { HomePage } from "./_components/home-page";
 import {
+  fallbackCustomisedTours,
   fallbackTrendingDestinations,
+  getHomeCustomisedTourDestinations,
+  getHomeExperienceCards,
   getHomeTrendingDestinations,
   listPublicTours,
+  type HomeExperienceCard,
 } from "@/lib/home-travel";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +55,8 @@ async function getTourCategories() {
 }
 
 export default async function Home() {
+  let customisedTourDestinations = fallbackCustomisedTours;
+  let homeExperiences: HomeExperienceCard[] = [];
   let topDestinations = fallbackTrendingDestinations;
   const tourCategories = await getTourCategories();
 
@@ -60,8 +66,22 @@ export default async function Home() {
     topDestinations = fallbackTrendingDestinations;
   }
 
+  try {
+    customisedTourDestinations = await getHomeCustomisedTourDestinations(3);
+  } catch {
+    customisedTourDestinations = fallbackCustomisedTours;
+  }
+
+  try {
+    homeExperiences = await getHomeExperienceCards(5);
+  } catch {
+    homeExperiences = [];
+  }
+
   return (
     <HomePage
+      customisedTourDestinations={customisedTourDestinations}
+      homeExperiences={homeExperiences}
       topDestinations={topDestinations}
       tourCategories={tourCategories}
     />

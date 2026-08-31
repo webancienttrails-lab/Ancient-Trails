@@ -284,6 +284,49 @@ function getDateValue(value: string | null) {
   return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
+function matchesDepartureSelection(
+  item: EnrichedDeparture,
+  destinationId: string,
+  tourId: string
+) {
+  const matchesTour =
+    tourId === "all" || item.departure.tourId === tourId;
+  const matchesDestination =
+    destinationId === "all" ||
+    [
+      item.departure.destinationId,
+      ...getTourDestinationIds(item.tour),
+    ].includes(destinationId);
+
+  return matchesTour && matchesDestination;
+}
+
+function getUpcomingDepartureMonth(
+  departures: EnrichedDeparture[],
+  destinationId: string,
+  tourId: string
+) {
+  if (destinationId === "all" && tourId === "all") {
+    return startOfMonth(new Date());
+  }
+
+  const today = startOfDay(new Date()).getTime();
+  const nextDeparture = departures
+    .filter((item) => matchesDepartureSelection(item, destinationId, tourId))
+    .filter(({ departure }) => getDateValue(departure.departureDate) >= today)
+    .sort(
+      (left, right) =>
+        getDateValue(left.departure.departureDate) -
+        getDateValue(right.departure.departureDate)
+    )[0];
+
+  if (!nextDeparture?.departure.departureDate) {
+    return startOfMonth(new Date());
+  }
+
+  return startOfMonth(new Date(nextDeparture.departure.departureDate));
+}
+
 function getDepartureIdentifier(departure: PublicTourDeparture) {
   return departure.departureId || departure.id;
 }
@@ -293,15 +336,21 @@ function getDepartureStatus(departures: EnrichedDeparture[]): DepartureStatus {
     return "available";
   }
 
-  if (departures.every(({ departure }) => departure.seatsAvailable <= 0)) {
+  if (
+    departures.every(({ departure }) => getDepartureSeatsLeft(departure) <= 0)
+  ) {
     return "full";
   }
 
-  if (departures.some(({ departure }) => departure.seatsAvailable <= 3)) {
+  if (
+    departures.some(({ departure }) => getDepartureSeatsLeft(departure) <= 3)
+  ) {
     return "almost";
   }
 
-  if (departures.some(({ departure }) => departure.seatsAvailable <= 8)) {
+  if (
+    departures.some(({ departure }) => getDepartureSeatsLeft(departure) <= 8)
+  ) {
     return "few";
   }
 
@@ -440,17 +489,74 @@ function getDepartureCapacity(departure: PublicTourDeparture) {
     departureWithCapacity.maxSeats,
   ].find((value) => typeof value === "number" && value > 0);
 
-  return Math.max(departure.seatsAvailable, declaredCapacity || departureCapacityFallback);
+  return Math.max(
+    departure.seatsAvailable,
+    declaredCapacity || departureCapacityFallback
+  );
 }
 
-function getAvailableSeatPercent(departure: PublicTourDeparture) {
+function getDeclaredFilledSeats(departure: PublicTourDeparture) {
+  const departureWithSeats = departure as PublicTourDeparture & {
+    bookedSeats?: number;
+    seatsBooked?: number;
+  };
+  const filledSeats = [
+    departure.filledSeats,
+    departureWithSeats.bookedSeats,
+    departureWithSeats.seatsBooked,
+  ].find((value) => typeof value === "number" && value >= 0);
+
+  return typeof filledSeats === "number"
+    ? Math.max(0, Math.trunc(filledSeats))
+    : null;
+}
+
+function getFilledSeats(departure: PublicTourDeparture) {
+  const capacity = getDepartureCapacity(departure);
+  const declaredFilledSeats = getDeclaredFilledSeats(departure);
+
+  if (declaredFilledSeats !== null) {
+    return Math.min(capacity, declaredFilledSeats);
+  }
+
+  return Math.min(
+    capacity,
+    Math.max(0, Math.trunc(capacity - departure.seatsAvailable))
+  );
+}
+
+function getDepartureSeatsLeft(departure: PublicTourDeparture) {
+  const declaredFilledSeats = getDeclaredFilledSeats(departure);
+
+  if (declaredFilledSeats !== null) {
+    return Math.max(0, getDepartureCapacity(departure) - declaredFilledSeats);
+  }
+
+  return Math.max(0, Math.trunc(departure.seatsAvailable));
+}
+
+function getFilledSeatPercent(departure: PublicTourDeparture) {
   const capacity = getDepartureCapacity(departure);
 
   if (capacity <= 0) {
     return 0;
   }
 
-  return Math.min(100, Math.max(0, (departure.seatsAvailable / capacity) * 100));
+  const filledSeats = getFilledSeats(departure);
+
+  return Math.min(100, Math.max(0, (filledSeats / capacity) * 100));
+}
+
+function getSeatProgressColorClass(filledPercent: number) {
+  if (filledPercent >= 70) {
+    return "bg-[#d6452f]";
+  }
+
+  if (filledPercent >= 25) {
+    return "bg-[#f5b82e]";
+  }
+
+  return "bg-[#2faa5d]";
 }
 
 function sortDeparturesByPrice(
@@ -827,6 +933,11 @@ export function TourCalendarPage({
                 .filter((destination): destination is PublicDestination =>
                   Boolean(destination)
         );
+        const nextSelectedTourId = resolveTourFilter(initialTourQuery, nextTours);
+        const nextSelectedDestinationId = resolveDestinationFilter(
+          initialDestinationQuery,
+          nextDestinations
+        );
 
         if (isMounted) {
           setExperts(
@@ -835,13 +946,17 @@ export function TourCalendarPage({
               : createFallbackExperts()
           );
           setEnrichedDepartures(sourceDepartures);
-          setSelectedTourId(resolveTourFilter(initialTourQuery, nextTours));
-          setSelectedDestinationId(
-            resolveDestinationFilter(initialDestinationQuery, nextDestinations)
-          );
+          setSelectedTourId(nextSelectedTourId);
+          setSelectedDestinationId(nextSelectedDestinationId);
           setSelectedDateKey(getTodayKey());
           setIsDateFilterActive(false);
-          setVisibleMonth(startOfMonth(new Date()));
+          setVisibleMonth(
+            getUpcomingDepartureMonth(
+              sourceDepartures,
+              nextSelectedDestinationId,
+              nextSelectedTourId
+            )
+          );
         }
       } catch {
         if (isMounted) {
@@ -852,17 +967,26 @@ export function TourCalendarPage({
             .filter((destination): destination is PublicDestination =>
               Boolean(destination)
             );
+          const nextSelectedTourId = resolveTourFilter(initialTourQuery, nextTours);
+          const nextSelectedDestinationId = resolveDestinationFilter(
+            initialDestinationQuery,
+            nextDestinations
+          );
 
           setLoadError("Live tour calendar is temporarily unavailable.");
           setExperts(createFallbackExperts());
           setEnrichedDepartures(fallbackDepartures);
-          setSelectedTourId(resolveTourFilter(initialTourQuery, nextTours));
-          setSelectedDestinationId(
-            resolveDestinationFilter(initialDestinationQuery, nextDestinations)
-          );
+          setSelectedTourId(nextSelectedTourId);
+          setSelectedDestinationId(nextSelectedDestinationId);
           setSelectedDateKey(getTodayKey());
           setIsDateFilterActive(false);
-          setVisibleMonth(startOfMonth(new Date()));
+          setVisibleMonth(
+            getUpcomingDepartureMonth(
+              fallbackDepartures,
+              nextSelectedDestinationId,
+              nextSelectedTourId
+            )
+          );
         }
       } finally {
         if (isMounted) {
@@ -879,18 +1003,9 @@ export function TourCalendarPage({
   }, [initialDestinationQuery, initialTourQuery]);
 
   const calendarFilteredDepartures = useMemo(() => {
-    return enrichedDepartures.filter(({ departure, tour }) => {
-      const matchesTour =
-        selectedTourId === "all" || departure.tourId === selectedTourId;
-      const matchesDestination =
-        selectedDestinationId === "all" ||
-        [
-          departure.destinationId,
-          ...getTourDestinationIds(tour),
-        ].includes(selectedDestinationId);
-
-      return matchesTour && matchesDestination;
-    });
+    return enrichedDepartures.filter((item) =>
+      matchesDepartureSelection(item, selectedDestinationId, selectedTourId)
+    );
   }, [enrichedDepartures, selectedDestinationId, selectedTourId]);
   const sortedCalendarFilteredDepartures = useMemo(
     () => sortDeparturesByPrice(calendarFilteredDepartures, sortMode),
@@ -997,6 +1112,13 @@ export function TourCalendarPage({
           onDestinationChange={(destinationId) => {
             setSelectedDestinationId(destinationId);
             clearDateSelection();
+            setVisibleMonth(
+              getUpcomingDepartureMonth(
+                enrichedDepartures,
+                destinationId,
+                selectedTourId
+              )
+            );
           }}
           onSortModeChange={setSortMode}
         />
@@ -1050,7 +1172,7 @@ function CalendarPanel({
 
   return (
     <aside className="lg:sticky lg:top-[118px] lg:self-start">
-      <article className="rounded-[9px] border border-[#ead8c5] bg-white/94 p-6 shadow-[0_16px_36px_rgba(67,43,27,0.08)] transition-all duration-300">
+      <article className="rounded-[9px] border border-[#ead8c5] bg-white/94 p-6 transition-all duration-300">
         <h2 className="font-heading text-[22px] font-bold leading-none text-secondary">
           Filter by Date
         </h2>
@@ -1160,9 +1282,9 @@ function CalendarPanel({
                   hasDepartures &&
                     "bg-primary/12 text-primary hover:border-primary/20 hover:bg-primary/20",
                   isToday &&
-                    "border-[#2faa5d]/40 shadow-[0_0_0_3px_rgba(47,170,93,0.08)]",
+                    "rounded-full border ",
                   isSelected &&
-                    "border-primary/45 bg-primary text-white shadow-[0_0_0_4px_rgba(212,114,32,0.13)]"
+                    "border-primary/45 bg-primary text-white "
                 )}
               >
                 <span className="leading-none">{day.date.getDate()}</span>
@@ -1325,10 +1447,12 @@ function UpcomingDeparturesPanel({
 function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture }) {
   const status = getDepartureStatus([item]);
   const capacity = getDepartureCapacity(item.departure);
-  const availablePercent = getAvailableSeatPercent(item.departure);
+  const filledSeats = getFilledSeats(item.departure);
+  const seatsLeft = getDepartureSeatsLeft(item.departure);
+  const filledPercent = getFilledSeatPercent(item.departure);
 
   return (
-    <article className="rounded-[12px] border border-[#e8cbaa] bg-white p-3 shadow-[0_14px_32px_rgba(67,43,27,0.08)] transition-all hover:-translate-y-0.5 hover:border-primary/55 hover:shadow-[0_20px_44px_rgba(67,43,27,0.12)] sm:p-3.5">
+    <article className="rounded-[12px] border border-[#e8cbaa] bg-white p-3  transition-all hover:-translate-y-0.5 hover:border-primary/55  sm:p-3.5">
       <div className="grid gap-2.5 xl:grid-cols-[190px_minmax(0,1fr)] xl:items-start">
         <div className="relative h-[145px] overflow-hidden rounded-[8px] bg-muted sm:h-[160px] xl:h-[122px]">
           <Image
@@ -1340,7 +1464,7 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
           />
           <span
             className={cn(
-              "absolute left-2.5 top-2.5 rounded-[6px] px-2 py-1 font-sans text-[13px] font-bold leading-none",
+              "absolute left-2.5 top-2.5 rounded-[6px] px-2 py-1 font-sans text-[11px] mt-1 space-y-5px] font-bold leading-none",
               statusBadgeClassName(status)
             )}
           >
@@ -1368,7 +1492,7 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
 
               <span className="font-sans">
                 <strong className="block text-[15px] font-bold leading-none text-secondary sm:text-[16px]">
-                  {item.departure.seatsAvailable}
+                  {seatsLeft}
                 </strong>
                 <span className="mt-1 block text-[10px] font-medium leading-none text-secondary/58 sm:text-[11px]">
                   Seats Left
@@ -1388,14 +1512,17 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
             <div className="mt-3 border-t border-[#e8cbaa] pt-2.5 sm:max-w-[356px]">
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1.5 font-sans text-[12px] font-semibold leading-tight text-secondary/60 sm:text-[13px]">
                 <span className="font-bold text-primary">
-                  {item.departure.seatsAvailable}/{capacity} seats 
+                  {filledSeats}/{capacity} seats
                 </span>
               </p>
 
               <div className="mt-2 h-1 overflow-hidden rounded-full bg-[#e8edf1]">
                 <span
-                  className="block h-full rounded-full bg-[linear-gradient(90deg,#d47220_0%,#9b3b13_100%)]"
-                  style={{ width: `${availablePercent}%` }}
+                  className={cn(
+                    "block h-full rounded-full",
+                    getSeatProgressColorClass(filledPercent)
+                  )}
+                  style={{ width: `${filledPercent}%` }}
                 />
               </div>
             </div>
@@ -1439,7 +1566,7 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
 
 function ExpertCard({ expert, index }: { expert: PublicExpert; index: number }) {
   return (
-    <article className="rounded-[9px] border border-[#ead8c5] bg-white p-4 shadow-[0_14px_32px_rgba(67,43,27,0.08)] transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-[0_20px_42px_rgba(67,43,27,0.12)]">
+    <article className="rounded-[9px] border border-[#ead8c5] bg-white p-4  transition-all hover:-translate-y-1 hover:border-primary/40 ">
       <div className="flex items-center gap-3">
         <ExpertAvatar expert={expert} index={index} />
         <div className="min-w-0">
@@ -1461,7 +1588,7 @@ function ExpertCard({ expert, index }: { expert: PublicExpert; index: number }) 
       </div>
       <Link
         href="/about"
-        className="mt-4 inline-flex h-8 items-center gap-2 rounded-[6px] border border-primary bg-white px-3 font-sans text-[11px] font-bold text-primary shadow-[0_6px_14px_rgba(212,114,32,0.08)] transition-all hover:bg-primary hover:text-white hover:shadow-[0_10px_18px_rgba(212,114,32,0.22)] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
+        className="mt-4 inline-flex h-8 items-center gap-2 rounded-[6px] border border-primary bg-white px-3 font-sans text-[11px] font-bold text-primary  transition-all hover:bg-primary hover:text-white  focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
       >
         View Profile
         <ArrowRight className="size-3.5" />
@@ -1473,7 +1600,7 @@ function ExpertCard({ expert, index }: { expert: PublicExpert; index: number }) 
 function BenefitsBand() {
   return (
     <section className="mx-auto w-full max-w-[1300px] px-4 pb-8 pt-3 sm:px-6 lg:px-0">
-      <div className="relative grid overflow-hidden rounded-[9px] border border-[#ead8c5] bg-white/82 px-5 py-5 shadow-[0_14px_34px_rgba(67,43,27,0.06)] sm:grid-cols-2 lg:grid-cols-4">
+      <div className="relative grid overflow-hidden rounded-[9px] border border-[#ead8c5] bg-white/82 px-5 py-5  sm:grid-cols-2 lg:grid-cols-4">
         {benefits.map(({ description, icon: Icon, title }, index) => (
           <article
             key={title}

@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
-import { getTourCalendarHref } from "@/lib/routes";
+import { getToursHref } from "@/lib/routes";
 import { TextReveal } from "./reveal-on-view";
 
 export function SpecialisedToursSection() {
@@ -13,8 +13,8 @@ export function SpecialisedToursSection() {
           <div className="grid gap-7">
             <div className="relative h-[190px] overflow-hidden rounded-[8px]">
               <Image
-                src="/home assets/Special_Tour/Assam.png"
-                alt="Assam cultural dancers"
+                src="/home assets/Egypt.webp"
+                alt="Egyptian pyramids during a specialised tour"
                 fill
                 sizes="(min-width: 1024px) 240px, 50vw"
                 className="object-cover"
@@ -23,8 +23,8 @@ export function SpecialisedToursSection() {
 
             <div className="relative h-[190px] overflow-hidden rounded-[8px]">
               <Image
-                src="/home assets/Special_Tour/Sketching.png"
-                alt="Artist sketching during a specialised tour"
+                src="/home assets/Vietnam.webp"
+                alt="Vietnamese heritage site during a specialised tour"
                 fill
                 sizes="(min-width: 1024px) 240px, 50vw"
                 className="object-cover"
@@ -34,8 +34,8 @@ export function SpecialisedToursSection() {
 
           <div className="relative min-h-[320px] overflow-hidden rounded-[8px] sm:min-h-[407px]">
             <Image
-              src="/home assets/Special_Tour/Photograph.png"
-              alt="Photographer on a specialised tour"
+              src="/home assets/Combodia.webp"
+              alt="Colombian heritage site during a specialised tour"
               fill
               sizes="(min-width: 1024px) 265px, 50vw"
               className="object-cover"
@@ -74,7 +74,7 @@ export function SpecialisedToursSection() {
 
           <Button
             nativeButton={false}
-            render={<Link href={getTourCalendarHref()} />}
+            render={<Link href={getToursHref()} />}
             className="mt-10 h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:mt-14 lg:min-w-[250px]"
           >
             View all specialised tours

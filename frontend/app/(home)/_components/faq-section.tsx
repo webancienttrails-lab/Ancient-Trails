@@ -72,10 +72,10 @@ export function FaqSection() {
             <AccordionItem
               key={item.question}
               value={item.question}
-              className="rounded-[10px] border border-border/70 bg-white shadow-[0_3px_8px_rgba(50,50,50,0.12)]"
+              className="border-b border-border/70 bg-transparent shadow-none"
             >
-              <AccordionTrigger className="min-h-[46px] items-center gap-3 px-4 py-3 font-sans text-[15px] italic no-underline hover:no-underline sm:gap-4 sm:px-5 sm:text-description [&_[data-slot=accordion-trigger-icon]]:hidden cursor-pointer">
-                <span className="font-sans text-[15px] font-normal italic sm:text-description">
+              <AccordionTrigger className="min-h-[46px] items-center gap-3 px-4 py-3 font-sans no-underline hover:no-underline sm:gap-4 sm:px-5 sm:text-description [&_[data-slot=accordion-trigger-icon]]:hidden cursor-pointer">
+                <span className="font-sans text-[16px] font-semibold sm:text-description">
                   {item.question}
                 </span>
                 <span className="ml-auto grid size-5 shrink-0 place-items-center text-description">
@@ -83,7 +83,7 @@ export function FaqSection() {
                   <Minus className="hidden size-4 group-aria-expanded/accordion-trigger:block" />
                 </span>
               </AccordionTrigger>
-              <AccordionContent className="px-5 pb-4 font-sans text-description italic">
+              <AccordionContent className="px-5 pb-4 font-sans text-description ">
                 {item.answer}
               </AccordionContent>
             </AccordionItem>

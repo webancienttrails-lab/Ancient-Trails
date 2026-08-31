@@ -23,7 +23,6 @@ import {
 } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
-import { PlanTripInline } from "@/components/plan-trip-launcher";
 import { TourShowcaseCard } from "@/components/tours/tour-showcase-card";
 import { useToast } from "@/components/ui/toast";
 import { listenForTravellerSessionChanges } from "@/lib/auth";
@@ -32,13 +31,15 @@ import {
   getHomeMediaUrl,
   getTourDestinationIds,
   listPublicDestinations,
+  listPublicExperts,
   listPublicTourDepartures,
   listPublicTours,
   type PublicDestination,
+  type PublicExpert,
   type PublicTour,
   type PublicTourDeparture,
 } from "@/lib/home-travel";
-import { getTourHref } from "@/lib/routes";
+import { getTourCalendarHref, getTourHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import {
   getWishlistTourIds,
@@ -73,6 +74,7 @@ type TourListItem = {
   departures: PublicTourDeparture[];
   destination: PublicDestination | undefined;
   durationDays: number;
+  expertName: string;
   image: string;
   locationLabel: string;
   lowestPrice: number;
@@ -141,6 +143,10 @@ function normalizeValue(value: string) {
 
 function normalizeKey(value: string) {
   return normalizeValue(value).toLowerCase();
+}
+
+function normalizeCode(value: string) {
+  return value.trim().toUpperCase();
 }
 
 function uniqueValues(values: Array<string | undefined>) {
@@ -225,6 +231,79 @@ function formatPrice(value: number) {
   }
 
   return currencyFormatter.format(value);
+}
+
+function formatTourCardPrice(value: number) {
+  if (!value || value <= 0) {
+    return "On request";
+  }
+
+  return `${currencyFormatter.format(value)} +`;
+}
+
+function compactDurationLabel(value: string, fallbackDays: number) {
+  const source = value.trim();
+  const fallbackLabel =
+    fallbackDays > 1 ? `${fallbackDays}D/${fallbackDays - 1}N` : "1 Day";
+
+  if (!source) {
+    return fallbackLabel;
+  }
+
+  const dayNightMatch = source.match(
+    /(\d+)\s*(?:days?|d)\b\s*(?:[/,-]|and)?\s*(\d+)\s*(?:nights?|n)\b/i
+  );
+
+  if (dayNightMatch) {
+    return `${dayNightMatch[1]}D/${dayNightMatch[2]}N`;
+  }
+
+  const dayMatch = source.match(/(\d+)\s*(?:days?|d)\b/i);
+
+  if (dayMatch) {
+    const days = Number(dayMatch[1]);
+
+    return days > 1 ? `${days}D/${days - 1}N` : "1 Day";
+  }
+
+  return source.replace(/\s*\/\s*/g, "/").replace(/\s+/g, " ");
+}
+
+function getTourBadgeLabel(tour: PublicTour) {
+  const label = [tour.category, tour.tourType].find((value) =>
+    /best|popular|featured|recommended|trending/i.test(value)
+  );
+
+  return (label || "Bestseller").trim().toUpperCase();
+}
+
+function getTourDifficultyLabel(tour: PublicTour) {
+  const difficulty = tour.difficulty.trim() || "Moderate";
+
+  return /activity\s*level/i.test(difficulty)
+    ? difficulty
+    : `${difficulty} Activity Level`;
+}
+
+function getReadableExpertName(expertId: string) {
+  const value = expertId.trim();
+
+  if (!value) {
+    return "Ancient Trails Expert";
+  }
+
+  return value
+    .replace(/[-_]+/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getTourExpertName(tour: PublicTour, experts: PublicExpert[]) {
+  const matchedExpert = experts.find(
+    (expert) => normalizeCode(expert.expertId) === normalizeCode(tour.expertId)
+  );
+
+  return matchedExpert?.fullName.trim() || getReadableExpertName(tour.expertId);
 }
 
 function getPrimaryDestinationId(tour: PublicTour) {
@@ -565,7 +644,8 @@ function createFallbackDepartures(): PublicTourDeparture[] {
 function buildTourItems(
   tours: PublicTour[],
   departures: PublicTourDeparture[],
-  destinations: PublicDestination[]
+  destinations: PublicDestination[],
+  experts: PublicExpert[]
 ) {
   const departuresByTourId = new Map<string, PublicTourDeparture[]>();
   const destinationById = new Map(
@@ -602,6 +682,7 @@ function buildTourItems(
         parseDurationDays(tour.durationDn) ||
         destination?.recommendedDurationDays ||
         0,
+      expertName: getTourExpertName(tour, experts),
       image,
       locationLabel: getDestinationLabel(destination),
       lowestPrice,
@@ -689,6 +770,7 @@ export function ToursListingPage({
     useState<PublicTourDeparture[]>(fallbackDepartures);
   const [destinations, setDestinations] =
     useState<PublicDestination[]>(fallbackDestinations);
+  const [experts, setExperts] = useState<PublicExpert[]>([]);
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [selectedTypeValues, setSelectedTypeValues] = useState<string[]>([]);
   const [selectedDestinationValues, setSelectedDestinationValues] = useState<
@@ -717,11 +799,14 @@ export function ToursListingPage({
       setLoadError("");
 
       try {
-        const [toursResponse, departuresResponse, destinationsResponse] =
+        const [toursResponse, departuresResponse, destinationsResponse, expertsResponse] =
           await Promise.all([
             listPublicTours(),
             listPublicTourDepartures(),
             listPublicDestinations(),
+            listPublicExperts().catch(() => ({
+              data: { experts: [] as PublicExpert[] },
+            })),
           ]);
 
         if (isMounted) {
@@ -736,6 +821,8 @@ export function ToursListingPage({
           if (destinationsResponse.data.destinations.length > 0) {
             setDestinations(destinationsResponse.data.destinations);
           }
+
+          setExperts(expertsResponse.data.experts);
         }
       } catch (error) {
         if (isMounted) {
@@ -773,8 +860,8 @@ export function ToursListingPage({
   }, []);
 
   const allItems = useMemo(
-    () => buildTourItems(tours, departures, destinations),
-    [departures, destinations, tours]
+    () => buildTourItems(tours, departures, destinations, experts),
+    [departures, destinations, experts, tours]
   );
 
   const maxPrice = useMemo(() => {
@@ -924,12 +1011,7 @@ export function ToursListingPage({
 
   return (
     <main className="min-h-screen bg-background text-secondary">
-      <ToursHero
-        initialAdultCount={adultCount}
-        initialChildCount={childCount}
-        initialMonthValue={effectiveSelectedMonth}
-        initialSearchQuery={searchQuery}
-      />
+      <HeaderBand />
 
       <section
         id="tour-results"
@@ -1008,62 +1090,20 @@ export function ToursListingPage({
   );
 }
 
-function ToursHero({
-  initialAdultCount,
-  initialChildCount,
-  initialMonthValue,
-  initialSearchQuery,
-}: {
-  initialAdultCount: number;
-  initialChildCount: number;
-  initialMonthValue: string;
-  initialSearchQuery: string;
-}) {
+function HeaderBand() {
   return (
-    <section className="relative overflow-visible bg-[#fff2e5]">
+    <section className="relative h-[200px] overflow-hidden bg-secondary">
       <Image
         src="/home assets/Heritage Banner.webp"
-        alt="Heritage tour landscape"
+        alt="Ancient Trails heritage landscape"
         fill
         priority
         sizes="100vw"
         className="object-cover object-center"
       />
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,248,240,0.98)_0%,rgba(255,248,240,0.86)_38%,rgba(255,248,240,0.32)_72%,rgba(255,248,240,0.12)_100%)]" />
-      <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,rgba(255,248,240,0)_0%,#fff8f0_100%)]" />
-
-      <div className="relative z-10 mx-auto flex min-h-[520px] w-full max-w-[1300px] flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-8 lg:px-0">
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(35,18,9,0.34)_100%)]" />
+      <div className="relative z-10 mx-auto w-full max-w-[1300px] px-5 sm:px-0">
         <Header />
-
-        <div className="grid flex-1 items-center gap-8 pb-6 pt-8 md:grid-cols-[minmax(0,0.95fr)_minmax(320px,0.55fr)]">
-          <div className="max-w-[620px]">
-            <nav className="flex flex-wrap items-center gap-2 font-sans text-[12px] font-bold text-secondary/68">
-              <Link href="/" className="transition-colors hover:text-primary">
-                Home
-              </Link>
-              <ArrowRight className="size-3.5 text-secondary/40" />
-              <span>Tours</span>
-            </nav>
-            <p className="mt-7 font-sans text-[11px] font-bold uppercase text-primary">
-              Explore curated journeys
-            </p>
-            <h1 className="mt-3 font-heading text-[42px] font-bold leading-none text-secondary sm:text-[58px]">
-              Explore Our Tours
-            </h1>
-            <p className="mt-5 max-w-[460px] font-sans text-[14px] font-medium leading-[1.75] text-secondary/78 sm:text-description">
-              Handpicked journeys to iconic heritage destinations across India
-              and beyond.
-            </p>
-          </div>
-        </div>
-
-        <PlanTripInline
-          className="mb-8"
-          initialAdultCount={initialAdultCount}
-          initialChildCount={initialChildCount}
-          initialMonthValue={initialMonthValue}
-          initialSearchQuery={initialSearchQuery}
-        />
       </div>
     </section>
   );
@@ -1172,19 +1212,6 @@ function TourSidebar({
             >
               Clear All
             </button>
-            <button
-              type="button"
-              aria-controls="tour-filter-panel"
-              aria-expanded={!isCollapsed}
-              onClick={() => onCollapsedChange(true)}
-              className="inline-flex h-7 items-center gap-1 rounded-[6px] border border-primary/25 bg-primary/5 px-2 font-sans text-[11px] font-bold text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
-            >
-              Minimize
-              <ChevronDown
-                className="size-3.5 rotate-90 transition-transform"
-                strokeWidth={2}
-              />
-            </button>
           </div>
         </div>
 
@@ -1210,41 +1237,8 @@ function TourSidebar({
             priceLimit={priceLimit}
             onChange={onPriceLimitChange}
           />
-
-          <CheckboxGroup
-            icon={MapPin}
-            options={destinationOptions}
-            selectedValues={selectedDestinationValues}
-            title="Popular Destinations"
-            onToggle={onDestinationToggle}
-          />
-
-          <RadioGroup
-            icon={BadgeCheck}
-            options={availabilityOptions}
-            title="Status"
-            value={availabilityFilter}
-            onChange={(value) => onAvailabilityChange(value as AvailabilityFilter)}
-          />
         </div>
       </div>
-
-      <article className="rounded-[8px] border border-[#ead8c5] bg-white p-4 shadow-[0_12px_32px_rgba(67,43,27,0.06)]">
-        <div className="flex items-start gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
-            <ShieldCheck className="size-5" strokeWidth={1.8} />
-          </span>
-          <span>
-            <strong className="block font-sans text-[13px] text-secondary">
-              Best Price Guarantee
-            </strong>
-            <span className="mt-1 block font-sans text-[11px] leading-[1.55] text-secondary/64">
-              Tour prices are shown from live departure records whenever
-              available.
-            </span>
-          </span>
-        </div>
-      </article>
     </aside>
   );
 }
@@ -1294,7 +1288,7 @@ function CheckboxGroup({
 
   return (
     <section>
-      <h3 className="flex items-center gap-2 font-sans text-[12px] font-bold text-secondary">
+      <h3 className="flex items-center gap-2 font-sans text-[14px] font-semibold text-secondary">
         <Icon className="size-4 text-primary" strokeWidth={1.8} />
         {title}
       </h3>
@@ -1302,7 +1296,7 @@ function CheckboxGroup({
         {options.slice(0, 8).map((option) => (
           <label
             key={option.value}
-            className="flex cursor-pointer items-center gap-3 rounded-[6px] px-1 py-1 font-sans text-[11px] font-semibold text-secondary/72 transition-colors hover:text-primary"
+            className="flex cursor-pointer items-center gap-3 rounded-[6px] px-1 py-1 font-sans text-[14px] font-normal text-secondary/72 transition-colors hover:text-primary"
           >
             <input
               checked={selectedValues.includes(option.value)}
@@ -1334,7 +1328,7 @@ function RadioGroup({
 }) {
   return (
     <section>
-      <h3 className="flex items-center gap-2 font-sans text-[12px] font-bold text-secondary">
+      <h3 className="flex items-center gap-2 font-sans text-[14px] font-semibold text-secondary">
         <Icon className="size-4 text-primary" strokeWidth={1.8} />
         {title}
       </h3>
@@ -1342,7 +1336,7 @@ function RadioGroup({
         {options.map((option) => (
           <label
             key={option.value}
-            className="flex cursor-pointer items-center gap-3 rounded-[6px] px-1 py-1 font-sans text-[11px] font-semibold text-secondary/72 transition-colors hover:text-primary"
+            className="flex cursor-pointer items-center gap-3 rounded-[6px] px-1 py-1 font-sans text-[14px] font-normal text-secondary/72 transition-colors hover:text-primary"
           >
             <input
               checked={value === option.value}
@@ -1373,7 +1367,7 @@ function PriceRange({
 
   return (
     <section>
-      <h3 className="flex items-center gap-2 font-sans text-[12px] font-bold text-secondary">
+      <h3 className="flex items-center gap-2 font-sans text-[14px] font-semibold text-secondary">
         <Landmark className="size-4 text-primary" strokeWidth={1.8} />
         Price Range
       </h3>
@@ -1386,7 +1380,7 @@ function PriceRange({
         onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
         className="mt-4 w-full accent-primary"
       />
-      <div className="mt-2 flex items-center justify-between font-sans text-[10px] font-bold text-secondary/56">
+      <div className="mt-2 flex items-center justify-between font-sans text-[14px] font-bold text-secondary/56">
         <span>{currencyFormatter.format(0)}</span>
         <span>{formatPrice(priceLimit || maxPrice)}</span>
       </div>
@@ -1422,27 +1416,12 @@ function ResultsHeader({
         <h2 className="mt-1 font-heading text-[30px] font-bold leading-tight text-secondary sm:text-[36px]">
           Available Tours
         </h2>
-        <p className="mt-1 font-sans text-[12px] font-semibold text-secondary/56">
+        <p className="mt-1 font-sans text-[14px] font-semibold text-secondary/56">
           {isLoading ? "Loading live tours..." : getShowingRange(currentPage, count)}
         </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <label className="flex h-10 items-center gap-3 rounded-[7px] border border-[#ead8c5] bg-white px-3 font-sans text-[11px] font-bold text-secondary shadow-[0_8px_20px_rgba(67,43,27,0.05)]">
-          <span className="whitespace-nowrap text-secondary/52">Sort by:</span>
-          <select
-            value={sortMode}
-            onChange={(event) => onSortModeChange(event.target.value as SortMode)}
-            className="min-w-0 bg-transparent font-sans text-[11px] font-bold text-secondary outline-none"
-          >
-            {sortOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none size-4 text-primary" />
-        </label>
 
         <div className="flex overflow-hidden rounded-[7px] border border-[#ead8c5] bg-white shadow-[0_8px_20px_rgba(67,43,27,0.05)]">
           <ViewButton
@@ -1507,11 +1486,11 @@ function TourResults({
 }) {
   if (isLoading) {
     return (
-      <div className="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-5 grid justify-items-center gap-5 sm:grid-cols-2 xl:grid-cols-3">
         {Array.from({ length: 9 }).map((_item, index) => (
           <div
             key={index}
-            className="h-[340px] animate-pulse rounded-[8px] bg-[#ead8c5]/65"
+            className="h-[420px] w-full max-w-[320px] animate-pulse rounded-[18px] bg-[#ead8c5]/65"
           />
         ))}
       </div>
@@ -1540,7 +1519,7 @@ function TourResults({
   }
 
   return (
-    <div className="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="mt-5 grid justify-items-center gap-5 sm:grid-cols-2 xl:grid-cols-3">
       {items.map((item) => (
         <TourCard
           key={item.tour.id || item.tour.tourId}
@@ -1566,7 +1545,17 @@ function TourCard({
 }) {
   return (
     <TourShowcaseCard
-      durationLabel={item.tour.durationDn || `${item.durationDays} Days`}
+      allDeparturesHref={getTourCalendarHref({
+        destination: item.destination,
+        tour: item.tour,
+      })}
+      badgeLabel={getTourBadgeLabel(item.tour)}
+      difficultyLabel={getTourDifficultyLabel(item.tour)}
+      durationLabel={compactDurationLabel(
+        item.tour.durationDn,
+        item.durationDays || item.destination?.recommendedDurationDays || 1
+      )}
+      expertName={item.expertName}
       favoriteLabel={
         isWishlisted
           ? `Remove ${item.tour.tourName} from wishlist`
@@ -1574,12 +1563,13 @@ function TourCard({
       }
       href={getTourHref(item.tour)}
       image={item.image}
-      imageSizes="(min-width: 1280px) 300px, (min-width: 640px) 50vw, 100vw"
+      imageSizes="(min-width: 1280px) 320px, (min-width: 640px) 50vw, 100vw"
       isFavorite={isWishlisted}
       nextDepartureLabel={formatDate(item.nextDeparture?.departureDate || null)}
       onFavoriteToggle={() => onWishlistToggle(item)}
-      priceLabel={formatPrice(item.lowestPrice)}
+      priceLabel={formatTourCardPrice(item.lowestPrice)}
       title={item.tour.tourName}
+      className="w-full max-w-[320px]"
     />
   );
 }
@@ -1594,7 +1584,7 @@ function TourListRow({
   onWishlistToggle: (item: TourListItem) => void;
 }) {
   return (
-    <article className="grid gap-4 overflow-hidden rounded-[8px] border border-[#ead8c5] bg-white p-3 shadow-[0_14px_32px_rgba(67,43,27,0.08)] transition-all hover:-translate-y-0.5 hover:border-primary/45 sm:grid-cols-[220px_minmax(0,1fr)_170px] sm:items-center">
+    <article className="grid gap-4 overflow-hidden rounded-[8px] border border-[#ead8c5] bg-white p-3  transition-all hover:-translate-y-0.5 hover:border-primary/45 sm:grid-cols-[220px_minmax(0,1fr)_170px] sm:items-center">
       <div className="relative h-[170px] overflow-hidden rounded-[7px] bg-muted sm:h-[150px]">
         <Image
           src={item.image}
@@ -1633,7 +1623,7 @@ function TourListRow({
         <h3 className="font-heading text-[23px] font-bold leading-tight text-secondary">
           {item.tour.tourName}
         </h3>
-        <p className="mt-2 line-clamp-2 font-sans text-[13px] leading-[1.6] text-secondary/72">
+        <p className="mt-2 line-clamp-4 font-sans text-[13px] leading-[1.6] text-secondary/72">
           {item.tour.description ||
             "An expert-led Ancient Trails journey through heritage, culture and local stories."}
         </p>
@@ -1641,9 +1631,9 @@ function TourListRow({
       </div>
 
       <div className="grid gap-3 sm:justify-items-end">
-        <span className="font-sans text-[11px] font-semibold text-secondary/58 sm:text-right">
+        <span className="font-sans text-[11px] font-normal text-secondary/58 sm:text-right">
           from
-          <strong className="mt-1 block font-heading text-[23px] leading-none text-secondary">
+          <strong className="mt-1 block  text-[23px] leading-none text-secondary">
             {formatPrice(item.lowestPrice)}
           </strong>
           per person
@@ -1696,7 +1686,7 @@ function TourMeta({
   return (
     <div
       className={cn(
-        "mt-3 grid gap-2 font-sans text-[11px] font-semibold text-secondary/62",
+        "mt-3 grid gap-2 font-sans text-[14px] font-semibold text-secondary/62",
         compact ? "sm:grid-cols-2" : "grid-cols-2"
       )}
     >
@@ -1762,7 +1752,7 @@ function Pagination({
         return (
           <span key={page} className="flex items-center gap-2">
             {showGap ? (
-              <span className="font-sans text-[11px] font-bold text-secondary/42">
+              <span className="font-sans text-[14px] font-semibold text-secondary/42">
                 ...
               </span>
             ) : null}
@@ -1807,7 +1797,7 @@ function PaginationButton({
       aria-current={active ? "page" : undefined}
       onClick={onClick}
       className={cn(
-        "grid size-8 place-items-center rounded-full border border-[#ead8c5] bg-white font-sans text-[11px] font-bold text-secondary transition-colors hover:border-primary hover:text-primary",
+        "grid size-8 place-items-center rounded-full border border-[#ead8c5] bg-white font-sans text-[13px] font-semibold text-secondary transition-colors hover:border-primary hover:text-primary",
         active && "border-primary bg-primary text-white hover:text-white"
       )}
     >

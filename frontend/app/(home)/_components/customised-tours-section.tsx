@@ -2,51 +2,73 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
-import { getTourCalendarHref } from "@/lib/routes";
+import {
+  fallbackCustomisedTours,
+  type HomeCustomisedTourCard,
+} from "@/lib/home-travel";
+import { getDestinationHref, getTourCalendarHref } from "@/lib/routes";
 import { RevealOnView, TextReveal } from "./reveal-on-view";
 
-const customisedTours = [
+const customisedTourLayouts = [
   {
-    title: "Kashmir",
-    image: "/home assets/Haridwar.webp",
-    tags: ["Spiritual", "Nature"],
     className: "lg:h-[285px]",
     sizes: "(min-width: 1280px) 250px, (min-width: 1024px) 23vw, (min-width: 768px) 50vw, 100vw",
   },
   {
-    title: "Rajasthan",
-    image: "/home assets/destination/hawa-mahal.webp",
-    tags: ["Heritage", "Architecture"],
     className: "lg:h-[330px]",
     sizes: "(min-width: 1280px) 260px, (min-width: 1024px) 23vw, (min-width: 768px) 50vw, 100vw",
   },
   {
-    title: "Shimla",
-    image: "/home assets/destination/Amritsar.webp",
-    tags: ["Winters", "Honeymoon"],
     className: "lg:h-[250px]",
     sizes: "(min-width: 1280px) 220px, (min-width: 1024px) 23vw, (min-width: 768px) 50vw, 100vw",
   },
 ];
 
 type CustomisedTourCardProps = {
-  tour: (typeof customisedTours)[number];
+  className: string;
+  sizes: string;
+  tour: HomeCustomisedTourCard;
 };
 
-function CustomisedTourCard({ tour }: CustomisedTourCardProps) {
+function mergeWithFallbackCustomisedTours(tours: HomeCustomisedTourCard[]) {
+  const merged = [...tours];
+  const usedKeys = new Set(
+    merged.map((tour) => tour.destinationId || tour.title.toLowerCase())
+  );
+
+  fallbackCustomisedTours.forEach((tour) => {
+    const key = tour.destinationId || tour.title.toLowerCase();
+
+    if (merged.length < 3 && !usedKeys.has(key)) {
+      merged.push(tour);
+      usedKeys.add(key);
+    }
+  });
+
+  return merged.slice(0, 3);
+}
+
+function CustomisedTourCard({
+  className,
+  sizes,
+  tour,
+}: CustomisedTourCardProps) {
   return (
     <Link
-      href={getTourCalendarHref({ destination: { name: tour.title } })}
-      className={`relative block min-h-[260px] w-full overflow-hidden rounded-[10px] lg:min-h-0 ${tour.className}`}
+      href={getDestinationHref({
+        destinationId: tour.destinationId,
+        destinationName: tour.title,
+      })}
+      className={`relative block min-h-[260px] w-full overflow-hidden rounded-[10px] lg:min-h-0 ${className}`}
     >
       <Image
         src={tour.image}
         alt={`${tour.title} customised tour`}
         fill
-        sizes={tour.sizes}
+        sizes={sizes}
         className="object-cover"
       />
       <div className="absolute inset-0 bg-gradient-to-b from-secondary/20 via-transparent to-secondary/10" />
@@ -54,9 +76,9 @@ function CustomisedTourCard({ tour }: CustomisedTourCardProps) {
         {tour.title}
       </h3>
       <div className="absolute bottom-4 left-4 right-4 flex flex-wrap gap-2 lg:gap-2">
-        {tour.tags.map((tag) => (
+        {tour.tags.map((tag, index) => (
           <span
-            key={tag}
+            key={`${tag}-${index}`}
             className="rounded-full bg-white px-3 py-1 text-[12px] font-medium text-primary"
           >
             {tag} +
@@ -67,8 +89,15 @@ function CustomisedTourCard({ tour }: CustomisedTourCardProps) {
   );
 }
 
-export function CustomisedToursSection() {
-  const [kashmirTour, rajasthanTour, shimlaTour] = customisedTours;
+export function CustomisedToursSection({
+  destinations = fallbackCustomisedTours,
+}: {
+  destinations?: HomeCustomisedTourCard[];
+}) {
+  const [firstTour, secondTour, thirdTour] = useMemo(
+    () => mergeWithFallbackCustomisedTours(destinations),
+    [destinations]
+  );
   const sectionRef = useRef<HTMLElement>(null);
   const [isSectionReady, setIsSectionReady] = useState(false);
 
@@ -139,7 +168,11 @@ export function CustomisedToursSection() {
 
           <div>
             <RevealOnView visible={isSectionReady}>
-              <CustomisedTourCard tour={kashmirTour} />
+              <CustomisedTourCard
+                className={customisedTourLayouts[0].className}
+                sizes={customisedTourLayouts[0].sizes}
+                tour={firstTour}
+              />
             </RevealOnView>
 
             <div className="mt-7">
@@ -172,13 +205,21 @@ export function CustomisedToursSection() {
             </div>
 
             <RevealOnView delay={160} visible={isSectionReady}>
-              <CustomisedTourCard tour={rajasthanTour} />
+              <CustomisedTourCard
+                className={customisedTourLayouts[1].className}
+                sizes={customisedTourLayouts[1].sizes}
+                tour={secondTour}
+              />
             </RevealOnView>
           </div>
 
           <div className="lg:pt-[21px]">
             <RevealOnView delay={280} visible={isSectionReady}>
-              <CustomisedTourCard tour={shimlaTour} />
+              <CustomisedTourCard
+                className={customisedTourLayouts[2].className}
+                sizes={customisedTourLayouts[2].sizes}
+                tour={thirdTour}
+              />
             </RevealOnView>
 
             <div className="mt-8">
