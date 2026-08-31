@@ -133,17 +133,18 @@ const quickActions: QuickAction[] = [
     tone: "text-blue-600",
   },
   {
-    label: "View Bookings",
-    href: "/bookings",
-    icon: Ticket,
-    tone: "text-primary",
-  },
-  {
     label: "View Enquiries",
     href: "/enquiries",
     icon: MessageCircle,
     tone: "text-violet-600",
   },
+  {
+    label: "View Bookings",
+    href: "/bookings",
+    icon: Ticket,
+    tone: "text-primary",
+  },
+  
 ];
 
 const statusConfig: Record<DashboardBookingStatusKey, StatusConfig> = {
@@ -349,28 +350,13 @@ export default function DashboardPage() {
             isLoading={isLoading}
             tours={summary?.upcomingTours ?? []}
           />
-          <RecentBookings
-            bookings={summary?.recentBookings ?? []}
+          <BookingsOverview
+            buckets={summary?.bookingChart ?? []}
             isLoading={isLoading}
           />
           <EnquiriesOverview
             isLoading={isLoading}
             stats={summary?.enquiryStats ?? []}
-          />
-        </section>
-
-        <section className="grid gap-4 xl:grid-cols-[1.25fr_0.95fr_0.9fr]">
-          <BookingsOverview
-            buckets={summary?.bookingChart ?? []}
-            isLoading={isLoading}
-          />
-          <BookingsStatus
-            isLoading={isLoading}
-            statuses={summary?.bookingStatus ?? []}
-          />
-          <TopDestinations
-            destinations={summary?.topDestinations ?? []}
-            isLoading={isLoading}
           />
         </section>
       </div>
@@ -402,48 +388,6 @@ function DashboardHeader({
 
   return (
     <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 items-center gap-4">
-        <AdminSidebarToggle />
-        <div className="min-w-0">
-          <h1 className="font-sans text-2xl font-bold tracking-normal text-foreground">
-            Dashboard
-          </h1>
-          <p className="mt-1 text-sm text-foreground/60">
-            Welcome back, {displayName}! Here&apos;s what&apos;s happening today.
-          </p>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <HeaderDateRangePicker />
-
-        <button
-          className="relative grid size-10 place-items-center rounded-sm border border-border bg-white text-foreground transition-colors hover:border-primary hover:text-primary"
-          type="button"
-          aria-label="Notifications"
-        >
-          <Bell className="size-5" />
-          {!isLoading && notificationCount > 0 ? (
-            <span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-bold text-white">
-              {notificationCount > 99 ? "99" : notificationCount}
-            </span>
-          ) : null}
-        </button>
-
-        <button
-          className="flex h-10 items-center gap-2 rounded-sm border border-border bg-white px-2.5 text-sm font-semibold transition-colors hover:border-primary"
-          type="button"
-          aria-label="Admin profile"
-        >
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#7a3b22] text-xs font-bold text-white">
-            {initials}
-          </span>
-          <span className="hidden max-w-[150px] truncate sm:inline">
-            {displayName}
-          </span>
-          <ChevronDown className="size-4 text-foreground/45" />
-        </button>
-      </div>
     </header>
   );
 }
@@ -535,9 +479,12 @@ function QuickActions() {
     <div className="grid grid-cols-2 gap-2.5 sm:grid-flow-col sm:auto-cols-[minmax(150px,1fr)] sm:overflow-x-auto sm:pb-1 sm:[-ms-overflow-style:none] sm:[scrollbar-width:none] xl:grid-flow-row xl:grid-cols-6 xl:auto-cols-auto xl:overflow-visible xl:pb-0 sm:[&::-webkit-scrollbar]:hidden">
       {quickActions.map((action) => {
         const Icon = action.icon;
+
         const label = action.label.startsWith("Add ")
           ? `+ ${action.label}`
           : action.label;
+
+        const isViewBooking = action.label === "View Bookings";
 
         return (
           <Link
@@ -545,19 +492,30 @@ function QuickActions() {
             href={action.href}
             data-slot="button"
             className={cn(
-              buttonVariants({ variant: "outline" }),
-              "h-11 w-full cursor-pointer justify-start rounded-sm border-border bg-white px-3 text-left text-xs font-semibold text-foreground hover:border-primary hover:bg-primary hover:text-primary-foreground"
+              buttonVariants({
+                variant: isViewBooking ? "default" : "outline",
+              }),
+              "group h-11 w-full cursor-pointer justify-start rounded-sm px-3 text-left text-xs font-semibold transition-colors",
+
+              isViewBooking
+                ? "border border-primary bg-primary text-primary-foreground hover:border-primary hover:bg-white hover:text-primary"
+                : "border-border bg-white text-foreground hover:border-primary hover:bg-primary/5 hover:text-primary"
             )}
           >
             <span className="grid w-5 shrink-0 place-items-center">
               <Icon
                 className={cn(
-                  "size-4 group-hover/button:text-primary-foreground",
-                  action.tone
+                  "size-4 transition-colors",
+                  isViewBooking
+                    ? "text-primary-foreground group-hover:text-primary"
+                    : action.tone
                 )}
               />
             </span>
-            <span className="min-w-0 truncate">{label}</span>
+
+            <span className="min-w-0 truncate">
+              {label}
+            </span>
           </Link>
         );
       })}
@@ -704,77 +662,6 @@ function BookingLineChart({
   );
 }
 
-function BookingsStatus({
-  isLoading,
-  statuses,
-}: {
-  isLoading: boolean;
-  statuses: AdminDashboardSummary["bookingStatus"];
-}) {
-  const total = statuses.reduce((sum, item) => sum + item.value, 0);
-  const conicGradient = useMemo(() => {
-    if (total <= 0) {
-      return "conic-gradient(#ece2da 0 100%)";
-    }
-
-    let cursor = 0;
-    const segments = statuses.map((item) => {
-      const percentage = (item.value / total) * 100;
-      const start = cursor;
-      const end = cursor + percentage;
-
-      cursor = end;
-
-      return `${statusConfig[item.key].color} ${start}% ${end}%`;
-    });
-
-    return `conic-gradient(${segments.join(", ")})`;
-  }, [statuses, total]);
-
-  return (
-    <DashboardPanel title="Bookings by Status">
-      {isLoading ? (
-        <SkeletonBlock className="h-[230px]" />
-      ) : (
-        <div className="flex flex-col items-center gap-5 sm:flex-row xl:flex-col 2xl:flex-row">
-          <div
-            className="relative size-44 shrink-0 rounded-full"
-            style={{ background: conicGradient }}
-          >
-            <div className="absolute inset-9 grid place-items-center rounded-full bg-white">
-              <div className="text-center">
-                <p className="text-4xl font-bold leading-none">
-                  {formatNumber(total)}
-                </p>
-                <p className="mt-1 text-xs text-foreground/55">Total</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="w-full space-y-3">
-            {statuses.map((item) => (
-              <div
-                key={item.key}
-                className="flex items-center justify-between gap-3 text-xs"
-              >
-                <span className="flex items-center gap-2 text-foreground/70">
-                  <span
-                    className={cn("size-2.5 rounded-full", statusConfig[item.key].dot)}
-                  />
-                  {statusConfig[item.key].label}
-                </span>
-                <span className="font-semibold text-foreground/70">
-                  {formatNumber(item.value)} ({formatPercent(item.percentage)})
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </DashboardPanel>
-  );
-}
-
 function UpcomingTours({
   isLoading,
   tours,
@@ -818,121 +705,6 @@ function UpcomingTours({
         </div>
       ) : (
         <EmptyPanelMessage message="No upcoming departures found." />
-      )}
-    </DashboardPanel>
-  );
-}
-
-function TopDestinations({
-  destinations,
-  isLoading,
-}: {
-  destinations: DashboardTopDestination[];
-  isLoading: boolean;
-}) {
-  const maxBookings = Math.max(
-    1,
-    ...destinations.map((destination) => destination.bookings)
-  );
-
-  return (
-    <DashboardPanel
-      title="Top Destinations (By Bookings)"
-      action={<PanelLink href="/destinations" label="View All" />}
-    >
-      {isLoading ? (
-        <PanelListSkeleton />
-      ) : destinations.length > 0 ? (
-        <div className="space-y-3.5">
-          {destinations.map((destination, index) => (
-            <div
-              key={destination.destinationId}
-              className="grid grid-cols-[18px_48px_minmax(0,1fr)_32px] items-center gap-3"
-            >
-              <span className="text-xs font-semibold text-foreground/60">
-                {index + 1}.
-              </span>
-              <TourThumb image={destination.image} index={index} size="sm" />
-              <div className="min-w-0">
-                <div className="mb-1 flex items-center justify-between gap-3">
-                  <p className="truncate text-xs font-bold">{destination.name}</p>
-                </div>
-                <div className="h-1.5 rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary"
-                    style={{
-                      width: `${(destination.bookings / maxBookings) * 100}%`,
-                    }}
-                  />
-                </div>
-              </div>
-              <span className="text-right text-xs font-bold">
-                {formatNumber(destination.bookings)}
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <EmptyPanelMessage message="No destination bookings found." />
-      )}
-    </DashboardPanel>
-  );
-}
-
-function RecentBookings({
-  bookings,
-  isLoading,
-}: {
-  bookings: DashboardRecentBooking[];
-  isLoading: boolean;
-}) {
-  return (
-    <DashboardPanel
-      title="Recent Bookings"
-      action={<PanelLink href="/bookings" label="View All" />}
-    >
-      {isLoading ? (
-        <PanelListSkeleton />
-      ) : bookings.length > 0 ? (
-        <div className="space-y-3">
-          {bookings.map((booking, index) => (
-            <div
-              key={booking.id}
-              className="grid gap-3 rounded-sm border border-transparent py-0.5 sm:grid-cols-[minmax(0,1fr)_86px_82px_82px] sm:items-center"
-            >
-              <div className="flex min-w-0 items-center gap-3">
-                <span
-                  className={cn(
-                    "grid size-9 shrink-0 place-items-center rounded-full text-xs font-bold text-white",
-                    avatarTones[index % avatarTones.length]
-                  )}
-                >
-                  {booking.initials}
-                </span>
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-bold">{booking.name}</p>
-                  <p className="truncate text-[11px] text-foreground/55">
-                    {booking.tour}
-                  </p>
-                </div>
-              </div>
-              <span className="text-xs text-foreground/60">{booking.date}</span>
-              <span
-                className={cn(
-                  "w-fit rounded-full px-2 py-1 text-[10px] font-semibold",
-                  statusClassNames[booking.status]
-                )}
-              >
-                {statusConfig[booking.status].label}
-              </span>
-              <span className="text-sm font-bold">
-                {formatCurrency(booking.amount)}
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <EmptyPanelMessage message="No bookings found." />
       )}
     </DashboardPanel>
   );

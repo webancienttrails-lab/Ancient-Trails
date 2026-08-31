@@ -1,8 +1,14 @@
 "use client";
 
 import type { FormEvent, ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
+import {
+  ArrowLeft,
   Award,
   Bell,
   ChevronDown,
@@ -24,7 +30,6 @@ import {
   AdminDashboardShell,
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
-import { HeaderDateRangePicker } from "@/components/admin-dashboard/header-date-range-picker";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -33,14 +38,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
 import {
   createAdminExpert,
@@ -73,6 +70,11 @@ type ExpertFormState = Omit<
 };
 
 type ExpertSheetMode = "add" | "view" | "edit";
+
+type ExpertRouteState = {
+  id: string | null;
+  mode: ExpertSheetMode | null;
+};
 
 const emptyExpertForm: ExpertFormState = {
   expertId: "",
@@ -197,12 +199,90 @@ function createExpertMetrics(experts: AdminExpert[]): ExpertMetric[] {
 }
 
 export default function ExpertsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ExpertsPageContent />
+    </Suspense>
+  );
+}
+
+function getExpertRouteState(
+  pathname: string,
+  id: string | null
+): ExpertRouteState {
+  const segments = pathname
+    .split("/")
+    .filter(Boolean);
+
+  const expertsIndex =
+    segments.findIndex(
+      (segment) => segment === "experts"
+    );
+
+  const pageSegment =
+    expertsIndex >= 0
+      ? segments[expertsIndex + 1]
+      : "";
+
+  if (pageSegment === "add") {
+    return {
+      id: null,
+      mode: "add",
+    };
+  }
+
+  if (
+    pageSegment === "edit" &&
+    id
+  ) {
+    return {
+      id,
+      mode: "edit",
+    };
+  }
+
+  if (
+    pageSegment === "view" &&
+    id
+  ) {
+    return {
+      id,
+      mode: "view",
+    };
+  }
+
+  return {
+    id: null,
+    mode: null,
+  };
+}
+
+function ExpertsPageContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const toast = useToast();
+  const searchParamString =
+    searchParams.toString();
+  const routeState = useMemo(
+    () =>
+      getExpertRouteState(
+        pathname,
+        new URLSearchParams(
+          searchParamString
+        ).get("id")
+      ),
+    [pathname, searchParamString]
+  );
   const [experts, setExperts] = useState<AdminExpert[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoadingExperts, setIsLoadingExperts] = useState(true);
   const [expertSheetMode, setExpertSheetMode] =
-    useState<ExpertSheetMode | null>(null);
+    useState<ExpertSheetMode | null>(
+      routeState.mode === "add"
+        ? "add"
+        : null
+    );
   const [selectedExpert, setSelectedExpert] = useState<AdminExpert | null>(null);
   const [isSavingExpert, setIsSavingExpert] = useState(false);
   const [isUploadingExpertImage, setIsUploadingExpertImage] = useState(false);
@@ -220,7 +300,27 @@ export default function ExpertsPage() {
         const response = await listAdminExperts();
 
         if (isMounted) {
-          setExperts(response.data.experts);
+          const loadedExperts =
+            response.data.experts;
+
+          setExperts(loadedExperts);
+
+          if (
+            routeState.mode &&
+            routeState.mode !== "add"
+          ) {
+            const expert =
+              loadedExperts.find(
+                (item) =>
+                  item.id === routeState.id
+              );
+
+            if (expert) {
+              setExpertSheetMode(routeState.mode);
+              setSelectedExpert(expert);
+              setExpertForm(expertToForm(expert));
+            }
+          }
         }
       } catch (error) {
         toast.error("Unable to load experts", getErrorMessage(error));
@@ -236,7 +336,7 @@ export default function ExpertsPage() {
     return () => {
       isMounted = false;
     };
-  }, [toast]);
+  }, [routeState, toast]);
 
   const filteredExperts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -276,25 +376,28 @@ export default function ExpertsPage() {
   }
 
   function openAddExpertSheet() {
-    setSelectedExpert(null);
-    setExpertForm(emptyExpertForm);
-    setExpertSheetMode("add");
+    router.push("/experts/add");
   }
 
   function openViewExpertSheet(expert: AdminExpert) {
-    setSelectedExpert(expert);
-    setExpertForm(expertToForm(expert));
-    setExpertSheetMode("view");
+    router.push(
+      `/experts/view?id=${encodeURIComponent(expert.id)}`
+    );
   }
 
   function openEditExpertSheet(expert: AdminExpert) {
-    setSelectedExpert(expert);
-    setExpertForm(expertToForm(expert));
-    setExpertSheetMode("edit");
+    router.push(
+      `/experts/edit?id=${encodeURIComponent(expert.id)}`
+    );
   }
 
   function closeExpertSheet() {
     if (isExpertFormBusy) {
+      return;
+    }
+
+    if (routeState.mode) {
+      router.push("/experts");
       return;
     }
 
@@ -371,6 +474,7 @@ export default function ExpertsPage() {
         setSelectedExpert(null);
         setExpertForm(emptyExpertForm);
         toast.success("Expert updated", response.message);
+        router.push("/experts");
         return;
       }
 
@@ -381,6 +485,7 @@ export default function ExpertsPage() {
       setSelectedExpert(null);
       setExpertForm(emptyExpertForm);
       toast.success("Expert added", response.message);
+      router.push("/experts");
     } catch (error) {
       toast.error(
         expertSheetMode === "edit" ? "Expert not updated" : "Expert not saved",
@@ -389,6 +494,54 @@ export default function ExpertsPage() {
     } finally {
       setIsSavingExpert(false);
     }
+  }
+
+  if (routeState.mode) {
+    return (
+      <AdminDashboardShell activeLabel="Experts">
+        <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-5">
+          <div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => router.push("/experts")}
+              className="h-10 rounded-sm border-border bg-white px-3 text-xs font-bold"
+            >
+              <ArrowLeft className="size-4" />
+              Back to Experts
+            </Button>
+          </div>
+
+          {routeState.mode !== "add" &&
+          isLoadingExperts ? (
+            <section className="rounded-sm border border-border bg-white p-8 text-sm text-foreground/60 shadow-sm shadow-stone-200/40">
+              Loading expert...
+            </section>
+          ) : null}
+
+          {expertSheetMode ? (
+            <ExpertFormDialog
+              form={expertForm}
+              mode={expertSheetMode}
+              isBusy={isExpertFormBusy}
+              isOpen
+              isSaving={isSavingExpert}
+              isUploadingImage={isUploadingExpertImage}
+              onClose={closeExpertSheet}
+              onImageUpload={handleExpertImageUpload}
+              onSubmit={handleSaveExpert}
+              onUpdate={updateExpertForm}
+            />
+          ) : !isLoadingExperts ? (
+            <section className="rounded-sm border border-red-200 bg-red-50 p-6">
+              <p className="text-sm font-bold text-red-700">
+                Expert not found.
+              </p>
+            </section>
+          ) : null}
+        </div>
+      </AdminDashboardShell>
+    );
   }
 
   return (
@@ -498,8 +651,6 @@ function AdminPageTopbar({
             onChange={(event) => onSearchQueryChange(event.target.value)}
           />
         </label>
-
-        <HeaderDateRangePicker />
 
         <button
           onClick={() =>
@@ -870,9 +1021,9 @@ function ExpertFormDialog({
   ) => void;
 }) {
   const isReadOnly = mode === "view";
-  const sheetTitle =
+  const panelTitle =
     mode === "edit" ? "Edit Expert" : mode === "view" ? "View Expert" : "Add Expert";
-  const sheetDescription =
+  const panelDescription =
     mode === "edit"
       ? "Update the expert profile and credentials."
       : mode === "view"
@@ -890,33 +1041,25 @@ function ExpertFormDialog({
   const textareaClassName =
     "min-h-28 rounded-sm border border-border bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15 read-only:cursor-default read-only:bg-muted/35 disabled:cursor-default disabled:bg-muted/35 disabled:text-foreground/60";
 
+  if (!isOpen) {
+    return null;
+  }
+
   return (
-    <Sheet
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-    >
-      <SheetContent
-        side="right"
-        showCloseButton={false}
-        className="w-full gap-0 border-l border-border bg-white p-0 shadow-2xl shadow-stone-900/20 duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] data-[side=right]:w-full data-[side=right]:sm:max-w-[620px]"
-      >
+    <section className="overflow-hidden rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
         <form
           onSubmit={onSubmit}
-          className="flex h-full min-h-0 flex-col bg-white"
+          className="flex min-h-0 flex-col bg-white"
         >
-          <SheetHeader className="border-b border-border px-7 py-6">
+          <div className="border-b border-border px-7 py-6">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <SheetTitle className="font-sans text-xl font-bold tracking-normal text-foreground">
-                  {sheetTitle}
-                </SheetTitle>
-                <SheetDescription className="mt-1 text-xs text-foreground/55">
-                  {sheetDescription}
-                </SheetDescription>
+                <h2 className="font-sans text-xl font-bold tracking-normal text-foreground">
+                  {panelTitle}
+                </h2>
+                <p className="mt-1 text-xs text-foreground/55">
+                  {panelDescription}
+                </p>
               </div>
               <button
                 type="button"
@@ -928,9 +1071,9 @@ function ExpertFormDialog({
                 <X className="size-4" />
               </button>
             </div>
-          </SheetHeader>
+          </div>
 
-          <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto px-7 py-6 sm:grid-cols-2">
+          <div className="grid min-h-0 flex-1 gap-5 px-7 py-6 sm:grid-cols-2">
             <FormField label="Expert ID" required>
               <input
                 required
@@ -1044,7 +1187,7 @@ function ExpertFormDialog({
           </div>
 
           {!isReadOnly ? (
-            <SheetFooter className="border-t border-border bg-white px-7 py-6">
+            <div className="border-t border-border bg-white px-7 py-6">
               <Button
                 type="submit"
                 disabled={isBusy}
@@ -1052,11 +1195,10 @@ function ExpertFormDialog({
               >
                 {submitButtonLabel}
               </Button>
-            </SheetFooter>
+            </div>
           ) : null}
         </form>
-      </SheetContent>
-    </Sheet>
+    </section>
   );
 }
 

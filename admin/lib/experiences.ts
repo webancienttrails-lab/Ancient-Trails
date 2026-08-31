@@ -8,6 +8,11 @@ import { getAdminSession } from "@/lib/admin-auth";
 
 export type ExperienceStatus = "Draft" | "Published";
 
+export type ExperienceAttractionPhoto = {
+  image: string;
+  name: string;
+};
+
 export type AdminExperience = {
   id: string;
   experienceId: string;
@@ -20,6 +25,8 @@ export type AdminExperience = {
   thingsToKnow: string[];
   travellerPhotoGallery: string[];
   travellerVideos: string[];
+  travellerVideoTitles: string[];
+  attractionPhotoGallery: ExperienceAttractionPhoto[];
   ratingItinerary: number;
   ratingLocalTransport: number;
   ratingAccommodation: number;
@@ -31,15 +38,17 @@ export type AdminExperience = {
 };
 
 export type ExperiencePayload = {
-  experienceId: string;
+  experienceId?: string;
   destinationId: string;
   travellerName: string;
   travellerEmail: string;
-  title: string;
+  title?: string;
   writtenReview: string;
   thingsToKnow: string[];
   travellerPhotoGallery: string[];
   travellerVideos: string[];
+  travellerVideoTitles?: string[];
+  attractionPhotoGallery?: ExperienceAttractionPhoto[];
   ratingItinerary: number;
   ratingLocalTransport: number;
   ratingAccommodation: number;
@@ -50,21 +59,21 @@ export type ExperiencePayload = {
 type ExperienceMediaUploadPayload = {
   travellerPhotoGallery?: File[];
   travellerVideos?: File[];
+  attractionPhotoGallery?: File[];
 };
 
 export type ExperienceMediaUploadResponse = {
   travellerPhotoGallery: string[];
   travellerVideos: string[];
+  attractionPhotoGallery: string[];
 };
 
 export type RejectedExperiencePhoto = {
   fileName: string;
-  height: number;
-  width: number;
+  size: number;
 };
 
-export const EXPERIENCE_PHOTO_MIN_HEIGHT = 400;
-export const EXPERIENCE_PHOTO_MIN_WIDTH = 600;
+export const EXPERIENCE_PHOTO_MAX_SIZE = 2 * 1024 * 1024;
 
 function getAdminHeaders(): HeadersInit {
   const session = getAdminSession();
@@ -119,51 +128,16 @@ export function getExperienceMediaUrl(source: string): string {
   return trimmedSource;
 }
 
-function readImageDimensions(file: File): Promise<{ height: number; width: number }> {
-  return new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file);
-    const image = new window.Image();
-
-    image.onload = () => {
-      const dimensions = {
-        height: image.naturalHeight,
-        width: image.naturalWidth,
-      };
-
-      URL.revokeObjectURL(objectUrl);
-      resolve(dimensions);
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error(`Unable to read image dimensions for ${file.name}`));
-    };
-    image.src = objectUrl;
-  });
-}
-
 export async function getUploadableExperiencePhotos(files: File[]) {
-  const measuredPhotos = await Promise.all(
-    files.map(async (file) => ({
-      file,
-      ...(await readImageDimensions(file)),
-    }))
-  );
-  const rejectedPhotos = measuredPhotos
-    .filter(
-      ({ height, width }) =>
-        width < EXPERIENCE_PHOTO_MIN_WIDTH || height < EXPERIENCE_PHOTO_MIN_HEIGHT
-    )
-    .map<RejectedExperiencePhoto>(({ file, height, width }) => ({
+  const rejectedPhotos = files
+    .filter((file) => file.size > EXPERIENCE_PHOTO_MAX_SIZE)
+    .map<RejectedExperiencePhoto>((file) => ({
       fileName: file.name,
-      height,
-      width,
+      size: file.size,
     }));
-  const uploadablePhotos = measuredPhotos
-    .filter(
-      ({ height, width }) =>
-        width >= EXPERIENCE_PHOTO_MIN_WIDTH && height >= EXPERIENCE_PHOTO_MIN_HEIGHT
-    )
-    .map(({ file }) => file);
+  const uploadablePhotos = files.filter(
+    (file) => file.size <= EXPERIENCE_PHOTO_MAX_SIZE
+  );
 
   return {
     rejectedPhotos,
@@ -174,11 +148,15 @@ export async function getUploadableExperiencePhotos(files: File[]) {
 export function getExperiencePhotoSizeMessage(rejectedPhotos: RejectedExperiencePhoto[]) {
   const rejectedSummary = rejectedPhotos
     .slice(0, 2)
-    .map(({ fileName, height, width }) => `${fileName} (${width}x${height})`)
+    .map(({ fileName, size }) => `${fileName} (${formatFileSize(size)})`)
     .join(", ");
   const extraCount = rejectedPhotos.length > 2 ? ` and ${rejectedPhotos.length - 2} more` : "";
 
-  return `${rejectedSummary}${extraCount} rejected. Upload traveller photos at least ${EXPERIENCE_PHOTO_MIN_WIDTH}x${EXPERIENCE_PHOTO_MIN_HEIGHT}px.`;
+  return `${rejectedSummary}${extraCount} rejected. Upload experience photos up to 2 MB.`;
+}
+
+function formatFileSize(size: number) {
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export async function listAdminExperiences() {
@@ -245,6 +223,10 @@ export async function uploadExperienceMedia(
 
   payload.travellerVideos?.forEach((video) => {
     formData.append("travellerVideos", video);
+  });
+
+  payload.attractionPhotoGallery?.forEach((photo) => {
+    formData.append("attractionPhotoGallery", photo);
   });
 
   return readUploadResponse<ExperienceMediaUploadResponse>(

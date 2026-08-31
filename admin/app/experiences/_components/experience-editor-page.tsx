@@ -47,6 +47,7 @@ import {
   updateAdminExperience,
   uploadExperienceMedia,
   type AdminExperience,
+  type ExperienceAttractionPhoto,
   type ExperiencePayload,
 } from "@/lib/experiences";
 import { cn } from "@/lib/utils";
@@ -60,35 +61,38 @@ type ExperienceFormState = Omit<
   | "ratingLocalTransport"
   | "ratingTourExpert"
   | "thingsToKnow"
-  | "travellerPhotoGallery"
-  | "travellerVideos"
+  | "travellerVideoTitles"
+  | "attractionPhotoGallery"
+  | "experienceId"
+  | "title"
 > & {
   ratingAccommodation: string;
   ratingItinerary: string;
   ratingLocalTransport: string;
   ratingTourExpert: string;
   thingsToKnow: string;
-  travellerPhotoGallery: string;
-  travellerVideos: string;
+  travellerVideoTitles: string[];
+  attractionPhotoGallery: ExperienceAttractionPhoto[];
 };
 
 type ExperienceFormEntry = {
   form: ExperienceFormState;
+  isUploadingAttractionPhotos: boolean;
   isUploadingPhotos: boolean;
   isUploadingVideos: boolean;
   localId: string;
 };
 
 const emptyExperienceForm: ExperienceFormState = {
-  experienceId: "",
   destinationId: "",
   travellerName: "",
   travellerEmail: "",
-  title: "",
   writtenReview: "",
   thingsToKnow: "",
-  travellerPhotoGallery: "",
-  travellerVideos: "",
+  travellerPhotoGallery: [],
+  travellerVideos: [],
+  travellerVideoTitles: [],
+  attractionPhotoGallery: [],
   ratingItinerary: "5",
   ratingLocalTransport: "5",
   ratingAccommodation: "5",
@@ -150,15 +154,21 @@ function createExperienceEntry(
     form: {
       ...emptyExperienceForm,
       ...form,
-      experienceId: form.experienceId || "",
-      title: form.title || "",
       travellerEmail: form.travellerEmail || "",
       travellerName: form.travellerName || "",
       writtenReview: form.writtenReview || "",
       thingsToKnow: form.thingsToKnow || "",
-      travellerPhotoGallery: form.travellerPhotoGallery || "",
-      travellerVideos: form.travellerVideos || "",
+      travellerPhotoGallery: getUniqueMediaList(form.travellerPhotoGallery),
+      travellerVideos: getUniqueMediaList(form.travellerVideos),
+      travellerVideoTitles: getIndexedTextList(
+        form.travellerVideoTitles,
+        form.travellerVideos?.length || 0
+      ),
+      attractionPhotoGallery: getAttractionPhotoGallery(
+        form.attractionPhotoGallery
+      ),
     },
+    isUploadingAttractionPhotos: false,
     isUploadingPhotos: false,
     isUploadingVideos: false,
     localId: createLocalId(),
@@ -172,10 +182,44 @@ function parseTextList(value: string): string[] {
     .filter(Boolean);
 }
 
-function appendTextList(currentValue: string, newValues: string[]): string {
-  return Array.from(new Set([...parseTextList(currentValue), ...newValues])).join(
-    "\n"
-  );
+function getUniqueMediaList(values: string[] = []): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function appendMediaList(currentValues: string[], newValues: string[]): string[] {
+  return getUniqueMediaList([...currentValues, ...newValues]);
+}
+
+function getIndexedTextList(values: string[] = [], length: number): string[] {
+  return Array.from({ length }, (_item, index) => values[index]?.trim() || "");
+}
+
+function getAttractionPhotoGallery(
+  photos: ExperienceAttractionPhoto[] = []
+): ExperienceAttractionPhoto[] {
+  const seenImages = new Set<string>();
+
+  return photos
+    .map((photo) => ({
+      image: photo.image.trim(),
+      name: photo.name.trim(),
+    }))
+    .filter((photo) => {
+      if (!photo.image || seenImages.has(photo.image)) {
+        return false;
+      }
+
+      seenImages.add(photo.image);
+
+      return true;
+    });
+}
+
+function createMediaName(file: File): string {
+  return file.name
+    .replace(/\.[^.]+$/, "")
+    .replace(/[-_]+/g, " ")
+    .trim();
 }
 
 function getRatingValue(value: string | number): number {
@@ -208,15 +252,20 @@ function calculateOverallRating(form: Pick<
 
 function experienceToForm(experience: AdminExperience): ExperienceFormState {
   return {
-    experienceId: experience.experienceId,
     destinationId: experience.destinationId,
     travellerName: experience.travellerName || "",
     travellerEmail: experience.travellerEmail || "",
-    title: experience.title,
     writtenReview: experience.writtenReview || "",
     thingsToKnow: experience.thingsToKnow.join("\n"),
-    travellerPhotoGallery: experience.travellerPhotoGallery.join("\n"),
-    travellerVideos: experience.travellerVideos.join("\n"),
+    travellerPhotoGallery: getUniqueMediaList(experience.travellerPhotoGallery),
+    travellerVideos: getUniqueMediaList(experience.travellerVideos),
+    travellerVideoTitles: getIndexedTextList(
+      experience.travellerVideoTitles,
+      experience.travellerVideos.length
+    ),
+    attractionPhotoGallery: getAttractionPhotoGallery(
+      experience.attractionPhotoGallery
+    ),
     ratingItinerary: experience.ratingItinerary.toString(),
     ratingLocalTransport: experience.ratingLocalTransport.toString(),
     ratingAccommodation: experience.ratingAccommodation.toString(),
@@ -227,15 +276,20 @@ function experienceToForm(experience: AdminExperience): ExperienceFormState {
 
 function createExperiencePayload(form: ExperienceFormState): ExperiencePayload {
   return {
-    experienceId: form.experienceId.trim(),
     destinationId: form.destinationId.trim(),
     travellerName: form.travellerName.trim(),
     travellerEmail: form.travellerEmail.trim(),
-    title: form.title.trim(),
     writtenReview: form.writtenReview.trim(),
     thingsToKnow: parseTextList(form.thingsToKnow),
-    travellerPhotoGallery: parseTextList(form.travellerPhotoGallery),
-    travellerVideos: parseTextList(form.travellerVideos),
+    travellerPhotoGallery: getUniqueMediaList(form.travellerPhotoGallery),
+    travellerVideos: getUniqueMediaList(form.travellerVideos),
+    travellerVideoTitles: getIndexedTextList(
+      form.travellerVideoTitles,
+      form.travellerVideos.length
+    ),
+    attractionPhotoGallery: getAttractionPhotoGallery(
+      form.attractionPhotoGallery
+    ),
     ratingItinerary: getRatingValue(form.ratingItinerary),
     ratingLocalTransport: getRatingValue(form.ratingLocalTransport),
     ratingAccommodation: getRatingValue(form.ratingAccommodation),
@@ -260,28 +314,6 @@ function getDestinationName(
   return destinationNameById.get(destinationId) || destinationId || "No destination";
 }
 
-function getDuplicateExperienceIds(entries: ExperienceFormEntry[]) {
-  const seen = new Set<string>();
-  const duplicates = new Set<string>();
-
-  entries.forEach((entry) => {
-    const experienceId = entry.form.experienceId.trim().toUpperCase();
-
-    if (!experienceId) {
-      return;
-    }
-
-    if (seen.has(experienceId)) {
-      duplicates.add(experienceId);
-      return;
-    }
-
-    seen.add(experienceId);
-  });
-
-  return Array.from(duplicates);
-}
-
 function getBatchValidationError(entries: ExperienceFormEntry[]): string {
   const missingDestinationIndex = entries.findIndex(
     (entry) => !entry.form.destinationId.trim()
@@ -289,12 +321,6 @@ function getBatchValidationError(entries: ExperienceFormEntry[]): string {
 
   if (missingDestinationIndex !== -1) {
     return `Select destination for Experience ${missingDestinationIndex + 1}.`;
-  }
-
-  const duplicateIds = getDuplicateExperienceIds(entries);
-
-  if (duplicateIds.length > 0) {
-    return `Duplicate Experience ID: ${duplicateIds.join(", ")}.`;
   }
 
   return "";
@@ -336,7 +362,10 @@ export function ExperienceEditorPage({
     [destinations]
   );
   const isUploading = entries.some(
-    (entry) => entry.isUploadingPhotos || entry.isUploadingVideos
+    (entry) =>
+      entry.isUploadingAttractionPhotos ||
+      entry.isUploadingPhotos ||
+      entry.isUploadingVideos
   );
   const isBusy = isSaving || isUploading;
   const pageTitle = mode === "edit" ? "Edit Experience" : "Add Experiences";
@@ -354,7 +383,7 @@ export function ExperienceEditorPage({
           ? `Save ${entries.length} Experiences`
           : "Save Experience";
   const missingExperienceIdError =
-    mode === "edit" && !experienceId ? "Experience ID is missing." : "";
+    mode === "edit" && !experienceId ? "Experience record is missing." : "";
   const currentLoadError = loadError || missingExperienceIdError;
 
   useEffect(() => {
@@ -437,7 +466,10 @@ export function ExperienceEditorPage({
 
   function updateEntryUploadState(
     localId: string,
-    field: "isUploadingPhotos" | "isUploadingVideos",
+    field:
+      | "isUploadingAttractionPhotos"
+      | "isUploadingPhotos"
+      | "isUploadingVideos",
     value: boolean
   ) {
     setEntries((currentEntries) =>
@@ -474,10 +506,66 @@ export function ExperienceEditorPage({
     );
   }
 
-  function removeMedia(
+  function removeTravellerPhoto(localId: string, indexToRemove: number) {
+    setEntries((currentEntries) =>
+      currentEntries.map((entry) =>
+        entry.localId === localId
+          ? {
+              ...entry,
+              form: {
+                ...entry.form,
+                travellerPhotoGallery: entry.form.travellerPhotoGallery
+                  .filter((_item, index) => index !== indexToRemove)
+              },
+            }
+          : entry
+      )
+    );
+  }
+
+  function removeTravellerVideo(localId: string, indexToRemove: number) {
+    setEntries((currentEntries) =>
+      currentEntries.map((entry) =>
+        entry.localId === localId
+          ? {
+              ...entry,
+              form: {
+                ...entry.form,
+                travellerVideos: entry.form.travellerVideos.filter(
+                  (_item, index) => index !== indexToRemove
+                ),
+                travellerVideoTitles: entry.form.travellerVideoTitles.filter(
+                  (_item, index) => index !== indexToRemove
+                ),
+              },
+            }
+          : entry
+      )
+    );
+  }
+
+  function removeAttractionPhoto(localId: string, indexToRemove: number) {
+    setEntries((currentEntries) =>
+      currentEntries.map((entry) =>
+        entry.localId === localId
+          ? {
+              ...entry,
+              form: {
+                ...entry.form,
+                attractionPhotoGallery: entry.form.attractionPhotoGallery.filter(
+                  (_item, index) => index !== indexToRemove
+                ),
+              },
+            }
+          : entry
+      )
+    );
+  }
+
+  function updateTravellerVideoTitle(
     localId: string,
-    field: "travellerPhotoGallery" | "travellerVideos",
-    indexToRemove: number
+    indexToUpdate: number,
+    value: string
   ) {
     setEntries((currentEntries) =>
       currentEntries.map((entry) =>
@@ -486,9 +574,37 @@ export function ExperienceEditorPage({
               ...entry,
               form: {
                 ...entry.form,
-                [field]: parseTextList(entry.form[field])
-                  .filter((_item, index) => index !== indexToRemove)
-                  .join("\n"),
+                travellerVideoTitles: getIndexedTextList(
+                  entry.form.travellerVideos.map((_, index) =>
+                    index === indexToUpdate
+                      ? value
+                      : entry.form.travellerVideoTitles[index] || ""
+                  ),
+                  entry.form.travellerVideos.length
+                ),
+              },
+            }
+          : entry
+      )
+    );
+  }
+
+  function updateAttractionPhotoName(
+    localId: string,
+    indexToUpdate: number,
+    value: string
+  ) {
+    setEntries((currentEntries) =>
+      currentEntries.map((entry) =>
+        entry.localId === localId
+          ? {
+              ...entry,
+              form: {
+                ...entry.form,
+                attractionPhotoGallery: entry.form.attractionPhotoGallery.map(
+                  (photo, index) =>
+                    index === indexToUpdate ? { ...photo, name: value } : photo
+                ),
               },
             }
           : entry
@@ -508,7 +624,7 @@ export function ExperienceEditorPage({
         await getUploadableExperiencePhotos(selectedPhotos);
 
       if (rejectedPhotos.length > 0) {
-        toast.error("Photo too small", getExperiencePhotoSizeMessage(rejectedPhotos));
+        toast.error("Photo too large", getExperiencePhotoSizeMessage(rejectedPhotos));
       }
 
       if (uploadablePhotos.length === 0) {
@@ -528,7 +644,7 @@ export function ExperienceEditorPage({
                 ...entry,
                 form: {
                   ...entry.form,
-                  travellerPhotoGallery: appendTextList(
+                  travellerPhotoGallery: appendMediaList(
                     entry.form.travellerPhotoGallery,
                     response.data.travellerPhotoGallery
                   ),
@@ -542,6 +658,65 @@ export function ExperienceEditorPage({
       toast.error("Photo upload failed", getErrorMessage(error));
     } finally {
       updateEntryUploadState(localId, "isUploadingPhotos", false);
+    }
+  }
+
+  async function handleAttractionPhotoUpload(
+    localId: string,
+    files: FileList | null
+  ) {
+    const selectedPhotos = Array.from(files || []);
+
+    if (selectedPhotos.length === 0) {
+      return;
+    }
+
+    try {
+      const { rejectedPhotos, uploadablePhotos } =
+        await getUploadableExperiencePhotos(selectedPhotos);
+
+      if (rejectedPhotos.length > 0) {
+        toast.error("Photo too large", getExperiencePhotoSizeMessage(rejectedPhotos));
+      }
+
+      if (uploadablePhotos.length === 0) {
+        return;
+      }
+
+      updateEntryUploadState(localId, "isUploadingAttractionPhotos", true);
+
+      const response = await uploadExperienceMedia({
+        attractionPhotoGallery: uploadablePhotos,
+      });
+
+      const uploadedPhotos = response.data.attractionPhotoGallery.map(
+        (image, index) => ({
+          image,
+          name: createMediaName(uploadablePhotos[index]) || `Attraction ${index + 1}`,
+        })
+      );
+
+      setEntries((currentEntries) =>
+        currentEntries.map((entry) =>
+          entry.localId === localId
+            ? {
+                ...entry,
+                form: {
+                  ...entry.form,
+                  attractionPhotoGallery: getAttractionPhotoGallery([
+                    ...entry.form.attractionPhotoGallery,
+                    ...uploadedPhotos,
+                  ]),
+                },
+              }
+            : entry
+        )
+      );
+      toast.success("Attraction photos uploaded", response.message);
+    } catch (error) {
+      toast.error("Attraction photo upload failed", getErrorMessage(error));
+    } finally {
+      updateEntryUploadState(localId, "isUploadingAttractionPhotos", false);
     }
   }
 
@@ -564,10 +739,14 @@ export function ExperienceEditorPage({
                 ...entry,
                 form: {
                   ...entry.form,
-                  travellerVideos: appendTextList(
+                  travellerVideos: appendMediaList(
                     entry.form.travellerVideos,
                     response.data.travellerVideos
                   ),
+                  travellerVideoTitles: [
+                    ...entry.form.travellerVideoTitles,
+                    ...travellerVideos.map(createMediaName),
+                  ],
                 },
               }
             : entry
@@ -732,15 +911,15 @@ export function ExperienceEditorPage({
                     index={index}
                     isBusy={isBusy}
                     mode={mode}
+                    onAttractionPhotoUpload={handleAttractionPhotoUpload}
+                    onAttractionPhotoNameChange={updateAttractionPhotoName}
                     onPhotoUpload={handlePhotoUpload}
                     onRemoveEntry={removeExperienceEntry}
-                    onRemovePhoto={(localId, photoIndex) =>
-                      removeMedia(localId, "travellerPhotoGallery", photoIndex)
-                    }
-                    onRemoveVideo={(localId, videoIndex) =>
-                      removeMedia(localId, "travellerVideos", videoIndex)
-                    }
+                    onRemoveAttractionPhoto={removeAttractionPhoto}
+                    onRemovePhoto={removeTravellerPhoto}
+                    onRemoveVideo={removeTravellerVideo}
                     onUpdate={updateEntryForm}
+                    onVideoTitleChange={updateTravellerVideoTitle}
                     onVideoUpload={handleVideoUpload}
                   />
                 ))}
@@ -823,11 +1002,15 @@ function ExperienceEntryCard({
   index,
   isBusy,
   mode,
+  onAttractionPhotoNameChange,
+  onAttractionPhotoUpload,
   onPhotoUpload,
   onRemoveEntry,
+  onRemoveAttractionPhoto,
   onRemovePhoto,
   onRemoveVideo,
   onUpdate,
+  onVideoTitleChange,
   onVideoUpload,
 }: {
   canRemove: boolean;
@@ -837,8 +1020,15 @@ function ExperienceEntryCard({
   index: number;
   isBusy: boolean;
   mode: ExperienceEditorMode;
+  onAttractionPhotoNameChange: (
+    localId: string,
+    index: number,
+    value: string
+  ) => void;
+  onAttractionPhotoUpload: (localId: string, files: FileList | null) => void;
   onPhotoUpload: (localId: string, files: FileList | null) => void;
   onRemoveEntry: (localId: string) => void;
+  onRemoveAttractionPhoto: (localId: string, index: number) => void;
   onRemovePhoto: (localId: string, index: number) => void;
   onRemoveVideo: (localId: string, index: number) => void;
   onUpdate: <K extends keyof ExperienceFormState>(
@@ -846,10 +1036,11 @@ function ExperienceEntryCard({
     field: K,
     value: ExperienceFormState[K]
   ) => void;
+  onVideoTitleChange: (localId: string, index: number, value: string) => void;
   onVideoUpload: (localId: string, files: FileList | null) => void;
 }) {
   const overallRating = calculateOverallRating(entry.form);
-  const title = entry.form.title.trim() || `Experience ${index + 1}`;
+  const title = entry.form.travellerName.trim() || `Experience ${index + 1}`;
   const destinationName = getDestinationName(
     entry.form.destinationId,
     destinationNameById
@@ -884,18 +1075,6 @@ function ExperienceEntryCard({
       </div>
 
       <div className="grid gap-5 p-5 sm:grid-cols-2">
-        <FormField label="Experience ID" required>
-          <input
-            required
-            value={entry.form.experienceId}
-            onChange={(event) =>
-              onUpdate(entry.localId, "experienceId", event.target.value)
-            }
-            className={inputClassName}
-            placeholder="EXP001"
-          />
-        </FormField>
-
         <FormField label="Destination ID" required>
           <Select
             disabled={destinations.length === 0}
@@ -934,18 +1113,6 @@ function ExperienceEntryCard({
               )}
             </SelectContent>
           </Select>
-        </FormField>
-
-        <FormField className="sm:col-span-2" label="Experience Title" required>
-          <input
-            required
-            value={entry.form.title}
-            onChange={(event) =>
-              onUpdate(entry.localId, "title", event.target.value)
-            }
-            className={inputClassName}
-            placeholder="Hampi heritage walk review"
-          />
         </FormField>
 
         <FormField label="Traveller Name">
@@ -1059,7 +1226,7 @@ function ExperienceEntryCard({
             onFilesSelected={(files) => onPhotoUpload(entry.localId, files)}
           />
           <ImagePreviewGrid
-            images={parseTextList(entry.form.travellerPhotoGallery)}
+            images={entry.form.travellerPhotoGallery}
             onRemove={(photoIndex) => onRemovePhoto(entry.localId, photoIndex)}
           />
         </FormField>
@@ -1074,8 +1241,34 @@ function ExperienceEntryCard({
             onFilesSelected={(files) => onVideoUpload(entry.localId, files)}
           />
           <VideoPreviewGrid
-            videos={parseTextList(entry.form.travellerVideos)}
+            onTitleChange={(videoIndex, value) =>
+              onVideoTitleChange(entry.localId, videoIndex, value)
+            }
             onRemove={(videoIndex) => onRemoveVideo(entry.localId, videoIndex)}
+            titles={entry.form.travellerVideoTitles}
+            videos={entry.form.travellerVideos}
+          />
+        </FormField>
+
+        <FormField className="sm:col-span-2" label="Attraction Photos">
+          <UploadField
+            accept="image/*"
+            disabled={isBusy}
+            isUploading={entry.isUploadingAttractionPhotos}
+            label="Upload attraction photos"
+            multiple
+            onFilesSelected={(files) =>
+              onAttractionPhotoUpload(entry.localId, files)
+            }
+          />
+          <AttractionPhotoPreviewGrid
+            onNameChange={(photoIndex, value) =>
+              onAttractionPhotoNameChange(entry.localId, photoIndex, value)
+            }
+            onRemove={(photoIndex) =>
+              onRemoveAttractionPhoto(entry.localId, photoIndex)
+            }
+            photos={entry.form.attractionPhotoGallery}
           />
         </FormField>
 
@@ -1100,11 +1293,15 @@ function ExperienceSummary({
   mode: ExperienceEditorMode;
 }) {
   const totalPhotos = entries.reduce(
-    (total, entry) => total + parseTextList(entry.form.travellerPhotoGallery).length,
+    (total, entry) => total + entry.form.travellerPhotoGallery.length,
+    0
+  );
+  const totalAttractionPhotos = entries.reduce(
+    (total, entry) => total + entry.form.attractionPhotoGallery.length,
     0
   );
   const totalVideos = entries.reduce(
-    (total, entry) => total + parseTextList(entry.form.travellerVideos).length,
+    (total, entry) => total + entry.form.travellerVideos.length,
     0
   );
 
@@ -1120,14 +1317,15 @@ function ExperienceSummary({
           </h2>
           <p className="mt-1 text-xs text-foreground/55">
             {entries.length} experience{entries.length === 1 ? "" : "s"} /{" "}
-            {totalPhotos} photos / {totalVideos} videos
+            {totalPhotos} traveller photos / {totalAttractionPhotos} attraction
+            photos / {totalVideos} videos
           </p>
         </div>
       </div>
 
       <div className="mt-5 grid gap-2">
         {entries.map((entry, index) => {
-          const title = entry.form.title.trim() || `Experience ${index + 1}`;
+          const title = entry.form.travellerName.trim() || `Experience ${index + 1}`;
           const destinationName = getDestinationName(
             entry.form.destinationId,
             destinationNameById
@@ -1143,7 +1341,7 @@ function ExperienceSummary({
                 {title}
               </p>
               <p className="mt-1 truncate text-[11px] text-foreground/55">
-                {entry.form.experienceId || "No ID"} / {destinationName}
+                {destinationName}
               </p>
               <div className="mt-2 flex items-center justify-between gap-3">
                 <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-foreground/60">
@@ -1254,9 +1452,13 @@ function ImagePreviewGrid({
 
 function VideoPreviewGrid({
   onRemove,
+  onTitleChange,
+  titles,
   videos,
 }: {
   onRemove: (index: number) => void;
+  onTitleChange: (index: number, value: string) => void;
+  titles: string[];
   videos: string[];
 }) {
   if (videos.length === 0) {
@@ -1275,7 +1477,7 @@ function VideoPreviewGrid({
       {videos.map((video, index) => (
         <div
           key={`${video}-${index}`}
-          className="relative overflow-hidden rounded-sm border border-border bg-muted"
+          className="relative grid gap-3 overflow-hidden rounded-sm border border-border bg-muted p-3"
         >
           <button
             type="button"
@@ -1285,14 +1487,75 @@ function VideoPreviewGrid({
           >
             <X className="size-3.5" />
           </button>
+          <input
+            value={titles[index] || ""}
+            onChange={(event) => onTitleChange(index, event.target.value)}
+            className={inputClassName}
+            placeholder={`Video title ${index + 1}`}
+          />
           <video
-            className="aspect-video w-full bg-black object-cover"
+            className="aspect-video w-full rounded-sm bg-black object-cover"
             controls
             preload="metadata"
             src={getExperienceMediaUrl(video)}
           >
             Your browser does not support the video tag.
           </video>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AttractionPhotoPreviewGrid({
+  onNameChange,
+  onRemove,
+  photos,
+}: {
+  onNameChange: (index: number, value: string) => void;
+  onRemove: (index: number) => void;
+  photos: ExperienceAttractionPhoto[];
+}) {
+  if (photos.length === 0) {
+    return (
+      <div className="grid h-24 place-items-center rounded-sm border border-dashed border-border bg-muted/35 text-xs font-medium text-foreground/45">
+        <span className="inline-flex items-center gap-2">
+          <ImageIcon className="size-4" />
+          Preview will appear here
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {photos.map((photo, index) => (
+        <div
+          key={`${photo.image}-${index}`}
+          className="relative grid gap-2 rounded-sm border border-border bg-muted p-2"
+        >
+          <button
+            type="button"
+            onClick={() => onRemove(index)}
+            className="absolute right-3 top-3 z-10 grid size-6 place-items-center rounded-sm border border-white/70 bg-white/95 text-foreground shadow-sm transition-colors hover:border-primary hover:text-primary"
+            aria-label={`Remove attraction photo ${index + 1}`}
+          >
+            <X className="size-3.5" />
+          </button>
+          <div
+            className="h-28 rounded-sm bg-cover bg-center"
+            role="img"
+            aria-label={photo.name || `Attraction photo ${index + 1}`}
+            style={{
+              backgroundImage: `url("${getExperienceMediaUrl(photo.image)}")`,
+            }}
+          />
+          <input
+            value={photo.name}
+            onChange={(event) => onNameChange(index, event.target.value)}
+            className={inputClassName}
+            placeholder={`Attraction name ${index + 1}`}
+          />
         </div>
       ))}
     </div>

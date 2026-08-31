@@ -42,6 +42,7 @@ export type AdminBooking = {
   paymentStatus?: "pending" | "paid" | "failed" | "refunded";
   paymentCurrency?: string;
   amountPaid?: number;
+  archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -88,6 +89,16 @@ export async function updateAdminBooking(id: string, payload: BookingPayload) {
     headers: getAdminHeaders(),
     body: JSON.stringify(payload),
   });
+}
+
+export async function archiveAdminBooking(id: string) {
+  return apiRequest<{ booking: AdminBooking }>(
+    `/api/admin/bookings/${id}/archive`,
+    {
+      method: "PATCH",
+      headers: getAdminHeaders(),
+    }
+  );
 }
 
 export async function deleteAdminBooking(id: string) {

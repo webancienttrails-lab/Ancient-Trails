@@ -1,8 +1,14 @@
 "use client";
 
 import type { FormEvent, ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
+import {
+  ArrowLeft,
   Bell,
   BookOpen,
   CalendarDays,
@@ -27,7 +33,6 @@ import {
   AdminDashboardShell,
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
-import { HeaderDateRangePicker } from "@/components/admin-dashboard/header-date-range-picker";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -36,14 +41,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
@@ -69,7 +66,6 @@ import {
   createAdminTourItinerary,
   deleteAdminTour,
   deleteAdminTourDeparture,
-  deleteAdminTourItinerary,
   getTourMediaUrl,
   listAdminTourDepartures,
   listAdminTourItineraries,
@@ -87,10 +83,19 @@ import {
 } from "@/lib/tours";
 import { cn } from "@/lib/utils";
 
-type TourTab = "master" | "departures" | "itineraries";
+type TourTab = "master" | "departures";
 type TourSheetMode = "add" | "view" | "edit";
 type DepartureSheetMode = "add" | "view" | "edit";
 type ItinerarySheetMode = "add" | "view" | "edit";
+
+type TourEditorType = "tour" | "departure" | "itinerary";
+
+type TourRouteState = {
+  id: string | null;
+  mode: TourSheetMode | null;
+  tourId: string | null;
+  type: TourEditorType | null;
+};
 
 type TourMetric = {
   label: string;
@@ -588,7 +593,98 @@ function createTourMetrics(
 }
 
 export default function ToursPage() {
+  return (
+    <Suspense fallback={null}>
+      <ToursPageContent />
+    </Suspense>
+  );
+}
+
+function normalizeTourEditorType(
+  value: string | null
+): TourEditorType {
+  if (
+    value === "departure" ||
+    value === "itinerary"
+  ) {
+    return value;
+  }
+
+  return "tour";
+}
+
+function getTourRouteState(
+  pathname: string,
+  searchParams: URLSearchParams
+): TourRouteState {
+  const segments = pathname
+    .split("/")
+    .filter(Boolean);
+
+  const toursIndex =
+    segments.findIndex(
+      (segment) => segment === "tours"
+    );
+
+  const pageSegment =
+    toursIndex >= 0
+      ? segments[toursIndex + 1]
+      : "";
+
+  if (pageSegment === "add") {
+    return {
+      id: null,
+      mode: "add",
+      tourId: searchParams.get("tourId"),
+      type: normalizeTourEditorType(
+        searchParams.get("type")
+      ),
+    };
+  }
+
+  if (
+    (pageSegment === "edit" ||
+      pageSegment === "view") &&
+    searchParams.get("id")
+  ) {
+    return {
+      id: searchParams.get("id"),
+      mode:
+        pageSegment === "edit"
+          ? "edit"
+          : "view",
+      tourId: searchParams.get("tourId"),
+      type: normalizeTourEditorType(
+        searchParams.get("type")
+      ),
+    };
+  }
+
+  return {
+    id: null,
+    mode: null,
+    tourId: null,
+    type: null,
+  };
+}
+
+function ToursPageContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const toast = useToast();
+  const searchParamString =
+    searchParams.toString();
+  const routeState = useMemo(
+    () =>
+      getTourRouteState(
+        pathname,
+        new URLSearchParams(
+          searchParamString
+        )
+      ),
+    [pathname, searchParamString]
+  );
   const [activeTab, setActiveTab] = useState<TourTab>("master");
   const [searchQuery, setSearchQuery] = useState("");
   const [tours, setTours] = useState<AdminTour[]>([]);
@@ -597,11 +693,26 @@ export default function ToursPage() {
   const [destinations, setDestinations] = useState<AdminDestination[]>([]);
   const [experts, setExperts] = useState<AdminExpert[]>([]);
   const [isLoadingTours, setIsLoadingTours] = useState(true);
-  const [tourSheetMode, setTourSheetMode] = useState<TourSheetMode | null>(null);
+  const [tourSheetMode, setTourSheetMode] = useState<TourSheetMode | null>(
+    routeState.mode === "add" &&
+      routeState.type === "tour"
+      ? "add"
+      : null
+  );
   const [departureSheetMode, setDepartureSheetMode] =
-    useState<DepartureSheetMode | null>(null);
+    useState<DepartureSheetMode | null>(
+      routeState.mode === "add" &&
+        routeState.type === "departure"
+        ? "add"
+        : null
+    );
   const [itinerarySheetMode, setItinerarySheetMode] =
-    useState<ItinerarySheetMode | null>(null);
+    useState<ItinerarySheetMode | null>(
+      routeState.mode === "add" &&
+        routeState.type === "itinerary"
+        ? "add"
+        : null
+    );
   const [selectedTour, setSelectedTour] = useState<AdminTour | null>(null);
   const [selectedDeparture, setSelectedDeparture] =
     useState<AdminTourDeparture | null>(null);
@@ -625,9 +736,6 @@ export default function ToursPage() {
   const [isDeletingTourId, setIsDeletingTourId] = useState<string | null>(null);
   const [isDeletingDepartureId, setIsDeletingDepartureId] =
     useState<string | null>(null);
-  const [isDeletingItineraryId, setIsDeletingItineraryId] =
-    useState<string | null>(null);
-
   useEffect(() => {
     let isMounted = true;
 
@@ -648,11 +756,78 @@ export default function ToursPage() {
         ]);
 
         if (isMounted) {
-          setTours(toursResponse.data.tours);
-          setDepartures(departuresResponse.data.departures);
-          setItineraries(itinerariesResponse.data.itineraries);
+          const loadedTours =
+            toursResponse.data.tours;
+          const loadedDepartures =
+            departuresResponse.data.departures;
+          const loadedItineraries =
+            itinerariesResponse.data.itineraries;
+
+          setTours(loadedTours);
+          setDepartures(loadedDepartures);
+          setItineraries(loadedItineraries);
           setDestinations(destinationsResponse.data.destinations);
           setExperts(expertsResponse.data.experts);
+
+          if (routeState.mode === "add") {
+            if (routeState.type === "tour") {
+              setSelectedTour(null);
+              setTourForm(emptyTourForm);
+              setTourSheetMode("add");
+            } else if (routeState.type === "departure") {
+              setSelectedDeparture(null);
+              setDepartureForm(emptyDepartureForm);
+              setDepartureSheetMode("add");
+            } else if (routeState.type === "itinerary") {
+              setSelectedItinerary(null);
+              setItineraryForm({
+                ...emptyItineraryForm,
+                tourId: routeState.tourId || "",
+              });
+              setItinerarySheetMode("add");
+            }
+          } else if (routeState.mode) {
+            if (routeState.type === "tour") {
+              const tour = loadedTours.find(
+                (item) =>
+                  item.id === routeState.id
+              );
+
+              if (tour) {
+                setSelectedTour(tour);
+                setTourForm(tourToForm(tour));
+                setTourSheetMode(routeState.mode);
+              }
+            } else if (
+              routeState.type === "departure"
+            ) {
+              const departure =
+                loadedDepartures.find(
+                  (item) =>
+                    item.id === routeState.id
+                );
+
+              if (departure) {
+                setSelectedDeparture(departure);
+                setDepartureForm(departureToForm(departure));
+                setDepartureSheetMode(routeState.mode);
+              }
+            } else if (
+              routeState.type === "itinerary"
+            ) {
+              const itinerary =
+                loadedItineraries.find(
+                  (item) =>
+                    item.id === routeState.id
+                );
+
+              if (itinerary) {
+                setSelectedItinerary(itinerary);
+                setItineraryForm(itineraryToForm(itinerary));
+                setItinerarySheetMode(routeState.mode);
+              }
+            }
+          }
         }
       } catch (error) {
         toast.error("Unable to load tours", getErrorMessage(error));
@@ -668,7 +843,7 @@ export default function ToursPage() {
     return () => {
       isMounted = false;
     };
-  }, [toast]);
+  }, [routeState, toast]);
 
   const tourMetrics = useMemo(
     () => createTourMetrics(tours, departures),
@@ -723,32 +898,6 @@ export default function ToursPage() {
     );
   }, [activeTab, departures, searchQuery]);
 
-  const filteredItineraries = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-
-    if (!query || activeTab !== "itineraries") {
-      return itineraries;
-    }
-
-    return itineraries.filter((itinerary) =>
-      [
-        itinerary.tourId,
-        itinerary.itinerarySummary,
-        ...itinerary.days.flatMap((day) => [
-          day.title,
-          day.summary,
-          day.placesVisited.join(" "),
-          day.transport,
-          day.walkingDifficulty,
-          day.meals,
-        ]),
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(query)
-    );
-  }, [activeTab, itineraries, searchQuery]);
-
   const destinationNameById = useMemo(
     () =>
       new Map(
@@ -769,6 +918,13 @@ export default function ToursPage() {
   const tourNameById = useMemo(
     () => new Map(tours.map((tour) => [tour.tourId, tour.tourName])),
     [tours]
+  );
+  const itineraryByTourId = useMemo(
+    () =>
+      new Map(
+        itineraries.map((itinerary) => [itinerary.tourId, itinerary])
+      ),
+    [itineraries]
   );
   const isTourFormBusy =
     isSavingTour ||
@@ -852,25 +1008,52 @@ export default function ToursPage() {
   }
 
   function openAddTourSheet() {
-    setSelectedTour(null);
-    setTourForm(emptyTourForm);
-    setTourSheetMode("add");
+    router.push("/tours/add?type=tour");
   }
 
   function openViewTourSheet(tour: AdminTour) {
-    setSelectedTour(tour);
-    setTourForm(tourToForm(tour));
-    setTourSheetMode("view");
+    router.push(
+      `/tours/view?type=tour&id=${encodeURIComponent(tour.id)}`
+    );
   }
 
   function openEditTourSheet(tour: AdminTour) {
-    setSelectedTour(tour);
-    setTourForm(tourToForm(tour));
-    setTourSheetMode("edit");
+    router.push(
+      `/tours/edit?type=tour&id=${encodeURIComponent(tour.id)}`
+    );
+  }
+
+  function openTourItinerarySheet(tour: AdminTour) {
+    const itinerary = itineraryByTourId.get(tour.tourId);
+
+    if (itinerary) {
+      setSelectedItinerary(itinerary);
+      setItineraryForm(itineraryToForm(itinerary));
+      setItinerarySheetMode("edit");
+      router.push(
+        `/tours/edit?type=itinerary&id=${encodeURIComponent(itinerary.id)}`
+      );
+      return;
+    }
+
+    setSelectedItinerary(null);
+    setItineraryForm({
+      ...emptyItineraryForm,
+      tourId: tour.tourId,
+    });
+    setItinerarySheetMode("add");
+    router.push(
+      `/tours/add?type=itinerary&tourId=${encodeURIComponent(tour.tourId)}`
+    );
   }
 
   function closeTourSheet() {
     if (isTourFormBusy) {
+      return;
+    }
+
+    if (routeState.mode) {
+      router.push("/tours");
       return;
     }
 
@@ -1000,25 +1183,28 @@ export default function ToursPage() {
   }
 
   function openAddDepartureSheet() {
-    setSelectedDeparture(null);
-    setDepartureForm(emptyDepartureForm);
-    setDepartureSheetMode("add");
+    router.push("/tours/add?type=departure");
   }
 
   function openViewDepartureSheet(departure: AdminTourDeparture) {
-    setSelectedDeparture(departure);
-    setDepartureForm(departureToForm(departure));
-    setDepartureSheetMode("view");
+    router.push(
+      `/tours/view?type=departure&id=${encodeURIComponent(departure.id)}`
+    );
   }
 
   function openEditDepartureSheet(departure: AdminTourDeparture) {
-    setSelectedDeparture(departure);
-    setDepartureForm(departureToForm(departure));
-    setDepartureSheetMode("edit");
+    router.push(
+      `/tours/edit?type=departure&id=${encodeURIComponent(departure.id)}`
+    );
   }
 
   function closeDepartureSheet() {
     if (isSavingDeparture) {
+      return;
+    }
+
+    if (routeState.mode) {
+      router.push("/tours");
       return;
     }
 
@@ -1027,26 +1213,13 @@ export default function ToursPage() {
     setDepartureForm(emptyDepartureForm);
   }
 
-  function openAddItinerarySheet() {
-    setSelectedItinerary(null);
-    setItineraryForm(emptyItineraryForm);
-    setItinerarySheetMode("add");
-  }
-
-  function openViewItinerarySheet(itinerary: AdminTourItinerary) {
-    setSelectedItinerary(itinerary);
-    setItineraryForm(itineraryToForm(itinerary));
-    setItinerarySheetMode("view");
-  }
-
-  function openEditItinerarySheet(itinerary: AdminTourItinerary) {
-    setSelectedItinerary(itinerary);
-    setItineraryForm(itineraryToForm(itinerary));
-    setItinerarySheetMode("edit");
-  }
-
   function closeItinerarySheet() {
     if (isSavingItinerary) {
+      return;
+    }
+
+    if (routeState.mode) {
+      router.push("/tours");
       return;
     }
 
@@ -1085,6 +1258,7 @@ export default function ToursPage() {
         setSelectedTour(null);
         setTourForm(emptyTourForm);
         toast.success("Tour updated", response.message);
+        router.push("/tours");
         return;
       }
 
@@ -1095,6 +1269,7 @@ export default function ToursPage() {
       setSelectedTour(null);
       setTourForm(emptyTourForm);
       toast.success("Tour added", response.message);
+      router.push("/tours");
     } catch (error) {
       toast.error(
         tourSheetMode === "edit" ? "Tour not updated" : "Tour not saved",
@@ -1134,6 +1309,7 @@ export default function ToursPage() {
         setSelectedDeparture(null);
         setDepartureForm(emptyDepartureForm);
         toast.success("Departure updated", response.message);
+        router.push("/tours");
         return;
       }
 
@@ -1147,6 +1323,7 @@ export default function ToursPage() {
       setSelectedDeparture(null);
       setDepartureForm(emptyDepartureForm);
       toast.success("Departure added", response.message);
+      router.push("/tours");
     } catch (error) {
       toast.error(
         departureSheetMode === "edit"
@@ -1188,6 +1365,7 @@ export default function ToursPage() {
         setSelectedItinerary(null);
         setItineraryForm(emptyItineraryForm);
         toast.success("Itinerary updated", response.message);
+        router.push("/tours");
         return;
       }
 
@@ -1201,6 +1379,7 @@ export default function ToursPage() {
       setSelectedItinerary(null);
       setItineraryForm(emptyItineraryForm);
       toast.success("Itinerary added", response.message);
+      router.push("/tours");
     } catch (error) {
       toast.error(
         itinerarySheetMode === "edit"
@@ -1261,41 +1440,119 @@ export default function ToursPage() {
     }
   }
 
-  async function handleDeleteItinerary(itinerary: AdminTourItinerary) {
-    const shouldDelete = window.confirm(`Delete itinerary for ${itinerary.tourId}?`);
+  if (routeState.mode) {
+    const isLoadingEditor =
+      routeState.mode !== "add" &&
+      isLoadingTours;
 
-    if (!shouldDelete) {
-      return;
-    }
+    const hasEditor =
+      tourSheetMode ||
+      departureSheetMode ||
+      itinerarySheetMode;
 
-    setIsDeletingItineraryId(itinerary.id);
+    return (
+      <AdminDashboardShell activeLabel="Tours">
+        <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-5">
+          <div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => router.push("/tours")}
+              className="h-10 rounded-sm border-border bg-white px-3 text-xs font-bold"
+            >
+              <ArrowLeft className="size-4" />
+              Back to Tours
+            </Button>
+          </div>
 
-    try {
-      const response = await deleteAdminTourItinerary(itinerary.id);
+          {isLoadingEditor ? (
+            <section className="rounded-sm border border-border bg-white p-8 text-sm text-foreground/60 shadow-sm shadow-stone-200/40">
+              Loading tour editor...
+            </section>
+          ) : null}
 
-      setItineraries((currentItineraries) =>
-        currentItineraries.filter((item) => item.id !== itinerary.id)
-      );
-      toast.success("Itinerary deleted", response.message);
-    } catch (error) {
-      toast.error("Itinerary not deleted", getErrorMessage(error));
-    } finally {
-      setIsDeletingItineraryId(null);
-    }
+          {routeState.type === "tour" &&
+          tourSheetMode ? (
+            <TourFormDialog
+              destinations={destinations}
+              experts={experts}
+              form={tourForm}
+              isBusy={isTourFormBusy}
+              isOpen
+              isSaving={isSavingTour}
+              isUploadingThumbnailImage={isUploadingTourThumbnailImage}
+              isUploadingBannerImage={isUploadingTourBannerImage}
+              isUploadingGalleryImages={isUploadingTourGalleryImages}
+              isUploadingVideo={isUploadingTourVideo}
+              mode={tourSheetMode}
+              onThumbnailImageUpload={handleTourThumbnailImageUpload}
+              onBannerImageUpload={handleTourBannerImageUpload}
+              onClose={closeTourSheet}
+              onGalleryImagesUpload={handleTourGalleryImagesUpload}
+              onRemoveThumbnailImage={handleRemoveTourThumbnailImage}
+              onRemoveBannerImage={handleRemoveTourBannerImage}
+              onRemoveGalleryImage={handleRemoveTourGalleryImage}
+              onRemoveVideo={handleRemoveTourVideo}
+              onSubmit={handleSaveTour}
+              onUpdate={updateTourForm}
+              onVideoUpload={handleTourVideoUpload}
+            />
+          ) : null}
+
+          {routeState.type === "departure" &&
+          departureSheetMode ? (
+            <DepartureFormDialog
+              form={departureForm}
+              isBusy={isSavingDeparture}
+              isOpen
+              isSaving={isSavingDeparture}
+              mode={departureSheetMode}
+              onClose={closeDepartureSheet}
+              onSubmit={handleSaveDeparture}
+              onUpdate={updateDepartureForm}
+              tours={tours}
+            />
+          ) : null}
+
+          {routeState.type === "itinerary" &&
+          itinerarySheetMode ? (
+            <ItineraryFormDialog
+              form={itineraryForm}
+              isBusy={isSavingItinerary}
+              isOpen
+              isSaving={isSavingItinerary}
+              mode={itinerarySheetMode}
+              onAddDay={addItineraryDay}
+              onClose={closeItinerarySheet}
+              onRemoveDay={removeItineraryDay}
+              onSubmit={handleSaveItinerary}
+              onUpdate={updateItineraryForm}
+              onUpdateDay={updateItineraryDay}
+              tours={tours}
+            />
+          ) : null}
+
+          {!isLoadingEditor &&
+          !hasEditor ? (
+            <section className="rounded-sm border border-red-200 bg-red-50 p-6">
+              <p className="text-sm font-bold text-red-700">
+                Tour record not found.
+              </p>
+            </section>
+          ) : null}
+        </div>
+      </AdminDashboardShell>
+    );
   }
 
   const addButtonLabel =
     activeTab === "master"
       ? "Add New Tour"
-      : activeTab === "itineraries"
-        ? "Add New Itinerary"
-        : "Add New Departure";
+      : "Add New Departure";
   const handleAddButtonClick =
     activeTab === "master"
       ? openAddTourSheet
-      : activeTab === "itineraries"
-        ? openAddItinerarySheet
-        : openAddDepartureSheet;
+      : openAddDepartureSheet;
 
   return (
     <AdminDashboardShell activeLabel="Tours">
@@ -1312,7 +1569,7 @@ export default function ToursPage() {
               Tours
             </h1>
             <p className="mt-1 text-sm text-foreground/60">
-              Manage tour masters, itineraries, and scheduled departures.
+              Manage tour masters and scheduled departures.
             </p>
           </div>
 
@@ -1356,20 +1613,10 @@ export default function ToursPage() {
               isLoading={isLoadingTours}
               onDelete={handleDeleteTour}
               onEdit={openEditTourSheet}
+              onItinerary={openTourItinerarySheet}
               onView={openViewTourSheet}
               totalCount={tours.length}
               tours={filteredTours}
-            />
-          ) : activeTab === "itineraries" ? (
-            <TourItineraryTable
-              itineraries={filteredItineraries}
-              isDeletingItineraryId={isDeletingItineraryId}
-              isLoading={isLoadingTours}
-              onDelete={handleDeleteItinerary}
-              onEdit={openEditItinerarySheet}
-              onView={openViewItinerarySheet}
-              totalCount={itineraries.length}
-              tourNameById={tourNameById}
             />
           ) : (
             <TourDepartureTable
@@ -1454,9 +1701,7 @@ function AdminPageTopbar({
   const searchPlaceholder =
     activeTab === "master"
       ? "Search tours..."
-      : activeTab === "itineraries"
-        ? "Search itineraries..."
-        : "Search departures...";
+      : "Search departures...";
 
   return (
     <header className="hidden flex-col gap-4 border-b border-border pb-4 md:flex xl:flex-row xl:items-center xl:justify-between">
@@ -1484,8 +1729,6 @@ function AdminPageTopbar({
             onChange={(event) => onSearchQueryChange(event.target.value)}
           />
         </label>
-
-        <HeaderDateRangePicker />
 
         <button
           onClick={() =>
@@ -1570,12 +1813,6 @@ function TourTabs({
         label="Tour Departure"
         onClick={() => onTabChange("departures")}
       />
-      <TabButton
-        active={activeTab === "itineraries"}
-        icon={BookOpen}
-        label="Itinerary"
-        onClick={() => onTabChange("itineraries")}
-      />
     </div>
   );
 }
@@ -1618,9 +1855,7 @@ function TourFilters({
   const searchPlaceholder =
     activeTab === "master"
       ? "Search tours..."
-      : activeTab === "itineraries"
-        ? "Search itineraries..."
-        : "Search departures...";
+      : "Search departures...";
 
   return (
     <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1645,6 +1880,7 @@ function TourMasterTable({
   isLoading,
   onDelete,
   onEdit,
+  onItinerary,
   onView,
   totalCount,
   tours,
@@ -1655,6 +1891,7 @@ function TourMasterTable({
   isLoading: boolean;
   onDelete: (tour: AdminTour) => void;
   onEdit: (tour: AdminTour) => void;
+  onItinerary: (tour: AdminTour) => void;
   onView: (tour: AdminTour) => void;
   totalCount: number;
   tours: AdminTour[];
@@ -1804,6 +2041,7 @@ function TourMasterTable({
                         isDeleting={isDeletingTourId === tour.id}
                         onDelete={() => onDelete(tour)}
                         onEdit={() => onEdit(tour)}
+                        onItinerary={() => onItinerary(tour)}
                         onView={() => onView(tour)}
                       />
                     </td>
@@ -2003,149 +2241,6 @@ function TourDepartureTable({
   );
 }
 
-function TourItineraryTable({
-  itineraries,
-  isDeletingItineraryId,
-  isLoading,
-  onDelete,
-  onEdit,
-  onView,
-  totalCount,
-  tourNameById,
-}: {
-  itineraries: AdminTourItinerary[];
-  isDeletingItineraryId: string | null;
-  isLoading: boolean;
-  onDelete: (itinerary: AdminTourItinerary) => void;
-  onEdit: (itinerary: AdminTourItinerary) => void;
-  onView: (itinerary: AdminTourItinerary) => void;
-  totalCount: number;
-  tourNameById: Map<string, string>;
-}) {
-  return (
-    <>
-      <div className="max-w-full overflow-hidden">
-        <table className="w-full table-fixed border-collapse text-left text-sm">
-          <colgroup>
-            <col className="w-[18%]" />
-            <col className="w-[30%]" />
-            <col className="w-[10%]" />
-            <col className="w-[22%]" />
-            <col className="w-[14%]" />
-            <col className="w-[6%]" />
-          </colgroup>
-          <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
-            <tr>
-              <th className="px-2 py-3 font-bold">Tour</th>
-              <th className="px-2 py-3 font-bold">Itinerary Summary</th>
-              <th className="px-2 py-3 font-bold">Days</th>
-              <th className="px-2 py-3 font-bold">Highlights</th>
-              <th className="px-2 py-3 font-bold">Updated</th>
-              <th className="px-2 py-3 text-right font-bold">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td
-                  className="px-5 py-8 text-center text-xs text-foreground/55"
-                  colSpan={6}
-                >
-                  Loading itineraries...
-                </td>
-              </tr>
-            ) : null}
-
-            {!isLoading && itineraries.length === 0 ? (
-              <tr>
-                <td
-                  className="px-5 py-8 text-center text-xs text-foreground/55"
-                  colSpan={6}
-                >
-                  No tour itineraries added yet.
-                </td>
-              </tr>
-            ) : null}
-
-            {!isLoading
-              ? itineraries.map((itinerary) => {
-                  const highlightedPlaces = itinerary.days
-                    .flatMap((day) => day.placesVisited)
-                    .slice(0, 4);
-
-                  return (
-                    <tr
-                      key={itinerary.id}
-                      className="border-t border-border transition-colors hover:bg-muted/25"
-                    >
-                      <td
-                        data-label="Tour"
-                        data-mobile-primary
-                        className="px-2 py-3 text-xs text-foreground/70"
-                      >
-                        <span className="block truncate font-semibold">
-                          {itinerary.tourId}
-                        </span>
-                        <span className="mt-1 block truncate text-foreground/50">
-                          {tourNameById.get(itinerary.tourId) || "-"}
-                        </span>
-                      </td>
-                      <td
-                        data-label="Itinerary Summary"
-                        className="px-2 py-3 text-xs text-foreground/70"
-                      >
-                        <span className="line-clamp-2">
-                          {itinerary.itinerarySummary || "-"}
-                        </span>
-                      </td>
-                      <td
-                        data-label="Days"
-                        className="px-2 py-3 text-xs font-semibold text-foreground/70"
-                      >
-                        {itinerary.days.length}
-                      </td>
-                      <td
-                        data-label="Highlights"
-                        className="px-2 py-3 text-xs text-foreground/70"
-                      >
-                        <span className="line-clamp-2">
-                          {highlightedPlaces.length > 0
-                            ? highlightedPlaces.join(", ")
-                            : "-"}
-                        </span>
-                      </td>
-                      <td
-                        data-label="Updated"
-                        className="px-2 py-3 text-xs text-foreground/70"
-                      >
-                        {formatDate(itinerary.updatedAt)}
-                      </td>
-                      <td data-actions data-label="Actions" className="px-2 py-3">
-                        <TourActionsMenu
-                          itemName={itinerary.tourId}
-                          isDeleting={isDeletingItineraryId === itinerary.id}
-                          onDelete={() => onDelete(itinerary)}
-                          onEdit={() => onEdit(itinerary)}
-                          onView={() => onView(itinerary)}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })
-              : null}
-          </tbody>
-        </table>
-      </div>
-
-      <TableFooter
-        count={itineraries.length}
-        totalCount={totalCount}
-        itemLabel="itineraries"
-      />
-    </>
-  );
-}
-
 function TourThumb({ photo }: { photo?: string }) {
   return (
     <span
@@ -2166,12 +2261,14 @@ function TourActionsMenu({
   isDeleting,
   onDelete,
   onEdit,
+  onItinerary,
   onView,
 }: {
   itemName: string;
   isDeleting: boolean;
   onDelete: () => void;
   onEdit: () => void;
+  onItinerary?: () => void;
   onView: () => void;
 }) {
   return (
@@ -2207,6 +2304,15 @@ function TourActionsMenu({
             <Pencil className="size-4 text-primary" />
             Edit
           </DropdownMenuItem>
+          {onItinerary ? (
+            <DropdownMenuItem
+              onClick={onItinerary}
+              className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
+            >
+              <BookOpen className="size-4 text-emerald-700" />
+              Itinerary
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={onDelete}
@@ -2302,9 +2408,9 @@ function TourFormDialog({
   onVideoUpload: (files: FileList | null) => void;
 }) {
   const isReadOnly = mode === "view";
-  const sheetTitle =
+  const panelTitle =
     mode === "edit" ? "Edit Tour" : mode === "view" ? "View Tour" : "Add Tour";
-  const sheetDescription =
+  const panelDescription =
     mode === "edit"
       ? "Update the tour master details."
       : mode === "view"
@@ -2325,33 +2431,25 @@ function TourFormDialog({
   const textareaClassName =
     "min-h-28 rounded-sm border border-border bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15 read-only:cursor-default read-only:bg-muted/35 disabled:cursor-default disabled:bg-muted/35 disabled:text-foreground/60";
 
+  if (!isOpen) {
+    return null;
+  }
+
   return (
-    <Sheet
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-    >
-      <SheetContent
-        side="right"
-        showCloseButton={false}
-        className="w-full gap-0 border-l border-border bg-white p-0 shadow-2xl shadow-stone-900/20 duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] data-[side=right]:w-full data-[side=right]:sm:max-w-[680px]"
-      >
+    <section className="overflow-hidden rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
         <form
           onSubmit={onSubmit}
-          className="flex h-full min-h-0 flex-col bg-white"
+          className="flex min-h-0 flex-col bg-white"
         >
-          <SheetHeader className="border-b border-border px-7 py-6">
+          <div className="border-b border-border px-7 py-6">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <SheetTitle className="font-sans text-xl font-bold tracking-normal text-foreground">
-                  {sheetTitle}
-                </SheetTitle>
-                <SheetDescription className="mt-1 text-xs text-foreground/55">
-                  {sheetDescription}
-                </SheetDescription>
+                <h2 className="font-sans text-xl font-bold tracking-normal text-foreground">
+                  {panelTitle}
+                </h2>
+                <p className="mt-1 text-xs text-foreground/55">
+                  {panelDescription}
+                </p>
               </div>
               <button
                 type="button"
@@ -2363,9 +2461,9 @@ function TourFormDialog({
                 <X className="size-4" />
               </button>
             </div>
-          </SheetHeader>
+          </div>
 
-          <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto px-7 py-6 sm:grid-cols-2">
+          <div className="grid min-h-0 flex-1 gap-5 px-7 py-6 sm:grid-cols-2">
             <FormField label="Tour ID" required>
               <input
                 required
@@ -2599,7 +2697,7 @@ function TourFormDialog({
           </div>
 
           {!isReadOnly ? (
-            <SheetFooter className="border-t border-border bg-white px-7 py-6">
+            <div className="border-t border-border bg-white px-7 py-6">
               <Button
                 type="submit"
                 disabled={isBusy}
@@ -2607,11 +2705,10 @@ function TourFormDialog({
               >
                 {submitButtonLabel}
               </Button>
-            </SheetFooter>
+            </div>
           ) : null}
         </form>
-      </SheetContent>
-    </Sheet>
+    </section>
   );
 }
 
@@ -2640,13 +2737,13 @@ function DepartureFormDialog({
   tours: AdminTour[];
 }) {
   const isReadOnly = mode === "view";
-  const sheetTitle =
+  const panelTitle =
     mode === "edit"
       ? "Edit Departure"
       : mode === "view"
         ? "View Departure"
         : "Add Departure";
-  const sheetDescription =
+  const panelDescription =
     mode === "edit"
       ? "Update the tour departure details."
       : mode === "view"
@@ -2697,33 +2794,25 @@ function DepartureFormDialog({
     );
   }
 
+  if (!isOpen) {
+    return null;
+  }
+
   return (
-    <Sheet
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-    >
-      <SheetContent
-        side="right"
-        showCloseButton={false}
-        className="w-full gap-0 border-l border-border bg-white p-0 shadow-2xl shadow-stone-900/20 duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] data-[side=right]:w-full data-[side=right]:sm:max-w-[680px]"
-      >
+    <section className="overflow-hidden rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
         <form
           onSubmit={onSubmit}
-          className="flex h-full min-h-0 flex-col bg-white"
+          className="flex min-h-0 flex-col bg-white"
         >
-          <SheetHeader className="border-b border-border px-7 py-6">
+          <div className="border-b border-border px-7 py-6">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <SheetTitle className="font-sans text-xl font-bold tracking-normal text-foreground">
-                  {sheetTitle}
-                </SheetTitle>
-                <SheetDescription className="mt-1 text-xs text-foreground/55">
-                  {sheetDescription}
-                </SheetDescription>
+                <h2 className="font-sans text-xl font-bold tracking-normal text-foreground">
+                  {panelTitle}
+                </h2>
+                <p className="mt-1 text-xs text-foreground/55">
+                  {panelDescription}
+                </p>
               </div>
               <button
                 type="button"
@@ -2735,9 +2824,9 @@ function DepartureFormDialog({
                 <X className="size-4" />
               </button>
             </div>
-          </SheetHeader>
+          </div>
 
-          <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto px-7 py-6 sm:grid-cols-2">
+          <div className="grid min-h-0 flex-1 gap-5 px-7 py-6 sm:grid-cols-2">
             <FormField label="Departure ID" required>
               <input
                 required
@@ -3179,7 +3268,7 @@ function DepartureFormDialog({
           </div>
 
           {!isReadOnly ? (
-            <SheetFooter className="border-t border-border bg-white px-7 py-6">
+            <div className="border-t border-border bg-white px-7 py-6">
               <Button
                 type="submit"
                 disabled={isBusy}
@@ -3187,11 +3276,10 @@ function DepartureFormDialog({
               >
                 {submitButtonLabel}
               </Button>
-            </SheetFooter>
+            </div>
           ) : null}
         </form>
-      </SheetContent>
-    </Sheet>
+    </section>
   );
 }
 
@@ -3230,13 +3318,13 @@ function ItineraryFormDialog({
   tours: AdminTour[];
 }) {
   const isReadOnly = mode === "view";
-  const sheetTitle =
+  const panelTitle =
     mode === "edit"
       ? "Edit Itinerary"
       : mode === "view"
         ? "View Itinerary"
         : "Add Itinerary";
-  const sheetDescription =
+  const panelDescription =
     mode === "edit"
       ? "Update the linked tour itinerary."
       : mode === "view"
@@ -3252,33 +3340,25 @@ function ItineraryFormDialog({
   const textareaClassName =
     "min-h-24 rounded-sm border border-border bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15 read-only:cursor-default read-only:bg-muted/35 disabled:cursor-default disabled:bg-muted/35 disabled:text-foreground/60";
 
+  if (!isOpen) {
+    return null;
+  }
+
   return (
-    <Sheet
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-    >
-      <SheetContent
-        side="right"
-        showCloseButton={false}
-        className="w-full gap-0 border-l border-border bg-white p-0 shadow-2xl shadow-stone-900/20 duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] data-[side=right]:w-full data-[side=right]:sm:max-w-[760px]"
-      >
+    <section className="overflow-hidden rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
         <form
           onSubmit={onSubmit}
-          className="flex h-full min-h-0 flex-col bg-white"
+          className="flex min-h-0 flex-col bg-white"
         >
-          <SheetHeader className="border-b border-border px-7 py-6">
+          <div className="border-b border-border px-7 py-6">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <SheetTitle className="font-sans text-xl font-bold tracking-normal text-foreground">
-                  {sheetTitle}
-                </SheetTitle>
-                <SheetDescription className="mt-1 text-xs text-foreground/55">
-                  {sheetDescription}
-                </SheetDescription>
+                <h2 className="font-sans text-xl font-bold tracking-normal text-foreground">
+                  {panelTitle}
+                </h2>
+                <p className="mt-1 text-xs text-foreground/55">
+                  {panelDescription}
+                </p>
               </div>
               <button
                 type="button"
@@ -3290,9 +3370,9 @@ function ItineraryFormDialog({
                 <X className="size-4" />
               </button>
             </div>
-          </SheetHeader>
+          </div>
 
-          <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto px-7 py-6 sm:grid-cols-2">
+          <div className="grid min-h-0 flex-1 gap-5 px-7 py-6 sm:grid-cols-2">
             <FormField label="Tour ID" required>
               <Select
                 disabled={isReadOnly || tours.length === 0}
@@ -3480,7 +3560,7 @@ function ItineraryFormDialog({
           </div>
 
           {!isReadOnly ? (
-            <SheetFooter className="border-t border-border bg-white px-7 py-6">
+            <div className="border-t border-border bg-white px-7 py-6">
               <Button
                 type="submit"
                 disabled={isBusy}
@@ -3488,11 +3568,10 @@ function ItineraryFormDialog({
               >
                 {submitButtonLabel}
               </Button>
-            </SheetFooter>
+            </div>
           ) : null}
         </form>
-      </SheetContent>
-    </Sheet>
+    </section>
   );
 }
 

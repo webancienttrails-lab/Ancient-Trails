@@ -25,7 +25,6 @@ import {
   AdminDashboardShell,
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
-import { HeaderDateRangePicker } from "@/components/admin-dashboard/header-date-range-picker";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -266,7 +265,6 @@ function PagesHeader() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <HeaderDateRangePicker />
         <button
           onClick={() =>
             toast.info("Notifications", "You have 3 page notifications.")

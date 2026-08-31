@@ -1,8 +1,14 @@
 "use client";
 
 import type { FormEvent, ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
+import {
+  ArrowLeft,
   Bell,
   CalendarDays,
   CheckCircle2,
@@ -27,14 +33,6 @@ import {
 } from "@/components/admin-dashboard/admin-dashboard-shell";
 import { HeaderDateRangePicker } from "@/components/admin-dashboard/header-date-range-picker";
 import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
@@ -91,6 +89,11 @@ type DestinationFormState = Omit<
   recommendedDurationDays: string;
 };
 type DestinationSheetMode = "add" | "view" | "edit";
+
+type DestinationRouteState = {
+  id: string | null;
+  mode: DestinationSheetMode | null;
+};
 
 const emptyDestinationForm: DestinationFormState = {
   destinationId: "",
@@ -339,6 +342,18 @@ function createHomePagePayload(
         sortOrder: index,
       })
     ),
+    customisedTourDestinations: sortBySortOrder(
+      content.customisedTourDestinations || []
+    ).map(({ destinationId }, index) => ({
+      destinationId,
+      sortOrder: index,
+    })),
+    homeExperiences: sortBySortOrder(content.homeExperiences || []).map(
+      ({ experienceId }, index) => ({
+        experienceId,
+        sortOrder: index,
+      })
+    ),
   };
 }
 
@@ -415,7 +430,82 @@ function createDestinationMetrics(
 }
 
 export default function DestinationsPage() {
+  return (
+    <Suspense fallback={null}>
+      <DestinationsPageContent />
+    </Suspense>
+  );
+}
+
+function getDestinationRouteState(
+  pathname: string,
+  id: string | null
+): DestinationRouteState {
+  const segments = pathname
+    .split("/")
+    .filter(Boolean);
+
+  const destinationsIndex =
+    segments.findIndex(
+      (segment) =>
+        segment === "destinations"
+    );
+
+  const pageSegment =
+    destinationsIndex >= 0
+      ? segments[destinationsIndex + 1]
+      : "";
+
+  if (pageSegment === "add") {
+    return {
+      id: null,
+      mode: "add",
+    };
+  }
+
+  if (
+    pageSegment === "edit" &&
+    id
+  ) {
+    return {
+      id,
+      mode: "edit",
+    };
+  }
+
+  if (
+    pageSegment === "view" &&
+    id
+  ) {
+    return {
+      id,
+      mode: "view",
+    };
+  }
+
+  return {
+    id: null,
+    mode: null,
+  };
+}
+
+function DestinationsPageContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const toast = useToast();
+  const searchParamString =
+    searchParams.toString();
+  const routeState = useMemo(
+    () =>
+      getDestinationRouteState(
+        pathname,
+        new URLSearchParams(
+          searchParamString
+        ).get("id")
+      ),
+    [pathname, searchParamString]
+  );
   const [destinations, setDestinations] = useState<AdminDestination[]>([]);
   const [homePageContent, setHomePageContent] =
     useState<HomePageContent | null>(null);
@@ -423,7 +513,11 @@ export default function DestinationsPage() {
   const [isLoadingDestinations, setIsLoadingDestinations] = useState(true);
   const [isLoadingHomePage, setIsLoadingHomePage] = useState(true);
   const [destinationSheetMode, setDestinationSheetMode] =
-    useState<DestinationSheetMode | null>(null);
+    useState<DestinationSheetMode | null>(
+      routeState.mode === "add"
+        ? "add"
+        : null
+    );
   const [selectedDestination, setSelectedDestination] =
     useState<AdminDestination | null>(null);
   const [isSavingDestination, setIsSavingDestination] = useState(false);
@@ -455,7 +549,28 @@ export default function DestinationsPage() {
       }
 
       if (destinationsResult.status === "fulfilled") {
-        setDestinations(destinationsResult.value.data.destinations);
+        const loadedDestinations =
+          destinationsResult.value.data.destinations;
+
+        setDestinations(loadedDestinations);
+
+        if (
+          routeState.mode &&
+          routeState.mode !== "add"
+        ) {
+          const destination =
+            loadedDestinations.find(
+              (item) =>
+                item.id === routeState.id
+            );
+
+          if (destination) {
+            setDestinationSheetMode(routeState.mode);
+            setSelectedDestination(destination);
+            setDestinationForm(destinationToForm(destination));
+            setUploadingKeyLandmarkImageIndex(null);
+          }
+        }
       } else {
         toast.error(
           "Unable to load destinations",
@@ -481,7 +596,7 @@ export default function DestinationsPage() {
     return () => {
       isMounted = false;
     };
-  }, [toast]);
+  }, [routeState, toast]);
 
   const filteredDestinations = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -543,28 +658,28 @@ export default function DestinationsPage() {
   }
 
   function openAddDestinationSheet() {
-    setSelectedDestination(null);
-    setDestinationForm(emptyDestinationForm);
-    setUploadingKeyLandmarkImageIndex(null);
-    setDestinationSheetMode("add");
+    router.push("/destinations/add");
   }
 
   function openViewDestinationSheet(destination: AdminDestination) {
-    setSelectedDestination(destination);
-    setDestinationForm(destinationToForm(destination));
-    setUploadingKeyLandmarkImageIndex(null);
-    setDestinationSheetMode("view");
+    router.push(
+      `/destinations/view?id=${encodeURIComponent(destination.id)}`
+    );
   }
 
   function openEditDestinationSheet(destination: AdminDestination) {
-    setSelectedDestination(destination);
-    setDestinationForm(destinationToForm(destination));
-    setUploadingKeyLandmarkImageIndex(null);
-    setDestinationSheetMode("edit");
+    router.push(
+      `/destinations/edit?id=${encodeURIComponent(destination.id)}`
+    );
   }
 
   function closeDestinationSheet() {
     if (isDestinationFormBusy) {
+      return;
+    }
+
+    if (routeState.mode) {
+      router.push("/destinations");
       return;
     }
 
@@ -830,6 +945,7 @@ export default function DestinationsPage() {
         setDestinationForm(emptyDestinationForm);
         setUploadingKeyLandmarkImageIndex(null);
         toast.success("Destination updated", response.message);
+        router.push("/destinations");
         return;
       }
 
@@ -844,6 +960,7 @@ export default function DestinationsPage() {
       setDestinationForm(emptyDestinationForm);
       setUploadingKeyLandmarkImageIndex(null);
       toast.success("Destination added", response.message);
+      router.push("/destinations");
     } catch (error) {
       toast.error(
         destinationSheetMode === "edit"
@@ -854,6 +971,64 @@ export default function DestinationsPage() {
     } finally {
       setIsSavingDestination(false);
     }
+  }
+
+  if (routeState.mode) {
+    return (
+      <AdminDashboardShell activeLabel="Destinations">
+        <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-5">
+          <div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => router.push("/destinations")}
+              className="h-10 rounded-sm border-border bg-white px-3 text-xs font-bold"
+            >
+              <ArrowLeft className="size-4" />
+              Back to Destinations
+            </Button>
+          </div>
+
+          {routeState.mode !== "add" &&
+          isLoadingDestinations ? (
+            <section className="rounded-sm border border-border bg-white p-8 text-sm text-foreground/60 shadow-sm shadow-stone-200/40">
+              Loading destination...
+            </section>
+          ) : null}
+
+          {destinationSheetMode ? (
+            <DestinationFormDialog
+              form={destinationForm}
+              mode={destinationSheetMode}
+              isOpen
+              isBusy={isDestinationFormBusy}
+              isSaving={isSavingDestination}
+              isUploadingThumbnailImage={isUploadingThumbnailImage}
+              isUploadingBannerImage={isUploadingBannerImage}
+              uploadingKeyLandmarkImageIndex={uploadingKeyLandmarkImageIndex}
+              isUploadingGalleryImages={isUploadingGalleryImages}
+              onThumbnailImageUpload={handleThumbnailImageUpload}
+              onBannerImageUpload={handleBannerImageUpload}
+              onClose={closeDestinationSheet}
+              onGalleryImagesUpload={handleGalleryImagesUpload}
+              onKeyLandmarkImageUpload={handleKeyLandmarkImageUpload}
+              onRemoveThumbnailImage={handleRemoveThumbnailImage}
+              onRemoveBannerImage={handleRemoveBannerImage}
+              onRemoveGalleryImage={handleRemoveGalleryImage}
+              onRemoveKeyLandmarkImage={handleRemoveKeyLandmarkImage}
+              onSubmit={handleSaveDestination}
+              onUpdate={updateDestinationForm}
+            />
+          ) : !isLoadingDestinations ? (
+            <section className="rounded-sm border border-red-200 bg-red-50 p-6">
+              <p className="text-sm font-bold text-red-700">
+                Destination not found.
+              </p>
+            </section>
+          ) : null}
+        </div>
+      </AdminDashboardShell>
+    );
   }
 
   return (
@@ -1485,13 +1660,13 @@ function DestinationFormDialog({
   ) => void;
 }) {
   const isReadOnly = mode === "view";
-  const sheetTitle =
+  const panelTitle =
     mode === "edit"
       ? "Edit Destination"
       : mode === "view"
         ? "View Destination"
         : "Add Destination";
-  const sheetDescription =
+  const panelDescription =
     mode === "edit"
       ? "Update the destination profile and travel requirements."
       : mode === "view"
@@ -1517,33 +1692,25 @@ function DestinationFormDialog({
       ? [form.region, ...regionOptions]
       : regionOptions;
 
+  if (!isOpen) {
+    return null;
+  }
+
   return (
-    <Sheet
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-    >
-      <SheetContent
-        side="right"
-        showCloseButton={false}
-        className="w-full gap-0 border-l border-border bg-white p-0 shadow-2xl shadow-stone-900/20 duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] data-[side=right]:w-full data-[side=right]:sm:max-w-[620px]"
-      >
+    <section className="overflow-hidden rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
       <form
         onSubmit={onSubmit}
-        className="flex h-full min-h-0 flex-col bg-white"
+        className="flex min-h-0 flex-col bg-white"
       >
-        <SheetHeader className="border-b border-border px-7 py-6">
+        <div className="border-b border-border px-7 py-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <SheetTitle className="font-sans text-xl font-bold tracking-normal text-foreground">
-              {sheetTitle}
-              </SheetTitle>
-              <SheetDescription className="mt-1 text-xs text-foreground/55">
-              {sheetDescription}
-              </SheetDescription>
+              <h2 className="font-sans text-xl font-bold tracking-normal text-foreground">
+              {panelTitle}
+              </h2>
+              <p className="mt-1 text-xs text-foreground/55">
+              {panelDescription}
+              </p>
             </div>
           <button
             type="button"
@@ -1555,9 +1722,9 @@ function DestinationFormDialog({
               <X className="size-4" />
           </button>
           </div>
-        </SheetHeader>
+        </div>
 
-          <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto px-7 py-6 sm:grid-cols-2">
+          <div className="grid min-h-0 flex-1 gap-5 px-7 py-6 sm:grid-cols-2">
           <FormField label="Destination ID" required>
             <input
               required
@@ -1853,7 +2020,7 @@ function DestinationFormDialog({
         </div>
 
           {!isReadOnly ? (
-          <SheetFooter className="border-t border-border bg-white px-7 py-6">
+          <div className="border-t border-border bg-white px-7 py-6">
           <Button
             type="submit"
             disabled={isBusy}
@@ -1861,11 +2028,10 @@ function DestinationFormDialog({
           >
             {submitButtonLabel}
           </Button>
-          </SheetFooter>
+          </div>
           ) : null}
       </form>
-      </SheetContent>
-    </Sheet>
+    </section>
   );
 }
 

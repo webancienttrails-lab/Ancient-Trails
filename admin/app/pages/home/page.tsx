@@ -20,6 +20,7 @@ import {
   MapPin,
   Plus,
   Save,
+  Star,
   Trash2,
   type LucideIcon,
 } from "lucide-react";
@@ -36,6 +37,11 @@ import {
   listAdminDestinations,
   type AdminDestination,
 } from "@/lib/destinations";
+import {
+  getExperienceMediaUrl,
+  listAdminExperiences,
+  type AdminExperience,
+} from "@/lib/experiences";
 import {
   getAdminHomePage,
   getDefaultDestinationMarker,
@@ -57,6 +63,8 @@ type HomeFormState = HomePagePayload;
 const emptyForm: HomeFormState = {
   upcomingTours: [],
   trendingDestinations: [],
+  customisedTourDestinations: [],
+  homeExperiences: [],
 };
 
 function getErrorMessage(error: unknown): string {
@@ -100,6 +108,20 @@ function createFormState(
         markerY,
         sortOrder,
       })),
+    customisedTourDestinations: [
+      ...(content.customisedTourDestinations || []),
+    ]
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map(({ destinationId, sortOrder }) => ({
+        destinationId,
+        sortOrder,
+      })),
+    homeExperiences: [...(content.homeExperiences || [])]
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map(({ experienceId, sortOrder }) => ({
+        experienceId,
+        sortOrder,
+      })),
   };
 }
 
@@ -113,6 +135,16 @@ function createPayload(form: HomeFormState): HomePagePayload {
       ...destination,
       markerX: clampPercent(destination.markerX),
       markerY: clampPercent(destination.markerY),
+      sortOrder: index,
+    })),
+    customisedTourDestinations: form.customisedTourDestinations.map(
+      (destination, index) => ({
+        ...destination,
+        sortOrder: index,
+      })
+    ),
+    homeExperiences: form.homeExperiences.map((experience, index) => ({
+      ...experience,
       sortOrder: index,
     })),
   };
@@ -150,6 +182,7 @@ export default function PagesHomePage() {
   const [tours, setTours] = useState<AdminTour[]>([]);
   const [departures, setDepartures] = useState<AdminTourDeparture[]>([]);
   const [destinations, setDestinations] = useState<AdminDestination[]>([]);
+  const [experiences, setExperiences] = useState<AdminExperience[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [activeDestinationIndex, setActiveDestinationIndex] = useState(0);
@@ -159,12 +192,19 @@ export default function PagesHomePage() {
 
     async function loadHomeEditor() {
       try {
-        const [homeResponse, toursResponse, departuresResponse, destinationsResponse] =
+        const [
+          homeResponse,
+          toursResponse,
+          departuresResponse,
+          destinationsResponse,
+          experiencesResponse,
+        ] =
           await Promise.all([
             getAdminHomePage(),
             listAdminTours(),
             listAdminTourDepartures(),
             listAdminDestinations(),
+            listAdminExperiences(),
           ]);
 
         if (!isMounted) {
@@ -175,6 +215,7 @@ export default function PagesHomePage() {
         setTours(toursResponse.data.tours);
         setDepartures(departuresResponse.data.departures);
         setDestinations(destinationsResponse.data.destinations);
+        setExperiences(experiencesResponse.data.experiences);
       } catch (error) {
         toast.error("Unable to load home page", getErrorMessage(error));
       } finally {
@@ -191,6 +232,12 @@ export default function PagesHomePage() {
     };
   }, [toast]);
 
+  const publishedExperiences = useMemo(
+    () =>
+      experiences.filter((experience) => experience.status === "Published"),
+    [experiences]
+  );
+
   const overviewMetrics = useMemo(
     () => [
       {
@@ -206,13 +253,33 @@ export default function PagesHomePage() {
         icon: MapPin,
       },
       {
+        label: "Customised Tours",
+        value: form.customisedTourDestinations.length.toString(),
+        detail: "Destination cards",
+        icon: MapPin,
+      },
+      {
+        label: "Home Experiences",
+        value: form.homeExperiences.length.toString(),
+        detail: "Traveller stories",
+        icon: Star,
+      },
+      {
         label: "Available Records",
-        value: `${tours.length}/${destinations.length}`,
-        detail: "Tours / destinations",
+        value: `${tours.length}/${destinations.length}/${publishedExperiences.length}`,
+        detail: "Tours / destinations / experiences",
         icon: FileText,
       },
     ],
-    [destinations.length, form.trendingDestinations.length, form.upcomingTours.length, tours.length]
+    [
+      destinations.length,
+      form.customisedTourDestinations.length,
+      form.homeExperiences.length,
+      form.trendingDestinations.length,
+      form.upcomingTours.length,
+      publishedExperiences.length,
+      tours.length,
+    ]
   );
 
   function updateUpcomingTour<
@@ -253,6 +320,48 @@ export default function PagesHomePage() {
                 [field]: value,
               }
             : destination
+      ),
+    }));
+  }
+
+  function updateCustomisedTourDestination<
+    K extends keyof HomeFormState["customisedTourDestinations"][number],
+  >(
+    index: number,
+    field: K,
+    value: HomeFormState["customisedTourDestinations"][number][K]
+  ) {
+    setForm((currentForm) => ({
+      ...currentForm,
+      customisedTourDestinations: currentForm.customisedTourDestinations.map(
+        (destination, destinationIndex) =>
+          destinationIndex === index
+            ? {
+                ...destination,
+                [field]: value,
+              }
+            : destination
+      ),
+    }));
+  }
+
+  function updateHomeExperience<
+    K extends keyof HomeFormState["homeExperiences"][number],
+  >(
+    index: number,
+    field: K,
+    value: HomeFormState["homeExperiences"][number][K]
+  ) {
+    setForm((currentForm) => ({
+      ...currentForm,
+      homeExperiences: currentForm.homeExperiences.map(
+        (experience, experienceIndex) =>
+          experienceIndex === index
+            ? {
+                ...experience,
+                [field]: value,
+              }
+            : experience
       ),
     }));
   }
@@ -369,6 +478,110 @@ export default function PagesHomePage() {
     setActiveDestinationIndex(index);
   }
 
+  function addCustomisedTourDestination() {
+    if (form.customisedTourDestinations.length >= 3) {
+      toast.error(
+        "Limit reached",
+        "Customised Tours can show up to 3 destinations."
+      );
+      return;
+    }
+
+    const selectedDestinationIds = new Set(
+      form.customisedTourDestinations.map(
+        (destination) => destination.destinationId
+      )
+    );
+    const nextDestination = destinations.find(
+      (destination) => !selectedDestinationIds.has(destination.destinationId)
+    );
+
+    if (!nextDestination) {
+      toast.error(
+        "No destination available",
+        "Please add destinations before selecting them."
+      );
+      return;
+    }
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      customisedTourDestinations: [
+        ...currentForm.customisedTourDestinations,
+        {
+          destinationId: nextDestination.destinationId,
+          sortOrder: currentForm.customisedTourDestinations.length,
+        },
+      ],
+    }));
+  }
+
+  function removeCustomisedTourDestination(index: number) {
+    setForm((currentForm) => ({
+      ...currentForm,
+      customisedTourDestinations:
+        currentForm.customisedTourDestinations.filter(
+          (_destination, destinationIndex) => destinationIndex !== index
+        ),
+    }));
+  }
+
+  function addHomeExperience() {
+    if (form.homeExperiences.length >= 5) {
+      toast.error(
+        "Limit reached",
+        "Traveller Experiences can show up to 5 cards."
+      );
+      return;
+    }
+
+    const selectedExperienceIds = new Set(
+      form.homeExperiences.map((experience) => experience.experienceId)
+    );
+    const nextExperience = publishedExperiences.find(
+      (experience) => !selectedExperienceIds.has(experience.experienceId)
+    );
+
+    if (!nextExperience) {
+      toast.error(
+        "No experience available",
+        "Please add and publish traveller experiences before selecting them."
+      );
+      return;
+    }
+
+    setForm((currentForm) => ({
+      ...currentForm,
+      homeExperiences: [
+        ...currentForm.homeExperiences,
+        {
+          experienceId: nextExperience.experienceId,
+          sortOrder: currentForm.homeExperiences.length,
+        },
+      ],
+    }));
+  }
+
+  function removeHomeExperience(index: number) {
+    setForm((currentForm) => ({
+      ...currentForm,
+      homeExperiences: currentForm.homeExperiences.filter(
+        (_experience, experienceIndex) => experienceIndex !== index
+      ),
+    }));
+  }
+
+  function selectCustomisedTourDestination(
+    index: number,
+    destinationId: string
+  ) {
+    updateCustomisedTourDestination(index, "destinationId", destinationId);
+  }
+
+  function selectHomeExperience(index: number, experienceId: string) {
+    updateHomeExperience(index, "experienceId", experienceId);
+  }
+
   function autoPlaceTrendingDestination(index: number) {
     const destinationSetting = form.trendingDestinations[index];
 
@@ -418,7 +631,7 @@ export default function PagesHomePage() {
 
         <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <p className="text-sm text-foreground/60">
-            Select the tour cards and map destinations shown on the public home page.
+            Select the tour cards, map destinations, and traveller experiences shown on the public home page.
           </p>
           <Button
             type="submit"
@@ -430,38 +643,93 @@ export default function PagesHomePage() {
           </Button>
         </section>
 
-        <section data-admin-metric-grid className="grid gap-3 sm:grid-cols-3">
+        <section
+          data-admin-metric-grid
+          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"
+        >
           {overviewMetrics.map((metric) => (
             <OverviewMetric key={metric.label} metric={metric} />
           ))}
         </section>
 
         <section className="grid gap-5 xl:grid-cols-[0.9fr_1.35fr]">
-          <EditorPanel
-            actionLabel="Add Tour"
-            onAction={addUpcomingTour}
-            title="Upcoming Tours"
-          >
-            <div className="grid gap-4">
-              {isLoading ? (
-                <LoadingPanel label="Loading upcoming tours..." />
-              ) : form.upcomingTours.length > 0 ? (
-                form.upcomingTours.map((tour, index) => (
-                  <UpcomingTourEditor
-                    key={`${tour.tourId}-${index}`}
-                    departures={departures}
-                    index={index}
-                    onRemove={removeUpcomingTour}
-                    onUpdate={updateUpcomingTour}
-                    tour={tour}
-                    tours={tours}
-                  />
-                ))
-              ) : (
-                <EmptyState label="No upcoming tours selected." />
-              )}
-            </div>
-          </EditorPanel>
+          <div className="grid gap-5">
+            <EditorPanel
+              actionLabel="Add Tour"
+              onAction={addUpcomingTour}
+              title="Upcoming Tours"
+            >
+              <div className="grid gap-4">
+                {isLoading ? (
+                  <LoadingPanel label="Loading upcoming tours..." />
+                ) : form.upcomingTours.length > 0 ? (
+                  form.upcomingTours.map((tour, index) => (
+                    <UpcomingTourEditor
+                      key={`${tour.tourId}-${index}`}
+                      departures={departures}
+                      index={index}
+                      onRemove={removeUpcomingTour}
+                      onUpdate={updateUpcomingTour}
+                      tour={tour}
+                      tours={tours}
+                    />
+                  ))
+                ) : (
+                  <EmptyState label="No upcoming tours selected." />
+                )}
+              </div>
+            </EditorPanel>
+
+            <EditorPanel
+              actionLabel="Add Destination"
+              onAction={addCustomisedTourDestination}
+              title="Customised Tours"
+            >
+              <div className="grid gap-4">
+                {isLoading ? (
+                  <LoadingPanel label="Loading customised tour destinations..." />
+                ) : form.customisedTourDestinations.length > 0 ? (
+                  form.customisedTourDestinations.map((destination, index) => (
+                    <CustomisedTourDestinationEditor
+                      key={`${destination.destinationId}-${index}`}
+                      destination={destination}
+                      destinations={destinations}
+                      index={index}
+                      onRemove={removeCustomisedTourDestination}
+                      onSelectDestination={selectCustomisedTourDestination}
+                    />
+                  ))
+                ) : (
+                  <EmptyState label="No customised tour destinations selected." />
+                )}
+              </div>
+            </EditorPanel>
+
+            <EditorPanel
+              actionLabel="Add Experience"
+              onAction={addHomeExperience}
+              title="Traveller Experiences"
+            >
+              <div className="grid gap-4">
+                {isLoading ? (
+                  <LoadingPanel label="Loading traveller experiences..." />
+                ) : form.homeExperiences.length > 0 ? (
+                  form.homeExperiences.map((experience, index) => (
+                    <HomeExperienceEditor
+                      key={`${experience.experienceId}-${index}`}
+                      experience={experience}
+                      experiences={publishedExperiences}
+                      index={index}
+                      onRemove={removeHomeExperience}
+                      onSelectExperience={selectHomeExperience}
+                    />
+                  ))
+                ) : (
+                  <EmptyState label="No traveller experiences selected." />
+                )}
+              </div>
+            </EditorPanel>
+          </div>
 
           <EditorPanel
             actionLabel="Add Destination"
@@ -722,6 +990,196 @@ function UpcomingTourEditor({
         onClick={() => onRemove(index)}
         className="grid size-11 place-items-center rounded-sm border border-border bg-white text-foreground/55 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
         aria-label={`Remove upcoming tour ${index + 1}`}
+      >
+        <Trash2 className="size-4" />
+      </button>
+    </article>
+  );
+}
+
+function CustomisedTourDestinationEditor({
+  destination,
+  destinations,
+  index,
+  onRemove,
+  onSelectDestination,
+}: {
+  destination: HomeFormState["customisedTourDestinations"][number];
+  destinations: AdminDestination[];
+  index: number;
+  onRemove: (index: number) => void;
+  onSelectDestination: (index: number, destinationId: string) => void;
+}) {
+  const selectedDestination = destinations.find(
+    (item) => item.destinationId === destination.destinationId
+  );
+  const destinationImage =
+    selectedDestination?.thumbnailImage ||
+    selectedDestination?.bannerImage ||
+    selectedDestination?.galleryImages[0] ||
+    "";
+  const destinationMeta = [
+    selectedDestination?.primaryHeritageFocus,
+    selectedDestination?.bestTimeToVisit,
+  ]
+    .filter(Boolean)
+    .join(" - ");
+
+  return (
+    <article className="grid gap-3 rounded-sm border border-border bg-[#fffaf7] p-3 lg:grid-cols-[112px_minmax(0,1fr)_44px]">
+      <div className="relative aspect-[1.32/1] overflow-hidden rounded-sm border border-border bg-white">
+        {destinationImage && selectedDestination ? (
+          <img
+            src={getDestinationMediaUrl(destinationImage)}
+            alt={selectedDestination.destinationName}
+            className="size-full object-cover"
+          />
+        ) : (
+          <span className="grid size-full place-items-center text-foreground/30">
+            <MapPin className="size-8" />
+          </span>
+        )}
+      </div>
+
+      <div className="grid gap-3">
+        <FormField label="Destination">
+          <select
+            required
+            value={destination.destinationId}
+            onChange={(event) =>
+              onSelectDestination(index, event.target.value)
+            }
+            className={inputClassName}
+          >
+            {destinations.map((option) => (
+              <option key={option.destinationId} value={option.destinationId}>
+                {option.destinationName} ({option.destinationId})
+              </option>
+            ))}
+          </select>
+        </FormField>
+        <p className="text-xs font-medium leading-relaxed text-foreground/60">
+          {selectedDestination
+            ? destinationMeta ||
+              selectedDestination.state ||
+              selectedDestination.countryRegion
+            : "Select a destination for the Customised Tours section."}
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onRemove(index)}
+        className="grid size-11 place-items-center rounded-sm border border-border bg-white text-foreground/55 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+        aria-label={`Remove customised tour destination ${index + 1}`}
+      >
+        <Trash2 className="size-4" />
+      </button>
+    </article>
+  );
+}
+
+function getHomeExperienceDisplayName(
+  experience: AdminExperience | undefined,
+  fallbackId = ""
+) {
+  return (
+    experience?.title?.trim() ||
+    experience?.travellerName.trim() ||
+    experience?.destinationName ||
+    experience?.destinationId ||
+    fallbackId ||
+    "Traveller experience"
+  );
+}
+
+function getHomeExperienceImage(experience: AdminExperience | undefined) {
+  return (
+    experience?.travellerPhotoGallery.find((image) => image.trim()) ||
+    experience?.attractionPhotoGallery.find((photo) => photo.image.trim())?.image ||
+    ""
+  );
+}
+
+function HomeExperienceEditor({
+  experience,
+  experiences,
+  index,
+  onRemove,
+  onSelectExperience,
+}: {
+  experience: HomeFormState["homeExperiences"][number];
+  experiences: AdminExperience[];
+  index: number;
+  onRemove: (index: number) => void;
+  onSelectExperience: (index: number, experienceId: string) => void;
+}) {
+  const selectedExperience = experiences.find(
+    (item) => item.experienceId === experience.experienceId
+  );
+  const experienceImage = getHomeExperienceImage(selectedExperience);
+  const title = getHomeExperienceDisplayName(
+    selectedExperience,
+    experience.experienceId
+  );
+  const experienceMeta = selectedExperience
+    ? [
+        selectedExperience.destinationName || selectedExperience.destinationId,
+        selectedExperience.travellerName || "Traveller",
+        `${selectedExperience.overallRating.toFixed(1)} rating`,
+      ]
+        .filter(Boolean)
+        .join(" - ")
+    : "Select a published traveller experience for the homepage.";
+
+  return (
+    <article className="grid gap-3 rounded-sm border border-border bg-[#fffaf7] p-3 lg:grid-cols-[112px_minmax(0,1fr)_44px]">
+      <div className="relative aspect-[1.32/1] overflow-hidden rounded-sm border border-border bg-white">
+        {experienceImage ? (
+          <img
+            src={getExperienceMediaUrl(experienceImage)}
+            alt={title}
+            className="size-full object-cover"
+          />
+        ) : (
+          <span className="grid size-full place-items-center text-foreground/30">
+            <Star className="size-8" />
+          </span>
+        )}
+      </div>
+
+      <div className="grid gap-3">
+        <FormField label="Experience">
+          <select
+            required
+            value={experience.experienceId}
+            onChange={(event) =>
+              onSelectExperience(index, event.target.value)
+            }
+            className={inputClassName}
+          >
+            {!selectedExperience && experience.experienceId ? (
+              <option value={experience.experienceId}>
+                {experience.experienceId}
+              </option>
+            ) : null}
+            {experiences.map((option) => (
+              <option key={option.experienceId} value={option.experienceId}>
+                {getHomeExperienceDisplayName(option)} ({option.experienceId})
+              </option>
+            ))}
+          </select>
+        </FormField>
+        <p className="line-clamp-2 text-xs font-medium leading-relaxed text-foreground/60">
+          {selectedExperience?.writtenReview || experienceMeta}
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onRemove(index)}
+        className="grid size-11 place-items-center rounded-sm border border-border bg-white text-foreground/55 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+        aria-label={`Remove traveller experience ${index + 1}`}
       >
         <Trash2 className="size-4" />
       </button>

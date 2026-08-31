@@ -18,7 +18,6 @@ import {
   AdminDashboardShell,
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
-import { HeaderDateRangePicker } from "@/components/admin-dashboard/header-date-range-picker";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -296,7 +295,6 @@ function ReportsHeader() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <HeaderDateRangePicker />
 
         <DropdownMenu>
           <DropdownMenuTrigger

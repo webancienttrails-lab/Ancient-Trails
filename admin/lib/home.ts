@@ -16,10 +16,24 @@ export type HomeTrendingDestinationSetting = {
   sortOrder: number;
 };
 
+export type HomeCustomisedTourDestinationSetting = {
+  id: string;
+  destinationId: string;
+  sortOrder: number;
+};
+
+export type HomeExperienceSetting = {
+  id: string;
+  experienceId: string;
+  sortOrder: number;
+};
+
 export type HomePageContent = {
   id: string;
   upcomingTours: HomeUpcomingTourSetting[];
   trendingDestinations: HomeTrendingDestinationSetting[];
+  customisedTourDestinations: HomeCustomisedTourDestinationSetting[];
+  homeExperiences: HomeExperienceSetting[];
   createdAt: string;
   updatedAt: string;
 };
@@ -27,6 +41,10 @@ export type HomePageContent = {
 export type HomePagePayload = {
   upcomingTours: Array<Omit<HomeUpcomingTourSetting, "id">>;
   trendingDestinations: Array<Omit<HomeTrendingDestinationSetting, "id">>;
+  customisedTourDestinations: Array<
+    Omit<HomeCustomisedTourDestinationSetting, "id">
+  >;
+  homeExperiences: Array<Omit<HomeExperienceSetting, "id">>;
 };
 
 type MarkerDestination = {
