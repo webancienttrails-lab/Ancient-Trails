@@ -29,8 +29,9 @@ const customisedTourLayouts = [
 
 type CustomisedTourCardProps = {
   className: string;
+  activeIndex: number;
   sizes: string;
-  tour: HomeCustomisedTourCard;
+  tours: HomeCustomisedTourCard[];
 };
 
 function mergeWithFallbackCustomisedTours(tours: HomeCustomisedTourCard[]) {
@@ -42,50 +43,66 @@ function mergeWithFallbackCustomisedTours(tours: HomeCustomisedTourCard[]) {
   fallbackCustomisedTours.forEach((tour) => {
     const key = tour.destinationId || tour.title.toLowerCase();
 
-    if (merged.length < 3 && !usedKeys.has(key)) {
+    if (merged.length < 6 && !usedKeys.has(key)) {
       merged.push(tour);
       usedKeys.add(key);
     }
   });
 
-  return merged.slice(0, 3);
+  return merged.slice(0, 6);
 }
 
 function CustomisedTourCard({
+  activeIndex,
   className,
   sizes,
-  tour,
+  tours,
 }: CustomisedTourCardProps) {
+  const visibleIndex = tours[activeIndex] ? activeIndex : 0;
+
   return (
-    <Link
-      href={getDestinationHref({
-        destinationId: tour.destinationId,
-        destinationName: tour.title,
-      })}
-      className={`relative block min-h-[260px] w-full overflow-hidden rounded-[10px] lg:min-h-0 ${className}`}
+    <div
+      className={`relative min-h-[260px] w-full overflow-hidden rounded-[10px] lg:min-h-0 ${className}`}
     >
-      <Image
-        src={tour.image}
-        alt={`${tour.title} customised tour`}
-        fill
-        sizes={sizes}
-        className="object-cover"
-      />
-      <div className="absolute inset-0 bg-gradient-to-b from-secondary/20 via-transparent to-secondary/10" />
-      <h3 className="absolute left-4 top-4 font-sans text-description font-bold uppercase leading-none text-white">
-        {tour.title}
-      </h3>
-      <div className="absolute bottom-4 left-4 right-4 flex flex-wrap gap-2 lg:gap-2">
-        {tour.tags.map((tag, index) => (
-          <span
-            key={`${tag}-${index}`}
-            className="rounded-full bg-white px-3 py-1 text-[12px] font-medium text-primary"
-          >
-            {tag} +
-          </span>
-        ))}
-      </div>
-    </Link>
+      {tours.map((tour, index) => (
+        <Link
+          key={`${tour.destinationId || tour.title}-${index}`}
+          href={getDestinationHref({
+            destinationId: tour.destinationId,
+            destinationName: tour.title,
+          })}
+          aria-hidden={index !== visibleIndex}
+          tabIndex={index === visibleIndex ? 0 : -1}
+          className={`absolute inset-0 block overflow-hidden rounded-[10px] transition-opacity duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            index === visibleIndex
+              ? "pointer-events-auto opacity-100"
+              : "pointer-events-none opacity-0"
+          }`}
+        >
+          <Image
+            src={tour.image}
+            alt={`${tour.title} customised tour`}
+            fill
+            sizes={sizes}
+            className="object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-secondary/20 via-transparent to-secondary/10" />
+          <h3 className="absolute left-4 top-4 font-sans text-description font-bold uppercase leading-none text-white">
+            {tour.title}
+          </h3>
+          <div className="absolute bottom-4 left-4 right-4 flex flex-wrap gap-2 lg:gap-2">
+            {tour.tags.map((tag, tagIndex) => (
+              <span
+                key={`${tag}-${tagIndex}`}
+                className="rounded-full bg-white px-3 py-1 text-[12px] font-medium text-primary"
+              >
+                {tag} +
+              </span>
+            ))}
+          </div>
+        </Link>
+      ))}
+    </div>
   );
 }
 
@@ -94,12 +111,23 @@ export function CustomisedToursSection({
 }: {
   destinations?: HomeCustomisedTourCard[];
 }) {
-  const [firstTour, secondTour, thirdTour] = useMemo(
+  const displayedTours = useMemo(
     () => mergeWithFallbackCustomisedTours(destinations),
     [destinations]
   );
+  const tourSlots = useMemo(
+    () =>
+      customisedTourLayouts.map((_layout, index) =>
+        [displayedTours[index], displayedTours[index + 3]].filter(
+          (tour): tour is HomeCustomisedTourCard => Boolean(tour)
+        )
+      ),
+    [displayedTours]
+  );
   const sectionRef = useRef<HTMLElement>(null);
   const [isSectionReady, setIsSectionReady] = useState(false);
+  const [activeTourIndex, setActiveTourIndex] = useState(0);
+  const hasAlternatingTours = tourSlots.some((slot) => slot.length > 1);
 
   useEffect(() => {
     const section = sectionRef.current;
@@ -133,6 +161,22 @@ export function CustomisedToursSection({
 
     return () => observer.disconnect();
   }, [isSectionReady]);
+
+  useEffect(() => {
+    if (!isSectionReady || !hasAlternatingTours) {
+      return;
+    }
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setActiveTourIndex((currentIndex) => (currentIndex === 0 ? 1 : 0));
+    }, 4200);
+
+    return () => window.clearInterval(interval);
+  }, [hasAlternatingTours, isSectionReady]);
 
   return (
     <section
@@ -169,9 +213,10 @@ export function CustomisedToursSection({
           <div>
             <RevealOnView visible={isSectionReady}>
               <CustomisedTourCard
+                activeIndex={activeTourIndex}
                 className={customisedTourLayouts[0].className}
                 sizes={customisedTourLayouts[0].sizes}
-                tour={firstTour}
+                tours={tourSlots[0]}
               />
             </RevealOnView>
 
@@ -206,9 +251,10 @@ export function CustomisedToursSection({
 
             <RevealOnView delay={160} visible={isSectionReady}>
               <CustomisedTourCard
+                activeIndex={activeTourIndex}
                 className={customisedTourLayouts[1].className}
                 sizes={customisedTourLayouts[1].sizes}
-                tour={secondTour}
+                tours={tourSlots[1]}
               />
             </RevealOnView>
           </div>
@@ -216,9 +262,10 @@ export function CustomisedToursSection({
           <div className="lg:pt-[21px]">
             <RevealOnView delay={280} visible={isSectionReady}>
               <CustomisedTourCard
+                activeIndex={activeTourIndex}
                 className={customisedTourLayouts[2].className}
                 sizes={customisedTourLayouts[2].sizes}
-                tour={thirdTour}
+                tours={tourSlots[2]}
               />
             </RevealOnView>
 

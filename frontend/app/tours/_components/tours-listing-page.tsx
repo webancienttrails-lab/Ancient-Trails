@@ -17,13 +17,15 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
-  Star,
-  Users,
   type LucideIcon,
 } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
-import { TourShowcaseCard } from "@/components/tours/tour-showcase-card";
+import {
+  TourExpertHoverPopup,
+  TourShowcaseCard,
+} from "@/components/tours/tour-showcase-card";
+import { ButtonArrow, buttonVariants } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { listenForTravellerSessionChanges } from "@/lib/auth";
 import {
@@ -73,6 +75,7 @@ type TourListItem = {
   availability: AvailabilityFilter;
   departures: PublicTourDeparture[];
   destination: PublicDestination | undefined;
+  expert: PublicExpert | undefined;
   durationDays: number;
   expertName: string;
   image: string;
@@ -128,6 +131,12 @@ const availabilityOptions: Array<{ label: string; value: AvailabilityFilter }> =
   { label: "Coming Soon", value: "coming-soon" },
   { label: "Sold Out", value: "sold-out" },
 ];
+
+const tourTypeFilterLabels = ["Heritage Tours", "Short Trails"];
+
+function getTourFormat(tour: PublicTour) {
+  return tour.tourFormat || "";
+}
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
@@ -187,6 +196,21 @@ function formatDate(value: string | null) {
   return dateFormatter.format(date).replace(",", "");
 }
 
+function formatDateRange(departure?: PublicTourDeparture) {
+  if (!departure) {
+    return "Coming Soon";
+  }
+
+  const start = formatDate(departure.departureDate);
+  const end = formatDate(departure.returnDate);
+
+  if (start === "Coming Soon" || end === "Coming Soon" || start === end) {
+    return start;
+  }
+
+  return `${start.replace(/\s+\d{4}$/, "")} - ${end}`;
+}
+
 function getMonthValue(value: string | null) {
   if (!value) {
     return "";
@@ -238,7 +262,7 @@ function formatTourCardPrice(value: number) {
     return "On request";
   }
 
-  return `${currencyFormatter.format(value)} +`;
+  return currencyFormatter.format(value);
 }
 
 function compactDurationLabel(value: string, fallbackDays: number) {
@@ -269,14 +293,6 @@ function compactDurationLabel(value: string, fallbackDays: number) {
   return source.replace(/\s*\/\s*/g, "/").replace(/\s+/g, " ");
 }
 
-function getTourBadgeLabel(tour: PublicTour) {
-  const label = [tour.category, tour.tourType].find((value) =>
-    /best|popular|featured|recommended|trending/i.test(value)
-  );
-
-  return (label || "Bestseller").trim().toUpperCase();
-}
-
 function getTourDifficultyLabel(tour: PublicTour) {
   const difficulty = tour.difficulty.trim() || "Moderate";
 
@@ -298,10 +314,14 @@ function getReadableExpertName(expertId: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function getTourExpertName(tour: PublicTour, experts: PublicExpert[]) {
-  const matchedExpert = experts.find(
+function getTourExpert(tour: PublicTour, experts: PublicExpert[]) {
+  return experts.find(
     (expert) => normalizeCode(expert.expertId) === normalizeCode(tour.expertId)
   );
+}
+
+function getTourExpertName(tour: PublicTour, experts: PublicExpert[]) {
+  const matchedExpert = getTourExpert(tour, experts);
 
   return matchedExpert?.fullName.trim() || getReadableExpertName(tour.expertId);
 }
@@ -373,32 +393,6 @@ function getAvailability(departures: PublicTourDeparture[]): AvailabilityFilter 
   }
 
   return "available";
-}
-
-function getAvailabilityLabel(availability: AvailabilityFilter) {
-  switch (availability) {
-    case "available":
-      return "Available";
-    case "coming-soon":
-      return "Coming Soon";
-    case "sold-out":
-      return "Sold Out";
-    case "all":
-      return "All";
-  }
-}
-
-function getAvailabilityClassName(availability: AvailabilityFilter) {
-  switch (availability) {
-    case "available":
-      return "bg-[#4f9f45] text-white";
-    case "coming-soon":
-      return "bg-primary text-white";
-    case "sold-out":
-      return "bg-secondary/55 text-white";
-    case "all":
-      return "bg-primary text-white";
-  }
 }
 
 function getTourSearchText(item: TourListItem) {
@@ -581,10 +575,12 @@ function createFallbackTours(): PublicTour[] {
     tourId: tour.tourId,
     tourName: tour.title,
     tourType: index % 2 === 0 ? "Heritage Tour" : "Cultural Tour",
+    tourFormat: index % 2 === 0 ? "Heritage Tours" : "Short Trails",
     destinationId: tour.destinationId,
     destinationIds: [tour.destinationId],
     durationDn: tour.duration,
     category: index % 2 === 0 ? "Heritage" : "Culture",
+    isBestseller: index === 0,
     difficulty: index % 3 === 0 ? "Easy" : "Moderate",
     bestSeason: "Oct - Mar",
     description:
@@ -599,6 +595,28 @@ function createFallbackTours(): PublicTour[] {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }));
+}
+
+function createTourTypeFilterOptions(items: TourListItem[]) {
+  const countByValue = new Map<string, number>();
+
+  items.forEach((item) => {
+    const formatValues = uniqueValues([getTourFormat(item.tour)]).map(normalizeKey);
+
+    formatValues.forEach((value) => {
+      countByValue.set(value, (countByValue.get(value) || 0) + 1);
+    });
+  });
+
+  return tourTypeFilterLabels.map((label) => {
+    const value = normalizeKey(label);
+
+    return {
+      count: countByValue.get(value) || 0,
+      label,
+      value,
+    };
+  });
 }
 
 function createFallbackDepartures(): PublicTourDeparture[] {
@@ -663,6 +681,7 @@ function buildTourItems(
     const destination = destinationById.get(primaryDestinationId);
     const nextDeparture = getNextDeparture(tourDepartures);
     const lowestPrice = getLowestPrice(tourDepartures);
+    const expert = getTourExpert(tour, experts);
     const totalSeats = tourDepartures.reduce(
       (sum, departure) => sum + Math.max(0, departure.seatsAvailable),
       0
@@ -678,6 +697,7 @@ function buildTourItems(
       availability: getAvailability(tourDepartures),
       departures: tourDepartures,
       destination,
+      expert,
       durationDays:
         parseDurationDays(tour.durationDn) ||
         destination?.recommendedDurationDays ||
@@ -875,10 +895,7 @@ export function ToursListingPage({
   const travellerCount = adultCount + childCount;
 
   const typeOptions = useMemo(
-    () =>
-      createCountOptions(allItems, (item) =>
-        uniqueValues([item.tour.category, item.tour.tourType])
-      ),
+    () => createTourTypeFilterOptions(allItems),
     [allItems]
   );
 
@@ -909,10 +926,9 @@ export function ToursListingPage({
           return [];
         }
 
-        const typeValues = uniqueValues([
-          scopedItem.tour.category,
-          scopedItem.tour.tourType,
-        ]).map(normalizeKey);
+        const typeValues = uniqueValues([getTourFormat(scopedItem.tour)]).map(
+          normalizeKey
+        );
         const destinationValue = normalizeKey(
           scopedItem.destination?.destinationName ||
             scopedItem.destination?.city ||
@@ -1163,7 +1179,7 @@ function TourSidebar({
           <CollapsedFilterButton
             active={selectedTypeValues.length > 0}
             icon={Sparkles}
-            label="Open tour type filters"
+            label="Open tour format filters"
             onClick={() => onCollapsedChange(false)}
           />
           <CollapsedFilterButton
@@ -1220,7 +1236,7 @@ function TourSidebar({
             icon={Sparkles}
             options={typeOptions}
             selectedValues={selectedTypeValues}
-            title="Tour Type"
+            title="Tour Format"
             onToggle={onTypeToggle}
           />
 
@@ -1507,11 +1523,7 @@ function TourResults({
         {items.map((item) => (
           <TourListRow
             key={item.tour.id || item.tour.tourId}
-            isWishlisted={favoriteTourIds.has(
-              normalizeWishlistTourId(item.tour.tourId)
-            )}
             item={item}
-            onWishlistToggle={onWishlistToggle}
           />
         ))}
       </div>
@@ -1549,13 +1561,21 @@ function TourCard({
         destination: item.destination,
         tour: item.tour,
       })}
-      badgeLabel={getTourBadgeLabel(item.tour)}
+      badgeLabel="BESTSELLER"
       difficultyLabel={getTourDifficultyLabel(item.tour)}
       durationLabel={compactDurationLabel(
         item.tour.durationDn,
         item.durationDays || item.destination?.recommendedDurationDays || 1
       )}
+      expertImage={getHomeMediaUrl(item.expert?.image || "")}
       expertName={item.expertName}
+      expertSpecialties={item.expert?.expertiseTags || []}
+      expertSpecialty={
+        item.expert?.expertiseTags[0] ||
+        item.tour.category ||
+        item.tour.tourType ||
+        "Heritage Tours"
+      }
       favoriteLabel={
         isWishlisted
           ? `Remove ${item.tour.tourName} from wishlist`
@@ -1568,145 +1588,226 @@ function TourCard({
       nextDepartureLabel={formatDate(item.nextDeparture?.departureDate || null)}
       onFavoriteToggle={() => onWishlistToggle(item)}
       priceLabel={formatTourCardPrice(item.lowestPrice)}
+      showBadge={item.tour.isBestseller}
       title={item.tour.tourName}
       className="w-full max-w-[320px]"
     />
   );
 }
 
-function TourListRow({
-  isWishlisted,
-  item,
-  onWishlistToggle,
-}: {
-  isWishlisted: boolean;
-  item: TourListItem;
-  onWishlistToggle: (item: TourListItem) => void;
-}) {
+function TourListRow({ item }: { item: TourListItem }) {
+  const seats = getTourListSeatInfo(item);
+
   return (
-    <article className="grid gap-4 overflow-hidden rounded-[8px] border border-[#ead8c5] bg-white p-3  transition-all hover:-translate-y-0.5 hover:border-primary/45 sm:grid-cols-[220px_minmax(0,1fr)_170px] sm:items-center">
-      <div className="relative h-[170px] overflow-hidden rounded-[7px] bg-muted sm:h-[150px]">
-        <Image
-          src={item.image}
-          alt={item.tour.tourName}
-          fill
-          sizes="220px"
-          className="object-cover"
-        />
-        <span
-          className={cn(
-            "absolute left-3 top-3 rounded-[5px] px-2 py-1 font-sans text-[10px] font-bold",
-            getAvailabilityClassName(item.availability)
-          )}
-        >
-          {getAvailabilityLabel(item.availability)}
-        </span>
-        <button
-          type="button"
-          aria-label={
-            isWishlisted
-              ? `Remove ${item.tour.tourName} from wishlist`
-              : `Save ${item.tour.tourName}`
-          }
-          aria-pressed={isWishlisted}
-          onClick={() => onWishlistToggle(item)}
-          className="absolute right-3 top-3 grid size-10 place-items-center rounded-full border border-white/35 bg-secondary/55 text-white shadow-[0_10px_22px_rgba(35,23,15,0.2)] backdrop-blur transition-colors hover:bg-primary"
-        >
-          <Heart
-            className={cn("size-[18px]", isWishlisted && "fill-current")}
-            strokeWidth={isWishlisted ? 0 : 1.9}
+    <article className="rounded-[12px] border border-[#e8cbaa] bg-white p-3 transition-all hover:-translate-y-0.5 hover:border-primary/55 sm:p-3.5">
+      <div className="grid gap-2.5 xl:grid-cols-[190px_minmax(0,1fr)] xl:items-start">
+        <div className="relative h-[145px] overflow-hidden rounded-[8px] bg-muted sm:h-[160px] xl:h-[122px]">
+          <Image
+            src={item.image}
+            alt={item.tour.tourName}
+            fill
+            sizes="(min-width: 1280px) 190px, 100vw"
+            className="object-cover"
           />
-        </button>
-      </div>
+          <span className="absolute left-2.5 top-2.5 mt-1 rounded-[6px] bg-primary px-2 py-1 font-sans text-[11px] font-bold leading-none text-white">
+            {compactDurationLabel(
+              item.tour.durationDn,
+              item.durationDays || item.destination?.recommendedDurationDays || 1
+            )}
+          </span>
+        </div>
 
-      <div className="min-w-0">
-        <h3 className="font-heading text-[23px] font-bold leading-tight text-secondary">
-          {item.tour.tourName}
-        </h3>
-        <p className="mt-2 line-clamp-4 font-sans text-[13px] leading-[1.6] text-secondary/72">
-          {item.tour.description ||
-            "An expert-led Ancient Trails journey through heritage, culture and local stories."}
-        </p>
-        <TourMeta item={item} compact />
-      </div>
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_210px]">
+          <div className="min-w-0">
+            <h3 className="max-w-[310px] font-heading text-[20px] font-bold leading-[1.08] tracking-normal text-secondary sm:text-[23px]">
+              {item.tour.tourName}
+            </h3>
 
-      <div className="grid gap-3 sm:justify-items-end">
-        <span className="font-sans text-[11px] font-normal text-secondary/58 sm:text-right">
-          from
-          <strong className="mt-1 block  text-[23px] leading-none text-secondary">
-            {formatPrice(item.lowestPrice)}
-          </strong>
-          per person
-        </span>
-        <Link
-          href={getTourHref(item.tour)}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-primary bg-primary px-5 font-sans text-[13px] font-bold text-white transition-colors hover:bg-white hover:text-primary"
-        >
-          View Details
-          <ArrowRight className="size-4" />
-        </Link>
+            <div className="mt-2.5 grid gap-3 sm:grid-cols-[180px_60px_92px] sm:items-start">
+              <div className="space-y-2 font-sans text-[13px] font-semibold leading-tight text-secondary/70 sm:text-[12px]">
+                <p className="flex min-w-0 items-center gap-1.5">
+                  <CalendarDays className="size-3.5 shrink-0 text-primary" strokeWidth={2} />
+                  <span className="min-w-0 whitespace-nowrap">
+                    {formatDateRange(item.nextDeparture)}
+                  </span>
+                </p>
+                <p className="flex min-w-0 items-center gap-1.5">
+                  <MapPin className="size-3.5 shrink-0 text-primary" strokeWidth={2} />
+                  <span className="truncate">{getTourListLocation(item)}</span>
+                </p>
+              </div>
+
+              <span className="font-sans">
+                
+              </span>
+
+              <span className="font-sans">
+                <strong className="block text-[15px] font-bold leading-none text-secondary sm:text-[16px]">
+                  {formatPrice(item.lowestPrice)}
+                </strong>
+                <span className="mt-1 block text-[10px] font-medium leading-none text-secondary/58 sm:text-[11px]">
+                  per person
+                </span>
+              </span>
+            </div>
+
+            <TourSeatProgress seats={seats} />
+          </div>
+
+          <div className="grid gap-2.5 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center lg:flex lg:flex-col lg:items-end">
+            <Link
+              href={getTourHref(item.tour)}
+              aria-label={`Book Now ${item.tour.tourName}`}
+              className={buttonVariants({
+                className:
+                  "h-9 w-full justify-between gap-3 px-3 text-[13px] font-normal hover:border-primary hover:bg-white hover:text-primary hover:shadow-none",
+              })}
+            >
+              Book Now
+              <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+            </Link>
+
+            <div className="flex min-w-0 items-center gap-2 lg:mt-3 lg:w-full lg:justify-end">
+              <ExpertAvatar expert={item.expert} name={item.expertName} />
+              <span className="min-w-0 font-sans lg:text-right">
+                <span className="block text-[9px] font-semibold uppercase leading-none text-secondary/48">
+                  Expert
+                </span>
+                <TourExpertHoverPopup
+                  image={getHomeMediaUrl(item.expert?.image || "")}
+                  name={item.expertName}
+                  specialties={item.expert?.expertiseTags || []}
+                  specialty={
+                    item.expert?.expertiseTags[0] ||
+                    item.tour.category ||
+                    item.tour.tourType ||
+                    "Heritage Tours"
+                  }
+                  triggerClassName="mt-1 text-[13px] font-bold leading-none sm:text-[13px]"
+                />
+                <Link
+                  href="/about"
+                  className="mt-1 inline-flex text-[13px] font-bold leading-none text-primary transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+                >
+                  View Profile
+                </Link>
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </article>
   );
 }
 
-function TourMeta({
-  compact = false,
-  item,
+function getTourListLocation(item: TourListItem) {
+  return item.destination?.city || item.destination?.destinationName || item.locationLabel;
+}
+
+type TourListSeatInfo = {
+  capacity: number;
+  filled: number;
+  left: number;
+  progress: number;
+};
+
+function getTourListSeatInfo(item: TourListItem): TourListSeatInfo {
+  const departure = item.nextDeparture;
+
+  if (departure) {
+    const filled = Math.max(0, Math.trunc(departure.filledSeats || 0));
+    const capacity = Math.max(
+      0,
+      Math.trunc(departure.totalSeats || departure.seatsAvailable + filled)
+    );
+    const boundedFilled = Math.min(filled, capacity);
+    const left = Math.max(0, Math.trunc(departure.seatsAvailable));
+
+    return {
+      capacity,
+      filled: boundedFilled,
+      left,
+      progress: capacity > 0 ? Math.min(100, (boundedFilled / capacity) * 100) : 0,
+    };
+  }
+
+  const capacity = item.departures.reduce(
+    (sum, currentDeparture) =>
+      sum +
+      Math.max(
+        0,
+        Math.trunc(
+          currentDeparture.totalSeats ||
+            currentDeparture.seatsAvailable + (currentDeparture.filledSeats || 0)
+        )
+      ),
+    0
+  );
+  const filled = item.departures.reduce(
+    (sum, currentDeparture) =>
+      sum + Math.max(0, Math.trunc(currentDeparture.filledSeats || 0)),
+    0
+  );
+  const boundedFilled = Math.min(filled, capacity);
+
+  return {
+    capacity,
+    filled: boundedFilled,
+    left: item.totalSeats,
+    progress: capacity > 0 ? Math.min(100, (boundedFilled / capacity) * 100) : 0,
+  };
+}
+
+function TourSeatProgress({ seats }: { seats: TourListSeatInfo }) {
+  return (
+    <div className="mt-3 border-t border-[#e8cbaa] pt-2.5 sm:max-w-[356px]">
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1.5 font-sans text-[12px] font-semibold leading-tight text-secondary/60 sm:text-[13px]">
+        <span className="font-bold text-primary">
+          {seats.filled}/{seats.capacity} seats
+        </span>
+      </p>
+
+      <div className="mt-2 h-1 overflow-hidden rounded-full bg-[#e8edf1]">
+        <span
+          className="block h-full rounded-full bg-[#2faa5d]"
+          style={{ width: `${seats.progress}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ExpertAvatar({
+  expert,
+  name,
 }: {
-  compact?: boolean;
-  item: TourListItem;
+  expert?: PublicExpert;
+  name: string;
 }) {
-  const metaItems = [
-    {
-      icon: CalendarDays,
-      key: "departure",
-      label: formatDate(item.nextDeparture?.departureDate || null),
-    },
-    {
-      icon: Clock3,
-      key: "duration",
-      label: item.tour.durationDn || `${item.durationDays} Days`,
-    },
-    {
-      icon: MapPin,
-      key: "location",
-      label: item.locationLabel,
-    },
-    {
-      icon: Users,
-      key: "seats",
-      label:
-        item.totalSeats > 0
-          ? `${item.totalSeats} seats available`
-          : getAvailabilityLabel(item.availability),
-    },
-  ];
+  const image = getHomeMediaUrl(expert?.image || "");
+  const initials =
+    name
+      .split(" ")
+      .map((part) => part.trim()[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "AT";
 
   return (
-    <div
-      className={cn(
-        "mt-3 grid gap-2 font-sans text-[14px] font-semibold text-secondary/62",
-        compact ? "sm:grid-cols-2" : "grid-cols-2"
+    <span className="relative grid size-9 shrink-0 place-items-center overflow-hidden rounded-full bg-[#efe2d4] font-sans text-[11px] font-bold text-primary">
+      {image ? (
+        <Image
+          src={image}
+          alt={name}
+          fill
+          sizes="36px"
+          className="object-cover"
+        />
+      ) : (
+        initials
       )}
-    >
-      {metaItems.map(({ icon: Icon, key, label }) => (
-        <span key={key} className="flex min-w-0 items-center gap-2">
-          <Icon className="size-3.5 shrink-0 text-primary" strokeWidth={1.8} />
-          <span className="truncate">{label}</span>
-        </span>
-      ))}
-      <span className="flex min-w-0 items-center gap-2">
-        <Star className="size-3.5 shrink-0 fill-primary text-primary" strokeWidth={0} />
-        <span className="truncate">{item.tour.difficulty || "Moderate"}</span>
-      </span>
-      <span className="flex min-w-0 items-center gap-2">
-        <Landmark className="size-3.5 shrink-0 text-primary" strokeWidth={1.8} />
-        <span className="truncate">
-          {item.tour.category || item.tour.tourType || "Heritage"}
-        </span>
-      </span>
-    </div>
+    </span>
   );
 }
 

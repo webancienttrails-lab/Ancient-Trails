@@ -420,7 +420,7 @@ function MissionVisionSection() {
           />
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.94)_0%,rgba(255,255,255,0.84)_50%,rgba(255,255,255,0.92)_100%)]" />
           <div className="relative z-10 px-3 py-8 sm:px-4 lg:px-8">
-          <p className="text-description font-medium uppercase text-primary">
+          <p className="text-description font-medium uppercase text-primary justify-center items-center">
             Our Purpose
           </p>
           <div className="mt-7 grid gap-9 lg:grid-cols-[1fr_1px_1fr] lg:gap-16">

@@ -5,23 +5,17 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
-  BedDouble,
-  Bus,
   Camera,
-  CalendarDays,
   ChevronLeft,
   ChevronRight,
-  Clock3,
   Expand,
   Footprints,
-  Heart,
   Play,
   Share2,
   ShieldCheck,
   Shirt,
   Star,
   Ticket,
-  UserRoundCheck,
   X,
   ZoomIn,
   type LucideIcon,
@@ -29,7 +23,7 @@ import {
 import { createPortal } from "react-dom";
 
 import { Header } from "@/components/layout/header";
-import { Button, ButtonArrow } from "@/components/ui/button";
+import { TourShowcaseCard } from "@/components/tours/tour-showcase-card";
 import {
   getHomeMediaUrl,
   getTourDestinationIds,
@@ -459,46 +453,6 @@ function getTourImage(tour: PublicTour, fallbackImage: string) {
   );
 }
 
-function getOrdinalSuffix(day: number) {
-  if (day > 3 && day < 21) {
-    return "th";
-  }
-
-  switch (day % 10) {
-    case 1:
-      return "st";
-    case 2:
-      return "nd";
-    case 3:
-      return "rd";
-    default:
-      return "th";
-  }
-}
-
-function formatOrdinalDate(value: string | null | undefined) {
-  if (!value) {
-    return "Coming Soon";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Coming Soon";
-  }
-
-  const parts = shortDateFormatter.formatToParts(date);
-  const day = Number(parts.find((part) => part.type === "day")?.value || 0);
-  const month = parts.find((part) => part.type === "month")?.value || "";
-  const year = parts.find((part) => part.type === "year")?.value || "";
-
-  if (!day || !month || !year) {
-    return formatDate(value);
-  }
-
-  return `${day}${getOrdinalSuffix(day)} ${month} ${year}`;
-}
-
 function compactDurationLabel(value: string, fallbackDays: number) {
   const source = value.trim();
   const fallbackLabel =
@@ -525,14 +479,6 @@ function compactDurationLabel(value: string, fallbackDays: number) {
   }
 
   return source.replace(/\s*\/\s*/g, "/").replace(/\s+/g, " ");
-}
-
-function getTourBadgeLabel(tour: PublicTour) {
-  const label = [tour.category, tour.tourType].find((value) =>
-    /best|popular|featured|recommended|trending/i.test(value)
-  );
-
-  return (label || "Bestseller").trim().toUpperCase();
 }
 
 function getTourDifficultyLabel(tour: PublicTour) {
@@ -862,13 +808,23 @@ function DestinationOverview({
         </span>
 
         <div className="absolute inset-x-4 bottom-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="font-sans text-[14px] font-bold text-white">
+          <p className="flex items-center gap-2 font-sans text-[14px] font-bold text-white">
+            {destination.unescoSite ? (
+              <Image
+                src="/home assets/circle.png"
+                alt=""
+                width={22}
+                height={22}
+                aria-hidden="true"
+                className="size-[22px] shrink-0 object-contain"
+              />
+            ) : null}
             Best Time To Visit - {getBestSeason(destination, tours)}
           </p>
           {destination.unescoSite ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 font-sans text-[14px] font-bold text-white">
-              <ShieldCheck className="size-4" />
-              Unesco Site
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 font-sans text-[15px] font-normal text-white">
+             
+             Customise
             </span>
           ) : null}
         </div>
@@ -1376,11 +1332,13 @@ function TravellerExperienceSection({
 
   const averageRating = getAverageExperienceRating(experiences);
   const featuredExperience = experiences[0];
-  const reviewExperiences = experiences.slice(0, 2);
+  const videoExperience =
+    experiences.find((experience) => getExperienceVideo(experience)) ||
+    featuredExperience;
   const displayFallbackImages = getDisplayFallbackImages(images);
   const featuredFallbackImage = getDisplayFallbackImage(images, 3);
-  const featuredImage = getExperienceImage(featuredExperience, featuredFallbackImage);
-  const featuredVideo = getExperienceVideo(featuredExperience);
+  const featuredImage = getExperienceImage(videoExperience, featuredFallbackImage);
+  const featuredVideo = getExperienceVideo(videoExperience);
 
   function getTravellerReviewCount(experience: PublicExperience) {
     const travellerKey =
@@ -1406,7 +1364,7 @@ function TravellerExperienceSection({
   return (
     <section className="mt-12 grid gap-8 lg:grid-cols-[minmax(280px,1fr)_minmax(180px,0.58fr)_minmax(290px,0.95fr)] lg:items-start xl:gap-10">
       <div className="pt-2">
-        <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+        <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-secondary/70">
           What Travellers say on -
         </p>
         <h2 className="mt-2 font-heading text-title font-bold leading-none tracking-normal text-secondary">
@@ -1462,7 +1420,7 @@ function TravellerExperienceSection({
         ) : (
           <Image
             src={featuredImage || fallbackImages[0]}
-            alt={featuredExperience?.title || destination.destinationName}
+            alt={videoExperience?.title || destination.destinationName}
             fill
             unoptimized
             sizes="(min-width: 1280px) 340px, (min-width: 1024px) 28vw, 100vw"
@@ -1478,24 +1436,21 @@ function TravellerExperienceSection({
             memories
           </p>
 
-          {reviewExperiences.map((experience) => (
-            <ReviewCard
-              key={experience.id}
-              experience={experience}
-              reviewCount={getTravellerReviewCount(experience)}
-              onPhotoOpen={onExperienceGalleryOpen}
-            />
-          ))}
+          <DestinationReviewSlider
+            experiences={experiences}
+            getReviewCount={getTravellerReviewCount}
+            onPhotoOpen={onExperienceGalleryOpen}
+          />
         </div>
 
-        <div className="pt-5">
+        <div className="pt-0">
           <p className="font-sans text-description font-medium text-secondary/70">
             Ready to plan your Journey?
             <span className="block">Let&apos;s get started!</span>
           </p>
           <Link
             href={getTourCalendarHref({ destination })}
-            className="mt-3 inline-flex h-9 items-center gap-3 rounded-full bg-primary px-5 font-sans text-[14px] font-bold text-white transition-colors hover:bg-accent"
+            className="group/button mt-3 inline-flex h-11 items-center justify-center gap-4 rounded-[24px] border border-primary bg-primary px-6 font-sans text-button font-medium leading-none text-white transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-white hover:text-primary"
           >
             Plan your trip
             <ArrowRight className="size-4" />
@@ -1650,7 +1605,7 @@ function ReviewCard({
   );
 
   return (
-    <article className="rounded-[8px] border border-[#eee5dd] bg-white px-4 py-4 shadow-[0_7px_16px_rgba(50,50,50,0.1)]">
+    <article className="  bg-white px-4 py-4">
       <RatingStars value={experience.overallRating} className="text-[#ffb000]" />
       <p className="mt-2 font-sans text-description font-medium text-secondary/78">
         {reviewText}
@@ -1669,6 +1624,97 @@ function ReviewCard({
         </div>
       )}
     </article>
+  );
+}
+
+function DestinationReviewSlider({
+  experiences,
+  getReviewCount,
+  onPhotoOpen,
+}: {
+  experiences: PublicExperience[];
+  getReviewCount: (experience: PublicExperience) => number;
+  onPhotoOpen: (
+    galleryImages: string[],
+    title: string,
+    activeIndex?: number
+  ) => void;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const boundedIndex = experiences[activeIndex] ? activeIndex : 0;
+
+  if (experiences.length === 0) {
+    return null;
+  }
+
+  function showPreviousReview() {
+    setActiveIndex(boundedIndex === 0 ? experiences.length - 1 : boundedIndex - 1);
+  }
+
+  function showNextReview() {
+    setActiveIndex(boundedIndex === experiences.length - 1 ? 0 : boundedIndex + 1);
+  }
+
+  return (
+    <div className="w-full min-w-0">
+      <div className="overflow-hidden">
+        <div
+          className="flex transition-transform duration-500 ease-out"
+          style={{ transform: `translateX(-${boundedIndex * 100}%)` }}
+        >
+          {experiences.map((experience) => (
+            <div
+              key={experience.id || experience.experienceId}
+              className="w-full shrink-0 pr-1"
+            >
+              <ReviewCard
+                experience={experience}
+                reviewCount={getReviewCount(experience)}
+                onPhotoOpen={onPhotoOpen}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {experiences.length > 1 ? (
+        <div className="mt-1 flex items-center justify-between gap-4">
+          <button
+            type="button"
+            aria-label="Previous traveller review"
+            onClick={showPreviousReview}
+            className="grid size-9 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:text-primary"
+          >
+            <ChevronLeft className="size-4" strokeWidth={2.3} />
+          </button>
+
+          <div className="flex items-center justify-center gap-2">
+            {experiences.map((experience, index) => (
+              <button
+                key={`${experience.id || experience.experienceId}-dot`}
+                type="button"
+                aria-label={`Show traveller review ${index + 1}`}
+                aria-current={index === boundedIndex ? "true" : undefined}
+                onClick={() => setActiveIndex(index)}
+                className={cn(
+                  "size-2 rounded-full transition-colors",
+                  index === boundedIndex ? "bg-primary" : "bg-primary/30"
+                )}
+              />
+            ))}
+          </div>
+
+          <button
+            type="button"
+            aria-label="Next traveller review"
+            onClick={showNextReview}
+            className="grid size-9 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:text-primary"
+          >
+            <ChevronRight className="size-4" strokeWidth={2.3} />
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1696,7 +1742,7 @@ function ToursSection({
       </p>
       <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <h2 className="font-heading text-title font-bold leading-none tracking-normal text-secondary">
-          Tours in {destination.destinationName.toUpperCase()}
+          Tours in {destination.destinationName.toLowerCase()}
         </h2>
         <Link
           href={getTourCalendarHref({ destination })}
@@ -1707,7 +1753,7 @@ function ToursSection({
         </Link>
       </div>
 
-      <div className="mt-5 grid justify-items-center gap-5 md:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-5 grid justify-start gap-5 [grid-template-columns:repeat(auto-fit,minmax(280px,320px))]">
         {tours.slice(0, 3).map((tour, index) => (
           <DestinationTourCard
             key={tour.id || tour.tourId}
@@ -1739,173 +1785,24 @@ function DestinationTourCard({
   price: number;
   tour: PublicTour;
 }) {
-  const duration = compactDurationLabel(
-    tour.durationDn,
-    destination.recommendedDurationDays || 1
-  );
-  const tourHref = getTourHref(tour);
-  const tourIncludes = [
-    { icon: BedDouble, label: "Accommodation" },
-    { icon: Camera, label: "Sightseeing" },
-    { icon: UserRoundCheck, label: "Expert guide" },
-    { icon: Bus, label: "Local transport" },
-  ];
-
   return (
-    <article className="group w-full max-w-[410px] overflow-hidden rounded-[20px] border border-[#e8dfd8] bg-white shadow-[0_12px_26px_rgba(50,50,50,0.12)]">
-      <div className="relative aspect-[1.6/1] overflow-hidden bg-muted">
-        <Image
-          src={getTourImage(tour, fallbackImage)}
-          alt={tour.tourName}
-          fill
-          sizes="(min-width: 1280px) 410px, (min-width: 768px) 50vw, 100vw"
-          className="object-cover transition-transform duration-700 group-hover:scale-[1.035]"
-        />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.12)_0%,rgba(18,12,8,0.02)_48%,rgba(18,12,8,0.35)_100%)]" />
-
-        <div className="absolute left-5 top-0 flex h-[46px] items-stretch">
-          <span
-            aria-hidden="true"
-            className="grid w-[40px] place-items-center rounded-b-[14px] bg-primary/72 text-white shadow-[0_10px_22px_rgba(35,23,15,0.2)] backdrop-blur-[2px]"
-          >
-            <BestsellerBadgeIcon />
-          </span>
-          <span className="inline-flex max-w-[118px] items-center truncate px-3 font-sans text-[10px] font-extrabold uppercase leading-none text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.55)]">
-            {getTourBadgeLabel(tour)}
-          </span>
-        </div>
-
-        <button
-          type="button"
-          className="absolute right-3 top-3 grid size-10 place-items-center rounded-full bg-[#2b241f]/80 text-white shadow-[0_10px_24px_rgba(35,23,15,0.28)] backdrop-blur-[2px] transition-colors hover:bg-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-white/45"
-          aria-label={`Save ${tour.tourName}`}
-        >
-          <Heart className="size-[18px]" strokeWidth={1.9} />
-        </button>
-
-        <span className="absolute bottom-4 left-4 inline-flex h-9 max-w-[calc(100%-2rem)] items-center gap-2 rounded-full bg-[#2b241f]/80 px-4 font-sans text-[13px] font-medium leading-none text-white shadow-[0_10px_22px_rgba(35,23,15,0.24)] backdrop-blur-[2px]">
-          <span className="grid size-[18px] shrink-0 place-items-center rounded-full bg-white text-[#2b241f]">
-            <Clock3 className="size-3" strokeWidth={2.3} />
-          </span>
-          <span className="truncate">{duration}</span>
-        </span>
-
-        <span className="absolute bottom-4 right-4 hidden h-9 max-w-[50%] items-center rounded-full bg-[#2b241f]/80 px-4 font-sans text-[13px] font-medium leading-none text-white shadow-[0_10px_22px_rgba(35,23,15,0.24)] backdrop-blur-[2px] sm:inline-flex">
-          <span className="truncate">{getTourDifficultyLabel(tour)}</span>
-        </span>
-      </div>
-
-      <div className="px-4 pb-5 pt-4 sm:px-5">
-        <h3 className="line-clamp-2 font-heading text-[24px] font-bold leading-[1.06] tracking-normal text-secondary sm:text-[25px]">
-          {tour.tourName}
-        </h3>
-
-        <span className="mt-3 block h-px w-full bg-primary/65" />
-
-        <div className="mt-2 grid gap-2 font-sans lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-          <div className="min-w-0">
-            <p className="text-[12px] font-medium leading-none text-secondary/86">
-              Upcoming Departure
-            </p>
-            <time className="mt-1.5 block truncate text-[16px] font-medium leading-none text-primary">
-              {formatOrdinalDate(nextDeparture?.departureDate)}
-            </time>
-          </div>
-          <Link
-            href={getTourCalendarHref({ destination, tour })}
-            className="inline-flex w-fit items-center gap-2 pt-0.5 text-[12px] font-medium leading-none text-secondary transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20 sm:text-[13px] lg:justify-self-end"
-          >
-            <span className="whitespace-nowrap">View all departures</span>
-            <CalendarDays className="size-5 shrink-0 text-primary" strokeWidth={1.8} />
-          </Link>
-        </div>
-
-        <div className="mt-4 flex min-w-0 items-baseline justify-between gap-3 font-sans text-secondary">
-          <span className="shrink-0 text-[12px] font-medium leading-none text-secondary/62 sm:text-[13px]">
-            Tour Expert
-          </span>
-          <strong className="min-w-0 truncate text-right text-[14px] font-semibold leading-none text-secondary sm:text-[15px]">
-            {expertName}
-          </strong>
-        </div>
-
-        <div className="mt-2 border-y border-[#d6d1cb]">
-          <div className="flex items-center justify-between gap-3 py-2">
-            <span className="font-sans text-[14px] font-medium leading-none text-secondary">
-              Tour Includes
-            </span>
-            <div className="flex shrink-0 items-center gap-2.5 text-primary sm:gap-3">
-              {tourIncludes.map(({ icon, label }) => (
-                <TourIncludeIcon key={label} icon={icon} label={label} />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-nowrap items-center justify-between gap-2.5">
-          <span className="min-w-0 flex-1 font-sans">
-            <span className="block text-[12px] font-medium leading-none text-secondary/72 sm:text-[13px]">
-              Starting from
-            </span>
-            <strong
-              className={cn(
-                "mt-0 block truncate font-sans font-semibold leading-none text-primary",
-                price > 0 ? "text-[22px] sm:text-[24px]" : "text-[20px]"
-              )}
-            >
-              {price > 0 ? `${formatPrice(price)} +` : "On request"}
-            </strong>
-          </span>
-
-          <Button
-            nativeButton={false}
-            render={<Link href={tourHref} />}
-            className="h-[42px] min-w-[134px] shrink-0 gap-4 px-4 text-[16px] font-normal shadow-[0_12px_24px_rgba(212,114,32,0.22)] sm:min-w-[144px] sm:text-[16px]"
-          >
-            Book Now
-            <ButtonArrow className="h-2.5 w-6 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
-          </Button>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function BestsellerBadgeIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 64 64"
-      className="size-6"
-      fill="none"
-      stroke="currentColor"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="4"
-    >
-      <path
-        d="m32 4.5 5.3 4 6.6-.9 2.8 6 6 2.8-.9 6.6 4 5.3-4 5.3.9 6.6-6 2.8-2.8 6-6.6-.9-5.3 4-5.3-4-6.6.9-2.8-6-6-2.8.9-6.6-4-5.3 4-5.3-.9-6.6 6-2.8 2.8-6 6.6.9 5.3-4Z"
-      />
-      <path d="m32 17.4 3.7 7.5 8.3 1.2-6 5.8 1.4 8.2-7.4-3.9-7.4 3.9 1.4-8.2-6-5.8 8.3-1.2L32 17.4Z" />
-    </svg>
-  );
-}
-
-function TourIncludeIcon({
-  icon: Icon,
-  label,
-}: {
-  icon: LucideIcon;
-  label: string;
-}) {
-  return (
-    <span
-      aria-label={label}
-      role="img"
-      title={label}
-      className="grid size-[18px] place-items-center text-primary"
-    >
-      <Icon className="size-4" strokeWidth={2.4} />
-    </span>
+    <TourShowcaseCard
+      allDeparturesHref={getTourCalendarHref({ destination, tour })}
+      badgeLabel="BESTSELLER"
+      difficultyLabel={getTourDifficultyLabel(tour)}
+      durationLabel={compactDurationLabel(
+        tour.durationDn,
+        destination.recommendedDurationDays || 1
+      )}
+      expertName={expertName}
+      href={getTourHref(tour)}
+      image={getTourImage(tour, fallbackImage)}
+      imageSizes="(min-width: 1280px) 320px, (min-width: 640px) 50vw, 100vw"
+      nextDepartureLabel={formatDate(nextDeparture?.departureDate || null)}
+      priceLabel={price > 0 ? `${formatPrice(price)} +` : "On request"}
+      showBadge={tour.isBestseller}
+      title={tour.tourName}
+      className="w-full max-w-[320px]"
+    />
   );
 }

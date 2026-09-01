@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowRight,
   ChevronDown,
   Search,
   SlidersHorizontal,
@@ -800,6 +801,24 @@ export function DestinationsPage({
     setSelectedFocuses((current) => toggleSelection(current, value));
   }
 
+  function clearAllFilters() {
+    resetVisibleDestinations();
+    setSearchQuery("");
+    setActiveCategory("india");
+    setSelectedInterests([]);
+    setSelectedRegions([]);
+    setSelectedStates([]);
+    setSelectedFocuses([]);
+  }
+
+  const hasActiveFilters =
+    searchQuery.trim().length > 0 ||
+    activeCategory !== "india" ||
+    selectedInterests.length > 0 ||
+    activeSelectedRegions.length > 0 ||
+    activeSelectedStates.length > 0 ||
+    activeSelectedFocuses.length > 0;
+
   return (
     <main className="min-h-screen bg-background text-secondary">
       <HeaderBand />
@@ -822,11 +841,13 @@ export function DestinationsPage({
         <DestinationSidebar
           activeCategory={activeCategory}
           focusOptions={focusOptions}
+          hasActiveFilters={hasActiveFilters}
           regionOptions={regionOptions}
           selectedFocuses={activeSelectedFocuses}
           selectedRegions={activeSelectedRegions}
           selectedStates={activeSelectedStates}
           stateOptions={stateOptions}
+          onClearAll={clearAllFilters}
           onFocusToggle={toggleFocus}
           onRegionToggle={toggleRegion}
           onStateToggle={toggleState}
@@ -943,6 +964,8 @@ function DestinationTopBar({
 function DestinationSidebar({
   activeCategory,
   focusOptions,
+  hasActiveFilters,
+  onClearAll,
   onFocusToggle,
   onRegionToggle,
   onStateToggle,
@@ -954,11 +977,13 @@ function DestinationSidebar({
 }: {
   activeCategory: CategoryFilter;
   focusOptions: CountOption[];
+  hasActiveFilters: boolean;
   regionOptions: CountOption[];
   selectedFocuses: string[];
   selectedRegions: string[];
   selectedStates: string[];
   stateOptions: CountOption[];
+  onClearAll: () => void;
   onFocusToggle: (value: string) => void;
   onRegionToggle: (value: string) => void;
   onStateToggle: (value: string) => void;
@@ -970,9 +995,19 @@ function DestinationSidebar({
 
   return (
     <aside className="lg:sticky lg:top-[70px] lg:self-start">
-      <div className="mb-4 flex items-center gap-2 font-sans text-[13px] font-semibold uppercase leading-none text-primary">
-        <SlidersHorizontal className="size-4" strokeWidth={1.8} />
-        <span>Filter your search</span>
+      <div className="mb-4 flex items-center justify-between gap-3 font-sans leading-none">
+        <div className="flex items-center gap-2 text-[13px] font-semibold uppercase text-primary">
+          <SlidersHorizontal className="size-4" strokeWidth={1.8} />
+          <span>Filter your search</span>
+        </div>
+        <button
+          type="button"
+          disabled={!hasActiveFilters}
+          onClick={onClearAll}
+          className="text-[12px] font-bold text-primary transition-colors hover:text-accent disabled:pointer-events-none disabled:text-secondary/32"
+        >
+          Clear all
+        </button>
       </div>
 
       <div className="rounded-[4px] border border-border bg-white px-5 py-5 ">
@@ -1082,7 +1117,7 @@ function InterestFilter({
 }) {
   return (
     <div className="space-y-3 border-b border-primary/45 pb-5">
-      <p className="font-sans text-description font-medium uppercase leading-none text-primary">
+      <p className="font-sans text-description font-medium uppercase leading-none text-secondary">
         Pick your interest
       </p>
       <div className="flex flex-wrap gap-x-3 gap-y-3">
@@ -1096,10 +1131,10 @@ function InterestFilter({
               aria-pressed={isActive}
               onClick={() => onInterestToggle(tab.value)}
               className={cn(
-                "inline-flex h-9 min-w-[112px] items-center justify-center gap-2 rounded-full border px-5 font-sans text-[15px] font-semibold leading-none transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+                "inline-flex h-9 min-w-[112px] items-center justify-center gap-2 rounded-full border px-5 font-sans text-[15px] font-normal leading-none transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
                 isActive
                   ? "border-primary bg-primary text-white shadow-[0_6px_14px_rgba(212,114,32,0.18)]"
-                  : "border-primary/70 bg-white text-primary hover:bg-primary hover:text-white"
+                  : "border-primary/70 bg-white text-secondary hover:bg-primary hover:text-white"
               )}
             >
               <span>{tab.label}</span>
@@ -1204,30 +1239,37 @@ function DestinationCard({
         />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.06)_0%,rgba(18,12,8,0.12)_42%,rgba(18,12,8,0.82)_100%)]" />
 
-        <div className="absolute inset-x-0 bottom-0 px-4 pb-4 text-white">
-          <h3 className="line-clamp-3 font-heading text-[25px] font-bold leading-[1.04] tracking-normal drop-shadow-[0_1px_4px_rgba(0,0,0,0.6)]">
+        <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-4 px-4 pt-4 text-white">
+          <h3 className="min-w-0 font-sans text-[18px] font-semibold leading-none tracking-normal ">
             {title}
           </h3>
+          <ArrowRight
+            aria-hidden="true"
+            className="size-6 shrink-0  transition-transform duration-300 group-hover:translate-x-0.5"
+            strokeWidth={2}
+          />
+        </div>
+
+        <div className="absolute inset-x-0 bottom-0 px-4 pb-4 text-white">
+          {categoryPills.length > 0 ? (
+            <div className="mt-3 flex max-h-[112px] flex-wrap gap-1.5 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100">
+              {categoryPills.map((label) => (
+                <span
+                  key={label}
+                  title={label}
+                  className="inline-flex max-w-full items-center rounded-full border border-primary/15 bg-[#2b241f]/88 px-3 py-2 font-sans text-[11px] font-semibold leading-none text-white"
+                >
+                  <span className="truncate">{label}</span>
+                </span>
+              ))}
+            </div>
+          ) : null}
           <div className="mt-4 flex items-center justify-between gap-3">
-            <span className="inline-flex h-[30px] min-w-[124px] items-center justify-left rounded-[24px] bg-[#2b241f]/88 px-4 font-sans text-[13px] font-medium leading-none text-white shadow-[0_10px_22px_rgba(35,23,15,0.22)] transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:bg-[#2b241f]">
+            <span className="inline-flex h-9 min-w-[124px] items-center justify-center rounded-[24px] border border-primary bg-white px-5 font-sans text-[15px] font-normal leading-none text-secondary transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:bg-primary group-hover:text-white">
               <span className="truncate">Customize</span>
             </span>
           </div>
         </div>
-
-        {categoryPills.length > 0 ? (
-          <div className="absolute inset-x-4 top-4 flex flex-wrap justify-start gap-1.5 opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100">
-            {categoryPills.map((label) => (
-              <span
-                key={label}
-                title={label}
-                className="inline-flex max-w-full items-center gap-1 rounded-full border border-primary/15 bg-white px-3 py-2 font-sans text-[11px] font-semibold leading-none text-primary shadow-[0_5px_12px_rgba(0,0,0,0.16)]"
-              >
-                <span className="truncate">{label}</span>
-              </span>
-            ))}
-          </div>
-        ) : null}
       </article>
     </Link>
   );

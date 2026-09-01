@@ -30,14 +30,14 @@ export function HomePage({
 }) {
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <section className="relative h-[100svh] min-h-[560px] overflow-visible lg:h-[80vh] lg:min-h-0">
+      <section className="relative h-[100svh] min-h-[560px] overflow-hidden lg:h-[80vh] lg:min-h-0">
         <Image
           src="/home assets/Heritage Banner.webp"
           alt="Amber fort over a heritage landscape"
           fill
           priority
           sizes="100vw"
-          className="object-cover object-center"
+          className="scale-[1.08] object-cover object-center sm:scale-[1.1] lg:scale-[1.12]"
         />
 
       

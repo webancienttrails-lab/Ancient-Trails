@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
+import { TourExpertHoverPopup } from "@/components/tours/tour-showcase-card";
 import { ButtonArrow, buttonVariants } from "@/components/ui/button";
 import {
   Select,
@@ -102,27 +103,27 @@ const benefits: Array<{
   icon: LucideIcon;
   title: string;
 }> = [
-  {
-    title: "Expert-Led Tours",
-    description: "Travel with knowledgeable experts and storytellers.",
-    icon: Users,
-  },
-  {
-    title: "Small Groups",
-    description: "Personalised experiences with small group sizes.",
-    icon: BadgeCheck,
-  },
-  {
-    title: "Curated Itineraries",
-    description: "Carefully designed tours covering highlights and hidden gems.",
-    icon: BookOpen,
-  },
-  {
-    title: "Responsible Travel",
-    description: "Supporting local communities and sustainable tourism.",
-    icon: Sprout,
-  },
-];
+    {
+      title: "Expert-Led Tours",
+      description: "Travel with knowledgeable experts and storytellers.",
+      icon: Users,
+    },
+    {
+      title: "Small Groups",
+      description: "Personalised experiences with small group sizes.",
+      icon: BadgeCheck,
+    },
+    {
+      title: "Curated Itineraries",
+      description: "Carefully designed tours covering highlights and hidden gems.",
+      icon: BookOpen,
+    },
+    {
+      title: "Responsible Travel",
+      description: "Supporting local communities and sustainable tourism.",
+      icon: Sprout,
+    },
+  ];
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -373,18 +374,18 @@ function statusBadgeClassName(status: DepartureStatus) {
 function getTourImage(tour?: PublicTour) {
   return getHomeMediaUrl(
     tour?.thumbnailImage ||
-      tour?.bannerImage ||
-      tour?.galleryImages?.[0] ||
-      fallbackUpcomingTours[0]?.image ||
-      "/home assets/Khajuraho.webp"
+    tour?.bannerImage ||
+    tour?.galleryImages?.[0] ||
+    fallbackUpcomingTours[0]?.image ||
+    "/home assets/Khajuraho.webp"
   );
 }
 
 function getExpertImage(expert?: PublicExpert, index = 0) {
   return getHomeMediaUrl(
     expert?.image ||
-      fallbackExpertImages[index % fallbackExpertImages.length] ||
-      "/home assets/Khajuraho.webp"
+    fallbackExpertImages[index % fallbackExpertImages.length] ||
+    "/home assets/Khajuraho.webp"
   );
 }
 
@@ -711,10 +712,12 @@ function createFallbackData(): EnrichedDeparture[] {
       tourId: seed.tourId,
       tourName: seed.tourName,
       tourType: "Curated Tour",
+      tourFormat: index % 2 === 0 ? "Heritage Tours" : "Short Trails",
       destinationId: seed.destinationId,
       destinationIds: [seed.destinationId],
       durationDn: seed.durationDn,
       category: seed.category,
+      isBestseller: index === 0,
       difficulty: "Easy",
       bestSeason: "Oct - Mar",
       description:
@@ -929,10 +932,10 @@ export function TourCalendarPage({
           destinationsResponse.data.destinations.length > 0
             ? destinationsResponse.data.destinations
             : sourceDepartures
-                .map(({ destination }) => destination)
-                .filter((destination): destination is PublicDestination =>
-                  Boolean(destination)
-        );
+              .map(({ destination }) => destination)
+              .filter((destination): destination is PublicDestination =>
+                Boolean(destination)
+              );
         const nextSelectedTourId = resolveTourFilter(initialTourQuery, nextTours);
         const nextSelectedDestinationId = resolveDestinationFilter(
           initialDestinationQuery,
@@ -1043,18 +1046,18 @@ export function TourCalendarPage({
   );
   const selectedDateDepartures = selectedDateKey
     ? sortedCalendarFilteredDepartures.filter(
-        ({ departure }) =>
-          getDateKey(departure.departureDate) === selectedDateKey
-      )
+      ({ departure }) =>
+        getDateKey(departure.departureDate) === selectedDateKey
+    )
     : [];
   const upcomingDepartures =
     isDateFilterActive && selectedDateDepartures.length > 0
       ? selectedDateDepartures
       : sortedCalendarFilteredDepartures.filter(
-          ({ departure }) =>
-            getDateValue(departure.departureDate) >=
-            startOfDay(new Date()).getTime()
-        );
+        ({ departure }) =>
+          getDateValue(departure.departureDate) >=
+          startOfDay(new Date()).getTime()
+      );
   const visibleExperts = getUniqueExperts(calendarFilteredDepartures, experts);
 
   function clearDateSelection() {
@@ -1100,6 +1103,7 @@ export function TourCalendarPage({
           onMonthChange={selectVisibleMonth}
           onSelectDate={selectDate}
           onYearChange={selectVisibleYear}
+          onClearDate={clearDateSelection}
         />
 
         <UpcomingDeparturesPanel
@@ -1157,6 +1161,7 @@ function CalendarPanel({
   onMonthChange,
   onSelectDate,
   onYearChange,
+  onClearDate,
 }: {
   calendarDays: CalendarDay[];
   calendarYearOptions: number[];
@@ -1167,15 +1172,28 @@ function CalendarPanel({
   onMonthChange: (monthIndex: number, year?: number) => void;
   onSelectDate: (key: string) => void;
   onYearChange: (year: number) => void;
+  onClearDate: () => void; // ADD
 }) {
   const todayKey = getTodayKey();
 
   return (
     <aside className="lg:sticky lg:top-[118px] lg:self-start">
       <article className="rounded-[9px] border border-[#ead8c5] bg-white/94 p-6 transition-all duration-300">
-        <h2 className="font-heading text-[22px] font-bold leading-none text-secondary">
-          Filter by Date
-        </h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-heading text-[22px] font-bold leading-none text-secondary">
+            Filter by Date
+          </h2>
+
+          {isDateFilterActive ? (
+            <button
+              type="button"
+              onClick={onClearDate}
+              className="font-sans text-[12px] font-semibold text-primary transition-colors hover:text-accent hover:underline"
+            >
+              Clear All
+            </button>
+          ) : null}
+        </div>
         <div className="mt-6 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
           <button
             type="button"
@@ -1277,29 +1295,17 @@ function CalendarPanel({
                 onClick={() => onSelectDate(key)}
                 aria-pressed={isSelected}
                 className={cn(
-                  "relative mx-auto grid size-10 place-items-center rounded-full border border-transparent pb-1.5 font-sans text-[13px] font-semibold transition-all disabled:cursor-default focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20",
+                  "relative mx-auto grid size-10 place-items-center rounded-full border border-transparent pb-1.5 font-sans text-[13px] font-semibold transition-all disabled:cursor-default focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary",
                   day.isCurrentMonth ? "text-secondary" : "text-secondary/32",
                   hasDepartures &&
-                    "bg-primary/12 text-primary hover:border-primary/20 hover:bg-primary/20",
+                  "bg-primary text-secondary hover:border-primary/20 hover:bg-primary/20",
                   isToday &&
-                    "rounded-full border ",
+                  "rounded-full bg-[#d1fce1] border border-[#2faa5d] ",
                   isSelected &&
-                    "border-primary/45 bg-primary text-white "
+                  "border-primary/45 bg-primary text-white "
                 )}
               >
                 <span className="leading-none">{day.date.getDate()}</span>
-                {isToday || hasDepartures ? (
-                  <span
-                    className={cn(
-                      "absolute bottom-1.5 size-1.5 rounded-full",
-                      isToday
-                        ? currentDateDotClassName
-                        : isSelected
-                          ? "bg-white"
-                          : departureDateDotClassName
-                    )}
-                  />
-                ) : null}
               </button>
             );
           })}
@@ -1358,10 +1364,10 @@ function UpcomingDeparturesPanel({
     selectedDestinationId === "all"
       ? "All Destinations"
       : destinationOptions.find(
-          (destination) =>
-            destination.id.trim().toUpperCase() ===
-            selectedDestinationId.trim().toUpperCase()
-        )?.label || selectedDestinationId;
+        (destination) =>
+          destination.id.trim().toUpperCase() ===
+          selectedDestinationId.trim().toUpperCase()
+      )?.label || selectedDestinationId;
 
   return (
     <article>
@@ -1374,6 +1380,7 @@ function UpcomingDeparturesPanel({
             <span className="shrink-0 font-sans text-[12px] font-bold text-secondary">
               Choose Destination
             </span>
+
             <div className="w-full sm:w-[250px]">
               <Select
                 value={selectedDestinationId}
@@ -1386,16 +1393,33 @@ function UpcomingDeparturesPanel({
                 <SelectTrigger className="h-10 rounded-full border-[#e8cbaa] bg-[#fffaf4] text-[13px] font-bold">
                   <SelectValue>{selectedDestinationLabel}</SelectValue>
                 </SelectTrigger>
+
                 <SelectContent>
-                  <SelectItem value="all">All Destinations</SelectItem>
+                  <SelectItem value="all">
+                    All Destinations
+                  </SelectItem>
+
                   {destinationOptions.map((destination) => (
-                    <SelectItem key={destination.id} value={destination.id}>
+                    <SelectItem
+                      key={destination.id}
+                      value={destination.id}
+                    >
                       {destination.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+
+            {selectedDestinationId !== "all" ? (
+              <button
+                type="button"
+                onClick={() => onDestinationChange("all")}
+                className="shrink-0 font-sans text-[12px] font-semibold text-primary transition-colors hover:text-accent hover:underline"
+              >
+                Clear All
+              </button>
+            ) : null}
           </div>
         </div>
         <div className="w-full xl:w-[210px]">
@@ -1491,12 +1515,7 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
               </div>
 
               <span className="font-sans">
-                <strong className="block text-[15px] font-bold leading-none text-secondary sm:text-[16px]">
-                  {seatsLeft}
-                </strong>
-                <span className="mt-1 block text-[10px] font-medium leading-none text-secondary/58 sm:text-[11px]">
-                  Seats Left
-                </span>
+                
               </span>
 
               <span className="font-sans">
@@ -1536,7 +1555,7 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
                   "h-9 w-full justify-between gap-3 px-3 text-[13px] font-normal hover:border-primary hover:bg-white hover:text-primary hover:shadow-none",
               })}
             >
-              View Details
+              Book Now
               <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
             </Link>
 
@@ -1546,9 +1565,18 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
                 <span className="block text-[9px] font-semibold uppercase leading-none text-secondary/48">
                   Expert
                 </span>
-                <span className="mt-1 block truncate text-[13px] font-bold leading-none text-secondary">
-                  {getExpertName(item)}
-                </span>
+                <TourExpertHoverPopup
+                  image={getExpertImage(item.expert, index)}
+                  name={getExpertName(item)}
+                  specialties={item.expert?.expertiseTags || []}
+                  specialty={
+                    item.expert?.expertiseTags[0] ||
+                    item.tour.category ||
+                    item.tour.tourType ||
+                    "Heritage Tours"
+                  }
+                  triggerClassName="mt-1 text-[13px] font-bold leading-none sm:text-[13px]"
+                />
                 <Link
                   href="/about"
                   className="mt-1 inline-flex text-[13px] font-bold leading-none text-primary transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"

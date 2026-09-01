@@ -37,6 +37,73 @@ function mergeWithFallbackTours(tours: HomeTourCard[]) {
   return merged.slice(0, 6);
 }
 
+function compactDurationLabel(duration: string) {
+  const source = duration.trim();
+  const dayNightMatch = source.match(
+    /(\d+)\s*(?:days?|d)\b\s*\/?\s*(\d+)\s*(?:nights?|n)\b/i
+  );
+
+  if (dayNightMatch) {
+    return `${dayNightMatch[1]}D/${dayNightMatch[2]}N`;
+  }
+
+  return source.replace(/\s*\/\s*/g, "/").replace(/\s+/g, " ");
+}
+
+function getOrdinalSuffix(day: number) {
+  const teenRemainder = day % 100;
+
+  if (teenRemainder >= 11 && teenRemainder <= 13) {
+    return "th";
+  }
+
+  if (day % 10 === 1) {
+    return "st";
+  }
+
+  if (day % 10 === 2) {
+    return "nd";
+  }
+
+  if (day % 10 === 3) {
+    return "rd";
+  }
+
+  return "th";
+}
+
+function formatDepartureDate(value: string) {
+  const source = value.trim();
+
+  if (!source || /^coming soon$/i.test(source)) {
+    return source || "Coming Soon";
+  }
+
+  const formattedDateMatch = source.match(
+    /^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,})\s+(\d{4})$/i
+  );
+
+  if (formattedDateMatch) {
+    const day = Number(formattedDateMatch[1]);
+    const month = formattedDateMatch[2];
+    const year = formattedDateMatch[3];
+
+    return `${day}${getOrdinalSuffix(day)} ${month} ${year}`;
+  }
+
+  const date = new Date(source);
+
+  if (Number.isNaN(date.getTime())) {
+    return source;
+  }
+
+  const day = date.getDate();
+  const month = new Intl.DateTimeFormat("en-GB", { month: "short" }).format(date);
+  const year = date.getFullYear();
+
+  return `${day}${getOrdinalSuffix(day)} ${month} ${year}`;
+}
+
 function TourCard({ tour, className, sizes }: TourCardProps) {
   return (
     <Link
@@ -51,16 +118,17 @@ function TourCard({ tour, className, sizes }: TourCardProps) {
         className="object-cover transition-transform duration-[900ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.035]"
       />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.04)_0%,rgba(18,12,8,0.14)_46%,rgba(18,12,8,0.82)_100%)]" />
-      <time className="absolute right-3 top-3 font-sans text-[14px] font-bold leading-none text-white">
-        {tour.date}
+      <div className="absolute inset-x-0 top-0 h-16 bg-[linear-gradient(180deg,rgba(0,0,0,0.72)_0%,rgba(0,0,0,0)_100%)]" />
+      <time className="absolute right-3 top-3 font-sans text-[14px] font-semibold leading-none text-white">
+        {formatDepartureDate(tour.date)}
       </time>
       <div className="absolute inset-x-0 bottom-3 px-3 text-white">
-        <h3 className="line-clamp-1 font-sans text-[18px] font-bold leading-none ">
+        <h3 className="line-clamp-1 font-sans text-[18px] font-semibold leading-none ">
           {tour.title}
         </h3>
-        <p className="mt-1 font-sans text-[12px] font-medium leading-none text-white/95 ">
-          {tour.duration}
-        </p>
+        <span className="mt-1 inline-flex h-6 items-center rounded-full bg-black/68 px-2.5 font-sans text-[12px] font-normal leading-none text-white shadow-[0_8px_18px_rgba(0,0,0,0.24)] backdrop-blur-[2px]">
+          {compactDurationLabel(tour.duration)}
+        </span>
       </div>
     </Link>
   );

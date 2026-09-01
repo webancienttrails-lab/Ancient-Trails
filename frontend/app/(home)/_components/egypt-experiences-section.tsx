@@ -17,7 +17,11 @@ import {
 } from "lucide-react";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
-import type { HomeExperienceCard } from "@/lib/home-travel";
+import {
+  listPublicExperiences,
+  type HomeExperienceCard,
+  type PublicExperience,
+} from "@/lib/home-travel";
 import { RevealOnView, TextReveal } from "./reveal-on-view";
 
 const egyptCards: HomeExperienceCard[] = [
@@ -133,6 +137,16 @@ type ExperienceCardProps = {
   onOpenVideo?: () => void;
 };
 
+type TravellerReviewSlide = {
+  id: string;
+  rating: number;
+  review: string;
+  travelledMonth: string;
+  travellerName: string;
+};
+
+const REVIEW_AUTOSLIDE_INTERVAL_MS = 5000;
+
 function ExperienceCard({
   card,
   className = "",
@@ -227,6 +241,50 @@ function getUniqueValues(values: string[]) {
   return Array.from(
     new Set(values.map((value) => value.trim()).filter(Boolean))
   );
+}
+
+function formatReviewMonth(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "recently";
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    month: "long",
+  }).format(date);
+}
+
+function getReviewRating(value: number) {
+  return Math.min(5, Math.max(1, Number(value) || 5));
+}
+
+function createReviewSlidesFromExperiences(
+  experiences: PublicExperience[]
+): TravellerReviewSlide[] {
+  return experiences
+    .map((experience) => ({
+      id: experience.id,
+      rating: getReviewRating(experience.overallRating),
+      review: experience.writtenReview.trim(),
+      travelledMonth: formatReviewMonth(experience.createdAt),
+      travellerName: experience.travellerName.trim() || "Traveller",
+    }))
+    .filter((slide) => slide.review);
+}
+
+function createFallbackReviewSlides(
+  experiences: HomeExperienceCard[]
+): TravellerReviewSlide[] {
+  return experiences
+    .map((experience) => ({
+      id: experience.id,
+      rating: getReviewRating(experience.rating),
+      review: experience.review.trim(),
+      travelledMonth: experience.travelledMonth || "recently",
+      travellerName: experience.travellerName.trim() || "Traveller",
+    }))
+    .filter((slide) => slide.review);
 }
 
 function hasExperienceContent(experience: HomeExperienceCard) {
@@ -380,6 +438,150 @@ function getSectionTitle(
   }
 
   return "Traveller Experiences";
+}
+
+function TravellerReviewCarousel({
+  slides,
+}: {
+  slides: TravellerReviewSlide[];
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const boundedIndex = slides[activeIndex] ? activeIndex : 0;
+  const activeSlide = slides[boundedIndex] || slides[0];
+  const filledStars = activeSlide
+    ? Math.max(1, Math.min(5, Math.floor(activeSlide.rating)))
+    : 0;
+
+  useEffect(() => {
+    if (activeIndex <= slides.length - 1) {
+      return;
+    }
+
+    setActiveIndex(0);
+  }, [activeIndex, slides.length]);
+
+  useEffect(() => {
+    if (slides.length <= 1) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setActiveIndex((currentIndex) => (currentIndex + 1) % slides.length);
+    }, REVIEW_AUTOSLIDE_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [slides.length]);
+
+  function showPreviousReview() {
+    setActiveIndex((currentIndex) =>
+      currentIndex === 0 ? slides.length - 1 : currentIndex - 1
+    );
+  }
+
+  function showNextReview() {
+    setActiveIndex((currentIndex) =>
+      currentIndex === slides.length - 1 ? 0 : currentIndex + 1
+    );
+  }
+
+  if (!activeSlide) {
+    return null;
+  }
+
+  return (
+    <div className="flex w-full flex-1 flex-col items-center justify-center text-center">
+      <div className="flex w-full items-center justify-center gap-7 text-primary">
+        <span className="h-px w-14 bg-primary/60" />
+        <Quote className="size-9 fill-current" strokeWidth={0} />
+        <span className="h-px w-14 bg-primary/60" />
+      </div>
+      <TextReveal delay={120}>
+        <p className="mt-3 text-[12px] font-semibold uppercase tracking-normal text-primary">
+          Voices from our travellers
+        </p>
+      </TextReveal>
+
+      <div className="mt-6 min-h-[134px] w-full overflow-hidden">
+        <div
+          className="flex transition-transform duration-500 ease-out"
+          style={{ transform: `translateX(-${boundedIndex * 100}%)` }}
+        >
+          {slides.map((slide) => (
+            <article
+              key={slide.id}
+              className="w-full shrink-0 px-1"
+              aria-hidden={slide.id !== activeSlide.id}
+            >
+              <p className="mx-auto max-w-[285px] font-heading text-[18px] leading-[1.55] text-secondary">
+                {slide.review}
+              </p>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <span className="mt-5 h-px w-10 bg-primary/50" />
+
+      <div className="mt-4 flex items-center justify-center gap-2 text-primary">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <Star
+            key={index}
+            className={`size-4 ${
+              index < filledStars ? "fill-current" : "fill-primary/30"
+            }`}
+            strokeWidth={0}
+          />
+        ))}
+        <span className="ml-4 text-description font-medium text-secondary">
+          {activeSlide.rating.toFixed(1)}
+        </span>
+      </div>
+
+      <p className="mt-3 text-description text-primary">
+        {activeSlide.travellerName}
+       
+      </p>
+
+      {slides.length > 1 ? (
+        <div className="mt-7 flex w-full items-center justify-between gap-4">
+          <button
+            type="button"
+            aria-label="Previous traveller review"
+            onClick={showPreviousReview}
+            className="grid size-10 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:text-primary"
+          >
+            <ChevronLeft className="size-4" strokeWidth={2.3} />
+          </button>
+
+          <div className="flex items-center justify-center gap-3">
+            {slides.map((slide, index) => (
+              <button
+                key={`${slide.id}-dot`}
+                type="button"
+                aria-label={`Show traveller review ${index + 1}`}
+                aria-current={index === boundedIndex ? "true" : undefined}
+                onClick={() => setActiveIndex(index)}
+                className={`size-2 rounded-full transition-all duration-300 ${
+                  index === boundedIndex
+                    ? "scale-110 bg-primary"
+                    : "bg-secondary/20 hover:bg-primary/55"
+                }`}
+              />
+            ))}
+          </div>
+
+          <button
+            type="button"
+            aria-label="Next traveller review"
+            onClick={showNextReview}
+            className="grid size-10 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:text-primary"
+          >
+            <ChevronRight className="size-4" strokeWidth={2.3} />
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function GalleryLightbox({
@@ -616,9 +818,10 @@ export function EgyptExperiencesSection({
     [experiences]
   );
   const hasLiveExperiences = liveExperiences.length > 0;
-  const displayExperiences = hasLiveExperiences
-    ? liveExperiences
-    : getFallbackExperiences();
+  const displayExperiences = useMemo(
+    () => (hasLiveExperiences ? liveExperiences : getFallbackExperiences()),
+    [hasLiveExperiences, liveExperiences]
+  );
   const featuredCard = getFeaturedCard(displayExperiences);
   const gridCards = getGridCards(displayExperiences, hasLiveExperiences);
   const lightboxImages = getTravellerGalleryImages(displayExperiences);
@@ -631,9 +834,25 @@ export function EgyptExperiencesSection({
   const [activeVideo, setActiveVideo] = useState<ExperienceMediaCard | null>(
     null
   );
-  const voice =
-    displayExperiences.find((card) => card.review.trim()) || egyptCards[0];
-  const filledStars = Math.max(1, Math.min(5, Math.floor(voice.rating)));
+  const [destinationReviewState, setDestinationReviewState] = useState<{
+    key: string;
+    slides: TravellerReviewSlide[];
+  }>({ key: "", slides: [] });
+  const reviewDestinationIds = useMemo(
+    () => getUniqueValues(displayExperiences.map((experience) => experience.destinationId)),
+    [displayExperiences]
+  );
+  const reviewDestinationKey = reviewDestinationIds.join("|");
+  const fallbackReviewSlides = useMemo(
+    () => createFallbackReviewSlides(displayExperiences),
+    [displayExperiences]
+  );
+  const reviewSlides =
+    hasLiveExperiences &&
+    destinationReviewState.key === reviewDestinationKey &&
+    destinationReviewState.slides.length > 0
+      ? destinationReviewState.slides
+      : fallbackReviewSlides;
   const sectionTitle = getSectionTitle(displayExperiences, hasLiveExperiences);
   const openGallery =
     galleryImages.length > 0
@@ -644,6 +863,53 @@ export function EgyptExperiencesSection({
 
     return clickedImageIndex >= 0 ? clickedImageIndex : 0;
   };
+
+  useEffect(() => {
+    if (!hasLiveExperiences || reviewDestinationIds.length === 0) {
+      return;
+    }
+
+    let isMounted = true;
+
+    async function loadDestinationReviews() {
+      try {
+        const responses = await Promise.all(
+          reviewDestinationIds.map((destinationId) =>
+            listPublicExperiences(destinationId)
+          )
+        );
+        const reviewsById = new Map<string, TravellerReviewSlide>();
+
+        responses
+          .flatMap((response) => response.data.experiences)
+          .forEach((experience) => {
+            createReviewSlidesFromExperiences([experience]).forEach((slide) => {
+              reviewsById.set(slide.id, slide);
+            });
+          });
+
+        if (isMounted) {
+          setDestinationReviewState({
+            key: reviewDestinationKey,
+            slides: Array.from(reviewsById.values()),
+          });
+        }
+      } catch {
+        if (isMounted) {
+          setDestinationReviewState({
+            key: reviewDestinationKey,
+            slides: [],
+          });
+        }
+      }
+    }
+
+    loadDestinationReviews();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [hasLiveExperiences, reviewDestinationIds, reviewDestinationKey]);
 
   return (
     <section className="relative overflow-hidden bg-background py-10 lg:py-14">
@@ -714,17 +980,15 @@ export function EgyptExperiencesSection({
             <button
               type="button"
               onClick={() => openGallery?.(0)}
-              className="col-span-2 flex h-[92px] items-center justify-center gap-4 rounded-[7px] border-0 bg-white px-0 text-description transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-primary cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:col-span-4 lg:col-span-1"
+              className="col-span-2 flex h-[92px] items-center justify-center gap-4 rounded-[7px] border-0 bg-white px-0 text-primary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]  cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:col-span-4 lg:col-span-1"
             >
-              <span className="grid size-8 shrink-0 place-items-center rounded-full border-[2px] border-secondary">
+              <span className="grid size-8 shrink-0 place-items-center rounded-full border-[2px] border-primary">
                 <ImageIcon className="size-4" strokeWidth={1.9} />
               </span>
               <span className="text-left font-sans text-[14px] font-medium leading-[1.12]">
-                View all
-                <br />
-                photos
+                VIEW ALL PHOTOS
               </span>
-              <ButtonArrow className="h-4 w-6" />
+             
             </button>
           </div>
         </div>
@@ -739,42 +1003,7 @@ export function EgyptExperiencesSection({
             <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
           </Button>
 
-          <div className="flex w-full items-center justify-center gap-7 text-primary">
-            <span className="h-px w-14 bg-primary/60" />
-            <Quote className="size-9 fill-current" strokeWidth={0} />
-            <span className="h-px w-14 bg-primary/60" />
-          </div>
-          <TextReveal delay={120}>
-            <p className="mt-3 text-[12px] font-semibold uppercase tracking-normal text-primary">
-              Voices from our travellers
-            </p>
-          </TextReveal>
-          <TextReveal delay={240}>
-            <p className="mt-6 max-w-[285px] font-heading text-[18px] leading-[1.55] text-secondary">
-              {voice.review}
-            </p>
-          </TextReveal>
-          <span className="mt-5 h-px w-10 bg-primary/50" />
-
-          <div className="mt-4 flex items-center justify-center gap-2 text-primary">
-            {Array.from({ length: 5 }).map((_, index) => (
-              <Star
-                key={index}
-                className={`size-4 ${
-                  index < filledStars ? "fill-current" : "fill-primary/30"
-                }`}
-                strokeWidth={0}
-              />
-            ))}
-            <span className="ml-4 text-description font-medium text-secondary">
-              {voice.rating.toFixed(1)}
-            </span>
-          </div>
-          <TextReveal delay={360}>
-            <p className="mt-3 text-description text-primary">
-              {voice.travellerName}
-            </p>
-          </TextReveal>
+          <TravellerReviewCarousel slides={reviewSlides} />
         </aside>
       </div>
 

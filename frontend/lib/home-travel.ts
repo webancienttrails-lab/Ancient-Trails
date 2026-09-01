@@ -5,10 +5,12 @@ export type PublicTour = {
   tourId: string;
   tourName: string;
   tourType: string;
+  tourFormat: string;
   destinationId: string;
   destinationIds: string[];
   durationDn: string;
   category: string;
+  isBestseller: boolean;
   difficulty: string;
   bestSeason: string;
   description: string;
@@ -1048,7 +1050,7 @@ export function buildTrendingDestinationCards(
 
 export function buildCustomisedTourCards(
   destinations: PublicDestination[],
-  limit = 3,
+  limit = 6,
   selectedCustomisedTourDestinations: HomeCustomisedTourDestinationSetting[] = []
 ): HomeCustomisedTourCard[] {
   const destinationById = new Map(
@@ -1191,7 +1193,7 @@ export async function getHomeTrendingDestinations(limit = 8) {
   );
 }
 
-export async function getHomeCustomisedTourDestinations(limit = 3) {
+export async function getHomeCustomisedTourDestinations(limit = 6) {
   const [homeResponse, destinationsResponse] = await Promise.all([
     getHomePageContent(),
     listPublicDestinations(),

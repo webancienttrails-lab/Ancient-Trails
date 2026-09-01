@@ -8,35 +8,35 @@ const whyChooseUsFeatures = [
     titleLines: ["Mentor Led", "Trails"],
     description:
       "Travel with people who understand history, archaeology and culture.",
-    icon: "/home assets/icons/Mentor Led Trails.png",
+    icon: "/home assets/icons/tour-guide.png",
   },
   {
     title: "Tour Expert on Every Trip",
     titleLines: ["Tour Expert on Every", "Trip"],
     description:
       "A well managed itinerary, so you stay fully present in the experience.",
-    icon: "/home assets/icons/Tour Expert.png",
+    icon: "/home assets/icons/route.png",
   },
   {
     title: "Learning with Leisure",
     titleLines: ["Learning with", "Leisure"],
     description:
       "The pace is thoughtful. The travel stays comfortable and never rushed.",
-    icon: "/home assets/icons/Learning with Leisure.png",
+    icon: "/home assets/icons/library.png",
   },
   {
     title: "Curated Across Interests",
     titleLines: ["Curated Across", "Interests"],
     description:
       "Choose from heritage trips, short trails, international journeys and specialized tours.",
-    icon: "/home assets/icons/Curated Interests.png",
+    icon: "/home assets/icons/business-trip.png",
   },
   {
     title: "Safe and Smooth Planning",
     titleLines: ["Safe and Smooth", "Planning"],
     description:
       "Clear itineraries, easy bookings, guided support that help instill confidence in travellers.",
-    icon: "/home assets/icons/Safe Planning.png",
+    icon: "/home assets/icons/strategic-plan.png",
   },
 ];
 
@@ -44,26 +44,26 @@ export function WhyChooseUsSection() {
   return (
     <section
       id="why-choose-us"
-      className="relative overflow-hidden bg-background pb-16 pt-14 lg:pb-24 lg:pt-16"
+      className="relative overflow-hidden bg-background pb-16 pt-4 lg:pb-24 lg:pt-16"
     >
-      <div className="pointer-events-none absolute -right-3 top-[58px] hidden h-[255px] w-[175px] overflow-hidden lg:block">
+      <div className="pointer-events-none absolute -right-14 -top-[118px] hidden h-[clamp(270px,22vw,390px)] w-[clamp(250px,17vw,330px)] overflow-hidden lg:block">
         <Image
           src="/home assets/Heritage Banner.webp"
           alt=""
           fill
-          sizes="175px"
-          className="object-cover object-left opacity-[0.46] grayscale contrast-[1.35] brightness-[1.04] mix-blend-multiply"
+          sizes="(min-width: 1024px) 15vw, 0px"
+          className="object-cover object-left-top opacity-[0.46] grayscale contrast-[1.35] brightness-[1.04] mix-blend-multiply"
         />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,#ffffff_0%,rgba(255,255,255,0)_16%,rgba(255,255,255,0)_78%,#ffffff_100%),linear-gradient(180deg,#ffffff_0%,rgba(255,255,255,0)_10%,rgba(255,255,255,0)_76%,#ffffff_100%)]" />
       </div>
 
-      <div className="pointer-events-none absolute -bottom-8 -left-5 hidden h-[210px] w-[150px] overflow-hidden md:block">
+      <div className="pointer-events-none absolute bottom-2 -left-0 hidden h-[clamp(230px,21vw,340px)] w-[clamp(170px,14vw,250px)] overflow-hidden md:block">
         <Image
           src="/home assets/Heritage Banner.webp"
           alt=""
           fill
-          sizes="150px"
-          className="object-cover object-left opacity-[0.42] grayscale contrast-[1.35] brightness-[1.04] mix-blend-multiply"
+          sizes="(min-width: 768px) 14vw, 0px"
+          className="object-cover object-left-bottom opacity-[0.42] grayscale contrast-[1.35] brightness-[1.04] mix-blend-multiply"
         />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0)_64%,#ffffff_100%),linear-gradient(180deg,#ffffff_0%,rgba(255,255,255,0)_14%,rgba(255,255,255,0)_72%,#ffffff_100%)]" />
       </div>
@@ -95,12 +95,12 @@ export function WhyChooseUsSection() {
                 </span>
               ) : null}
 
-              <div className="relative size-[74px]">
+              <div className="relative size-[50px]">
                 <Image
                   src={feature.icon}
                   alt=""
                   fill
-                  sizes="74px"
+                  sizes="50px"
                   className="object-contain"
                 />
               </div>

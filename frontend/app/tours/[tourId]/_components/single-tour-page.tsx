@@ -16,7 +16,6 @@ import {
 } from "react";
 import { createPortal, flushSync } from "react-dom";
 import {
-  ArrowRight,
   BarChart3,
   BedDouble,
   BookOpen,
@@ -26,7 +25,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
-  Hourglass,
   Info,
   Landmark,
   Mail,
@@ -119,14 +117,13 @@ type TravellerCounts = {
 type TravellerCountKey = keyof TravellerCounts;
 
 type TravellerDetailForm = {
+  address: string;
   dateOfBirth: string;
   email: string;
   firstName: string;
   gender: "" | "female" | "male";
   lastName: string;
   mobileNumber: string;
-  nationality: string;
-  panNumber: string;
   phoneCountryCode: string;
   title: string;
 };
@@ -431,14 +428,13 @@ function getTotalTravellers(counts: TravellerCounts) {
 }
 
 const defaultTravellerDetailForm: TravellerDetailForm = {
+  address: "",
   dateOfBirth: "",
   email: "",
   firstName: "",
   gender: "",
   lastName: "",
   mobileNumber: "",
-  nationality: "India",
-  panNumber: "",
   phoneCountryCode: "India +91",
   title: "Mr",
 };
@@ -587,26 +583,6 @@ function getTravellerProfileGender(gender?: string): TravellerDetailForm["gender
   return "";
 }
 
-function getTravellerProfileNationality(nationality?: string) {
-  const trimmedNationality = nationality?.trim() || "";
-
-  if (!trimmedNationality || trimmedNationality === "Indian") {
-    return "India";
-  }
-
-  const supportedNationalities = new Set([
-    "India",
-    "United States",
-    "United Kingdom",
-    "Australia",
-    "Other",
-  ]);
-
-  return supportedNationalities.has(trimmedNationality)
-    ? trimmedNationality
-    : "Other";
-}
-
 function getTravellerProfileDateOfBirth(value?: string) {
   if (!value) {
     return "";
@@ -644,10 +620,10 @@ function isValidMobileNumber(value: string) {
 
 function isTravellerDetailFormComplete(form: TravellerDetailForm) {
   return Boolean(
-    form.firstName.trim() &&
+      form.firstName.trim() &&
       form.lastName.trim() &&
       isValidEmail(form.email) &&
-      form.nationality.trim() &&
+      form.address.trim() &&
       extractPhoneCountryCode(form.phoneCountryCode) &&
       isValidMobileNumber(form.mobileNumber) &&
       form.gender &&
@@ -686,7 +662,6 @@ function getLeadTravellerFormFromProfile(
     mobileNumber: getProfileMobileNumber(user?.mobileNumber),
     phoneCountryCode: getProfilePhoneCountryCode(user?.mobileNumber),
     gender,
-    nationality: getTravellerProfileNationality(user?.nationality),
     dateOfBirth: getTravellerProfileDateOfBirth(user?.dateOfBirth),
   };
 }
@@ -709,7 +684,7 @@ function hasEditedLeadTravellerForm(form?: TravellerDetailForm) {
       form.lastName.trim() ||
       form.email.trim() ||
       form.mobileNumber.trim() ||
-      form.panNumber.trim() ||
+      form.address.trim() ||
       form.gender ||
       form.dateOfBirth.trim()
   );
@@ -784,9 +759,7 @@ function createBookingPayload({
     })),
     guestDetails: travellerTabs.map((tab) => {
       const form = forms[tab.id];
-      const address = form.nationality
-        ? `Nationality: ${form.nationality}`
-        : "Not provided";
+      const address = form.address.trim() || "Not provided";
 
       return {
         title: form.title,
@@ -798,7 +771,6 @@ function createBookingPayload({
         dateOfBirth: form.dateOfBirth,
         gender: form.gender,
         address,
-        panNumber: form.panNumber.trim(),
       };
     }),
     travellers: travellerTabs.map((tab) => {
@@ -817,10 +789,7 @@ function createBookingPayload({
         email: form.email.trim(),
         dateOfBirth: form.dateOfBirth,
         gender: form.gender,
-        address: form.nationality
-          ? `Nationality: ${form.nationality}`
-          : "Not provided",
-        panNumber: form.panNumber.trim(),
+        address: form.address.trim() || "Not provided",
         ageOnDeparture:
           tab.travellerType === "adult"
             ? undefined
@@ -982,6 +951,47 @@ function getLowestPrice(departures: PublicTourDeparture[]) {
   return prices.length > 0 ? Math.min(...prices) : 0;
 }
 
+function getDepartureFillProgress(departure: PublicTourDeparture) {
+  const totalSeats = getDepartureTotalSeats(departure);
+  const filledSeats = getDepartureFilledSeats(departure);
+
+  return Math.min(100, Math.max(0, (filledSeats / totalSeats) * 100));
+}
+
+function getDepartureTotalSeats(departure: PublicTourDeparture) {
+  return Math.max(
+    departure.totalSeats || 0,
+    departure.seatsAvailable || 0,
+    25
+  );
+}
+
+function getDepartureFilledSeats(departure: PublicTourDeparture) {
+  const totalSeats = getDepartureTotalSeats(departure);
+
+  return Math.min(
+    totalSeats,
+    Math.max(
+      0,
+      typeof departure.filledSeats === "number"
+        ? departure.filledSeats
+        : totalSeats - (departure.seatsAvailable || 0)
+    )
+  );
+}
+
+function getSeatProgressColorClass(filledPercent: number) {
+  if (filledPercent >= 70) {
+    return "bg-[#d6452f]";
+  }
+
+  if (filledPercent >= 25) {
+    return "bg-[#f5b82e]";
+  }
+
+  return "bg-[#2faa5d]";
+}
+
 function createFallbackExpert(): PublicExpert {
   return {
     id: "fallback-expert-girinath",
@@ -1049,10 +1059,12 @@ function createFallbackTour(requestedTourId: string): PublicTour {
       tourId: matchedFallback.tourId,
       tourName: matchedFallback.title,
       tourType: "Heritage Walk",
+      tourFormat: "Heritage Tours",
       destinationId: matchedFallback.destinationId,
       destinationIds: [matchedFallback.destinationId],
       durationDn: matchedFallback.duration,
       category: "Heritage Walk",
+      isBestseller: true,
       difficulty: "Moderate",
       bestSeason: "October to March",
       description:
@@ -1085,10 +1097,12 @@ function createFallbackTour(requestedTourId: string): PublicTour {
     tourId: "WALKING-AMALFI-COAST",
     tourName: "Walking the Amalfi Coast",
     tourType: "Heritage Walk",
+    tourFormat: "Short Trails",
     destinationId: "AMALFI-COAST",
     destinationIds: ["AMALFI-COAST"],
     durationDn: "8 Days / 7 Nights",
     category: "Heritage Walk",
+    isBestseller: false,
     difficulty: "Moderate",
     bestSeason: "April to October",
     description:
@@ -1642,7 +1656,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
       const panel = document.getElementById("tour-detail-panel");
       root.classList.toggle(
         "tour-tabs-docked",
-        Boolean(panel && panel.getBoundingClientRect().top <= 132)
+        Boolean(panel && panel.getBoundingClientRect().top <= 0)
       );
     };
 
@@ -1729,15 +1743,6 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
     },
     [resetPaymentAttempt]
   );
-
-  function handleSelectDeparture() {
-    setActiveTab("pricing");
-    window.requestAnimationFrame(() => {
-      document
-        .getElementById("departure-pricing")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  }
 
   async function openRazorpayCheckout(order: BookingPaymentOrder) {
     await loadRazorpayCheckoutScript();
@@ -1861,19 +1866,10 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
 
   return (
     <main className="min-h-screen bg-background text-secondary">
-      <style>
-        {`
-          html.tour-tabs-docked body header {
-            opacity: 0 !important;
-            pointer-events: none !important;
-            translate: -50% calc(-100% - 3rem) !important;
-          }
-        `}
-      </style>
       <Header />
       <PaymentProceedingOverlay checkoutStatus={checkoutStatus} />
 
-      <section className="mx-auto grid w-full max-w-[1300px] gap-5 px-5 pb-7 pt-10 sm:pt-12 lg:grid-cols-[minmax(0,1fr)_306px] lg:px-0">
+      <section className="mx-auto grid w-full max-w-[1300px] gap-5 px-5 pb-7 pt-10 sm:pt-12 lg:grid-cols-[minmax(0,1fr)_360px] lg:px-0">
         <div className="min-w-0">
           <Breadcrumbs tourName={detail.tour.tourName} />
 
@@ -1925,11 +1921,10 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
           />
         </div>
 
-        <aside className="space-y-2.5 lg:sticky lg:top-3 lg:self-start">
+        <aside className="space-y-2.5 lg:sticky lg:top-[112px] lg:self-start">
           <PriceCard
             bestDeparture={bestDeparture}
             price={price}
-            onSelectDeparture={handleSelectDeparture}
             tour={detail.tour}
           />
           <SidebarBookingSummary
@@ -1948,6 +1943,8 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
             }
             onBook={handleBookSeat}
             paymentFeedback={paymentFeedback}
+            selectedDeparture={selectedDeparture}
+            tour={detail.tour}
           />
           <HelpCard />
         </aside>
@@ -2013,16 +2010,16 @@ function PaymentProceedingOverlay({
 
 function Breadcrumbs({ tourName }: { tourName: string }) {
   return (
-    <nav className="flex flex-wrap items-center gap-2.5 font-sans text-[15px] font-medium text-accent">
+    <nav className="flex flex-wrap items-center gap-2.5 font-sans text-[15px] font-medium text-secondary/52">
       <Link href="/" className="transition-colors hover:text-primary">
         Home
       </Link>
-      <ChevronRight className="size-3.5 text-primary/70" />
+      <ChevronRight className="size-3.5 text-secondary/35" />
       <Link href="/tour-calendar" className="transition-colors hover:text-primary">
         Tours
       </Link>
-      <ChevronRight className="size-3.5 text-primary/70" />
-      <span className="font-semibold">{tourName}</span>
+      <ChevronRight className="size-3.5 text-secondary/35" />
+      <span className="font-semibold text-secondary/62">{tourName}</span>
     </nav>
   );
 }
@@ -2259,9 +2256,9 @@ function TourTabs({
     >
       <div
         data-tour-tabs
-        className="sticky top-0 z-[2147483647] overflow-x-auto rounded-[8px] border border-border bg-card shadow-[0_14px_34px_rgba(67,43,27,0.09)]"
+        className="sticky top-0 z-[2147483647] overflow-hidden rounded-[8px] border border-border bg-card shadow-[0_14px_34px_rgba(67,43,27,0.09)]"
       >
-        <div className="grid min-w-[940px] grid-cols-[0.9fr_0.95fr_1.3fr_1.35fr_1fr]">
+        <div className="grid w-full grid-cols-2 sm:grid-cols-3 xl:grid-cols-[0.9fr_0.95fr_1.3fr_1.35fr_1fr]">
           {tabs.map((tab) => {
             const { icon: Icon, label, value } = tab;
 
@@ -2273,14 +2270,14 @@ function TourTabs({
                 aria-pressed={activeTab === value}
                 onClick={() => handleTabClick(tab)}
                 className={cn(
-                  "relative flex min-h-12 items-center justify-center gap-2 border-r border-border px-3 font-sans text-[15px] font-bold transition-colors last:border-r-0",
+                  "relative flex min-h-12 items-center justify-center gap-2 border-r border-b border-border px-2.5 font-sans text-[14px] font-bold transition-colors last:border-r-0 sm:text-[15px] xl:border-b-0",
                   activeTab === value
                     ? "bg-muted/45 text-primary"
                     : "text-secondary hover:bg-primary/5 hover:text-primary"
                 )}
               >
                 <Icon className="size-4 shrink-0" strokeWidth={1.8} />
-                <span className="whitespace-nowrap text-center leading-tight">
+                <span className="min-w-0 text-center leading-tight">
                   {label}
                 </span>
                 {activeTab === value ? (
@@ -3049,8 +3046,9 @@ function PricingPanel({
           {departures.map((departure) => {
             const departureId = getDepartureIdentifier(departure);
             const isSelected = departureId === resolvedSelectedDepartureId;
-            const seatsAvailable = departure.seatsAvailable || 0;
-            const hasSeats = seatsAvailable > 0;
+            const fillProgress = getDepartureFillProgress(departure);
+            const filledSeats = getDepartureFilledSeats(departure);
+            const totalSeats = getDepartureTotalSeats(departure);
 
             return (
               <button
@@ -3058,63 +3056,46 @@ function PricingPanel({
                 type="button"
                 onClick={() => setSelectedDepartureId(departureId)}
                 className={cn(
-                  "group/departure relative flex h-full w-full flex-col overflow-hidden rounded-[8px] border bg-card py-3 pl-5 pr-3 text-left font-sans shadow-[0_6px_14px_rgba(67,43,27,0.04)] transition-all before:absolute before:bottom-3 before:left-0 before:top-3 before:w-1.5 before:rounded-r-full before:bg-primary before:content-[''] hover:border-primary hover:shadow-[0_10px_20px_rgba(67,43,27,0.06)]",
+                  "group/departure relative flex h-full w-full flex-col overflow-hidden rounded-[8px] border bg-card p-3 text-left font-sans shadow-[0_6px_14px_rgba(67,43,27,0.04)] transition-all hover:border-primary hover:shadow-[0_10px_20px_rgba(67,43,27,0.06)]",
                   isSelected
                     ? "border-primary ring-3 ring-primary/15"
                     : "border-primary/28"
                 )}
               >
-                <span className="relative z-10 grid gap-2 sm:grid-cols-3 sm:divide-x sm:divide-border">
-                      <DepartureMetric
-                        icon={CalendarDays}
-                        label="Departure Date"
-                        value={formatDate(departure.departureDate)}
-                      />
-                      <DepartureMetric
-                        icon={Hourglass}
-                        label="Tour Length"
-                        value={tour.durationDn || "Announced soon"}
-                      />
-                      <DepartureMetric
-                        icon={CalendarDays}
-                        label="Return Date"
-                        value={formatDate(departure.returnDate)}
-                      />
+                <span className="grid gap-2 sm:grid-cols-2">
+                  <span className="rounded-[7px] border border-primary/24 bg-primary/10 px-3 py-2 shadow-[0_8px_18px_rgba(158,92,54,0.08)]">
+                    <span className="block text-[11px] font-semibold uppercase leading-none text-primary">
+                      Start Date
+                    </span>
+                    <strong className="mt-1.5 block text-[16px] font-bold leading-none text-secondary">
+                      {formatDate(departure.departureDate)}
+                    </strong>
+                  </span>
+                  <span className="rounded-[7px] border border-accent/24 bg-accent/10 px-3 py-2 shadow-[0_8px_18px_rgba(74,46,30,0.08)]">
+                    <span className="block text-[11px] font-semibold uppercase leading-none text-accent">
+                      Return Date
+                    </span>
+                    <strong className="mt-1.5 block text-[16px] font-bold leading-none text-secondary">
+                      {formatDate(departure.returnDate)}
+                    </strong>
+                  </span>
                 </span>
 
-                <span className="relative z-10 mt-3 grid grid-cols-[minmax(0,1fr)_64px] items-center border-t border-border pt-3">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
-                      <Users className="size-4" strokeWidth={1.7} />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-[14px] font-medium uppercase leading-tight text-secondary/58">
-                        {hasSeats ? "Seats Left" : "Availability"}
-                      </span>
-                      <strong
-                        className={cn(
-                          "mt-0.5 block text-[14px] font-medium leading-none",
-                          hasSeats ? "text-[#159447]" : "text-destructive"
-                        )}
-                      >
-                        {hasSeats ? `${seatsAvailable} Seats Left` : "Sold Out"}
-                      </strong>
+                <span className="mt-3 block border-t border-border pt-3">
+                  <span className="mb-2 flex items-center justify-between gap-3 text-[12px] font-semibold leading-none text-secondary/62">
+                    <span>Seats</span>
+                    <span className="font-bold text-primary">
+                      {filledSeats}/{totalSeats}
                     </span>
                   </span>
-
-                  <span className="flex items-center justify-end border-l border-primary/15 pl-3">
-                    <span className="grid size-11 place-items-center rounded-full text-primary transition-transform group-hover/departure:scale-105">
-                      <span
-                        className={cn(
-                          "grid size-8 place-items-center rounded-full border transition-colors",
-                          isSelected
-                            ? "border-primary"
-                            : "border-primary/45"
-                        )}
-                      >
-                        <ArrowRight className="size-4" strokeWidth={2.4} />
-                      </span>
-                    </span>
+                  <span className="block h-1.5 overflow-hidden rounded-full bg-[#e8edf1]">
+                    <span
+                      className={cn(
+                        "block h-full rounded-full transition-[width] duration-300",
+                        getSeatProgressColorClass(fillProgress)
+                      )}
+                      style={{ width: `${fillProgress}%` }}
+                    />
                   </span>
                 </span>
 
@@ -3265,23 +3246,19 @@ function PricingPanel({
                 updateActiveTravellerDetail("dateOfBirth", nextValue)
               }
             />
-            <select
-              aria-label={`${activeTravellerDetailTab.label} nationality`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
-              value={activeTravellerDetails.nationality}
+            <input
+              aria-label={`${activeTravellerDetailTab.label} address`}
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              value={activeTravellerDetails.address}
               onChange={(event) =>
-                updateActiveTravellerDetail("nationality", event.target.value)
+                updateActiveTravellerDetail("address", event.target.value)
               }
-            >
-              <option>India</option>
-              <option>United States</option>
-              <option>United Kingdom</option>
-              <option>Australia</option>
-              <option>Other</option>
-            </select>
+              placeholder="Address *"
+              type="text"
+            />
           </div>
 
-          <div className="mt-3 grid gap-3 md:grid-cols-[0.9fr_1fr_1fr_1.2fr]">
+          <div className="mt-3 grid gap-3 md:grid-cols-[0.9fr_1fr_1.2fr]">
             <select
               aria-label={`${activeTravellerDetailTab.label} phone country code`}
               className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
@@ -3307,16 +3284,6 @@ function PricingPanel({
               }
               placeholder="Mobile Number *"
               type="tel"
-            />
-            <input
-              aria-label={`${activeTravellerDetailTab.label} PAN number`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
-              value={activeTravellerDetails.panNumber}
-              onChange={(event) =>
-                updateActiveTravellerDetail("panNumber", event.target.value)
-              }
-              placeholder="PAN Number"
-              type="text"
             />
             <div className="flex h-11 items-center gap-4 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary">
               <span className="font-medium">Gender *</span>
@@ -3396,32 +3363,6 @@ function PricingPanel({
         travellerCounts={travellerCounts}
       />
     </div>
-  );
-}
-
-function DepartureMetric({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-}) {
-  return (
-    <span className="flex min-w-0 flex-col items-center gap-1.5 px-1.5 text-center">
-      <span className="grid size-8 place-items-center rounded-full bg-primary/10 text-primary">
-        <Icon className="size-4" strokeWidth={1.7} />
-      </span>
-      <span className="min-w-0">
-        <span className="block text-[14px] font-medium uppercase leading-tight text-secondary/58">
-          {label}
-        </span>
-        <strong className="mt-1 block text-[14px] font-medium leading-none text-secondary">
-          {value}
-        </strong>
-      </span>
-    </span>
   );
 }
 
@@ -3777,7 +3718,7 @@ function DailyItinerary({ days }: { days: ItineraryDay[] }) {
                 onClick={() => setOpenDayNumber(day.dayNumber)}
                 className="grid w-full gap-2 px-3 py-3 text-left font-sans transition-colors hover:bg-muted/35 sm:grid-cols-[58px_minmax(0,1fr)_32px] sm:items-start"
               >
-                <span className="inline-flex h-7 w-14 items-center justify-center rounded-[5px] bg-accent font-sans text-[15px] font-bold text-white">
+                <span className="inline-flex h-7 w-14 items-center justify-center rounded-[5px] bg-secondary/40 font-sans text-[15px] font-bold text-white">
                   Day {day.dayNumber}
                 </span>
                 <span className="min-w-0">
@@ -3807,7 +3748,7 @@ function DailyItinerary({ days }: { days: ItineraryDay[] }) {
                       {metaItems.map((item) => (
                         <span
                           key={`${day.dayNumber}-${item.label}`}
-                          className="rounded-full bg-muted px-2.5 py-1.5 text-[15px] font-semibold leading-tight text-accent"
+                          className="rounded-full bg-muted px-2.5 py-1.5 text-[15px] font-normal leading-tight text-accent"
                         >
                           <strong className="text-secondary">{item.label}:</strong>{" "}
                           {item.value}
@@ -3853,12 +3794,10 @@ function ListBlock({
 
 function PriceCard({
   bestDeparture,
-  onSelectDeparture,
   price,
   tour,
 }: {
   bestDeparture?: PublicTourDeparture;
-  onSelectDeparture: () => void;
   price: number;
   tour: PublicTour;
 }) {
@@ -3890,32 +3829,7 @@ function PriceCard({
         </div>
       </div>
 
-      <div className="px-3 py-3">
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            type="button"
-            onClick={onSelectDeparture}
-            className="h-10 px-3 text-[15px] font-semibold"
-          >
-            Book Now
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setIsEnquiryOpen(true)}
-            className="h-10 px-3 text-[15px] font-semibold"
-          >
-            Enquire Now
-          </Button>
-        </div>
-
-      {bestDeparture ? (
-        <p className="mt-2 flex items-center gap-1.5 font-sans text-[15px] font-semibold text-secondary/58">
-          <CalendarDays className="size-3 text-primary" strokeWidth={1.9} />
-          Next departure: {formatDate(bestDeparture.departureDate)}
-        </p>
-      ) : null}
-      </div>
+      
     </article>
     {isEnquiryOpen ? (
       <EnquiryModal
@@ -4198,6 +4112,8 @@ function SeatBookingActionCard({
   onAcceptedChange,
   onBook,
   paymentFeedback,
+  selectedDeparture,
+  tour,
 }: {
   accepted: boolean;
   canBook: boolean;
@@ -4205,7 +4121,10 @@ function SeatBookingActionCard({
   onAcceptedChange: (accepted: boolean) => void;
   onBook: () => void;
   paymentFeedback: string;
+  selectedDeparture?: PublicTourDeparture;
+  tour: PublicTour;
 }) {
+  const [isEnquiryOpen, setIsEnquiryOpen] = useState(false);
   const isBusy = checkoutStatus !== "idle";
   const isEnabled = accepted && canBook && !isBusy;
   const buttonLabel =
@@ -4215,15 +4134,43 @@ function SeatBookingActionCard({
         ? "Confirming Booking..."
         : checkoutStatus === "gateway_open"
           ? "Complete Payment..."
-          : "Book Your Seat";
+          : "Book Now";
   const buttonClassName =
     "inline-flex h-11 w-full items-center justify-center rounded-full font-sans text-[14px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20";
 
   return (
+    <>
     <article className="rounded-[8px] border border-border bg-card p-3 shadow-[0_10px_24px_rgba(67,43,27,0.05)]">
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          disabled={!isEnabled}
+          onClick={onBook}
+          className={cn(
+            buttonClassName,
+            "text-white",
+            isEnabled
+              ? "bg-primary hover:bg-accent"
+              : "cursor-not-allowed bg-primary/40"
+          )}
+        >
+          {buttonLabel}
+        </button>
+        <button
+          type="button"
+          onClick={() => setIsEnquiryOpen(true)}
+          className={cn(
+            buttonClassName,
+            "border border-primary bg-white text-primary hover:bg-primary hover:text-white"
+          )}
+        >
+          Enquire Now
+        </button>
+      </div>
+
       <label
         className={cn(
-          "flex items-start gap-2 font-sans text-[14px] font-medium leading-[1.45]",
+          "mt-3 flex items-start gap-2 font-sans text-[14px] font-medium leading-[1.45]",
           canBook ? "text-secondary" : "text-secondary/48"
         )}
       >
@@ -4251,21 +4198,6 @@ function SeatBookingActionCard({
         </span>
       </label>
 
-      <button
-        type="button"
-        disabled={!isEnabled}
-        onClick={onBook}
-        className={cn(
-          buttonClassName,
-          "mt-3 text-white",
-          isEnabled
-            ? "bg-primary hover:bg-accent"
-            : "cursor-not-allowed bg-primary/40"
-        )}
-      >
-        {buttonLabel}
-      </button>
-
       {!canBook ? (
         <p className="mt-2 font-sans text-[12px] font-medium leading-[1.4] text-secondary/58">
           Complete date selection, traveller details, and accommodation to continue.
@@ -4278,6 +4210,14 @@ function SeatBookingActionCard({
         </div>
       ) : null}
     </article>
+    {isEnquiryOpen ? (
+      <EnquiryModal
+        bestDeparture={selectedDeparture}
+        tourName={tour.tourName}
+        onClose={() => setIsEnquiryOpen(false)}
+      />
+    ) : null}
+    </>
   );
 }
 

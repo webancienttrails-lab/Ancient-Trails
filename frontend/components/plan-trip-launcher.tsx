@@ -78,13 +78,13 @@ type PlannerSuggestion = {
 };
 
 const planTripButtonClassName =
-  "group h-11 min-w-[210px] justify-between gap-5 px-5 font-normal shadow-none";
+  "group h-12 min-w-[210px] justify-between gap-5 px-5 font-semibold shadow-none text-[17px]";
 const panelPadding = 12;
 
 function PlanTripButtonContent() {
   return (
     <>
-      Plan your trip
+      Plan Your Trip
       <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />
     </>
   );
@@ -349,6 +349,7 @@ export function PlanTripLauncher() {
     createFallbackDepartures()
   );
   const launcherRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const destinationById = useMemo(
     () =>
@@ -429,6 +430,7 @@ export function PlanTripLauncher() {
     !selectedMonth ||
     monthOptions.some((monthOption) => monthOption.value === selectedMonth);
   const effectiveSelectedMonth = selectedMonthIsAvailable ? selectedMonth : "";
+  const hasDestinationQuery = destinationQuery.trim().length > 0;
 
   const updatePanelPosition = useCallback(() => {
     const launcher = launcherRef.current;
@@ -551,6 +553,35 @@ export function PlanTripLauncher() {
     };
   }, [activeField, closePlanner, isOpen, updatePanelPosition]);
 
+  useEffect(() => {
+    if (!isOpen || !activeField) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      if (
+        panelRef.current?.contains(target) &&
+        target.closest("[data-plan-trip-field]")
+      ) {
+        return;
+      }
+
+      setActiveField(null);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [activeField, isOpen]);
+
   const handleLauncherClick = () => {
     if (isOpen) {
       closePlanner();
@@ -561,12 +592,17 @@ export function PlanTripLauncher() {
   };
 
   const handleSearchTours = () => {
+    if (!hasDestinationQuery) {
+      setActiveField("destination");
+      return;
+    }
+
     router.push(
       getToursHref({
         adults: adultCount,
         children: childCount,
         month: effectiveSelectedMonth,
-        search: destinationQuery,
+        search: destinationQuery.trim(),
       })
     );
   };
@@ -645,10 +681,11 @@ export function PlanTripLauncher() {
             type="button"
             variant="outline"
             tabIndex={isCtaSettled ? 0 : -1}
+            disabled={!hasDestinationQuery}
             onClick={handleSearchTours}
             className={`${planTripButtonClassName} h-full w-full min-w-0 !bg-white !text-primary hover:!bg-white hover:!text-primary [&_svg]:!text-primary ${
               isCtaSettled ? "pointer-events-auto" : "pointer-events-none"
-            }`}
+            } ${hasDestinationQuery ? "" : "cursor-not-allowed opacity-60"}`}
           >
             <PlanTripButtonContent />
           </Button>
@@ -656,6 +693,7 @@ export function PlanTripLauncher() {
       ) : null}
 
       <div
+        ref={panelRef}
         id="plan-trip-panel"
         aria-hidden={!isOpen}
         style={
@@ -675,7 +713,7 @@ export function PlanTripLauncher() {
             : "pointer-events-none translate-y-0 scale-x-[var(--launcher-closed-scale-x)] scale-y-[var(--launcher-closed-scale-y)] opacity-0"
         }`}
       >
-        <div className="flex flex-col items-center overflow-visible rounded-[34px] border border-accent/30 bg-white/90 p-3 backdrop-blur-md md:min-h-[60px] md:flex-row md:items-stretch">
+        <div className="flex flex-col items-center justify-center overflow-visible rounded-[34px] border border-accent/30 bg-white/90 p-3 backdrop-blur-md md:min-h-[50px] md:flex-row md:items-stretch">
           <div
             className={`grid flex-1 divide-y divide-accent/25 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] md:h-full md:grid-cols-3 md:items-center md:divide-x md:divide-y-0 ${
               isOpen ? "translate-x-0 opacity-100" : "-translate-x-2 opacity-0"
@@ -764,6 +802,7 @@ export function PlanTripInline({
   const [departures, setDepartures] = useState<PlannerDeparture[]>(() =>
     createFallbackDepartures()
   );
+  const plannerRef = useRef<HTMLDivElement>(null);
 
   const destinationById = useMemo(
     () =>
@@ -840,18 +879,53 @@ export function PlanTripInline({
     };
   }, []);
 
+  useEffect(() => {
+    if (!activeField) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      if (
+        plannerRef.current?.contains(target) &&
+        target.closest("[data-plan-trip-field]")
+      ) {
+        return;
+      }
+
+      setActiveField(null);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [activeField]);
+
   const selectedMonthIsAvailable =
     !selectedMonth ||
     monthOptions.some((monthOption) => monthOption.value === selectedMonth);
   const effectiveSelectedMonth = selectedMonthIsAvailable ? selectedMonth : "";
+  const hasDestinationQuery = destinationQuery.trim().length > 0;
 
   const handleSearchTours = () => {
+    if (!hasDestinationQuery) {
+      setActiveField("destination");
+      return;
+    }
+
     router.push(
       getToursHref({
         adults: adultCount,
         children: childCount,
         month: effectiveSelectedMonth,
-        search: destinationQuery,
+        search: destinationQuery.trim(),
       })
     );
   };
@@ -866,6 +940,7 @@ export function PlanTripInline({
 
   return (
     <div
+      ref={plannerRef}
       className={cn(
         "relative z-30 grid w-full overflow-visible rounded-[34px] border border-accent/30 bg-white/90 p-3 backdrop-blur-md md:min-h-[60px] md:grid-cols-[minmax(0,1fr)_210px] md:items-stretch",
         className
@@ -917,8 +992,11 @@ export function PlanTripInline({
         <Button
           type="button"
           variant="outline"
+          disabled={!hasDestinationQuery}
           onClick={handleSearchTours}
-          className={`${planTripButtonClassName} h-11 w-full min-w-0 !bg-white !text-primary hover:!bg-white hover:!text-primary [&_svg]:!text-primary md:w-[210px]`}
+          className={`${planTripButtonClassName} h-11 w-full min-w-0 !bg-white !text-primary hover:!bg-white hover:!text-primary [&_svg]:!text-primary md:w-[210px] ${
+            hasDestinationQuery ? "" : "cursor-not-allowed opacity-60"
+          }`}
         >
           <PlanTripButtonContent />
         </Button>
@@ -945,7 +1023,7 @@ function DestinationField({
   onSuggestionSelect: (suggestion: PlannerSuggestion) => void;
 }) {
   return (
-    <div className="relative min-w-0 text-left">
+    <div data-plan-trip-field className="relative min-w-0 text-left">
       <label className="sr-only" htmlFor="plan-trip-destination-search">
         Search destination
       </label>
@@ -1017,7 +1095,7 @@ function MonthField({
   onToggle: () => void;
 }) {
   return (
-    <div className="relative min-w-0">
+    <div data-plan-trip-field className="relative min-w-0">
       <PlannerFieldButton
         active={active}
         icon={CalendarDays}
@@ -1099,7 +1177,7 @@ function GuestsField({
       : `${adultCount} ${adultCount === 1 ? "Adult" : "Adults"}`;
 
   return (
-    <div className="relative min-w-0">
+    <div data-plan-trip-field className="relative min-w-0">
       <PlannerFieldButton
         active={active}
         icon={Users}

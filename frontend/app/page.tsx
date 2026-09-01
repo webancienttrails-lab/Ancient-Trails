@@ -1,4 +1,4 @@
-import { HomePage } from "./_components/home-page";
+import { HomePage } from "./(home)/_components/home-page";
 import {
   fallbackCustomisedTours,
   fallbackTrendingDestinations,
@@ -9,7 +9,7 @@ import {
   type HomeExperienceCard,
 } from "@/lib/home-travel";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 const fallbackTourCategories = [
   "Heritage",
@@ -54,29 +54,26 @@ async function getTourCategories() {
   }
 }
 
+async function withFallback<T>(request: Promise<T>, fallback: T) {
+  try {
+    return await request;
+  } catch {
+    return fallback;
+  }
+}
+
 export default async function Home() {
-  let customisedTourDestinations = fallbackCustomisedTours;
-  let homeExperiences: HomeExperienceCard[] = [];
-  let topDestinations = fallbackTrendingDestinations;
-  const tourCategories = await getTourCategories();
-
-  try {
-    topDestinations = await getHomeTrendingDestinations(8);
-  } catch {
-    topDestinations = fallbackTrendingDestinations;
-  }
-
-  try {
-    customisedTourDestinations = await getHomeCustomisedTourDestinations(3);
-  } catch {
-    customisedTourDestinations = fallbackCustomisedTours;
-  }
-
-  try {
-    homeExperiences = await getHomeExperienceCards(5);
-  } catch {
-    homeExperiences = [];
-  }
+  const [
+    tourCategories,
+    topDestinations,
+    customisedTourDestinations,
+    homeExperiences,
+  ] = await Promise.all([
+    getTourCategories(),
+    withFallback(getHomeTrendingDestinations(8), fallbackTrendingDestinations),
+    withFallback(getHomeCustomisedTourDestinations(6), fallbackCustomisedTours),
+    withFallback<HomeExperienceCard[]>(getHomeExperienceCards(5), []),
+  ]);
 
   return (
     <HomePage

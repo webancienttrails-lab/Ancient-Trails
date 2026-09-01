@@ -199,7 +199,7 @@ function getTourCategoryLabels(value: string) {
   const seen = new Set<string>();
   const labels = value
     .split(/[,/|]+/)
-    .map((label) => label.trim())
+    .map((label) => label.replace(/\s*\+\d+\s*$/, "").trim())
     .filter((label) => {
       const key = label.toLowerCase();
 
@@ -216,12 +216,15 @@ function getTourCategoryLabels(value: string) {
   return labels.length > 0 ? labels : fallbackValue ? [fallbackValue] : [];
 }
 
-function getCompactTourCategoryLabel(labels: string[]) {
-  if (labels.length <= 2) {
-    return labels.join(", ");
+function getCompactTourCategoryLabel(labels: string[], sourceValue = "") {
+  const compactLabel = labels.join(", ");
+  const hasHiddenCategories = /\+\d+\s*$/.test(sourceValue.trim());
+
+  if (!hasHiddenCategories) {
+    return compactLabel;
   }
 
-  return `${labels.slice(0, 2).join(", ")} +${labels.length - 2}`;
+  return `${compactLabel}...`;
 }
 
 function getUniqueTourCategories(categories: string[]) {
@@ -536,25 +539,33 @@ export function TopDestinationsSection({
                 <h3 className="line-clamp-2 min-h-[30px] break-words font-heading text-[24px] font-bold leading-tight text-secondary">
                   {activeDestination.name}
                 </h3>
-                <p className="mt-1 min-h-[27px] break-words font-sans text-description font-medium text-primary">
+                <p className="mt-1 min-h-[27px] break-words font-sans text-description font-medium text-primary border-b border-primary/20 pb-1">
                   {activeDestination.state}
                 </p>
                 {activeTourCategoryLabels.length > 0 ? (
-                  <span
-                    title={activeTourCategoryLabels.join(", ")}
-                    className="mt-3 inline-flex h-8 min-w-0 max-w-full items-center rounded-[4px] border border-primary/20 px-2 font-sans text-[13px] font-semibold leading-none text-primary"
-                  >
-                    <span className="min-w-0 truncate">
-                      {getCompactTourCategoryLabel(activeTourCategoryLabels)}
+                  <>
+                    <span className="font-sans text-[13px] font-medium leading-none text-secondary mt-2 ">
+                      Known for
                     </span>
-                  </span>
+                    <span
+                      title={activeTourCategoryLabels.join(", ")}
+                      className="mt-1 inline-flex h-9 min-w-0 max-w-full items-center  font-sans text-[13px] font-semibold leading-none text-primary"
+                    >
+                      <span className="min-w-0 truncate">
+                        {getCompactTourCategoryLabel(
+                          activeTourCategoryLabels,
+                          activeDestination.focus
+                        )}
+                      </span>
+                    </span>
+                  </>
                 ) : null}
 
                 <p className="mt-3 min-h-[60px] line-clamp-3 font-sans text-[13px] leading-[1.45] text-secondary">
                   {activeDestination.description}
                 </p>
 
-                <div className="mt-4 grid min-h-[80px] grid-cols-2 gap-x-4 gap-y-2.5">
+                <div className="mt-3 mb-4 grid min-h-[80px] grid-cols-2 gap-x-4 gap-y-2.5">
                   {activeHighlights.map(({ icon: Icon, label }) => (
                     <div
                       key={label}

@@ -14,8 +14,10 @@ import {
   Mountain,
   Plane,
   Route,
+  Search,
   User,
   UserRound,
+  X,
 } from "lucide-react";
 import {
   type CSSProperties,
@@ -38,15 +40,23 @@ import {
 } from "@/lib/auth";
 import {
   getHomeMediaUrl,
+  listPublicDestinations,
+  listPublicExperiences,
   listPublicMegaMenu,
+  listPublicTours,
+  type PublicDestination,
+  type PublicExperience,
   type PublicMegaMenuContent,
   type PublicMegaMenuDestinationReference,
   type PublicMegaMenuTourReference,
+  type PublicTour,
 } from "@/lib/home-travel";
 import {
   getDestinationHref,
   getDestinationsHref,
+  getTourHref,
   getTourCalendarHref,
+  slugifyRoute,
 } from "@/lib/routes";
 
 const navItems = [
@@ -234,6 +244,59 @@ type DestinationMenuItem = {
   title: string;
 };
 type CityMenuItem = (typeof topCities)[number];
+type HeaderSearchItem = {
+  description: string;
+  href: string;
+  image?: string;
+  keywords: string;
+  title: string;
+  type: string;
+};
+
+const staticSearchItems: HeaderSearchItem[] = [
+  {
+    title: "Home",
+    description: "Ancient Trails overview and featured journeys.",
+    href: "/",
+    keywords: "home ancient trails heritage travel plan trip",
+    type: "Page",
+  },
+  {
+    title: "About",
+    description: "Our story, mentors and travel philosophy.",
+    href: "/about",
+    keywords: "about company mentors guides story",
+    type: "Page",
+  },
+  {
+    title: "Tours",
+    description: "Browse curated heritage tours.",
+    href: "/tours",
+    keywords: "tours heritage cultural spiritual curated trips",
+    type: "Page",
+  },
+  {
+    title: "Destinations",
+    description: "Explore Indian and international destinations.",
+    href: "/destinations",
+    keywords: "destinations places cities india international unesco",
+    type: "Page",
+  },
+  {
+    title: "Experiences",
+    description: "Traveller stories, moments and memories.",
+    href: "/experiences",
+    keywords: "experiences traveller reviews stories memories",
+    type: "Page",
+  },
+  {
+    title: "Tour Calendar",
+    description: "Find upcoming departures and dates.",
+    href: "/tour-calendar",
+    keywords: "calendar departures dates upcoming tours",
+    type: "Page",
+  },
+];
 
 function hasMegaMenuSettings(content: PublicMegaMenuContent | null) {
   if (!content) {
@@ -309,6 +372,209 @@ function buildCityMenuItems(
     ),
     title: item.city || item.destinationName,
   }));
+}
+
+function getExperienceHref(experience: PublicExperience) {
+  const routeValue =
+    slugifyRoute(experience.destinationName) ||
+    slugifyRoute(experience.title || "") ||
+    experience.destinationId ||
+    experience.experienceId;
+
+  return `/experiences/${encodeURIComponent(routeValue)}`;
+}
+
+function uniqueSearchItems(items: HeaderSearchItem[]) {
+  const seen = new Set<string>();
+
+  return items.filter((item) => {
+    const key = `${item.href}-${item.title}`.toLowerCase();
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+
+    return true;
+  });
+}
+
+function getTourSearchItem(tour: PublicTour): HeaderSearchItem {
+  return {
+    title: tour.tourName,
+    description:
+      tour.description ||
+      [tour.durationDn, tour.category, tour.bestSeason].filter(Boolean).join(" | "),
+    href: getTourHref(tour),
+    image: getHomeMediaUrl(
+      tour.thumbnailImage || tour.bannerImage || tour.galleryImages[0] || ""
+    ),
+    keywords: [
+      tour.tourId,
+      tour.tourName,
+      tour.tourType,
+      tour.destinationId,
+      tour.destinationIds.join(" "),
+      tour.durationDn,
+      tour.category,
+      tour.difficulty,
+      tour.bestSeason,
+      tour.description,
+      tour.notes,
+    ].join(" "),
+    type: "Tour",
+  };
+}
+
+function getDestinationSearchItem(
+  destination: PublicDestination
+): HeaderSearchItem {
+  return {
+    title: destination.destinationName,
+    description:
+      destination.shortDescription ||
+      [destination.state, destination.countryRegion].filter(Boolean).join(", "),
+    href: getDestinationHref(destination),
+    image: getHomeMediaUrl(
+      destination.thumbnailImage ||
+        destination.bannerImage ||
+        destination.galleryImages[0] ||
+        ""
+    ),
+    keywords: [
+      destination.destinationId,
+      destination.destinationName,
+      destination.destinationType,
+      destination.countryRegion,
+      destination.region,
+      destination.state,
+      destination.city,
+      destination.primaryHeritageFocus,
+      destination.bestTimeToVisit,
+      destination.keyLandmarks.join(" "),
+      destination.shortDescription,
+      destination.unescoSite ? "unesco world heritage" : "",
+    ].join(" "),
+    type: "Destination",
+  };
+}
+
+function getExperienceSearchItem(
+  experience: PublicExperience
+): HeaderSearchItem {
+  return {
+    title: experience.title || experience.destinationName || "Traveller Experience",
+    description:
+      experience.writtenReview ||
+      `Traveller experience in ${experience.destinationName}`,
+    href: getExperienceHref(experience),
+    image: getHomeMediaUrl(
+      experience.travellerPhotoGallery[0] ||
+        experience.attractionPhotoGallery[0]?.image ||
+        ""
+    ),
+    keywords: [
+      experience.experienceId,
+      experience.destinationId,
+      experience.destinationName,
+      experience.travellerName,
+      experience.title,
+      experience.writtenReview,
+      experience.thingsToKnow.join(" "),
+    ].join(" "),
+    type: "Experience",
+  };
+}
+
+function getMegaMenuSearchItems(
+  content: PublicMegaMenuContent | null
+): HeaderSearchItem[] {
+  if (!content) {
+    return [];
+  }
+
+  return [
+    ...content.tourMenu.heritageTours.map((tour) => ({
+      title: tour.tourName,
+      description: "Heritage tour",
+      href: getTourCalendarHref({
+        tour: {
+          tourId: tour.tourId,
+          tourName: tour.tourName,
+        },
+      }),
+      image: getHomeMediaUrl(tour.image),
+      keywords: [tour.tourId, tour.tourName, tour.description].join(" "),
+      type: "Tour",
+    })),
+    ...content.tourMenu.shortTrails.map((tour) => ({
+      title: tour.tourName,
+      description: "Short trail",
+      href: getTourCalendarHref({
+        tour: {
+          tourId: tour.tourId,
+          tourName: tour.tourName,
+        },
+      }),
+      image: getHomeMediaUrl(tour.image),
+      keywords: [tour.tourId, tour.tourName, tour.description].join(" "),
+      type: "Tour",
+    })),
+    ...[
+      ...content.destinationMenu.india,
+      ...content.destinationMenu.international,
+      ...content.destinationMenu.topCities,
+    ].map((destination) => ({
+      title: destination.title || destination.destinationName,
+      description: destination.description || destination.city || "Destination",
+      href: destination.destinationId
+        ? getDestinationHref({
+            destinationId: destination.destinationId,
+            destinationName: destination.destinationName,
+          })
+        : getDestinationsHref(destination.title || destination.destinationName),
+      image: getHomeMediaUrl(destination.image),
+      keywords: [
+        destination.referenceId,
+        destination.destinationId,
+        destination.destinationName,
+        destination.title,
+        destination.city,
+        destination.description,
+      ].join(" "),
+      type: "Destination",
+    })),
+  ];
+}
+
+function filterSearchItems(items: HeaderSearchItem[], query: string) {
+  const searchTerms = query
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (searchTerms.length === 0) {
+    return [];
+  }
+
+  return items
+    .map((item) => {
+      const haystack = `${item.title} ${item.description} ${item.keywords}`
+        .toLowerCase()
+        .replace(/\s+/g, " ");
+      const score = searchTerms.reduce(
+        (total, term) => total + (haystack.includes(term) ? 1 : 0),
+        0
+      );
+
+      return { item, score };
+    })
+    .filter(({ score }) => score > 0)
+    .sort((left, right) => right.score - left.score)
+    .map(({ item }) => item)
+    .slice(0, 8);
 }
 
 function MenuArrow({ className = "" }: { className?: string }) {
@@ -909,6 +1175,149 @@ function AccountMenu({
   );
 }
 
+function HeaderSearchPopup({
+  isLoading,
+  isOpen,
+  query,
+  results,
+  onClose,
+  onQueryChange,
+}: {
+  isLoading: boolean;
+  isOpen: boolean;
+  query: string;
+  results: HeaderSearchItem[];
+  onClose: () => void;
+  onQueryChange: (value: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (popupRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      onClose();
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div
+      ref={popupRef}
+      style={headerLayerStyle}
+      className="absolute right-0 top-[calc(100%+14px)] z-[2147483647] w-[min(430px,calc(100vw-2.5rem))] overflow-hidden rounded-[10px] bg-white text-secondary shadow-[0_28px_70px_rgba(35,24,16,0.22)]"
+    >
+      <div className="flex items-center gap-3 border-b border-border bg-[#fff8f0] px-4 py-3">
+        <Search className="size-4 shrink-0 text-primary" strokeWidth={2} />
+        <label className="min-w-0 flex-1">
+          <span className="sr-only">Search Ancient Trails</span>
+          <input
+            ref={inputRef}
+            type="search"
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="Search tours, destinations, experiences..."
+            className="h-9 w-full bg-transparent font-sans text-[13px] font-semibold text-secondary outline-none placeholder:text-secondary/42"
+          />
+        </label>
+        <button
+          type="button"
+          aria-label="Close search"
+          onClick={onClose}
+          className="grid size-8 shrink-0 place-items-center rounded-full text-secondary/60 transition-colors hover:bg-primary hover:text-white"
+        >
+          <X className="size-4" strokeWidth={2} />
+        </button>
+      </div>
+
+      {query.trim() ? (
+      <div className="max-h-[410px] overflow-y-auto p-2">
+        {isLoading ? (
+          <p className="px-3 py-6 text-center font-sans text-[12px] font-semibold text-secondary/52">
+            Loading search...
+          </p>
+        ) : null}
+
+        {!isLoading && results.length === 0 ? (
+          <p className="px-3 py-6 text-center font-sans text-[12px] font-semibold text-secondary/52">
+            No results found.
+          </p>
+        ) : null}
+
+        {!isLoading && results.length > 0 ? (
+          <ul className="space-y-1">
+            {results.map((item) => (
+              <li key={`${item.href}-${item.title}`}>
+                <Link
+                  href={item.href}
+                  onClick={onClose}
+                  className="group/search grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-3 rounded-[7px] px-2 py-2 transition-colors hover:bg-[#fff1e5]"
+                >
+                  <span className="relative grid size-11 shrink-0 place-items-center overflow-hidden rounded-[6px] bg-[#fff4ea] text-primary ring-1 ring-primary/10">
+                    {item.image ? (
+                      <Image
+                        src={item.image}
+                        alt=""
+                        fill
+                        sizes="44px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <Search className="size-4" strokeWidth={2} />
+                    )}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-sans text-[13px] font-bold leading-tight text-secondary transition-colors group-hover/search:text-primary">
+                      {item.title}
+                    </span>
+                    <span className="mt-1 line-clamp-1 font-sans text-[11px] font-medium leading-tight text-secondary/58">
+                      {item.description}
+                    </span>
+                  </span>
+                  <span className="rounded-full border border-primary/15 px-2.5 py-1 font-sans text-[10px] font-bold uppercase leading-none text-primary">
+                    {item.type}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function Header() {
   const pathname = usePathname();
   const activeItem = pathname?.startsWith("/about")
@@ -926,12 +1335,21 @@ export function Header() {
   const toast = useToast();
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
+  const [hasLoadedSearchData, setHasLoadedSearchData] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [publicSearchItems, setPublicSearchItems] = useState<HeaderSearchItem[]>(
+    []
+  );
   const [travellerUser, setTravellerUser] = useState<TravellerUser | null>(
     null
   );
   const [megaMenuContent, setMegaMenuContent] =
     useState<PublicMegaMenuContent | null>(null);
+  const [isHeaderReady, setIsHeaderReady] = useState(false);
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  const [isTourTabsDocked, setIsTourTabsDocked] = useState(false);
   const [hasScrolled, setHasScrolled] = useState(false);
   const [isHeaderPortaled, setIsHeaderPortaled] = useState(false);
   const [underlineStyle, setUnderlineStyle] = useState({
@@ -1000,6 +1418,19 @@ export function Header() {
         : topCities,
     [hasConfiguredMegaMenu, megaMenuContent]
   );
+  const allSearchItems = useMemo(
+    () =>
+      uniqueSearchItems([
+        ...staticSearchItems,
+        ...getMegaMenuSearchItems(megaMenuContent),
+        ...publicSearchItems,
+      ]),
+    [megaMenuContent, publicSearchItems]
+  );
+  const searchResults = useMemo(
+    () => filterSearchItems(allSearchItems, searchQuery),
+    [allSearchItems, searchQuery]
+  );
 
   const updateUnderline = useCallback(() => {
     const nav = navRef.current;
@@ -1053,6 +1484,7 @@ export function Header() {
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
+      setIsHeaderReady(true);
       setIsHeaderPortaled(true);
     });
 
@@ -1072,9 +1504,9 @@ export function Header() {
 
       if (currentScrollY <= 24) {
         setIsHeaderVisible(true);
-      } else if (scrollDifference > 6 && currentScrollY > 120) {
+      } else if (scrollDifference > 0 && currentScrollY > 80) {
         setIsHeaderVisible(false);
-      } else if (scrollDifference < -6) {
+      } else if (scrollDifference < 0) {
         setIsHeaderVisible(true);
       }
 
@@ -1098,6 +1530,54 @@ export function Header() {
     return () => {
       window.cancelAnimationFrame(scrollFrameRef.current);
       window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      lastScrollYRef.current = window.scrollY;
+      setHasScrolled(window.scrollY > 24);
+      setIsHeaderVisible(true);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [pathname]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    let frameId = 0;
+
+    const syncDockedState = () => {
+      frameId = 0;
+      setIsTourTabsDocked(root.classList.contains("tour-tabs-docked"));
+    };
+
+    const scheduleSync = () => {
+      if (frameId) {
+        return;
+      }
+
+      frameId = window.requestAnimationFrame(syncDockedState);
+    };
+
+    const observer = new MutationObserver(scheduleSync);
+
+    observer.observe(root, {
+      attributeFilter: ["class"],
+      attributes: true,
+    });
+
+    scheduleSync();
+    window.addEventListener("scroll", scheduleSync, { passive: true });
+    window.addEventListener("resize", scheduleSync);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("scroll", scheduleSync);
+      window.removeEventListener("resize", scheduleSync);
+      observer.disconnect();
     };
   }, []);
 
@@ -1138,6 +1618,74 @@ export function Header() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isSearchOpen || hasLoadedSearchData) {
+      return;
+    }
+
+    let isMounted = true;
+
+    async function loadSearchData() {
+      setIsSearchLoading(true);
+
+      try {
+        const [toursResponse, destinationsResponse, experiencesResponse] =
+          await Promise.all([
+            listPublicTours().catch(() => ({ data: { tours: [] } })),
+            listPublicDestinations().catch(() => ({
+              data: { destinations: [] },
+            })),
+            listPublicExperiences().catch(() => ({
+              data: { experiences: [] },
+            })),
+          ]);
+
+        if (isMounted) {
+          setPublicSearchItems(
+            uniqueSearchItems([
+              ...toursResponse.data.tours.map(getTourSearchItem),
+              ...destinationsResponse.data.destinations.map(
+                getDestinationSearchItem
+              ),
+              ...experiencesResponse.data.experiences.map(
+                getExperienceSearchItem
+              ),
+            ])
+          );
+          setHasLoadedSearchData(true);
+        }
+      } finally {
+        if (isMounted) {
+          setIsSearchLoading(false);
+        }
+      }
+    }
+
+    loadSearchData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [hasLoadedSearchData, isSearchOpen]);
+
+  useEffect(() => {
+    if (!isSearchOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsSearchOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isSearchOpen]);
+
   const handleSignOut = () => {
     clearTravellerSession();
     setTravellerUser(null);
@@ -1154,6 +1702,7 @@ export function Header() {
   const openMegaMenu = (label: string) => {
     keepMegaMenuOpen();
     setIsAccountMenuOpen(false);
+    setIsSearchOpen(false);
     setHoveredItem(label);
   };
   const closeMegaMenu = () => {
@@ -1166,6 +1715,7 @@ export function Header() {
     window.clearTimeout(megaMenuCloseTimeoutRef.current);
     window.clearTimeout(accountMenuCloseTimeoutRef.current);
     setHoveredItem(null);
+    setIsSearchOpen(false);
     setIsAccountMenuOpen(Boolean(travellerUser));
   };
   const closeAccountMenu = () => {
@@ -1174,13 +1724,23 @@ export function Header() {
       setIsAccountMenuOpen(false);
     }, 160);
   };
+  const toggleSearch = () => {
+    window.clearTimeout(megaMenuCloseTimeoutRef.current);
+    window.clearTimeout(accountMenuCloseTimeoutRef.current);
+    setHoveredItem(null);
+    setIsAccountMenuOpen(false);
+    setIsSearchOpen((current) => !current);
+  };
 
   const loginHref =
     pathname && pathname !== "/login"
       ? `/login?redirect=${encodeURIComponent(pathname)}`
       : "/login";
   const accountHref = travellerUser ? "/me" : loginHref;
-  const shouldShowHeader = isHeaderVisible || Boolean(hoveredItem);
+  const shouldShowHeader =
+    isHeaderReady &&
+    !isTourTabsDocked &&
+    (isHeaderVisible || Boolean(hoveredItem) || isSearchOpen);
   const headerTopClass = hasScrolled
     ? "top-[clamp(0.5rem,2vh,1rem)]"
     : "top-[clamp(1rem,4vh,2.25rem)]";
@@ -1190,7 +1750,7 @@ export function Header() {
       style={headerLayerStyle}
       onMouseEnter={keepMegaMenuOpen}
       onMouseLeave={closeMegaMenu}
-      className={`fixed left-1/2 ${headerTopClass} isolate z-[2147483647] flex w-[calc(100%-2.5rem)] max-w-[1300px] -translate-x-1/2 items-center justify-between rounded-[18px] bg-white px-5 py-2 shadow-[0_18px_55px_rgba(50,50,50,0.18)] ring-1 ring-white transition-[top,translate] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] sm:py-3 md:px-6 [@media(max-height:600px)]:py-2 ${
+      className={`fixed left-1/2 ${headerTopClass} isolate z-[2147483647] flex w-[calc(100%-2.5rem)] max-w-[1300px] -translate-x-1/2 items-center justify-between rounded-[18px] bg-white px-4 py-1.5 shadow-[0_18px_55px_rgba(50,50,50,0.18)] ring-1 ring-white transition-[top,translate,opacity] duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)] sm:py-2 md:px-5 [@media(max-height:600px)]:py-1.5 ${
         shouldShowHeader
           ? "translate-y-0 opacity-100"
           : "pointer-events-none -translate-y-[calc(100%+3rem)] opacity-0"
@@ -1203,7 +1763,7 @@ export function Header() {
           width={218}
           height={86}
           priority
-          className="h-11 w-auto sm:h-15 [@media(max-height:600px)]:h-15"
+          className="h-8 w-auto sm:h-12 [@media(max-height:600px)]:h-12"
         />
       </Link>
 
@@ -1267,41 +1827,64 @@ export function Header() {
         onMouseLeave={closeMegaMenu}
       />
 
-      <div
-        className="relative"
-        onMouseEnter={openAccountMenu}
-        onMouseLeave={closeAccountMenu}
-        onFocus={openAccountMenu}
-        onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget)) {
-            closeAccountMenu();
-          }
-        }}
-      >
-        <Link
-          href={accountHref}
-          aria-label={travellerUser ? "Open traveller dashboard" : "Login"}
-          title={travellerUser ? "My Dashboard" : "Login"}
-          className="grid size-10 shrink-0 place-items-center rounded-full border border-primary/25 bg-white text-primary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-primary hover:bg-primary hover:text-white"
+      <div className="relative flex items-center gap-2">
+        <button
+          type="button"
+          aria-expanded={isSearchOpen}
+          aria-label="Search Ancient Trails"
+          title="Search"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={toggleSearch}
+          className="grid size-10 shrink-0 place-items-center rounded-full bg-white text-primary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-white"
         >
-          <User className="size-5" strokeWidth={2.3} />
-        </Link>
+          <Search className="size-5" strokeWidth={2.3} />
+        </button>
 
-        {travellerUser ? (
-          <>
-          <span
-            aria-hidden="true"
-            className={`absolute right-0 top-full h-[18px] w-[min(400px,calc(100vw-2.5rem))] ${
-              isAccountMenuOpen ? "block" : "hidden"
-            }`}
-          />
-          <AccountMenu
-            isOpen={isAccountMenuOpen}
-            traveller={travellerUser}
-            onSignOut={handleSignOut}
-          />
-          </>
-        ) : null}
+        <HeaderSearchPopup
+          isLoading={isSearchLoading && publicSearchItems.length === 0}
+          isOpen={isSearchOpen}
+          query={searchQuery}
+          results={searchResults}
+          onClose={() => setIsSearchOpen(false)}
+          onQueryChange={setSearchQuery}
+        />
+
+        <div
+          className="relative"
+          onMouseEnter={openAccountMenu}
+          onMouseLeave={closeAccountMenu}
+          onFocus={openAccountMenu}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) {
+              closeAccountMenu();
+            }
+          }}
+        >
+          <Link
+            href={accountHref}
+            aria-label={travellerUser ? "Open traveller dashboard" : "Login"}
+            title={travellerUser ? "My Dashboard" : "Login"}
+            className="grid size-10 shrink-0 place-items-center rounded-full border border-primary/25 bg-white text-primary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-primary hover:bg-primary hover:text-white"
+          >
+            <User className="size-5" strokeWidth={2.3} />
+          </Link>
+
+          {travellerUser ? (
+            <>
+            <span
+              aria-hidden="true"
+              className={`absolute right-0 top-full h-[18px] w-[min(400px,calc(100vw-2.5rem))] ${
+                isAccountMenuOpen ? "block" : "hidden"
+              }`}
+            />
+            <AccountMenu
+              isOpen={isAccountMenuOpen}
+              traveller={travellerUser}
+              onSignOut={handleSignOut}
+            />
+            </>
+          ) : null}
+        </div>
       </div>
     </header>
   );
