@@ -123,7 +123,7 @@ const homePagePayloadSchema = z.object({
     .default([]),
   customisedTourDestinations: z
     .array(homeCustomisedTourDestinationPayloadSchema)
-    .max(3)
+    .max(6)
     .default([]),
   homeExperiences: z.array(homeExperiencePayloadSchema).max(5).default([]),
 });

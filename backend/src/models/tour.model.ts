@@ -10,10 +10,12 @@ export interface ITour {
   tourId: string;
   tourName: string;
   tourType: string;
+  tourFormat: string;
   destinationId: string;
   destinationIds: string[];
   durationDn: string;
   category: string;
+  isBestseller: boolean;
   difficulty: string;
   bestSeason: string;
   description: string;
@@ -78,6 +80,10 @@ const tourSchema = new Schema<ITour>(
       ...requiredTrimmedString,
       maxlength: 80,
     },
+    tourFormat: {
+      ...trimmedString,
+      maxlength: 80,
+    },
     destinationId: {
       ...requiredTrimmedString,
       uppercase: true,
@@ -91,6 +97,10 @@ const tourSchema = new Schema<ITour>(
     category: {
       ...trimmedString,
       maxlength: 100,
+    },
+    isBestseller: {
+      type: Boolean,
+      default: false,
     },
     difficulty: {
       ...trimmedString,
@@ -138,6 +148,7 @@ tourSchema.index({ tourId: 1 }, { unique: true });
 tourSchema.index({
   tourName: "text",
   tourType: "text",
+  tourFormat: "text",
   destinationId: "text",
   destinationIds: "text",
   category: "text",

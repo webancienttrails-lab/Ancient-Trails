@@ -24,6 +24,9 @@ import {
 import { validateDepartureSchedule } from "../services/departure/departure.validation";
 import { HttpError } from "../utils/httpError";
 
+const defaultTourTypeOptions = ["Domestic", "International"];
+const defaultTourFormatOptions = ["Heritage Tours", "Short Trails"];
+
 const textField = (max: number) => z.string().trim().max(max).default("");
 const codePattern = /^[A-Za-z0-9_-]+$/;
 const requiredTextField = (fieldName: string, max: number) =>
@@ -186,10 +189,12 @@ const tourPayloadSchema = z
     tourId: requiredCodeField("Tour ID", 40),
     tourName: requiredTextField("Tour name", 140),
     tourType: requiredTextField("Tour type", 80),
+    tourFormat: textField(80),
     destinationId: optionalCodeField("Destination ID", 40),
     destinationIds: destinationIdsSchema,
     durationDn: requiredTextField("Duration (D/N)", 40),
     category: textField(100),
+    isBestseller: z.boolean().default(false),
     difficulty: textField(80),
     bestSeason: textField(120),
     description: textField(3000),
@@ -393,10 +398,12 @@ function formatTour(tour: TourDocument) {
     tourId: tour.tourId,
     tourName: tour.tourName,
     tourType: tour.tourType,
+    tourFormat: tour.tourFormat || "",
     destinationId: destinationIds[0] || tour.destinationId,
     destinationIds,
     durationDn: tour.durationDn,
     category: tour.category,
+    isBestseller: tour.isBestseller || false,
     difficulty: tour.difficulty,
     bestSeason: tour.bestSeason,
     description: tour.description,
@@ -652,12 +659,16 @@ export async function listTours(
     filterClauses.length > 0 ? { $and: filterClauses } : {};
 
   const tours = await Tour.find(filters).sort({ createdAt: -1 }).limit(200);
+  const tourTypeOptions = defaultTourTypeOptions;
+  const tourFormatOptions = defaultTourFormatOptions;
 
   response.status(200).json({
     success: true,
     message: "Tours fetched successfully",
     data: {
       tours: tours.map(formatTour),
+      tourTypeOptions,
+      tourFormatOptions,
     },
   });
 }
