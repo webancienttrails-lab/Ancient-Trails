@@ -120,15 +120,6 @@ const emptyDestinationForm: DestinationFormState = {
   galleryImages: "",
 };
 
-const thumbTones = [
-  "from-orange-500 via-amber-300 to-stone-700",
-  "from-amber-500 via-orange-200 to-stone-800",
-  "from-sky-500 via-orange-200 to-stone-800",
-  "from-lime-600 via-amber-200 to-stone-700",
-  "from-green-600 via-lime-200 to-cyan-700",
-  "from-emerald-500 via-sky-300 to-slate-700",
-];
-
 const domesticRegionOptions = [
   "North India",
   "South India",
@@ -1318,7 +1309,7 @@ function DestinationTable({
             ) : null}
 
             {!isLoading
-              ? destinations.map((destination, index) => (
+              ? destinations.map((destination) => (
                   <tr
                     key={destination.id}
                     className="border-t border-border transition-colors hover:bg-muted/25"
@@ -1336,23 +1327,13 @@ function DestinationTable({
                       data-mobile-primary
                       className="px-3 py-3"
                     >
-                      <div className="flex items-center gap-2.5">
-                        <DestinationThumb
-                          photo={
-                            destination.thumbnailImage ||
-                            destination.bannerImage ||
-                            destination.galleryImages[0]
-                          }
-                          tone={thumbTones[index % thumbTones.length]}
-                        />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-bold text-foreground">
-                            {destination.destinationName}
-                          </p>
-                          <p className="mt-1 text-[10px] text-foreground/45">
-                            Added on {formatDate(destination.createdAt)}
-                          </p>
-                        </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-foreground">
+                          {destination.destinationName}
+                        </p>
+                        <p className="mt-1 text-[10px] text-foreground/45">
+                          Added on {formatDate(destination.createdAt)}
+                        </p>
                       </div>
                     </td>
                     <td data-label="Type" className="px-2.5 py-3">
@@ -1564,28 +1545,6 @@ function DestinationActionsMenu({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-    </div>
-  );
-}
-
-function DestinationThumb({ photo, tone }: { photo?: string; tone: string }) {
-  return (
-    <div
-      className={cn(
-        "grid h-14 w-20 shrink-0 place-items-center overflow-hidden rounded-sm bg-gradient-to-br",
-        !photo && tone
-      )}
-      style={
-        photo
-          ? {
-              backgroundImage: `url("${getDestinationMediaUrl(photo)}")`,
-              backgroundPosition: "center",
-              backgroundSize: "cover",
-            }
-          : undefined
-      }
-    >
-      {!photo ? <MapPin className="size-5 text-white/80" /> : null}
     </div>
   );
 }

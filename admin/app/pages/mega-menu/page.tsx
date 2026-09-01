@@ -549,7 +549,7 @@ export default function PagesMegaMenuPage() {
         onSubmit={handleSubmit}
         className="mx-auto flex w-full max-w-[1480px] flex-col gap-5"
       >
-        <MegaMenuHeader isBusy={isBusy} isSaving={isSaving} />
+        <MegaMenuHeader />
 
         <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <p className="text-sm text-foreground/60">
@@ -558,7 +558,7 @@ export default function PagesMegaMenuPage() {
           <Button
             type="submit"
             disabled={isLoading || isBusy}
-            className="h-11 rounded-sm px-4 text-xs font-bold"
+            className="h-11 rounded-sm px-4 text-xs font-bold lg:hidden"
           >
             <Save className="size-4" data-icon="inline-start" />
             {isSaving ? "Saving..." : "Save Mega Menu"}
@@ -676,13 +676,7 @@ export default function PagesMegaMenuPage() {
   );
 }
 
-function MegaMenuHeader({
-  isBusy,
-  isSaving,
-}: {
-  isBusy: boolean;
-  isSaving: boolean;
-}) {
+function MegaMenuHeader() {
   const toast = useToast();
 
   return (
@@ -718,14 +712,6 @@ function MegaMenuHeader({
             1
           </span>
         </button>
-        <Button
-          type="submit"
-          disabled={isBusy}
-          className="h-10 rounded-sm px-4 text-xs font-bold"
-        >
-          <Save className="size-4" data-icon="inline-start" />
-          {isSaving ? "Saving..." : "Save"}
-        </Button>
         <button
           onClick={() => toast.info("Admin profile", "Profile menu will open here.")}
           className="flex h-10 items-center gap-2 rounded-sm border border-border bg-white px-2.5 text-sm font-semibold transition-colors hover:border-primary"

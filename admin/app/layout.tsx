@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Playfair_Display, Poppins } from "next/font/google";
+import { AdminSaveReminder } from "@/components/admin-dashboard/admin-save-reminder";
 import { ToastProvider } from "@/components/ui/toast";
 import "./globals.css";
 
@@ -34,7 +35,10 @@ export default function RootLayout({
       className={`${playfairDisplay.variable} ${poppins.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          <AdminSaveReminder />
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );

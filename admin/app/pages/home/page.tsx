@@ -60,6 +60,8 @@ import { cn } from "@/lib/utils";
 
 type HomeFormState = HomePagePayload;
 
+const CUSTOMISED_TOUR_DESTINATION_LIMIT = 6;
+
 const emptyForm: HomeFormState = {
   upcomingTours: [],
   trendingDestinations: [],
@@ -479,10 +481,13 @@ export default function PagesHomePage() {
   }
 
   function addCustomisedTourDestination() {
-    if (form.customisedTourDestinations.length >= 3) {
+    if (
+      form.customisedTourDestinations.length >=
+      CUSTOMISED_TOUR_DESTINATION_LIMIT
+    ) {
       toast.error(
         "Limit reached",
-        "Customised Tours can show up to 3 destinations."
+        `Customised Tours can show up to ${CUSTOMISED_TOUR_DESTINATION_LIMIT} destinations.`
       );
       return;
     }
@@ -627,7 +632,7 @@ export default function PagesHomePage() {
         onSubmit={handleSubmit}
         className="mx-auto flex w-full max-w-[1480px] flex-col gap-5"
       >
-        <HomeHeader isSaving={isSaving} />
+        <HomeHeader />
 
         <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <p className="text-sm text-foreground/60">
@@ -636,7 +641,7 @@ export default function PagesHomePage() {
           <Button
             type="submit"
             disabled={isLoading || isSaving}
-            className="h-11 rounded-sm px-4 text-xs font-bold"
+            className="h-11 rounded-sm px-4 text-xs font-bold lg:hidden"
           >
             <Save className="size-4" data-icon="inline-start" />
             {isSaving ? "Saving..." : "Save Home Page"}
@@ -773,7 +778,7 @@ export default function PagesHomePage() {
   );
 }
 
-function HomeHeader({ isSaving }: { isSaving: boolean }) {
+function HomeHeader() {
   const toast = useToast();
 
   return (
@@ -809,14 +814,6 @@ function HomeHeader({ isSaving }: { isSaving: boolean }) {
             1
           </span>
         </button>
-        <Button
-          type="submit"
-          disabled={isSaving}
-          className="h-10 rounded-sm px-4 text-xs font-bold"
-        >
-          <Save className="size-4" data-icon="inline-start" />
-          {isSaving ? "Saving..." : "Save"}
-        </Button>
         <button
           onClick={() => toast.info("Admin profile", "Profile menu will open here.")}
           className="flex h-10 items-center gap-2 rounded-sm border border-border bg-white px-2.5 text-sm font-semibold transition-colors hover:border-primary"

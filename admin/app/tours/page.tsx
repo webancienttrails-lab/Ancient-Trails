@@ -14,7 +14,6 @@ import {
   CalendarDays,
   ChevronDown,
   Eye,
-  MapPin,
   MoreHorizontal,
   Pencil,
   Play,
@@ -177,10 +176,12 @@ const emptyTourForm: TourFormState = {
   tourId: "",
   tourName: "",
   tourType: "",
+  tourFormat: "",
   destinationId: "",
   destinationIds: [],
   durationDn: "",
   category: "",
+  isBestseller: false,
   difficulty: "",
   bestSeason: "",
   description: "",
@@ -193,6 +194,9 @@ const emptyTourForm: TourFormState = {
   galleryImages: "",
   video: "",
 };
+
+const fallbackTourTypeOptions = ["Domestic", "International"];
+const fallbackTourFormatOptions = ["Heritage Tours", "Short Trails"];
 
 const emptyDepartureForm: DepartureFormState = {
   departureId: "",
@@ -298,10 +302,12 @@ function createTourPayload(form: TourFormState): TourPayload {
     tourId: form.tourId.trim(),
     tourName: form.tourName.trim(),
     tourType: form.tourType.trim(),
+    tourFormat: form.tourFormat.trim(),
     destinationId: destinationIds[0] || "",
     destinationIds,
     durationDn: form.durationDn.trim(),
     category: form.category.trim(),
+    isBestseller: form.isBestseller,
     difficulty: form.difficulty.trim(),
     bestSeason: form.bestSeason.trim(),
     description: form.description.trim(),
@@ -381,10 +387,12 @@ function tourToForm(tour: AdminTour): TourFormState {
     tourId: tour.tourId,
     tourName: tour.tourName,
     tourType: tour.tourType,
+    tourFormat: tour.tourFormat || "",
     destinationId: destinationIds[0] || tour.destinationId,
     destinationIds,
     durationDn: tour.durationDn,
     category: tour.category,
+    isBestseller: tour.isBestseller || false,
     difficulty: tour.difficulty,
     bestSeason: tour.bestSeason,
     description: tour.description,
@@ -688,6 +696,12 @@ function ToursPageContent() {
   const [activeTab, setActiveTab] = useState<TourTab>("master");
   const [searchQuery, setSearchQuery] = useState("");
   const [tours, setTours] = useState<AdminTour[]>([]);
+  const [tourTypeOptions, setTourTypeOptions] = useState<string[]>(
+    fallbackTourTypeOptions
+  );
+  const [tourFormatOptions, setTourFormatOptions] = useState<string[]>(
+    fallbackTourFormatOptions
+  );
   const [departures, setDepartures] = useState<AdminTourDeparture[]>([]);
   const [itineraries, setItineraries] = useState<AdminTourItinerary[]>([]);
   const [destinations, setDestinations] = useState<AdminDestination[]>([]);
@@ -764,6 +778,16 @@ function ToursPageContent() {
             itinerariesResponse.data.itineraries;
 
           setTours(loadedTours);
+          setTourTypeOptions(
+            toursResponse.data.tourTypeOptions?.length
+              ? toursResponse.data.tourTypeOptions
+              : fallbackTourTypeOptions
+          );
+          setTourFormatOptions(
+            toursResponse.data.tourFormatOptions?.length
+              ? toursResponse.data.tourFormatOptions
+              : fallbackTourFormatOptions
+          );
           setDepartures(loadedDepartures);
           setItineraries(loadedItineraries);
           setDestinations(destinationsResponse.data.destinations);
@@ -862,10 +886,12 @@ function ToursPageContent() {
         tour.tourId,
         tour.tourName,
         tour.tourType,
+        tour.tourFormat,
         tour.destinationId,
         ...getTourDestinationIds(tour),
         tour.durationDn,
         tour.category,
+        tour.isBestseller ? "bestseller" : "",
         tour.difficulty,
         tour.bestSeason,
         tour.expertId,
@@ -907,12 +933,6 @@ function ToursPageContent() {
         ])
       ),
     [destinations]
-  );
-
-  const expertNameById = useMemo(
-    () =>
-      new Map(experts.map((expert) => [expert.expertId, expert.fullName])),
-    [experts]
   );
 
   const tourNameById = useMemo(
@@ -1485,6 +1505,8 @@ function ToursPageContent() {
               isUploadingGalleryImages={isUploadingTourGalleryImages}
               isUploadingVideo={isUploadingTourVideo}
               mode={tourSheetMode}
+              tourFormatOptions={tourFormatOptions}
+              tourTypeOptions={tourTypeOptions}
               onThumbnailImageUpload={handleTourThumbnailImageUpload}
               onBannerImageUpload={handleTourBannerImageUpload}
               onClose={closeTourSheet}
@@ -1608,7 +1630,6 @@ function ToursPageContent() {
           {activeTab === "master" ? (
             <TourMasterTable
               destinationNameById={destinationNameById}
-              expertNameById={expertNameById}
               isDeletingTourId={isDeletingTourId}
               isLoading={isLoadingTours}
               onDelete={handleDeleteTour}
@@ -1645,6 +1666,8 @@ function ToursPageContent() {
         isUploadingGalleryImages={isUploadingTourGalleryImages}
         isUploadingVideo={isUploadingTourVideo}
         mode={tourSheetMode}
+        tourFormatOptions={tourFormatOptions}
+        tourTypeOptions={tourTypeOptions}
         onThumbnailImageUpload={handleTourThumbnailImageUpload}
         onBannerImageUpload={handleTourBannerImageUpload}
         onClose={closeTourSheet}
@@ -1875,7 +1898,6 @@ function TourFilters({
 
 function TourMasterTable({
   destinationNameById,
-  expertNameById,
   isDeletingTourId,
   isLoading,
   onDelete,
@@ -1886,7 +1908,6 @@ function TourMasterTable({
   tours,
 }: {
   destinationNameById: Map<string, string>;
-  expertNameById: Map<string, string>;
   isDeletingTourId: string | null;
   isLoading: boolean;
   onDelete: (tour: AdminTour) => void;
@@ -1901,25 +1922,19 @@ function TourMasterTable({
       <div className="max-w-full overflow-hidden">
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <colgroup>
-            <col className="w-[10%]" />
-            <col className="w-[23%]" />
             <col className="w-[14%]" />
-            <col className="w-[16%]" />
-            <col className="w-[9%]" />
-            <col className="w-[11%]" />
-            <col className="w-[11%]" />
-            <col className="w-[6%]" />
+            <col className="w-[34%]" />
+            <col className="w-[28%]" />
+            <col className="w-[14%]" />
+            <col className="w-[10%]" />
           </colgroup>
           <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
             <tr>
-              <th className="px-2 py-3 font-bold">Tour ID</th>
-              <th className="px-2 py-3 font-bold">Tour Name</th>
-              <th className="px-2 py-3 font-bold">Type / Category</th>
-              <th className="px-2 py-3 font-bold">Destination IDs</th>
-              <th className="px-2 py-3 font-bold">Duration</th>
-              <th className="px-2 py-3 font-bold">Difficulty</th>
-              <th className="px-2 py-3 font-bold">Expert ID</th>
-              <th className="px-2 py-3 text-right font-bold">Actions</th>
+              <th className="px-1.5 py-2 font-bold">Tour ID</th>
+              <th className="px-1.5 py-2 font-bold">Tour Name</th>
+              <th className="px-1.5 py-2 font-bold">Destination ID</th>
+              <th className="px-1.5 py-2 font-bold">Duration</th>
+              <th className="px-1.5 py-2 text-right font-bold">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -1952,91 +1967,51 @@ function TourMasterTable({
                   return (
                     <tr
                       key={tour.id}
-                      className="border-t border-border transition-colors hover:bg-muted/25"
-                    >
-                    <td
-                      data-label="Tour ID"
-                      className="px-2 py-3 text-xs font-semibold text-foreground/70"
-                    >
-                      <span className="block truncate">{tour.tourId}</span>
-                    </td>
-                    <td
-                      data-label="Tour Name"
-                      data-mobile-primary
-                      className="px-2 py-3"
-                    >
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <TourThumb
-                          photo={
-                            tour.thumbnailImage ||
-                            tour.bannerImage ||
-                            tour.galleryImages[0]
-                          }
-                        />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-bold text-foreground">
-                            {tour.tourName}
-                          </p>
-                          <p className="mt-1 truncate text-[10px] text-foreground/45">
-                            Best season: {tour.bestSeason || "-"}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td
-                      data-label="Type / Category"
-                      className="px-2 py-3 text-xs text-foreground/70"
-                    >
-                      <span className="block truncate font-semibold">
-                        {tour.tourType}
-                      </span>
-                      <span className="mt-1 block truncate text-foreground/50">
-                        {tour.category || "-"}
-                      </span>
-                    </td>
-                    <td
-                      data-label="Destination IDs"
-                      className="px-2 py-3 text-xs text-foreground/70"
-                    >
-                      <span className="block truncate font-semibold">
-                        {destinationIds.join(", ") || "-"}
-                      </span>
-                      <span className="mt-1 block truncate text-foreground/50">
-                        {getDestinationNameList(
-                          destinationIds,
-                          destinationNameById
+                  className="border-t border-border transition-colors hover:bg-muted/25"
+                >
+                  <td
+                    data-label="Tour ID"
+                    className="px-1.5 py-2 text-xs font-semibold leading-snug text-foreground/70"
+                  >
+                    <span className="block break-words">{tour.tourId}</span>
+                  </td>
+                  <td
+                    data-label="Tour Name"
+                    data-mobile-primary
+                    className="px-1.5 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-bold leading-snug text-foreground">
+                        {tour.tourName}
+                      </p>
+                      <p className="mt-1 break-words text-[10px] leading-snug text-foreground/45">
+                        {tour.tourType || "-"}
+                        {tour.category ? ` / ${tour.category}` : ""}
+                      </p>
+                    </div>
+                  </td>
+                  <td
+                    data-label="Destination ID"
+                    className="px-1.5 py-2 text-xs leading-snug text-foreground/70"
+                  >
+                    <span className="block break-words font-semibold">
+                      {destinationIds.join(", ") || "-"}
+                    </span>
+                    <span className="mt-1 block break-words text-foreground/50">
+                      {getDestinationNameList(
+                        destinationIds,
+                        destinationNameById
                         )}
                       </span>
-                    </td>
-                    <td
-                      data-label="Duration"
-                      className="px-2 py-3 text-xs font-semibold text-foreground/70"
-                    >
-                      {tour.durationDn}
-                    </td>
-                    <td
-                      data-label="Difficulty"
-                      className="px-2 py-3 text-xs text-foreground/70"
-                    >
-                      <span className="block truncate">
-                        {tour.difficulty || "-"}
-                      </span>
-                    </td>
-                    <td
-                      data-label="Expert ID"
-                      className="px-2 py-3 text-xs text-foreground/70"
-                    >
-                      <span className="block truncate font-semibold">
-                        {tour.expertId || "-"}
-                      </span>
-                      <span className="mt-1 block truncate text-foreground/50">
-                        {tour.expertId
-                          ? expertNameById.get(tour.expertId) || "-"
-                          : "-"}
-                      </span>
-                    </td>
-                    <td data-actions data-label="Actions" className="px-2 py-3">
-                      <TourActionsMenu
+                  </td>
+                  <td
+                    data-label="Duration"
+                    className="px-1.5 py-2 text-xs font-semibold leading-snug text-foreground/70"
+                  >
+                    {tour.durationDn}
+                  </td>
+                  <td data-actions data-label="Actions" className="px-1.5 py-2">
+                    <TourActionsMenu
                         itemName={tour.tourName}
                         isDeleting={isDeletingTourId === tour.id}
                         onDelete={() => onDelete(tour)}
@@ -2241,21 +2216,6 @@ function TourDepartureTable({
   );
 }
 
-function TourThumb({ photo }: { photo?: string }) {
-  return (
-    <span
-      className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-sm bg-[#7a3b22] bg-cover bg-center text-white"
-      style={
-        photo
-          ? { backgroundImage: `url("${getTourMediaUrl(photo)}")` }
-          : undefined
-      }
-    >
-      {!photo ? <MapPin className="size-5" /> : null}
-    </span>
-  );
-}
-
 function TourActionsMenu({
   itemName,
   isDeleting,
@@ -2380,6 +2340,8 @@ function TourFormDialog({
   onSubmit,
   onUpdate,
   onVideoUpload,
+  tourFormatOptions,
+  tourTypeOptions,
 }: {
   destinations: AdminDestination[];
   experts: AdminExpert[];
@@ -2392,6 +2354,8 @@ function TourFormDialog({
   isUploadingGalleryImages: boolean;
   isUploadingVideo: boolean;
   mode: TourSheetMode | null;
+  tourFormatOptions: string[];
+  tourTypeOptions: string[];
   onThumbnailImageUpload: (files: FileList | null) => void;
   onBannerImageUpload: (files: FileList | null) => void;
   onClose: () => void;
@@ -2487,14 +2451,25 @@ function TourFormDialog({
             </FormField>
 
             <FormField label="Tour Type" required>
-              <input
-                required
-                readOnly={isReadOnly}
+              <Select
+                disabled={isReadOnly}
+                name="tourType"
                 value={form.tourType}
-                onChange={(event) => onUpdate("tourType", event.target.value)}
-                className={inputClassName}
-                placeholder="Domestic"
-              />
+                onValueChange={(value) =>
+                  onUpdate("tourType", String(value || ""))
+                }
+              >
+                <SelectTrigger className={inputClassName}>
+                  <SelectValue placeholder="Select tour type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tourTypeOptions.map((tourType) => (
+                    <SelectItem key={tourType} value={tourType}>
+                      {tourType}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </FormField>
 
             <FormField label="Destination IDs" required>
@@ -2517,13 +2492,37 @@ function TourFormDialog({
               />
             </FormField>
 
-            <FormField label="Category">
+            {form.tourType ? (
+              <FormField label="Tour Format" required>
+                <Select
+                  disabled={isReadOnly}
+                  name="tourFormat"
+                  value={form.tourFormat}
+                  onValueChange={(value) =>
+                    onUpdate("tourFormat", String(value || ""))
+                  }
+                >
+                  <SelectTrigger className={inputClassName}>
+                    <SelectValue placeholder="Select tour format" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tourFormatOptions.map((tourFormat) => (
+                      <SelectItem key={tourFormat} value={tourFormat}>
+                        {tourFormat}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            ) : null}
+
+            <FormField label="Tour Category">
               <input
                 readOnly={isReadOnly}
                 value={form.category}
                 onChange={(event) => onUpdate("category", event.target.value)}
                 className={inputClassName}
-                placeholder="Heritage"
+                placeholder="Archaeological, Architecture, UNESCO Heritage"
               />
             </FormField>
 
@@ -2545,6 +2544,21 @@ function TourFormDialog({
                 className={inputClassName}
                 placeholder="October to March"
               />
+            </FormField>
+
+            <FormField label="Best Seller">
+              <span className="flex h-11 items-center gap-3 rounded-sm border border-border bg-white px-3 text-sm font-semibold text-foreground/75">
+                <input
+                  checked={form.isBestseller}
+                  disabled={isReadOnly}
+                  onChange={(event) =>
+                    onUpdate("isBestseller", event.target.checked)
+                  }
+                  type="checkbox"
+                  className="size-4 rounded-sm border-border accent-primary"
+                />
+                Mark this tour as bestseller
+              </span>
             </FormField>
 
             <FormField label="Expert ID">

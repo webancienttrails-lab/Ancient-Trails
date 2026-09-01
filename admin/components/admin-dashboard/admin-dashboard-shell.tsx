@@ -13,6 +13,7 @@ import {
   Bell,
   ChevronDown,
   ChevronLeft,
+  Save,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -154,6 +155,10 @@ function AdminHeader({
 }) {
   const [adminUser, setAdminUser] =
     useState<AdminUser | null>(null);
+  const [saveTarget, setSaveTarget] = useState<{
+    disabled: boolean;
+    form: HTMLFormElement;
+  } | null>(null);
 
   useEffect(() => {
     const syncAdminUser = () => {
@@ -164,6 +169,60 @@ function AdminHeader({
 
     return listenForAdminSessionChanges(syncAdminUser);
   }, []);
+
+  useEffect(() => {
+    function syncSaveTarget() {
+      const form = Array.from(document.querySelectorAll("form")).find(
+        (currentForm) => {
+          if (currentForm.dataset.adminIgnoreSaveReminder === "true") {
+            return false;
+          }
+
+          return Boolean(
+            currentForm.querySelector(
+              "button[type='submit'], input[type='submit']"
+            )
+          );
+        }
+      );
+
+      if (!(form instanceof HTMLFormElement)) {
+        setSaveTarget(null);
+        return;
+      }
+
+      const submitControl = form.querySelector<
+        HTMLButtonElement | HTMLInputElement
+      >("button[type='submit'], input[type='submit']");
+
+      setSaveTarget({
+        disabled: Boolean(submitControl?.disabled),
+        form,
+      });
+    }
+
+    syncSaveTarget();
+
+    const observer = new MutationObserver(syncSaveTarget);
+
+    observer.observe(document.body, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+      attributeFilter: ["disabled", "data-admin-ignore-save-reminder"],
+    });
+
+    document.addEventListener("submit", syncSaveTarget, true);
+
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("submit", syncSaveTarget, true);
+    };
+  }, []);
+
+  function handleHeaderSave() {
+    saveTarget?.form.requestSubmit();
+  }
 
   const displayName = getDisplayName(adminUser);
   const initials = getInitials(displayName);
@@ -200,6 +259,26 @@ function AdminHeader({
       {/* ============================= */}
 
       <div className="ml-auto flex items-center gap-3">
+        {saveTarget ? (
+          <button
+            className={cn(
+              "inline-flex h-11 items-center gap-2 rounded-xl",
+              "border border-primary bg-primary px-4",
+              "text-sm font-bold text-white",
+              "shadow-sm shadow-stone-200/30",
+              "transition-all duration-200",
+              "hover:bg-white hover:text-primary hover:shadow-md",
+              "disabled:pointer-events-none disabled:opacity-50"
+            )}
+            type="button"
+            onClick={handleHeaderSave}
+            disabled={saveTarget.disabled}
+          >
+            <Save className="size-4" />
+            Save
+          </button>
+        ) : null}
+
         {/* Notification */}
 
         <button

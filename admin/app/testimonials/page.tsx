@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import Image from "next/image";
 import {
   Bell,
   ChevronDown,
@@ -14,7 +13,6 @@ import {
   MessageCircle,
   MoreHorizontal,
   Pencil,
-  PlayCircle,
   Plus,
   Quote,
   Search,
@@ -480,12 +478,9 @@ function TestimonialsTable() {
                   data-mobile-primary
                   className="px-4 py-4"
                 >
-                  <div className="grid grid-cols-[70px_minmax(0,1fr)] items-center gap-3">
-                    <TestimonialMedia testimonial={testimonial} />
-                    <p className="line-clamp-3 text-xs font-medium leading-relaxed text-foreground">
-                      {testimonial.content}
-                    </p>
-                  </div>
+                  <p className="line-clamp-3 text-xs font-medium leading-relaxed text-foreground">
+                    {testimonial.content}
+                  </p>
                 </td>
                 <td data-label="Type" className="px-4 py-4">
                   <span
@@ -576,40 +571,6 @@ function TestimonialsTable() {
 
       <TableFooter label="testimonials" showing="1 to 10" total="56" />
     </>
-  );
-}
-
-function TestimonialMedia({
-  testimonial,
-}: {
-  testimonial: TestimonialRecord;
-}) {
-  if (testimonial.media === "Text") {
-    return (
-      <div className="grid h-16 w-[70px] place-items-center rounded-sm bg-primary/10 text-primary">
-        <Quote className="size-6" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative h-16 w-[70px] overflow-hidden rounded-sm bg-muted">
-      <Image
-        src="/admin-login/heritage-login-bg.png"
-        alt={testimonial.imageLabel || testimonial.referenceName}
-        fill
-        sizes="70px"
-        className="object-cover"
-      />
-      {testimonial.media === "Video" ? (
-        <span className="absolute inset-0 grid place-items-center bg-black/25 text-white">
-          <PlayCircle className="size-7" />
-          <span className="absolute bottom-1 left-1 rounded-sm bg-black/65 px-1 text-[9px] font-bold">
-            {testimonial.imageLabel}
-          </span>
-        </span>
-      ) : null}
-    </div>
   );
 }
 

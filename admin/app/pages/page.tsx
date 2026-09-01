@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import {
   Archive,
@@ -432,16 +431,13 @@ function PagesTable() {
                 className="border-t border-border transition-colors hover:bg-muted/25"
               >
                 <td data-label="Page" data-mobile-primary className="px-4 py-3">
-                  <div className="grid grid-cols-[80px_minmax(0,1fr)] items-center gap-3">
-                    <PageThumbnail page={page} />
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-bold text-foreground">
-                        {page.title}
-                      </p>
-                      <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-foreground/55">
-                        {page.description}
-                      </p>
-                    </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-bold text-foreground">
+                      {page.title}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-foreground/55">
+                      {page.description}
+                    </p>
                   </div>
                 </td>
                 <td data-label="Page Type" className="px-4 py-3">
@@ -498,27 +494,6 @@ function PagesTable() {
 
       <TableFooter />
     </>
-  );
-}
-
-function PageThumbnail({ page }: { page: AdminPageRecord }) {
-  return (
-    <div
-      className={cn(
-        "relative h-14 w-20 overflow-hidden rounded-sm bg-gradient-to-br",
-        page.thumbnailTone
-      )}
-    >
-      <Image
-        src="/admin-login/heritage-login-bg.png"
-        alt={page.title}
-        fill
-        sizes="80px"
-        className="object-cover opacity-70 mix-blend-multiply"
-      />
-      <span className="absolute bottom-1 left-1 h-2 w-8 rounded-full bg-white/70" />
-      <span className="absolute bottom-3 left-3 h-5 w-5 rounded-sm border border-white/70 bg-white/30" />
-    </div>
   );
 }
 

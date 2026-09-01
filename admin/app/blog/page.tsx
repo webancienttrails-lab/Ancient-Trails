@@ -45,7 +45,6 @@ import {
 import { useToast } from "@/components/ui/toast";
 import {
   deleteAdminBlog,
-  getBlogMediaUrl,
   listAdminBlogs,
   type AdminBlog,
   type BlogCategory,
@@ -580,16 +579,13 @@ function BlogTable({
                     className="border-t border-border transition-colors hover:bg-muted/25"
                   >
                     <td data-label="Blog" data-mobile-primary className="px-4 py-3">
-                      <div className="grid grid-cols-[82px_minmax(0,1fr)] items-center gap-3">
-                        <BlogThumbnail post={post} />
-                        <div className="min-w-0">
-                          <p className="line-clamp-2 text-xs font-bold text-foreground">
-                            {post.title}
-                          </p>
-                          <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-foreground/55">
-                            {post.slug}
-                          </p>
-                        </div>
+                      <div className="min-w-0">
+                        <p className="line-clamp-2 text-xs font-bold text-foreground">
+                          {post.title}
+                        </p>
+                        <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-foreground/55">
+                          {post.slug}
+                        </p>
                       </div>
                     </td>
                     <td data-label="Category" className="px-4 py-3">
@@ -654,30 +650,6 @@ function BlogTable({
 
       <TableFooter shownCount={blogs.length} totalCount={totalCount} />
     </>
-  );
-}
-
-function BlogThumbnail({ post }: { post: AdminBlog }) {
-  const image = post.heroImage;
-
-  return (
-    <div
-      className={cn(
-        "grid h-14 w-[82px] place-items-center overflow-hidden rounded-sm bg-gradient-to-br from-primary via-amber-200 to-[#7a3b22]",
-        image && "bg-muted"
-      )}
-      style={
-        image
-          ? {
-              backgroundImage: `url("${getBlogMediaUrl(image)}")`,
-              backgroundPosition: "center",
-              backgroundSize: "cover",
-            }
-          : undefined
-      }
-    >
-      {!image ? <FileText className="size-5 text-white/85" /> : null}
-    </div>
   );
 }
 

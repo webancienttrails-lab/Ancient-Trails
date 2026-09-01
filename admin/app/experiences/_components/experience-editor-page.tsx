@@ -378,7 +378,9 @@ export function ExperienceEditorPage({
     : isUploading
       ? "Uploading media..."
       : mode === "edit"
-        ? "Update Experience"
+        ? entries.length > 1
+          ? `Update + Add ${entries.length - 1}`
+          : "Update Experience"
         : entries.length > 1
           ? `Save ${entries.length} Experiences`
           : "Save Experience";
@@ -480,7 +482,7 @@ export function ExperienceEditorPage({
   }
 
   function addExperienceEntry() {
-    if (isBusy || mode === "edit") {
+    if (isBusy) {
       return;
     }
 
@@ -495,7 +497,7 @@ export function ExperienceEditorPage({
   }
 
   function removeExperienceEntry(localId: string) {
-    if (isBusy || mode === "edit") {
+    if (isBusy) {
       return;
     }
 
@@ -782,12 +784,26 @@ export function ExperienceEditorPage({
           throw new Error("Experience not loaded.");
         }
 
-        const response = await updateAdminExperience(
+        const updateResponse = await updateAdminExperience(
           selectedExperience.id,
           createExperiencePayload(entries[0].form)
         );
+        const addedEntries = entries.slice(1);
 
-        toast.success("Experience updated", response.message);
+        for (const entry of addedEntries) {
+          await createAdminExperience(createExperiencePayload(entry.form));
+        }
+
+        toast.success(
+          addedEntries.length > 0
+            ? "Experience updated and added"
+            : "Experience updated",
+          addedEntries.length > 0
+            ? `${addedEntries.length} additional experience${
+                addedEntries.length === 1 ? "" : "s"
+              } created.`
+            : updateResponse.message
+        );
         router.push("/experiences");
         router.refresh();
         return;
@@ -849,18 +865,16 @@ export function ExperienceEditorPage({
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              {mode === "add" ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={isBusy || isLoading || Boolean(currentLoadError)}
-                  onClick={addExperienceEntry}
-                  className="h-11 rounded-sm border-border bg-white px-4 text-sm font-bold"
-                >
-                  <Plus className="size-4" data-icon="inline-start" />
-                  Add Traveller
-                </Button>
-              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isBusy || isLoading || Boolean(currentLoadError)}
+                onClick={addExperienceEntry}
+                className="h-11 rounded-sm border-border bg-white px-4 text-sm font-bold"
+              >
+                <Plus className="size-4" data-icon="inline-start" />
+                Add Another Experience
+              </Button>
               <Button
                 render={<Link href="/experiences" />}
                 nativeButton={false}
@@ -904,7 +918,7 @@ export function ExperienceEditorPage({
                 {entries.map((entry, index) => (
                   <ExperienceEntryCard
                     key={entry.localId}
-                    canRemove={mode === "add" && entries.length > 1}
+                    canRemove={entries.length > 1 && (mode === "add" || index > 0)}
                     destinationNameById={destinationNameById}
                     destinations={destinations}
                     entry={entry}

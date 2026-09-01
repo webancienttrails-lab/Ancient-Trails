@@ -1106,16 +1106,13 @@ function ExperiencesTable({
                       data-mobile-primary
                       className="px-4 py-4"
                     >
-                      <div className="grid grid-cols-[70px_minmax(0,1fr)] items-center gap-3">
-                        <ExperienceMedia experience={experience} />
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-bold text-foreground">
-                            {getExperienceDisplayName(experience)}
-                          </p>
-                          <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-foreground/65">
-                            {experience.writtenReview || "-"}
-                          </p>
-                        </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-bold text-foreground">
+                          {getExperienceDisplayName(experience)}
+                        </p>
+                        <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-foreground/65">
+                          {experience.writtenReview || "-"}
+                        </p>
                       </div>
                     </td>
                     <td data-label="Destination" className="px-4 py-4">
@@ -1185,41 +1182,6 @@ function ExperiencesTable({
         total={totalCount.toString()}
       />
     </>
-  );
-}
-
-function ExperienceMedia({ experience }: { experience: AdminExperience }) {
-  const photo =
-    experience.travellerPhotoGallery[0] ||
-    experience.attractionPhotoGallery[0]?.image ||
-    "";
-  const label = getExperienceDisplayName(experience);
-
-  if (photo) {
-    return (
-      <div
-        className="h-16 w-[70px] rounded-sm bg-cover bg-center"
-        role="img"
-        aria-label={label}
-        style={{
-          backgroundImage: `url("${getExperienceMediaUrl(photo)}")`,
-        }}
-      />
-    );
-  }
-
-  if (experience.travellerVideos.length > 0) {
-    return (
-      <div className="grid h-16 w-[70px] place-items-center rounded-sm bg-violet-100 text-violet-700">
-        <Play className="size-6" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid h-16 w-[70px] place-items-center rounded-sm bg-primary/10 text-primary">
-      <FileText className="size-6" />
-    </div>
   );
 }
 

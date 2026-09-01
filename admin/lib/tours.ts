@@ -11,10 +11,12 @@ export type AdminTour = {
   tourId: string;
   tourName: string;
   tourType: string;
+  tourFormat: string;
   destinationId: string;
   destinationIds: string[];
   durationDn: string;
   category: string;
+  isBestseller: boolean;
   difficulty: string;
   bestSeason: string;
   description: string;
@@ -34,10 +36,12 @@ export type TourPayload = {
   tourId: string;
   tourName: string;
   tourType: string;
+  tourFormat: string;
   destinationId: string;
   destinationIds: string[];
   durationDn: string;
   category: string;
+  isBestseller: boolean;
   difficulty: string;
   bestSeason: string;
   description: string;
@@ -211,9 +215,16 @@ async function readUploadResponse<TData>(
 }
 
 export async function listAdminTours() {
-  return apiRequest<{ tours: AdminTour[] }>("/api/admin/tours", {
-    headers: getAdminHeaders(),
-  });
+  return apiRequest<{
+    tours: AdminTour[];
+    tourFormatOptions: string[];
+    tourTypeOptions: string[];
+  }>(
+    "/api/admin/tours",
+    {
+      headers: getAdminHeaders(),
+    }
+  );
 }
 
 export async function createAdminTour(payload: TourPayload) {

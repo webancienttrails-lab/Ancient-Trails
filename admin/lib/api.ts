@@ -24,6 +24,8 @@ export class ApiError extends Error {
   }
 }
 
+const DEFAULT_API_TIMEOUT_MS = 10_000;
+
 async function readResponse(response: Response): Promise<unknown> {
   const contentType = response.headers.get("content-type") || "";
 
@@ -38,14 +40,46 @@ export async function apiRequest<TData>(
   path: string,
   options: RequestInit = {}
 ): Promise<ApiResponse<TData>> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-    credentials: "include",
-  });
+  const { signal: providedSignal, ...requestOptions } = options;
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(
+    () => timeoutController.abort(),
+    DEFAULT_API_TIMEOUT_MS
+  );
+  const abortRequest = () => timeoutController.abort();
+
+  if (providedSignal?.aborted) {
+    timeoutController.abort();
+  } else {
+    providedSignal?.addEventListener("abort", abortRequest, { once: true });
+  }
+
+  let response: Response;
+
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      ...requestOptions,
+      headers: {
+        "Content-Type": "application/json",
+        ...requestOptions.headers,
+      },
+      credentials: "include",
+      signal: timeoutController.signal,
+    });
+  } catch (error) {
+    if (timeoutController.signal.aborted) {
+      throw new ApiError(
+        408,
+        "Request timed out. Please check if the backend server is running."
+      );
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+    providedSignal?.removeEventListener("abort", abortRequest);
+  }
+
   const body = (await readResponse(response)) as Partial<ApiResponse<TData>> | null;
 
   if (!response.ok) {
