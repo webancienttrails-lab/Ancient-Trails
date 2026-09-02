@@ -660,30 +660,52 @@ export function DestinationsPage({
       ),
     [filterOptionDestinations]
   );
+  const activeSelectedRegions = useMemo(
+    () => keepAvailableSelections(selectedRegions, regionOptions),
+    [regionOptions, selectedRegions]
+  );
+  const regionScopedDestinations = useMemo(() => {
+    if (activeSelectedRegions.length === 0) {
+      return filterOptionDestinations;
+    }
+
+    return filterOptionDestinations.filter((destination) =>
+      matchesOption(activeSelectedRegions, getRegionLabels(destination))
+    );
+  }, [activeSelectedRegions, filterOptionDestinations]);
   const stateOptions = useMemo(
     () =>
-      createCountOptions(filterOptionDestinations, (destination) =>
+      createCountOptions(regionScopedDestinations, (destination) =>
         activeCategory === "international"
           ? getCountryLabels(destination)
           : [destination.state]
       ),
-    [activeCategory, filterOptionDestinations]
-  );
-  const focusOptions = useMemo(
-    () => createCountOptions(filterOptionDestinations, getFocusLabels),
-    [filterOptionDestinations]
+    [activeCategory, regionScopedDestinations]
   );
   const tourCategoriesByDestinationId = useMemo(
     () => getDestinationTourCategoryLabels(tours),
     [tours]
   );
-  const activeSelectedRegions = useMemo(
-    () => keepAvailableSelections(selectedRegions, regionOptions),
-    [regionOptions, selectedRegions]
-  );
   const activeSelectedStates = useMemo(
     () => keepAvailableSelections(selectedStates, stateOptions),
     [selectedStates, stateOptions]
+  );
+  const stateScopedDestinations = useMemo(() => {
+    if (activeSelectedStates.length === 0) {
+      return regionScopedDestinations;
+    }
+
+    return regionScopedDestinations.filter((destination) =>
+      matchesOption(activeSelectedStates, [
+        ...(activeCategory === "international"
+          ? getCountryLabels(destination)
+          : [destination.state]),
+      ])
+    );
+  }, [activeCategory, activeSelectedStates, regionScopedDestinations]);
+  const focusOptions = useMemo(
+    () => createCountOptions(stateScopedDestinations, getFocusLabels),
+    [stateScopedDestinations]
   );
   const activeSelectedFocuses = useMemo(
     () => keepAvailableSelections(selectedFocuses, focusOptions),
@@ -932,11 +954,12 @@ function DestinationTopBar({
               key={tab.id}
               type="button"
               aria-pressed={activeCategory === tab.id}
+              suppressHydrationWarning
               onClick={() => onCategoryChange(tab.id)}
               className={cn(
                 "inline-flex h-9 items-center justify-center rounded-full border px-5 font-sans text-[15px] font-semibold leading-none transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
                 activeCategory === tab.id
-                  ? "border-primary bg-primary text-white shadow-[0_6px_15px_rgba(212,114,32,0.2)]"
+                  ? "border-primary bg-primary text-white"
                   : "border-primary/70 bg-white text-primary hover:bg-primary hover:text-white"
               )}
             >
@@ -988,10 +1011,30 @@ function DestinationSidebar({
   onRegionToggle: (value: string) => void;
   onStateToggle: (value: string) => void;
 }) {
-  const [isStateFilterOpen, setIsStateFilterOpen] = useState(false);
-  const [isFocusFilterOpen, setIsFocusFilterOpen] = useState(false);
+  const [isStateFilterOpen, setIsStateFilterOpen] = useState(
+    () => selectedRegions.length > 0
+  );
+  const [isFocusFilterOpen, setIsFocusFilterOpen] = useState(
+    () => selectedStates.length > 0
+  );
   const stateFilterTitle =
     activeCategory === "international" ? "Countries" : "States";
+
+  function handleRegionToggle(value: string) {
+    if (!hasSelection(selectedRegions, value)) {
+      setIsStateFilterOpen(true);
+    }
+
+    onRegionToggle(value);
+  }
+
+  function handleStateToggle(value: string) {
+    if (!hasSelection(selectedStates, value)) {
+      setIsFocusFilterOpen(true);
+    }
+
+    onStateToggle(value);
+  }
 
   return (
     <aside className="lg:sticky lg:top-[70px] lg:self-start">
@@ -1015,7 +1058,7 @@ function DestinationSidebar({
           options={regionOptions}
           selectedValues={selectedRegions}
           title="Regions"
-          onToggle={onRegionToggle}
+          onToggle={handleRegionToggle}
         />
         <FilterOptionGroup
           options={stateOptions}
@@ -1024,7 +1067,7 @@ function DestinationSidebar({
           isCollapsible
           isOpen={isStateFilterOpen}
           onOpenToggle={() => setIsStateFilterOpen((current) => !current)}
-          onToggle={onStateToggle}
+          onToggle={handleStateToggle}
         />
         <FilterOptionGroup
           options={focusOptions}
@@ -1238,6 +1281,7 @@ function DestinationCard({
           className="object-cover transition-transform duration-[900ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.035]"
         />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.06)_0%,rgba(18,12,8,0.12)_42%,rgba(18,12,8,0.82)_100%)]" />
+        <div className="absolute inset-x-0 top-0 h-[34%] bg-[linear-gradient(180deg,rgba(0,0,0,0.62)_0%,rgba(0,0,0,0.38)_55%,rgba(0,0,0,0)_100%)]" />
 
         <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-4 px-4 pt-4 text-white">
           <h3 className="min-w-0 font-sans text-[18px] font-semibold leading-none tracking-normal ">
@@ -1252,12 +1296,13 @@ function DestinationCard({
 
         <div className="absolute inset-x-0 bottom-0 px-4 pb-4 text-white">
           {categoryPills.length > 0 ? (
-            <div className="mt-3 flex max-h-[112px] flex-wrap gap-1.5 overflow-hidden opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100">
-              {categoryPills.map((label) => (
+            <div className="mt-3 flex max-h-[112px] flex-wrap gap-1.5 overflow-hidden">
+              {categoryPills.map((label, index) => (
                 <span
                   key={label}
                   title={label}
-                  className="inline-flex max-w-full items-center rounded-full border border-primary/15 bg-[#2b241f]/88 px-3 py-2 font-sans text-[11px] font-semibold leading-none text-white"
+                  style={{ transitionDelay: `${index * 70}ms` }}
+                  className="inline-flex max-w-full translate-y-2 items-center rounded-full border border-white/25 bg-[#2b241f]/88 px-3 py-2 font-sans text-[11px] font-semibold leading-none text-white opacity-0 transition-all duration-300 ease-out group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100"
                 >
                   <span className="truncate">{label}</span>
                 </span>
@@ -1265,7 +1310,7 @@ function DestinationCard({
             </div>
           ) : null}
           <div className="mt-4 flex items-center justify-between gap-3">
-            <span className="inline-flex h-9 min-w-[124px] items-center justify-center rounded-[24px] border border-primary bg-white px-5 font-sans text-[15px] font-normal leading-none text-secondary transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:bg-primary group-hover:text-white">
+            <span className="inline-flex h-9 min-w-[124px] items-center justify-center rounded-[24px] border border-primary bg-white px-5 font-sans text-[15px] font-normal leading-none text-secondary transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:border-primary group-hover:bg-primary group-hover:text-white">
               <span className="truncate">Customize</span>
             </span>
           </div>

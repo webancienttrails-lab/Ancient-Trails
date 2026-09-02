@@ -1497,15 +1497,22 @@ export function Header() {
     lastScrollYRef.current = window.scrollY;
 
     const updateHeaderVisibility = () => {
-      const currentScrollY = window.scrollY;
+      const currentScrollY = Math.max(0, window.scrollY);
       const scrollDifference = currentScrollY - lastScrollYRef.current;
 
       setHasScrolled(currentScrollY > 24);
 
       if (currentScrollY <= 24) {
         setIsHeaderVisible(true);
+      } else if (Math.abs(scrollDifference) < 4) {
+        lastScrollYRef.current = currentScrollY;
+
+        return;
       } else if (scrollDifference > 0 && currentScrollY > 80) {
         setIsHeaderVisible(false);
+        setHoveredItem(null);
+        setIsAccountMenuOpen(false);
+        setIsSearchOpen(false);
       } else if (scrollDifference < 0) {
         setIsHeaderVisible(true);
       }

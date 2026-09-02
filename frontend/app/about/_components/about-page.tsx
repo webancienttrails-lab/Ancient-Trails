@@ -8,7 +8,6 @@ import {
   ArrowRight,
   BookOpen,
   CalendarDays,
-  Eye,
   Flag,
   Globe2,
   Landmark,
@@ -43,42 +42,44 @@ const statIconMap: Record<AboutStatIcon, LucideIcon> = {
   Users,
 };
 
+const statValueFormatter = new Intl.NumberFormat("en-IN");
+
 const valueItems = [
   {
     title: "Authentic Experiences",
     description:
       "Handpicked journeys that connect you with real culture and local stories.",
-    icon: "/home assets/icons/Tour_trip.png",
+    icon: Route,
   },
   {
     title: "Expertly Curated",
     description:
       "Designed by heritage experts and local specialists with deep knowledge.",
-    icon: "/home assets/icons/Mentor.png",
+    icon: BookOpen,
   },
   {
     title: "Responsible Travel",
     description:
       "We promote sustainable tourism and support local communities we visit.",
-    icon: "/home assets/icons/Learning.png",
+    icon: Leaf,
   },
   {
     title: "Trusted by Thousands",
     description:
       "Loved by 25,000+ travellers for our quality and commitment.",
-    icon: "/home assets/icons/Planning.png",
+    icon: Users,
   },
   {
     title: "Personalised Support",
     description:
       "We're with you at every step for a smooth and worry-free experience.",
-    icon: "/home assets/icons/Internet.png",
+    icon: CalendarDays,
   },
   {
     title: "Wide Network, Local Roots",
     description:
       "Strong local partnerships across India for truly immersive journeys.",
-    icon: "/home assets/icons/Tour_trip.png",
+    icon: MapPin,
   },
 ];
 
@@ -179,57 +180,6 @@ function getProfileName(
   return expert?.fullName || member?.name || "";
 }
 
-type TeamProfile = {
-  key: string;
-  member: AboutTeamMember | null;
-  expert: PublicExpert | null;
-};
-
-function getExpertKey(expert: PublicExpert) {
-  return expert.id || expert.expertId || normalizeProfileName(expert.fullName);
-}
-
-function getTeamProfiles(
-  teamMembers: AboutTeamMember[],
-  experts: PublicExpert[]
-): TeamProfile[] {
-  const usedExpertKeys = new Set<string>();
-
-  const memberProfiles = teamMembers.map((member, index) => {
-    const expert = getMatchingExpert(member, experts);
-
-    if (expert) {
-      usedExpertKeys.add(getExpertKey(expert));
-    }
-
-    return {
-      key: member.id || `${member.name}-${index}`,
-      member,
-      expert,
-    };
-  });
-
-  const memberNames = new Set(
-    teamMembers.map((member) => normalizeProfileName(member.name))
-  );
-  const expertProfiles = experts
-    .filter((expert) => {
-      const expertKey = getExpertKey(expert);
-
-      return (
-        !usedExpertKeys.has(expertKey) &&
-        !memberNames.has(normalizeProfileName(expert.fullName))
-      );
-    })
-    .map((expert, index) => ({
-      key: getExpertKey(expert) || `${expert.fullName}-${index}`,
-      member: null,
-      expert,
-    }));
-
-  return [...memberProfiles, ...expertProfiles];
-}
-
 function getDisplayFounderName(name: string) {
   const trimmedName = name.trim();
 
@@ -311,8 +261,8 @@ export function AboutPageContent() {
       {founder || founderExpert ? (
         <FounderSection founder={founder} expert={founderExpert} />
       ) : null}
-      {teamMembers.length > 0 || experts.length > 0 ? (
-        <TeamSection experts={experts} teamMembers={teamMembers} />
+      {experts.length > 0 ? (
+        <TeamSection experts={experts} />
       ) : null}
       <SpecializedSection />
     </main>
@@ -323,7 +273,7 @@ function HeroSection() {
   return (
     <section className="relative h-[100svh] min-h-[620px] overflow-visible bg-background lg:h-[80vh] lg:min-h-[690px]">
       <Image
-        src="/home assets/Heritage Banner.webp"
+        src="/home assets/Caves.webp"
         alt="Indian heritage fort at sunrise"
         fill
         priority
@@ -369,6 +319,97 @@ function HeroSection() {
   );
 }
 
+function parseStatValue(value: string) {
+  const target = Number(value.replace(/[^\d]/g, ""));
+  const suffix = value.trim().endsWith("+") ? "+" : "";
+
+  return {
+    suffix,
+    target: Number.isFinite(target) ? target : 0,
+  };
+}
+
+function formatStatValue(value: number, suffix: string) {
+  return `${statValueFormatter.format(value)}${suffix}`;
+}
+
+function CountUpValue({
+  className,
+  value,
+}: {
+  className: string;
+  value: string;
+}) {
+  const valueRef = useRef<HTMLElement | null>(null);
+  const { suffix, target } = useMemo(() => parseStatValue(value), [value]);
+  const [hasStarted, setHasStarted] = useState(false);
+  const [displayValue, setDisplayValue] = useState(() =>
+    formatStatValue(0, suffix)
+  );
+
+  useEffect(() => {
+    const element = valueRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const frameId = window.requestAnimationFrame(() => {
+        setDisplayValue(formatStatValue(target, suffix));
+      });
+
+      return () => window.cancelAnimationFrame(frameId);
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setHasStarted(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.35 }
+    );
+
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [suffix, target]);
+
+  useEffect(() => {
+    if (!hasStarted) {
+      return;
+    }
+
+    const duration = 1200;
+    const startTime = window.performance.now();
+    let frameId = 0;
+
+    const animateValue = (timestamp: number) => {
+      const progress = Math.min(1, (timestamp - startTime) / duration);
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+      const nextValue = Math.round(target * easedProgress);
+
+      setDisplayValue(formatStatValue(nextValue, suffix));
+
+      if (progress < 1) {
+        frameId = window.requestAnimationFrame(animateValue);
+      }
+    };
+
+    frameId = window.requestAnimationFrame(animateValue);
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [hasStarted, suffix, target]);
+
+  return (
+    <strong ref={valueRef} className={className}>
+      {displayValue}
+    </strong>
+  );
+}
+
 function StatsSection({
   stats,
 }: {
@@ -391,10 +432,11 @@ function StatsSection({
               )}
             >
               <Icon className="size-8 text-primary" strokeWidth={1.7} />
-              <strong className="mt-5 font-heading text-[30px] font-semibold leading-none text-secondary">
-                {stat.value}
-              </strong>
-              <span className="mt-2 font-sans text-[12px] font-medium leading-tight text-secondary/76">
+              <CountUpValue
+                value={stat.value}
+                className="mt-5 font-heading text-title font-semibold leading-none text-secondary"
+              />
+              <span className="mt-2 font-sans text-description font-medium leading-tight text-secondary/76">
                 {stat.label}
               </span>
             </article>
@@ -408,39 +450,24 @@ function StatsSection({
 function MissionVisionSection() {
   return (
     <section className="relative bg-background px-5 pb-16 pt-12 sm:px-0 lg:pb-20">
-      <div className="relative mx-auto w-full max-w-[1300px] overflow-hidden rounded-[12px] border border-primary/15 bg-white p-4 shadow-[0_16px_48px_rgba(80,50,25,0.07)]">
-        <div className="relative min-h-[260px] overflow-hidden rounded-[8px]">
-          <Image
-            src="/home assets/About_trails.webp"
-            alt=""
-            fill
-            sizes="1300px"
-            aria-hidden="true"
-            className="pointer-events-none object-cover object-right-bottom"
+      <div className="relative mx-auto w-full max-w-[1300px] overflow-hidden rounded-[12px] border border-primary/15 bg-[linear-gradient(135deg,rgba(212,114,32,0.12)_0%,rgba(212,114,32,0.04)_48%,rgba(255,255,255,0.92)_100%)] p-5 shadow-[0_16px_48px_rgba(80,50,25,0.07)] sm:p-7 lg:p-9">
+        <p className="font-sans text-eyebrow font-medium uppercase text-primary">
+          Our Purpose
+        </p>
+        <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_1px_1fr] lg:gap-10">
+          <StoryPanel
+            title="Our Mission"
+            description="To inspire meaningful journeys that promote cultural understanding, preserve heritage and empower local communities."
           />
-          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.94)_0%,rgba(255,255,255,0.84)_50%,rgba(255,255,255,0.92)_100%)]" />
-          <div className="relative z-10 px-3 py-8 sm:px-4 lg:px-8">
-          <p className="text-description font-medium uppercase text-primary justify-center items-center">
-            Our Purpose
-          </p>
-          <div className="mt-7 grid gap-9 lg:grid-cols-[1fr_1px_1fr] lg:gap-16">
-            <StoryPanel
-              icon={Flag}
-              title="Our Mission"
-              description="To inspire meaningful journeys that promote cultural understanding, preserve heritage and empower local communities."
-            />
-            <span className="relative hidden w-px bg-border lg:block">
-              <span className="absolute left-1/2 top-1/2 grid size-4 -translate-x-1/2 -translate-y-1/2 rotate-45 place-items-center border border-primary/50 bg-white">
-                <span className="size-1.5 rounded-full bg-primary" />
-              </span>
+          <span className="relative hidden w-px bg-border lg:block">
+            <span className="absolute left-1/2 top-1/2 grid size-4 -translate-x-1/2 -translate-y-1/2 rotate-45 place-items-center border border-primary/50 bg-background">
+              <span className="size-1.5 rounded-full bg-primary" />
             </span>
-            <StoryPanel
-              icon={Eye}
-              title="Our Vision"
-              description="To be India's most trusted heritage travel brand, connecting the past with the present for generations to come."
-            />
-          </div>
-          </div>
+          </span>
+          <StoryPanel
+            title="Our Vision"
+            description="To be India's most trusted heritage travel brand, connecting the past with the present for generations to come."
+          />
         </div>
       </div>
     </section>
@@ -449,24 +476,19 @@ function MissionVisionSection() {
 
 function StoryPanel({
   description,
-  icon: Icon,
   title,
 }: {
   description: string;
-  icon: LucideIcon;
   title: string;
 }) {
   return (
-    <article className="grid grid-cols-[82px_minmax(0,1fr)] items-center gap-6">
-      <span className="grid size-[74px] place-items-center rounded-full bg-white text-primary shadow-[0_14px_34px_rgba(63,39,18,0.08)] ring-1 ring-primary/15">
-        <Icon className="size-10" strokeWidth={1.5} />
-      </span>
+    <article className="rounded-[10px] border border-primary/15 bg-white/64 px-5 py-6 backdrop-blur-sm sm:px-7">
       <span className="min-w-0">
-        <h2 className="font-heading text-[32px] font-bold leading-none tracking-normal text-secondary sm:text-[40px]">
+        <h2 className="font-heading text-title font-bold leading-none tracking-normal text-secondary">
           {title}
         </h2>
         <span className="mt-4 block h-px w-12 bg-primary" />
-        <p className="mt-5 max-w-[360px] text-description text-secondary">
+        <p className="mt-5 max-w-[460px] font-sans text-description leading-[1.55] text-secondary/78">
           {description}
         </p>
       </span>
@@ -490,7 +512,7 @@ function ValuesSection() {
       <div className="relative mx-auto w-full max-w-[1300px]">
         <div className="text-center">
           <span className="mx-auto block h-px w-[120px] bg-primary" />
-          <p className="mt-5 text-description font-medium uppercase text-primary">
+          <p className="mt-5 font-sans text-eyebrow font-medium uppercase text-primary">
             Why Travel With Us?
           </p>
           <h2 className="mt-1 font-heading text-title font-bold leading-none text-secondary">
@@ -499,20 +521,20 @@ function ValuesSection() {
         </div>
 
         <div className="mt-14 grid gap-y-10 sm:grid-cols-2 lg:mt-20 lg:grid-cols-6 lg:gap-y-0">
-          {valueItems.map(({ description, icon, title }, index) => (
+          {valueItems.map(({ description, icon: Icon, title }, index) => (
             <article key={title} className="relative flex flex-col items-center px-5 text-center">
               {index < valueItems.length - 1 ? (
                 <span className="pointer-events-none absolute right-0 top-0 hidden h-full w-px bg-border lg:block">
                   <span className="absolute -top-1 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-border" />
                 </span>
               ) : null}
-              <div className="relative size-[74px]">
-                <Image src={icon} alt="" fill sizes="74px" className="object-contain" />
-              </div>
-              <h3 className="mt-5 min-h-[46px] max-w-[190px] font-sans text-[16px] font-normal leading-[1.35] text-secondary">
+              <span className="grid size-[64px] place-items-center rounded-full border border-primary/15 bg-primary/8 text-primary">
+                <Icon className="size-7" strokeWidth={1.7} />
+              </span>
+              <h3 className="mt-5 min-h-[46px] max-w-[190px] font-sans text-description font-semibold leading-[1.35] text-secondary">
                 {title}
               </h3>
-              <p className="mt-4 max-w-[190px] text-[13px] italic leading-[1.25] text-secondary/75">
+              <p className="mt-4 max-w-[190px] font-sans text-description italic leading-[1.35] text-secondary/75">
                 {description}
               </p>
             </article>
@@ -537,9 +559,9 @@ function FounderSection({
   const tags = expert?.expertiseTags.slice(0, 4) || [];
 
   return (
-    <section className="bg-background px-5 pb-16 sm:px-0 lg:pb-20">
+    <section className="bg-background px-5 pb-12 sm:px-0 lg:pb-16">
       <div className="relative mx-auto grid w-full max-w-[1300px] gap-4 overflow-hidden rounded-[12px] border border-primary/15 bg-white p-4 shadow-[0_18px_52px_rgba(80,50,25,0.08)] lg:grid-cols-[0.78fr_1.22fr]">
-        <div className="relative min-h-[310px] overflow-hidden rounded-[8px] bg-muted bg-cover bg-center shadow-[0_16px_36px_rgba(35,24,16,0.14)] sm:min-h-[350px] lg:min-h-[360px]">
+        <div className="relative min-h-[250px] overflow-hidden rounded-[8px] bg-muted bg-cover bg-center shadow-[0_16px_36px_rgba(35,24,16,0.14)] sm:min-h-[280px] lg:min-h-[300px]">
           {image ? (
             <div
               role="img"
@@ -550,15 +572,10 @@ function FounderSection({
           ) : (
             <ProfilePlaceholder name={name} />
           )}
-          <div className="absolute bottom-4 left-4 rounded-[6px] bg-secondary/90 px-4 py-3 font-sans text-white shadow-[0_12px_24px_rgba(35,24,16,0.18)]">
-            <p className="text-[12px] font-bold leading-none">{role}</p>
-            <p className="mt-1 text-[11px] font-medium leading-none text-white/72">
-              Ancient Trails
-            </p>
-          </div>
+          
         </div>
 
-        <div className="relative min-h-[360px] overflow-hidden rounded-[8px] px-5 py-8 sm:px-8 lg:px-10">
+        <div className="relative min-h-[300px] overflow-hidden rounded-[8px] px-5 py-6 sm:px-8 lg:px-10">
           <Image
             src="/home assets/About_trails.webp"
             alt=""
@@ -569,24 +586,22 @@ function FounderSection({
           />
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.95)_0%,rgba(255,255,255,0.86)_56%,rgba(255,255,255,0.75)_100%)]" />
           <div className="relative z-10 max-w-[570px]">
-            <p className="text-description font-medium uppercase text-primary">
+            <p className="font-sans text-eyebrow font-medium uppercase text-primary">
               Meet Our Founder
             </p>
             <h2 className="mt-2 font-heading text-title font-bold leading-none text-secondary">
               {getDisplayFounderName(name)}
             </h2>
-            <p className="mt-3 font-sans text-[14px] font-semibold leading-tight text-primary">
-              {role}
-            </p>
-            <p className="mt-6 max-w-[520px] text-description text-secondary">
+            
+            <p className="mt-5 max-w-[520px] font-sans text-description leading-[1.55] text-secondary">
               {bio}
             </p>
-            <p className="mt-4 max-w-[520px] text-description text-secondary">
+            <p className="mt-3 max-w-[520px] font-sans text-description leading-[1.55] text-secondary">
               Ancient Trails is his dream to share India&apos;s living heritage
               with the world in the most meaningful way possible.
             </p>
             {tags.length > 0 ? (
-              <div className="mt-6 flex flex-wrap gap-2">
+              <div className="mt-5 flex flex-wrap gap-2">
                 {tags.map((tag) => (
                   <span
                     key={tag}
@@ -601,7 +616,7 @@ function FounderSection({
               nativeButton={false}
               render={<Link href="/#about" />}
               variant="outline"
-              className="mt-8 h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:min-w-[190px]"
+              className="mt-6 h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:min-w-[190px]"
             >
               Read His Story
               <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />
@@ -613,32 +628,49 @@ function FounderSection({
   );
 }
 
-function TeamSection({
-  experts,
-  teamMembers,
-}: {
-  experts: PublicExpert[];
-  teamMembers: AboutPageContentType["teamMembers"];
-}) {
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  const teamProfiles = getTeamProfiles(teamMembers, experts);
+function TeamSection({ experts }: { experts: PublicExpert[] }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const visibleExperts = useMemo(() => {
+    const visibleCount = Math.min(4, experts.length);
 
-  function scrollTeam(direction: "left" | "right") {
-    scrollerRef.current?.scrollBy({
-      left: direction === "left" ? -280 : 280,
-      behavior: "smooth",
-    });
+    return Array.from({ length: visibleCount }, (_item, index) => {
+      return experts[(activeIndex + index) % experts.length];
+    }).filter(Boolean);
+  }, [activeIndex, experts]);
+
+  useEffect(() => {
+    if (experts.length <= 4) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setActiveIndex((currentIndex) => (currentIndex + 1) % experts.length);
+    }, 4200);
+
+    return () => window.clearInterval(interval);
+  }, [experts.length]);
+
+  function moveTeam(direction: "left" | "right") {
+    if (experts.length <= 1) {
+      return;
+    }
+
+    setActiveIndex((currentIndex) =>
+      direction === "left"
+        ? (currentIndex - 1 + experts.length) % experts.length
+        : (currentIndex + 1) % experts.length
+    );
   }
 
   return (
-    <section className="bg-[#fff8f2] px-5 pb-12 sm:px-8 lg:px-0">
+    <section className="bg-background px-5 pb-12 sm:px-8 lg:px-0">
       <div className="mx-auto w-full max-w-[1220px]">
         <div className="flex items-end justify-between gap-5">
           <div>
-            <p className="font-sans text-[12px] font-bold uppercase leading-none tracking-normal text-primary">
+            <p className="font-sans text-eyebrow font-medium uppercase leading-none tracking-normal text-primary">
               Our Team
             </p>
-            <h2 className="mt-4 font-heading text-[31px] font-bold leading-[1.05] tracking-normal text-secondary sm:text-[40px]">
+            <h2 className="mt-4 font-heading text-title font-bold leading-none tracking-normal text-secondary">
               The Minds Behind the Journeys
             </h2>
           </div>
@@ -646,7 +678,7 @@ function TeamSection({
           <div className="hidden items-center gap-3 sm:flex">
             <button
               type="button"
-              onClick={() => scrollTeam("left")}
+              onClick={() => moveTeam("left")}
               aria-label="Scroll team left"
               className="grid size-10 place-items-center rounded-full border border-primary/12 bg-white text-secondary/65 shadow-[0_10px_24px_rgba(80,50,25,0.08)] transition-colors hover:bg-primary hover:text-white"
             >
@@ -654,7 +686,7 @@ function TeamSection({
             </button>
             <button
               type="button"
-              onClick={() => scrollTeam("right")}
+              onClick={() => moveTeam("right")}
               aria-label="Scroll team right"
               className="grid size-10 place-items-center rounded-full border border-primary/12 bg-white text-secondary/65 shadow-[0_10px_24px_rgba(80,50,25,0.08)] transition-colors hover:bg-primary hover:text-white"
             >
@@ -663,15 +695,11 @@ function TeamSection({
           </div>
         </div>
 
-        <div
-          ref={scrollerRef}
-          className="mt-8 flex snap-x gap-4 overflow-x-auto pb-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-          {teamProfiles.map(({ expert, key, member }) => (
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {visibleExperts.map((expert) => (
             <TeamCard
-              key={key}
+              key={expert.id || expert.expertId || expert.fullName}
               expert={expert}
-              member={member}
             />
           ))}
         </div>
@@ -680,22 +708,16 @@ function TeamSection({
   );
 }
 
-function TeamCard({
-  expert,
-  member,
-}: {
-  expert: PublicExpert | null;
-  member: AboutTeamMember | null;
-}) {
-  const name = getProfileName(member, expert);
-  const image = getProfileImage(member, expert);
-  const role = getExpertRole(expert, member?.role || "");
-  const bio = getExpertBio(expert, member?.bio || "");
+function TeamCard({ expert }: { expert: PublicExpert }) {
+  const name = expert.fullName;
+  const image = expert.image;
+  const role = getExpertRole(expert);
+  const bio = getExpertBio(expert);
   const tags = expert?.expertiseTags.slice(0, 2) || [];
 
   return (
-    <article className="w-[184px] shrink-0 snap-start overflow-hidden rounded-[8px] border border-[#ead8c5] bg-white shadow-[0_16px_36px_rgba(80,50,25,0.09)]">
-      <div className="relative h-[170px] bg-[#eadfd6]">
+    <article className="overflow-hidden rounded-[8px] border border-[#ead8c5] bg-white shadow-[0_16px_36px_rgba(80,50,25,0.09)]">
+      <div className="relative h-[230px] bg-[#eadfd6]">
         {image ? (
           <div
             role="img"
@@ -708,13 +730,11 @@ function TeamCard({
         )}
       </div>
       <div className="p-4">
-        <h3 className="font-sans text-[13px] font-bold leading-tight text-secondary">
+        <h3 className="font-sans text-description font-bold leading-tight text-secondary">
           {name}
         </h3>
-        <p className="mt-2 font-sans text-[11px] font-semibold leading-[1.35] text-primary">
-          {role}
-        </p>
-        <p className="mt-4 line-clamp-5 min-h-[100px] font-sans text-[12px] font-medium leading-[1.65] text-secondary/72">
+        
+        <p className="mt-4 line-clamp-2 min-h-[100px] text-[14px] text-description font-medium leading-[1.55] text-secondary/72">
           {bio}
         </p>
         {tags.length > 0 ? (
@@ -748,10 +768,10 @@ function SpecializedSection() {
   return (
     <section className="bg-[#fff8f2] px-5 pb-14 sm:px-8 lg:px-0">
       <div className="mx-auto w-full max-w-[1220px] text-center">
-        <p className="font-sans text-[12px] font-bold uppercase leading-none tracking-normal text-primary">
+        <p className="font-sans text-eyebrow font-medium uppercase leading-none tracking-normal text-primary">
           We Are Specialized In
         </p>
-        <h2 className="mt-5 font-heading text-[30px] font-bold leading-tight tracking-normal text-secondary sm:text-[38px]">
+        <h2 className="mt-5 font-heading text-title font-bold leading-none tracking-normal text-secondary">
           Journeys that Celebrate India&apos;s Heritage
         </h2>
 
@@ -764,7 +784,7 @@ function SpecializedSection() {
               <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
                 <Icon className="size-5" strokeWidth={1.7} />
               </span>
-              <h3 className="font-sans text-[13px] font-bold leading-[1.35] text-secondary">
+              <h3 className="font-sans text-description font-bold leading-[1.35] text-secondary">
                 {title}
               </h3>
             </article>

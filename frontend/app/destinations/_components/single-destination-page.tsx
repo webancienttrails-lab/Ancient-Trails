@@ -783,7 +783,7 @@ function DestinationOverview({
 
   return (
     <section className="grid items-stretch gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(380px,0.95fr)]">
-      <article className="relative h-[410px] overflow-hidden rounded-[8px] bg-secondary shadow-[0_14px_30px_rgba(34,25,18,0.15)] sm:h-[430px] lg:h-full lg:min-h-[410px] xl:min-h-[430px]">
+      <article className="relative h-[420px] overflow-hidden rounded-[8px] bg-secondary shadow-[0_14px_30px_rgba(34,25,18,0.15)] sm:h-[440px] lg:h-full lg:min-h-[440px] xl:min-h-[470px]">
         <Image
           src={images[0] || fallbackImages[0]}
           alt={destination.destinationName}
@@ -809,22 +809,12 @@ function DestinationOverview({
 
         <div className="absolute inset-x-4 bottom-4 flex flex-wrap items-center justify-between gap-3">
           <p className="flex items-center gap-2 font-sans text-[14px] font-bold text-white">
-            {destination.unescoSite ? (
-              <Image
-                src="/home assets/circle.png"
-                alt=""
-                width={22}
-                height={22}
-                aria-hidden="true"
-                className="size-[22px] shrink-0 object-contain"
-              />
-            ) : null}
             Best Time To Visit - {getBestSeason(destination, tours)}
           </p>
           {destination.unescoSite ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 font-sans text-[15px] font-normal text-white">
              
-             Customise
+            UNESCO Site
             </span>
           ) : null}
         </div>
@@ -866,6 +856,13 @@ function DestinationOverview({
           <p className="mt-4 max-w-[470px] font-sans text-description text-secondary/70">
             {getHeritageIntro(destination)}
           </p>
+          <Link
+            href={getTourCalendarHref({ destination })}
+            className="group/button mt-5 inline-flex h-11 items-center justify-center gap-4 rounded-[24px] border border-primary bg-primary px-6 font-sans text-button font-medium leading-none text-white transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-white hover:text-primary"
+          >
+            Customise Now
+            <ArrowRight className="size-4" />
+          </Link>
         </div>
       </aside>
     </section>
@@ -1452,7 +1449,7 @@ function TravellerExperienceSection({
             href={getTourCalendarHref({ destination })}
             className="group/button mt-3 inline-flex h-11 items-center justify-center gap-4 rounded-[24px] border border-primary bg-primary px-6 font-sans text-button font-medium leading-none text-white transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-white hover:text-primary"
           >
-            Plan your trip
+            Plan Your Trip
             <ArrowRight className="size-4" />
           </Link>
         </div>

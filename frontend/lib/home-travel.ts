@@ -807,6 +807,31 @@ function createDurationFromDates(departure: PublicTourDeparture) {
   return `${days} Days/ ${Math.max(0, days - 1)} Nights`;
 }
 
+function getBestDatedDeparture(
+  departures: PublicTourDeparture[],
+  tourId: string
+) {
+  const today = new Date();
+
+  today.setHours(0, 0, 0, 0);
+
+  const datedDepartures = departures
+    .filter(
+      (departure) =>
+        departure.tourId === tourId && getDateValue(departure.departureDate) > 0
+    )
+    .sort(
+      (left, right) =>
+        getDateValue(left.departureDate) - getDateValue(right.departureDate)
+    );
+
+  return (
+    datedDepartures.find(
+      (departure) => getDateValue(departure.departureDate) >= today.getTime()
+    ) || datedDepartures[0]
+  );
+}
+
 export async function listPublicTours(destinationId = "") {
   const query = destinationId.trim()
     ? `?destinationId=${encodeURIComponent(destinationId.trim())}`
@@ -873,13 +898,15 @@ export function buildUpcomingTourCards(
           return null;
         }
 
-        const departure = selection.departureId
+        const selectedDeparture = selection.departureId
           ? departures.find(
               (item) =>
                 item.departureId === selection.departureId &&
                 item.tourId === selection.tourId
             )
           : undefined;
+        const departure =
+          selectedDeparture || getBestDatedDeparture(departures, selection.tourId);
 
         return {
           date: departure

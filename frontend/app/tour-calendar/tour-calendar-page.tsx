@@ -472,10 +472,6 @@ function resolveDestinationFilter(
   );
 }
 
-function getDurationBadge(tour: PublicTour) {
-  return tour.durationDn.replace(/\s+/g, "") || "6D/5N";
-}
-
 function getDepartureCapacity(departure: PublicTourDeparture) {
   const departureWithCapacity = departure as PublicTourDeparture & {
     capacity?: number;
@@ -1295,10 +1291,10 @@ function CalendarPanel({
                 onClick={() => onSelectDate(key)}
                 aria-pressed={isSelected}
                 className={cn(
-                  "relative mx-auto grid size-10 place-items-center rounded-full border border-transparent pb-1.5 font-sans text-[13px] font-semibold transition-all disabled:cursor-default focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary",
+                  "relative mx-auto grid size-10 place-items-center rounded-full border border-transparent font-sans text-[13px] font-semibold leading-none transition-all disabled:cursor-default focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary",
                   day.isCurrentMonth ? "text-secondary" : "text-secondary/32",
                   hasDepartures &&
-                  "bg-primary text-secondary hover:border-primary/20 hover:bg-primary/20",
+                  "bg-primary text-secondary text-white",
                   isToday &&
                   "rounded-full bg-[#d1fce1] border border-[#2faa5d] ",
                   isSelected &&
@@ -1492,7 +1488,7 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
               statusBadgeClassName(status)
             )}
           >
-            {getDurationBadge(item.tour)}
+            BESTSELLER
           </span>
         </div>
 

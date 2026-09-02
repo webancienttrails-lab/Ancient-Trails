@@ -2,25 +2,26 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   BedDouble,
   Bus,
-  CalendarDays,
   ChevronLeft,
   ChevronRight,
-  Globe2,
   ImageIcon,
   Play,
+  Route,
   Search,
   Star,
-  Utensils,
-  UserRoundCheck,
+  UserRound,
+  X,
   type LucideIcon,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 
 import { Header } from "@/components/layout/header";
+import { ButtonArrow, buttonVariants } from "@/components/ui/button";
 import {
   getHomeMediaUrl,
   listPublicDestinations,
@@ -78,6 +79,19 @@ const categoryTabs: Array<{ id: ExperienceCategory; label: string }> = [
   { id: "popular-cities", label: "Popular cities" },
   { id: "unesco-sites", label: "Unesco Sites" },
 ];
+
+const experienceStats: Array<{
+  label: string;
+  value: string;
+}> = [
+  { label: "Curated Tours", value: "150+" },
+  { label: "Destinations", value: "75+" },
+  { label: "Happy Travellers", value: "25,000+" },
+  { label: "Years of Experience", value: "12+" },
+  { label: "Countries Explored", value: "10+" },
+];
+
+const experienceStatFormatter = new Intl.NumberFormat("en-IN");
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
@@ -246,17 +260,6 @@ function getRatingValue(
   return Number((total / experiences.length).toFixed(1));
 }
 
-function getTravellerInitials(name: string) {
-  const initials = name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
-  return initials || "AT";
-}
-
 function getExperiencePhotoGallery(experience?: PublicExperience) {
   return uniqueValues(experience?.travellerPhotoGallery || [])
     .map(getHomeMediaUrl)
@@ -388,6 +391,128 @@ function HeaderBand() {
   );
 }
 
+function parseExperienceStatValue(value: string) {
+  const target = Number(value.replace(/[^\d]/g, ""));
+  const suffix = value.trim().endsWith("+") ? "+" : "";
+
+  return {
+    suffix,
+    target: Number.isFinite(target) ? target : 0,
+  };
+}
+
+function formatExperienceStatValue(value: number, suffix: string) {
+  return `${experienceStatFormatter.format(value)}${suffix}`;
+}
+
+function CountUpStatValue({
+  className,
+  value,
+}: {
+  className: string;
+  value: string;
+}) {
+  const valueRef = useRef<HTMLElement | null>(null);
+  const { suffix, target } = useMemo(
+    () => parseExperienceStatValue(value),
+    [value]
+  );
+  const [hasStarted, setHasStarted] = useState(false);
+  const [displayValue, setDisplayValue] = useState(() =>
+    formatExperienceStatValue(0, suffix)
+  );
+
+  useEffect(() => {
+    const element = valueRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const frameId = window.requestAnimationFrame(() => {
+        setDisplayValue(formatExperienceStatValue(target, suffix));
+      });
+
+      return () => window.cancelAnimationFrame(frameId);
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setHasStarted(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.35 }
+    );
+
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [suffix, target]);
+
+  useEffect(() => {
+    if (!hasStarted) {
+      return;
+    }
+
+    const duration = 1200;
+    const startTime = window.performance.now();
+    let frameId = 0;
+
+    const animateValue = (timestamp: number) => {
+      const progress = Math.min(1, (timestamp - startTime) / duration);
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+      const nextValue = Math.round(target * easedProgress);
+
+      setDisplayValue(formatExperienceStatValue(nextValue, suffix));
+
+      if (progress < 1) {
+        frameId = window.requestAnimationFrame(animateValue);
+      }
+    };
+
+    frameId = window.requestAnimationFrame(animateValue);
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [hasStarted, suffix, target]);
+
+  return (
+    <strong ref={valueRef} className={className}>
+      {displayValue}
+    </strong>
+  );
+}
+
+function ExperienceStatsStrip() {
+  return (
+    <section className={`${detailContainerClassName} relative z-20 -mt-[44px]`}>
+      <div className="mx-auto grid max-w-[1080px] overflow-hidden rounded-[10px] border border-primary/15 bg-white sm:grid-cols-2 lg:grid-cols-5">
+        {experienceStats.map((stat, index) => (
+            <article
+              key={stat.label}
+              className={cn(
+                "flex min-h-[82px] flex-col items-center justify-center px-2 py-3 text-center",
+                index > 0 && "border-t border-border sm:border-l sm:border-t-0",
+                index === 2 && "sm:border-t lg:border-t-0",
+                index === 4 && "sm:col-span-2 lg:col-span-1"
+              )}
+            >
+              <CountUpStatValue
+                value={stat.value}
+                className="font-description text-[24px] font-semibold leading-none tracking-normal text-secondary"
+              />
+              <span className="mt-1.5 font-description text-description font-medium leading-none text-secondary/70">
+                {stat.label}
+              </span>
+            </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function ExperiencesPage() {
   const [destinations, setDestinations] = useState<PublicDestination[]>([]);
   const [experiences, setExperiences] = useState<PublicExperience[]>([]);
@@ -479,21 +604,28 @@ export function ExperiencesPage() {
       />
 
       <section
-        className={`${pageContainerClassName} grid gap-6 pb-10 pt-10 md:grid-cols-[minmax(0,1fr)_300px] md:items-end`}
+        className={`${pageContainerClassName} grid gap-6 pb-10 pt-10 md:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] md:items-center md:gap-10 lg:gap-14`}
       >
         <div className="min-w-0">
-          <p className="font-sans text-eyebrow font-medium uppercase leading-none tracking-normal text-primary">
-            Traveller Experiences
+          <p className="font-sans text-eyebrow font-medium uppercase leading-none text-primary">
+            Traveller
           </p>
-          <h1 className="mt-2 max-w-[460px] font-heading text-title font-bold leading-none tracking-normal text-secondary">
-            <span className="block">Experiences with</span>
-            <span className="block text-primary">Ancient Trails</span>
+          <h1 className="mt-1 flex flex-wrap items-end gap-x-4 gap-y-1 font-heading text-title font-bold italic leading-none tracking-normal text-secondary">
+            <span>Experiences</span>
+            <span className="pb-1 font-sans text-description font-medium not-italic leading-none text-secondary">
+              With Ancient Trails
+            </span>
           </h1>
         </div>
 
-        <p className="max-w-[300px] font-sans text-description italic leading-[1.35] text-secondary md:justify-self-end">
-          Choose a destination and get to know more about real travel
-          experiences from people visiting these locations.
+        <span className="h-px w-full bg-border md:h-20 md:w-px" />
+
+        <p className="max-w-[520px] font-sans text-description font-medium leading-[1.25] text-secondary/72">
+          <span className="block text-secondary/68">Planning a trip with us?</span>
+          <span className="block">
+            Choose a destination and get to know more about the travel
+            experiences of people visiting all these locations
+          </span>
         </p>
       </section>
 
@@ -548,7 +680,7 @@ function ExperienceTopBar({
                     ? "px-0 text-primary hover:text-accent"
                     : "border px-5",
                   isActive
-                    ? "border-primary bg-primary text-white shadow-[0_6px_15px_rgba(212,114,32,0.2)]"
+                    ? "border-primary bg-primary text-white "
                     : !isPlainAll &&
                         "border-primary/70 bg-white text-primary hover:bg-primary hover:text-white"
                 )}
@@ -624,7 +756,7 @@ function ExperienceDestinationCard({
       aria-label={`Read traveller experiences for ${destination.destinationName}`}
       className="group block"
     >
-      <article className="grid h-[102px] grid-cols-[102px_minmax(0,1fr)_50px] items-stretch overflow-hidden rounded-[9px] border border-[#eee9e4] bg-white shadow-[0_4px_10px_rgba(50,50,50,0.1)] transition-transform duration-300 hover:-translate-y-0.5 hover:shadow-[0_10px_22px_rgba(50,50,50,0.14)]">
+      <article className="grid h-[102px] grid-cols-[102px_minmax(0,1fr)_50px] items-stretch overflow-hidden rounded-[9px] border border-[#eee9e4] bg-white transition-transform duration-300 hover:-translate-y-0.5">
         <div className="relative m-0 overflow-hidden rounded-[8px] bg-muted">
           <Image
             src={image}
@@ -637,7 +769,7 @@ function ExperienceDestinationCard({
         </div>
 
         <div className="min-w-0 px-3.5 py-3">
-          <h2 className="line-clamp-2 min-h-[36px] font-sans text-[21px] font-bold leading-[1.02] tracking-normal text-secondary">
+          <h2 className="line-clamp-2 min-h-[36px] font-sans text-[18px] font-bold leading-[1.02] tracking-normal text-secondary">
             {destination.destinationName}
           </h2>
           <div className="mt-3 flex min-w-0 items-center gap-2">
@@ -653,7 +785,7 @@ function ExperienceDestinationCard({
         </div>
 
         <div className="flex items-end justify-center pb-3">
-          <span className="grid size-9 place-items-center rounded-full bg-primary text-white transition-colors group-hover:bg-accent">
+          <span className="grid size-9 place-items-center rounded-full border border-primary bg-primary text-white transition-colors group-hover:bg-white group-hover:text-primary">
             <ArrowRight className="size-5" strokeWidth={2.1} />
           </span>
         </div>
@@ -673,6 +805,7 @@ export function SingleExperiencePage({
   });
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -769,6 +902,7 @@ export function SingleExperiencePage({
     return (
       <main className="min-h-screen bg-background text-secondary">
         <HeaderBand />
+        <ExperienceStatsStrip />
         <section className={`${detailContainerClassName} py-10`}>
           <div className="h-[360px] animate-pulse rounded-[8px] bg-muted" />
           <div className="mt-10 h-[260px] animate-pulse rounded-[8px] bg-muted" />
@@ -781,6 +915,7 @@ export function SingleExperiencePage({
     return (
       <main className="min-h-screen bg-background text-secondary">
         <HeaderBand />
+        <ExperienceStatsStrip />
         <section className="mx-auto mt-10 max-w-[720px] px-5 pb-20">
           <div className="rounded-[8px] border border-[#ead8c5] bg-white p-8 text-center shadow-[0_18px_44px_rgba(50,50,50,0.08)]">
             <h1 className="font-heading text-title font-bold leading-none tracking-normal text-secondary">
@@ -792,7 +927,7 @@ export function SingleExperiencePage({
             </p>
             <Link
               href="/experiences"
-              className="mt-6 inline-flex h-10 items-center gap-3 rounded-full bg-primary px-5 font-sans text-[14px] font-bold text-white transition-colors hover:bg-accent"
+              className="mt-6 inline-flex h-10 items-center gap-3 rounded-full bg-primary px-5 font-sans text-button font-bold text-white transition-colors hover:bg-accent"
             >
               Back to Experiences
               <ArrowRight className="size-4" />
@@ -809,6 +944,7 @@ export function SingleExperiencePage({
   return (
     <main className="min-h-screen bg-background text-secondary">
       <HeaderBand />
+      <ExperienceStatsStrip />
 
       <section className={`${detailContainerClassName} pb-20 pt-8`}>
         <ExperienceDetailHero
@@ -816,6 +952,7 @@ export function SingleExperiencePage({
           destination={detail.destination}
           experiences={detail.experiences}
           images={images}
+          onGalleryOpen={setLightboxIndex}
         />
         <ExploringWithUsSection
           destination={detail.destination}
@@ -831,8 +968,19 @@ export function SingleExperiencePage({
           experiences={detail.experiences}
           images={images}
         />
+        <ExperiencePlanTripCta destination={detail.destination} images={images} />
         <ReviewsGrid experiences={detail.experiences} images={images} />
       </section>
+
+      {lightboxIndex !== null ? (
+        <ExperiencePhotoLightbox
+          activeIndex={lightboxIndex}
+          images={images}
+          title={`${detail.destination.destinationName} photos`}
+          onClose={() => setLightboxIndex(null)}
+          onIndexChange={setLightboxIndex}
+        />
+      ) : null}
     </main>
   );
 }
@@ -842,11 +990,13 @@ function ExperienceDetailHero({
   destination,
   experiences,
   images,
+  onGalleryOpen,
 }: {
   averageRating: number;
   destination: PublicDestination;
   experiences: PublicExperience[];
   images: string[];
+  onGalleryOpen: (index: number) => void;
 }) {
   const featuredExperience = experiences[0];
   const heroImages = Array.from({ length: 9 }, (_item, index) =>
@@ -862,15 +1012,11 @@ function ExperienceDetailHero({
   }));
   const thumbnailImages = heroImages.slice(5, 9);
   const reviewCount = experiences.length;
-  const bullets = uniqueValues([
-    ...experiences.flatMap((experience) => experience.thingsToKnow),
-    destination.primaryHeritageFocus
-      ? `${destination.primaryHeritageFocus} heritage route`
-      : "",
-    destination.keyLandmarks.length > 0
-      ? `${destination.keyLandmarks.length}+ landmark moments`
-      : "",
-  ]).slice(0, 3);
+  const bullets = [
+    "One of our bestseller tours",
+    "100% safe routes with certified local guides",
+    "56 Guided Tours delivered",
+  ];
 
   return (
     <section>
@@ -930,8 +1076,9 @@ function ExperienceDetailHero({
                   />
                 </div>
               ))}
-              <Link
-                href={getTourCalendarHref({ destination })}
+              <button
+                type="button"
+                onClick={() => onGalleryOpen(0)}
                 className="col-span-2 flex h-[92px] items-center justify-center gap-4 rounded-[7px] bg-white font-sans text-description font-medium uppercase leading-[1.1] text-primary transition-colors hover:text-accent sm:col-span-1"
               >
                 <span className="grid size-10 shrink-0 place-items-center rounded-full border-2 border-primary">
@@ -942,29 +1089,29 @@ function ExperienceDetailHero({
                   <br />
                   photos
                 </span>
-              </Link>
+              </button>
             </div>
           </div>
         </div>
 
-        <aside className="w-full pt-3 lg:pt-16">
+        <aside className="w-full">
           <p className="max-w-[360px] font-sans text-description font-medium leading-[1.35] text-primary">
             Every Journey we organise is built on trust, safety and
             unforgettable memories
           </p>
 
           <div className="mt-9">
-            <p className="font-sans text-eyebrow font-medium uppercase leading-none text-secondary">
+            <p className="font-sans text-description font-normal uppercase leading-none text-secondary">
               Rating
             </p>
-            <div className="mt-3 grid w-full max-w-[390px] grid-cols-[auto_auto_minmax(112px,1fr)] items-end gap-3">
-              <strong className="font-sans text-[54px] font-medium leading-[0.8] text-primary">
+            <div className="mt-3 grid w-full max-w-[390px] grid-cols-[auto_auto_minmax(112px,1fr)] items-end gap-3 rounded-[8px]  bg-transparent px-4 py-3">
+              <strong className="font-description text-[46px] font-semibold leading-none tracking-normal text-primary">
                 {averageRating.toFixed(1)}
               </strong>
-              <span className="pb-1.5 font-sans text-[28px] font-medium text-primary">
+              <span className="pb-1.5 font-description text-[20px] font-semibold leading-none text-primary">
                 / 5
               </span>
-              <span className="mb-2 max-w-[160px] justify-self-end font-sans text-description italic leading-[1.2] text-secondary/60">
+              <span className="mb-2 max-w-[160px] justify-self-end font-sans text-description italic leading-[1.2] text-secondary/70">
                 Based on {reviewCount}+ verified reviews
               </span>
             </div>
@@ -1023,16 +1170,12 @@ function ExperienceAlbumCard({
         className="object-cover transition-transform duration-700 group-hover:scale-[1.035]"
       />
       <span className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.04)_0%,rgba(18,12,8,0.18)_45%,rgba(18,12,8,0.66)_100%)]" />
-      <span className="absolute left-5 top-5 inline-flex h-10 items-center gap-2 rounded-full bg-white px-4 font-sans text-description font-semibold leading-none text-secondary shadow-[0_8px_18px_rgba(35,23,15,0.12)]">
-        <ImageIcon className="size-4" strokeWidth={1.8} />
+      <span className="pointer-events-none absolute left-4 top-4 inline-flex h-7 items-center gap-1.5 rounded-full bg-white px-3 text-[12px] font-semibold text-secondary">
+        <ImageIcon className="size-3.5" strokeWidth={2} />
         Album
       </span>
-      <span className="absolute inset-x-5 bottom-5 flex items-center justify-between gap-3">
-        <strong
-          className={cn(
-            "min-w-0 truncate font-sans text-button font-bold leading-none text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.45)]"
-          )}
-        >
+      <span className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-5 text-white">
+        <strong className="max-w-[220px] font-sans text-description font-semibold leading-tight">
           {title}
         </strong>
         <span className="grid size-10 shrink-0 place-items-center rounded-full border border-white/80 bg-white/5 text-white backdrop-blur-sm transition-colors group-hover:bg-primary group-hover:border-primary">
@@ -1040,6 +1183,136 @@ function ExperienceAlbumCard({
         </span>
       </span>
     </article>
+  );
+}
+
+function ExperiencePhotoLightbox({
+  activeIndex,
+  images,
+  title,
+  onClose,
+  onIndexChange,
+}: {
+  activeIndex: number;
+  images: string[];
+  title: string;
+  onClose: () => void;
+  onIndexChange: (index: number) => void;
+}) {
+  const boundedIndex = images[activeIndex] ? activeIndex : 0;
+  const activeImage = images[boundedIndex];
+
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+
+      if (event.key === "ArrowLeft") {
+        onIndexChange(boundedIndex === 0 ? images.length - 1 : boundedIndex - 1);
+      }
+
+      if (event.key === "ArrowRight") {
+        onIndexChange(boundedIndex === images.length - 1 ? 0 : boundedIndex + 1);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [boundedIndex, images.length, onClose, onIndexChange]);
+
+  if (!activeImage) {
+    return null;
+  }
+
+  function showPreviousImage() {
+    onIndexChange(boundedIndex === 0 ? images.length - 1 : boundedIndex - 1);
+  }
+
+  function showNextImage() {
+    onIndexChange(boundedIndex === images.length - 1 ? 0 : boundedIndex + 1);
+  }
+
+  return createPortal(
+    <section
+      aria-label={`${title} gallery`}
+      aria-modal="true"
+      role="dialog"
+      className="fixed inset-0 bg-black/82 text-white"
+      style={{ zIndex: 2147483647 }}
+    >
+      <button
+        type="button"
+        aria-label="Close gallery backdrop"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+      />
+
+      <div className="relative z-10 flex h-full flex-col">
+        <div className="flex h-[70px] items-center justify-between px-5 md:px-8">
+          <p className="font-sans text-[18px] font-semibold tracking-wide text-white/92">
+            {boundedIndex + 1} / {images.length}
+          </p>
+          <button
+            type="button"
+            aria-label="Close gallery"
+            onClick={onClose}
+            className="transition-colors hover:text-primary"
+          >
+            <X className="size-7" strokeWidth={2} />
+          </button>
+        </div>
+
+        <div className="relative flex min-h-0 flex-1 items-center justify-center px-5 pb-16 md:px-24">
+          {images.length > 1 ? (
+            <button
+              type="button"
+              aria-label="Previous gallery image"
+              onClick={showPreviousImage}
+              className="absolute left-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-primary md:left-10"
+            >
+              <ChevronLeft className="size-8" strokeWidth={2.4} />
+            </button>
+          ) : null}
+
+          <div className="relative h-[calc(100vh-9rem)] w-full max-w-[1120px]">
+            <Image
+              src={activeImage}
+              alt={`${title} ${boundedIndex + 1}`}
+              fill
+              priority
+              unoptimized
+              sizes="(min-width: 1280px) 1120px, calc(100vw - 3rem)"
+              className="object-contain object-center drop-shadow-[0_18px_42px_rgba(0,0,0,0.26)]"
+            />
+          </div>
+
+          {images.length > 1 ? (
+            <button
+              type="button"
+              aria-label="Next gallery image"
+              onClick={showNextImage}
+              className="absolute right-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-primary md:right-10"
+            >
+              <ChevronRight className="size-8" strokeWidth={2.4} />
+            </button>
+          ) : null}
+        </div>
+
+        <p className="absolute bottom-6 left-1/2 z-20 w-[min(90vw,520px)] -translate-x-1/2 truncate text-center font-sans text-[18px] font-bold text-white/92">
+          {title}
+        </p>
+      </div>
+    </section>,
+    document.body
   );
 }
 
@@ -1053,182 +1326,144 @@ function ExploringWithUsSection({
   images: string[];
 }) {
   const featuredExperience = experiences[0];
-  const featuredImage =
+  const fallbackMediaImage =
     getExperiencePhotoGallery(featuredExperience)[0] || images[1] || fallbackImages[0];
-  const tallImage = images[2] || featuredImage;
-  const averageRating = getAverageRating(experiences);
-  const reviewCount = experiences.length;
-  const thumbnailImages = [
-    featuredImage,
-    images[3] || images[0] || tallImage || fallbackImages[1],
-  ];
+  const tallImage = images[2] || fallbackMediaImage;
   const centerVideo =
     getExperienceVideo(featuredExperience) ||
     getExperienceVideo(experiences.find((experience) => getExperienceVideo(experience)));
 
   return (
-    <section className="mt-12 grid gap-8 lg:grid-cols-[minmax(0,1fr)_350px_minmax(0,1fr)] lg:items-start xl:grid-cols-[minmax(0,1fr)_390px_minmax(0,1fr)] xl:gap-10">
-      <div className="flex h-full min-w-0 flex-col">
-        <p className="font-sans text-eyebrow font-medium uppercase leading-none text-secondary/76">
-          What Travellers Say On -
-        </p>
-        <h2 className="mt-2 font-heading text-title font-bold leading-none text-secondary">
-          Exploring {destination.destinationName} with Us
-        </h2>
-        <Link
-          href="#traveller-reviews"
-          className="mt-5 inline-flex w-fit items-center gap-3 font-sans text-eyebrow font-medium uppercase leading-none text-primary transition-colors hover:text-accent"
-        >
-          Reviews &amp; Experiences
-          <ArrowRight className="size-4" strokeWidth={1.9} />
-        </Link>
-
-        <div className="mt-10">
-          <p className="font-sans text-eyebrow font-medium uppercase leading-none text-secondary/54">
-            Rating
+    <section className="mt-16 py-3 mb-10">
+      <div className="grid gap-8 lg:h-[390px] lg:grid-cols-[minmax(290px,1.02fr)_minmax(190px,0.62fr)_minmax(260px,0.82fr)] lg:items-stretch lg:gap-12 xl:grid-cols-[minmax(330px,1.08fr)_minmax(205px,0.64fr)_minmax(300px,0.86fr)]">
+        <div className="flex min-w-0 flex-col">
+          <p className="font-sans text-eyebrow font-medium uppercase leading-none text-secondary/68">
+            What Travellers Say On -
           </p>
-          <div className="mt-3 flex items-end gap-2 font-sans text-primary">
-            <strong className="text-[52px] font-medium leading-[0.82]">
-              {averageRating.toFixed(1)}
-            </strong>
-            <span className="pb-1 text-[20px] font-medium">/5</span>
+          <h2 className="mt-2 font-heading text-title font-bold leading-none text-secondary border-b border-secondary/28 pb-4">
+            Exploring {destination.destinationName} with Us
+          </h2>
+          <p className="mt-5 max-w-[320px] font-sans text-description font-medium leading-[1.35] text-primary">
+            Every Journey we organise is built on trust, safety and unforgettable
+            memories
+          </p>
+
+          <article className="relative mt-4 min-h-[180px] flex-1 overflow-hidden rounded-[8px] bg-muted shadow-[0_14px_32px_rgba(50,50,50,0.1)]">
+            <Image
+              src={fallbackMediaImage}
+              alt={`${destination.destinationName} traveller memory`}
+              fill
+              unoptimized
+              sizes="(min-width: 1280px) 320px, (min-width: 1024px) 25vw, 100vw"
+              className="object-cover"
+            />
+          </article>
+        </div>
+
+        <article className="relative h-[320px] overflow-hidden rounded-[8px] bg-muted shadow-[0_14px_32px_rgba(50,50,50,0.1)] sm:h-[360px] lg:h-full">
+          {centerVideo ? (
+            <video
+              autoPlay
+              className="size-full object-cover"
+              loop
+              muted
+              playsInline
+              poster={tallImage}
+              preload="metadata"
+              src={centerVideo}
+            />
+          ) : (
+            <Image
+              src={tallImage}
+              alt={`${destination.destinationName} memory`}
+              fill
+              unoptimized
+              sizes="(min-width: 1280px) 350px, (min-width: 1024px) 28vw, 100vw"
+              className="object-cover"
+            />
+          )}
+        </article>
+
+        <div className="flex min-w-0 flex-col justify-center">
+          <div className="w-full max-w-[390px] justify-self-center lg:justify-self-auto">
+            {experiences.length > 0 ? (
+              <ExperienceReviewSlider experiences={experiences} />
+            ) : (
+              <p className="mt-10 max-w-[320px] font-sans text-description leading-[1.5] text-secondary/62">
+                Traveller voices will appear here once experiences are published for
+                this destination.
+              </p>
+            )}
+            <div className="pt-6">
+              <p className="font-sans text-description font-medium text-secondary/70">
+                Ready to plan your Journey?
+                <span className="block">Let&apos;s get started!</span>
+              </p>
+              <Link
+                href={getTourCalendarHref({ destination })}
+                className="group/button mt-3 inline-flex h-11 items-center justify-center gap-4 rounded-[24px] border border-primary bg-primary px-6 font-sans text-button font-medium leading-none text-white transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-white hover:text-primary"
+              >
+                Plan your trip
+                <ArrowRight className="size-4" />
+              </Link>
+            </div>
           </div>
-          <p className="mt-3 font-sans text-description italic leading-none text-secondary/54">
-            Based on {reviewCount}+ verified reviews
-          </p>
         </div>
-
-        <div className="mt-9 grid grid-cols-2 gap-4">
-          {thumbnailImages.map((image, index) => (
-            <article
-              key={`${image}-${index}`}
-              className="relative h-[170px] overflow-hidden rounded-[8px] bg-muted shadow-[0_10px_22px_rgba(50,50,50,0.1)]"
-            >
-              <Image
-                src={image}
-                alt={`${destination.destinationName} traveller photo ${index + 1}`}
-                fill
-                unoptimized
-                sizes="(min-width: 1280px) 185px, (min-width: 1024px) 15vw, 50vw"
-                className="object-cover"
-              />
-              {index === 1 ? (
-                <>
-                  <span className="absolute inset-0 bg-secondary/42" />
-                  <span className="absolute left-1/2 top-1/2 grid size-10 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white/26 text-white backdrop-blur-sm">
-                    <Play className="ml-0.5 size-5 fill-current" strokeWidth={0} />
-                  </span>
-                  <span className="absolute inset-x-3 bottom-3 text-center font-sans text-[16px] font-bold leading-none text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.5)]">
-                    View all Photos
-                  </span>
-                </>
-              ) : null}
-            </article>
-          ))}
-        </div>
-      </div>
-
-      <article className="relative min-h-[560px] overflow-hidden rounded-[8px] bg-muted shadow-[0_18px_42px_rgba(50,50,50,0.12)]">
-        {centerVideo ? (
-          <video
-            autoPlay
-            className="size-full object-cover"
-            loop
-            muted
-            playsInline
-            poster={tallImage}
-            preload="metadata"
-            src={centerVideo}
-          />
-        ) : (
-          <Image
-            src={tallImage}
-            alt={`${destination.destinationName} memory`}
-            fill
-            unoptimized
-            sizes="(min-width: 1280px) 390px, (min-width: 1024px) 350px, 100vw"
-            className="object-cover"
-          />
-        )}
-      </article>
-
-      <div className="flex h-full min-w-0 flex-col pt-1">
-        <p className="max-w-[430px] font-sans text-description font-medium leading-[1.35] text-primary">
-          Every Journey we organise is built on trust, safety and unforgettable
-          memories
-        </p>
-        {experiences.length > 0 ? (
-          <ExperienceReviewSlider
-            destination={destination}
-            experiences={experiences}
-          />
-        ) : (
-          <p className="mt-10 max-w-[320px] font-sans text-description leading-[1.5] text-secondary/62">
-            Traveller voices will appear here once experiences are published for
-            this destination.
-          </p>
-        )}
       </div>
     </section>
   );
 }
 
 function CompactVoiceCard({ experience }: { experience: PublicExperience }) {
-  const photo = getExperiencePhotoGallery(experience)[0] || "";
   const name = experience.travellerName.trim() || "Traveller";
-  const photoCount = getExperiencePhotoGallery(experience).length;
 
   return (
-    <article>
-      <RatingStars
-        value={experience.overallRating}
-        className="text-[#ffbd00]"
-        starClassName="size-4"
-      />
-
-      <p className="mt-4 max-w-[430px] font-sans text-description font-medium leading-[1.45] text-secondary/82">
+    <article className="text-center">
+      <p className="mx-auto mt-6 line-clamp-7 max-w-[360px] font-description text-[16px] font-medium leading-[1.36] text-secondary/70">
         {experience.writtenReview || experience.title || "Traveller experience"}
       </p>
 
-      <div className="mt-6 flex items-center gap-3">
-        {photo ? (
-          <span className="relative size-11 shrink-0 overflow-hidden rounded-full bg-primary/10">
-            <Image
-              src={photo}
-              alt={name}
-              fill
-              unoptimized
-              sizes="44px"
-              className="object-cover"
-            />
-          </span>
-        ) : (
-          <span className="grid size-11 shrink-0 place-items-center rounded-full bg-primary font-sans text-[13px] font-bold text-white">
-            {getTravellerInitials(name)}
-          </span>
-        )}
-        <span className="min-w-0 text-left font-sans">
-          <strong className="block truncate text-description font-bold leading-tight text-secondary">
-            {name}
-          </strong>
-          <span className="block truncate text-[13px] font-medium leading-tight text-secondary/60">
-            1 review - {photoCount} photos
-          </span>
+      <span className="mx-auto mt-5 block h-px w-20 bg-primary/45" />
+
+      <div className="mt-4 flex items-center justify-center gap-6">
+        <RatingStars
+          value={experience.overallRating}
+          className="text-primary"
+          starClassName="size-4"
+        />
+        <span className="font-sans text-[20px] font-semibold leading-none text-secondary">
+          {experience.overallRating.toFixed(1)}
         </span>
       </div>
+
+      <p className="mt-4 truncate font-sans text-[16px] font-medium leading-none text-primary">
+        {name}
+      </p>
     </article>
   );
 }
 
 function ExperienceReviewSlider({
-  destination,
   experiences,
 }: {
-  destination: PublicDestination;
   experiences: PublicExperience[];
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const boundedIndex = experiences[activeIndex] ? activeIndex : 0;
+
+  useEffect(() => {
+    if (experiences.length <= 1) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setActiveIndex((currentIndex) =>
+        currentIndex === experiences.length - 1 ? 0 : currentIndex + 1
+      );
+    }, 4500);
+
+    return () => window.clearInterval(interval);
+  }, [experiences.length]);
 
   function showPreviousReview() {
     setActiveIndex(boundedIndex === 0 ? experiences.length - 1 : boundedIndex - 1);
@@ -1239,10 +1474,14 @@ function ExperienceReviewSlider({
   }
 
   return (
-    <div className="mt-10 w-full min-w-0">
+    <div className="w-full min-w-0">
+      <h3 className="mt-4 text-center font-sans text-description font-semibold uppercase tracking-normal text-primary">
+        Voices from our travellers
+      </h3>
+
       <div className="overflow-hidden">
         <div
-          className="flex transition-transform duration-500 ease-out"
+          className="flex transition-transform duration-700 ease-out"
           style={{ transform: `translateX(-${boundedIndex * 100}%)` }}
         >
           {experiences.map((experience) => (
@@ -1257,7 +1496,7 @@ function ExperienceReviewSlider({
       </div>
 
       {experiences.length > 1 ? (
-        <div className="mt-8 flex items-center justify-between gap-4">
+        <div className="mt-4 flex items-center justify-between gap-4">
           <button
             type="button"
             aria-label="Previous traveller review"
@@ -1293,20 +1532,6 @@ function ExperienceReviewSlider({
           </button>
         </div>
       ) : null}
-
-      <div className="mt-7">
-        <p className="font-sans text-description font-medium leading-[1.35] text-secondary/78">
-          Ready to plan your Journey?
-          <span className="block">Let&apos;s get started!</span>
-        </p>
-        <Link
-          href={getTourCalendarHref({ destination })}
-          className="mt-5 inline-flex h-11 min-w-[210px] items-center justify-between gap-6 rounded-full bg-primary px-6 font-sans text-button font-medium leading-none text-white shadow-[0_12px_28px_rgba(212,114,32,0.2)] transition-colors hover:bg-accent"
-        >
-          Plan your trip
-          <ArrowRight className="size-5" strokeWidth={1.9} />
-        </Link>
-      </div>
     </div>
   );
 }
@@ -1321,19 +1546,14 @@ function TravellerRatingSection({
   const reviewCount = experiences.length;
   const rows: Array<{ icon: LucideIcon; label: string; value: number }> = [
     {
-      icon: CalendarDays,
+      icon: Route,
       label: "Itinerary",
       value: getRatingValue(experiences, "ratingItinerary"),
     },
     {
       icon: Bus,
-      label: "Transport",
+      label: "Local Transport",
       value: getRatingValue(experiences, "ratingLocalTransport"),
-    },
-    {
-      icon: UserRoundCheck,
-      label: "Guide",
-      value: getRatingValue(experiences, "ratingTourExpert"),
     },
     {
       icon: BedDouble,
@@ -1341,53 +1561,43 @@ function TravellerRatingSection({
       value: getRatingValue(experiences, "ratingAccommodation"),
     },
     {
-      icon: Utensils,
-      label: "Food",
-      value: getRatingValue(experiences, "overallRating"),
-    },
-    {
-      icon: Globe2,
-      label: "Tour Operator",
+      icon: UserRound,
+      label: "Tour Expert",
       value: getRatingValue(experiences, "ratingTourExpert"),
     },
   ];
 
   return (
-    <section className="mt-14">
+    <section className="mt-40">
       <div className="flex flex-wrap items-end gap-4">
         <div>
-          <h2 className="font-sans text-[28px] font-semibold leading-none text-secondary">
-            Traveler Rating
+          <h2 className="font-heading text-title font-bold leading-none text-secondary">
+            Traveller Rating
           </h2>
-          <p className="mt-2 font-sans text-[18px] font-medium leading-none text-secondary">
-            Overall rating based on{" "}
+          <p className="mt-2 font-sans text-description font-medium leading-none text-secondary">
+            Overall {averageRating.toFixed(1)} rating based on{" "}
             <strong>{reviewCount || 0} reviews</strong>
           </p>
         </div>
-        <RatingStars
-          value={averageRating}
-          className="pb-1 text-[#ffbd00]"
-          starClassName="size-3"
-        />
       </div>
 
-      <div className="mt-7 grid gap-x-14 gap-y-5 rounded-[10px] bg-[#eef8ff] px-5 py-6 sm:px-8 md:grid-cols-2">
+      <div className="mt-7 grid gap-4 md:grid-cols-2">
         {rows.map(({ icon: Icon, label, value }) => (
           <div
             key={label}
-            className="grid grid-cols-[112px_minmax(0,1fr)_32px] items-center gap-4"
+            className="grid grid-cols-[minmax(130px,0.82fr)_minmax(0,1fr)_42px] items-center gap-3  bg-white px-4 py-4 sm:grid-cols-[minmax(160px,0.82fr)_minmax(0,1fr)_48px]"
           >
-            <span className="flex items-center gap-3 font-sans text-[13px] font-medium text-secondary/82">
-              <Icon className="size-4 text-secondary/58" strokeWidth={1.7} />
+            <span className="flex min-w-0 items-center gap-2.5 font-sans text-description font-medium text-secondary/82">
+              <Icon className="size-4 shrink-0 text-primary" strokeWidth={1.8} />
               {label}
             </span>
-            <span className="h-2 overflow-hidden rounded-full bg-secondary/14">
+            <span className="h-2 overflow-hidden rounded-full bg-primary/12">
               <span
-                className="block h-full rounded-full bg-secondary/72"
+                className="block h-full rounded-full bg-primary"
                 style={{ width: `${Math.min(100, (value / 5) * 100)}%` }}
               />
             </span>
-            <span className="font-sans text-[12px] font-medium text-secondary/78">
+            <span className="font-sans text-button font-semibold text-primary">
               {value.toFixed(1)}
             </span>
           </div>
@@ -1406,6 +1616,16 @@ function TravellerMomentsSection({
   experiences: PublicExperience[];
   images: string[];
 }) {
+  const availableVideos = uniqueValues(
+    experiences.flatMap((experience) => experience.travellerVideos)
+  ).map(getHomeMediaUrl);
+  const momentLayouts = [
+    "lg:col-span-2",
+    "lg:col-span-1",
+    "lg:col-span-1",
+    "lg:col-span-2",
+    "lg:col-span-1",
+  ];
   const moments = Array.from({ length: 5 }, (_item, index) => {
     const experience = experiences[index % Math.max(experiences.length, 1)];
     const photo =
@@ -1419,24 +1639,29 @@ function TravellerMomentsSection({
         experience?.travellerVideoTitles[0] ||
         experience?.title ||
         `${destination.destinationName} moment`,
-      video: getExperienceVideo(experience),
+      video: availableVideos[index % availableVideos.length] || getExperienceVideo(experience),
     };
   });
 
   return (
-    <section className="mt-16">
-      <h2 className="font-sans text-[28px] font-semibold leading-none text-secondary">
-        Traveler Moments
+    <section className="mt-12">
+      <h2 className="font-heading text-title font-bold leading-none text-secondary">
+        Traveller Moments
       </h2>
-      <div className="mt-7 grid grid-cols-2 gap-4 md:grid-cols-5">
+      <div className="mt-7 grid grid-cols-2 gap-4 lg:grid-cols-7">
         {moments.map((moment, index) => (
           <article
             key={`${moment.image}-${index}`}
-            className="relative h-[190px] overflow-hidden rounded-[8px] bg-muted shadow-[0_8px_18px_rgba(50,50,50,0.08)] xl:h-[205px]"
+            className={cn(
+              "relative h-[190px] overflow-hidden rounded-[8px] bg-muted shadow-[0_8px_18px_rgba(50,50,50,0.08)] lg:h-[210px] xl:h-[225px]",
+              momentLayouts[index % momentLayouts.length]
+            )}
           >
             {moment.video ? (
               <video
+                autoPlay
                 className="size-full object-cover"
+                loop
                 muted
                 playsInline
                 poster={moment.image}
@@ -1464,6 +1689,52 @@ function TravellerMomentsSection({
   );
 }
 
+function ExperiencePlanTripCta({
+  destination,
+  images,
+}: {
+  destination: PublicDestination;
+  images: string[];
+}) {
+  const ctaImage =
+    images[3] ||
+    images[0] ||
+    destination.bannerImage ||
+    destination.thumbnailImage ||
+    fallbackImages[0];
+
+  return (
+    <section className="relative mt-12 overflow-hidden rounded-[10px] bg-secondary px-5 py-8 text-white shadow-[0_18px_44px_rgba(50,50,50,0.12)] sm:px-8 lg:px-10">
+      <Image
+        src={getHomeMediaUrl(ctaImage)}
+        alt={`${destination.destinationName} plan trip`}
+        fill
+        unoptimized
+        sizes="1300px"
+        className="object-cover"
+      />
+      <span className="absolute inset-0 bg-[linear-gradient(90deg,rgba(35,24,16,0.86)_0%,rgba(35,24,16,0.66)_44%,rgba(35,24,16,0.2)_100%)]" />
+      <div className="relative max-w-[560px]">
+        <p className="font-sans text-eyebrow font-medium uppercase leading-none text-white/78">
+          Make It Your Journey
+        </p>
+        <h2 className="mt-3 font-heading text-title font-bold leading-none tracking-normal">
+          Plan your {destination.destinationName} trip with Ancient Trails
+        </h2>
+        <Link
+          href={getTourCalendarHref({ destination })}
+          className={buttonVariants({
+            className: "mt-6 min-w-[190px] justify-between gap-8",
+          })}
+        >
+          Plan Your Trip
+          <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+        </Link>
+      </div>
+    </section>
+  );
+}
+
 function ReviewsGrid({
   experiences,
   images,
@@ -1471,6 +1742,8 @@ function ReviewsGrid({
   experiences: PublicExperience[];
   images: string[];
 }) {
+  const [visibleReviewCount, setVisibleReviewCount] = useState(8);
+  const reviewsPerLoad = 4;
   const reviewItems =
     experiences.length > 0
       ? experiences
@@ -1485,28 +1758,85 @@ function ReviewsGrid({
     );
   }
 
+  const masonryReviews = Array.from({ length: visibleReviewCount }, (_item, index) => ({
+    experience: reviewItems[index % reviewItems.length],
+    key: `${reviewItems[index % reviewItems.length].id || reviewItems[index % reviewItems.length].experienceId}-${index}`,
+  }));
+  const reviewLayouts = [
+    "lg:min-h-[190px]",
+    "lg:min-h-[235px]",
+    "lg:min-h-[205px]",
+    "lg:min-h-[250px]",
+    "lg:min-h-[245px]",
+    "lg:min-h-[190px]",
+    "lg:min-h-[250px]",
+    "lg:min-h-[210px]",
+    "lg:min-h-[205px]",
+    "lg:min-h-[250px]",
+    "lg:min-h-[190px]",
+    "lg:min-h-[230px]",
+  ];
+  const reviewLineClamps = [
+    "line-clamp-4",
+    "line-clamp-6",
+    "line-clamp-5",
+    "line-clamp-7",
+    "line-clamp-7",
+    "line-clamp-4",
+    "line-clamp-7",
+    "line-clamp-5",
+    "line-clamp-5",
+    "line-clamp-7",
+    "line-clamp-4",
+    "line-clamp-6",
+  ];
+
   return (
-    <section className="mt-14 grid gap-x-24 gap-y-5 lg:grid-cols-2">
-      {reviewItems.slice(0, 10).map((experience, index) => (
-        <ReviewCard
-          key={experience.id || experience.experienceId || index}
-          experience={experience}
-          experiences={experiences}
-          fallbackImage={images[index % images.length] || fallbackImages[0]}
-        />
-      ))}
+    <section className="relative mt-12 overflow-hidden pb-10">
+      <h2 className="font-heading text-title font-bold leading-none text-secondary">
+        Written Reviews
+      </h2>
+      <div className="mt-7 columns-1 gap-4 sm:columns-2 lg:columns-4">
+        {masonryReviews.map(({ experience, key }, index) => (
+          <ReviewCard
+            key={key}
+            className={reviewLayouts[index % reviewLayouts.length]}
+            experience={experience}
+            experiences={experiences}
+            fallbackImage={images[index % images.length] || fallbackImages[0]}
+            lineClampClass={reviewLineClamps[index % reviewLineClamps.length]}
+          />
+        ))}
+      </div>
+      <div className="absolute inset-x-0 bottom-0 flex h-28 items-end justify-center bg-gradient-to-t from-background via-background/90 to-transparent pb-2">
+        <button
+          type="button"
+          onClick={() =>
+            setVisibleReviewCount((currentCount) =>
+              currentCount + reviewsPerLoad
+            )
+          }
+          className="inline-flex h-10 min-w-[150px] items-center justify-center rounded-full border border-primary bg-white px-5 font-sans text-button font-medium text-primary shadow-[0_10px_24px_rgba(50,50,50,0.12)] transition-colors hover:bg-primary hover:text-white"
+        >
+          Load more
+        </button>
+      </div>
     </section>
   );
 }
 
 function ReviewCard({
+  className,
   experience,
   experiences,
   fallbackImage,
+  lineClampClass = "line-clamp-2",
 }: {
+  className?: string;
   experience: PublicExperience;
   experiences: PublicExperience[];
   fallbackImage: string;
+  lineClampClass?: string;
 }) {
   const name = experience.travellerName.trim() || "Traveller";
   const photoGallery = getExperiencePhotoGallery(experience);
@@ -1514,23 +1844,33 @@ function ReviewCard({
   const photoCount = photoGallery.length;
 
   return (
-    <article className="rounded-[4px] border border-[#eee8e2] bg-white px-7 py-5 shadow-[0_4px_12px_rgba(50,50,50,0.08)]">
+    <article
+      className={cn(
+        "mb-4 flex break-inside-avoid flex-col rounded-[4px] border border-[#eee8e2] bg-white px-5 py-5 shadow-[0_4px_12px_rgba(50,50,50,0.08)]",
+        className
+      )}
+    >
       <div className="flex items-center gap-2">
         <RatingStars
           value={experience.overallRating}
           className="text-[#ffbd00]"
           starClassName="size-3"
         />
-        <span className="font-sans text-[11px] font-medium text-secondary/62">
+        <span className="font-sans text-eyebrow font-medium text-secondary/62">
           {getReviewMonthLabel(experience.createdAt)}
         </span>
       </div>
 
-      <p className="mt-2 line-clamp-2 font-sans text-[11px] font-medium leading-[1.45] text-secondary/82">
+      <p
+        className={cn(
+          "mt-3 text-[14px] text-description font-medium leading-[1.5] text-secondary/82",
+          lineClampClass
+        )}
+      >
         {experience.writtenReview || experience.title || "Traveller experience"}
       </p>
 
-      <div className="mt-5 flex min-w-0 items-center gap-3">
+      <div className="mt-auto flex min-w-0 items-center gap-3 pt-5">
         <span className="relative size-9 shrink-0 overflow-hidden rounded-full bg-primary/10">
           <Image
             src={avatarImage}
@@ -1542,10 +1882,10 @@ function ReviewCard({
           />
         </span>
         <span className="min-w-0 font-sans">
-          <strong className="block truncate text-[12px] font-bold leading-tight text-secondary">
+          <strong className="block truncate text-description font-semibold text-[14px] leading-tight text-secondary">
             {name}
           </strong>
-          <span className="block truncate text-[10px] font-medium leading-tight text-secondary/62">
+          <span className="block truncate text-eyebrow font-medium text-[14px] leading-tight text-secondary/62">
             Local Guide - {getTravellerReviewCount(experience, experiences)} reviews
             - {photoCount} photos
           </span>
@@ -1591,10 +1931,10 @@ function EmptyState({
 }) {
   return (
     <div className="mt-8 rounded-[8px] border border-dashed border-[#e0d3c8] bg-white/75 px-5 py-10 text-center">
-      <h3 className="font-sans text-[24px] font-semibold text-secondary">
+      <h3 className="font-heading text-title font-semibold text-secondary">
         {title}
       </h3>
-      <p className="mx-auto mt-2 max-w-[420px] font-sans text-[12px] leading-[1.65] text-secondary/62">
+      <p className="mx-auto mt-2 max-w-[420px] font-sans text-description leading-[1.65] text-secondary/62">
         {message}
       </p>
     </div>

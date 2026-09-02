@@ -3,6 +3,7 @@ import { Montserrat, Playfair_Display } from "next/font/google";
 import { SiteFooter } from "@/components/layout/footer";
 import { ToastProvider } from "@/components/ui/toast";
 import { SiteLoader } from "@/components/layout/site-loader";
+import { BackToTopButton } from "@/components/layout/back-to-top-button";
 import "./globals.css";
 
 const montserrat = Montserrat({
@@ -41,6 +42,7 @@ export default function RootLayout({
           <SiteLoader />
           {children}
           <SiteFooter />
+          <BackToTopButton />
         </ToastProvider>
       </body>
     </html>

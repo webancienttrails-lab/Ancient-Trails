@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
-import { getToursHref } from "@/lib/routes";
 import { TextReveal } from "./reveal-on-view";
 
 export function SpecialisedToursSection() {
@@ -74,10 +73,10 @@ export function SpecialisedToursSection() {
 
           <Button
             nativeButton={false}
-            render={<Link href={getToursHref()} />}
+            render={<Link href="/tours" />}
             className="mt-10 h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:mt-14 lg:min-w-[250px]"
           >
-            View all specialised tours
+            View All Specialised Tours
             <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
           </Button>
         </div>

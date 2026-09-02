@@ -9,7 +9,7 @@ import {
   fallbackCustomisedTours,
   type HomeCustomisedTourCard,
 } from "@/lib/home-travel";
-import { getDestinationHref, getTourCalendarHref } from "@/lib/routes";
+import { getDestinationHref } from "@/lib/routes";
 import { RevealOnView, TextReveal } from "./reveal-on-view";
 
 const customisedTourLayouts = [
@@ -29,7 +29,9 @@ const customisedTourLayouts = [
 
 type CustomisedTourCardProps = {
   className: string;
-  activeIndex: number;
+  initialIndex: number;
+  isReady: boolean;
+  rotationInterval: number;
   sizes: string;
   tours: HomeCustomisedTourCard[];
 };
@@ -53,12 +55,38 @@ function mergeWithFallbackCustomisedTours(tours: HomeCustomisedTourCard[]) {
 }
 
 function CustomisedTourCard({
-  activeIndex,
   className,
+  initialIndex,
+  isReady,
+  rotationInterval,
   sizes,
   tours,
 }: CustomisedTourCardProps) {
+  const [activeIndex, setActiveIndex] = useState(() =>
+    tours[initialIndex] ? initialIndex : 0
+  );
   const visibleIndex = tours[activeIndex] ? activeIndex : 0;
+
+  useEffect(() => {
+    if (!isReady || tours.length <= 1) {
+      return;
+    }
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setActiveIndex((currentIndex) => {
+        const currentVisibleIndex = tours[currentIndex] ? currentIndex : 0;
+        const randomOffset = Math.floor(Math.random() * (tours.length - 1)) + 1;
+
+        return (currentVisibleIndex + randomOffset) % tours.length;
+      });
+    }, rotationInterval);
+
+    return () => window.clearInterval(interval);
+  }, [isReady, rotationInterval, tours]);
 
   return (
     <div
@@ -71,9 +99,10 @@ function CustomisedTourCard({
             destinationId: tour.destinationId,
             destinationName: tour.title,
           })}
+          aria-label={`Explore ${tour.title}`}
           aria-hidden={index !== visibleIndex}
           tabIndex={index === visibleIndex ? 0 : -1}
-          className={`absolute inset-0 block overflow-hidden rounded-[10px] transition-opacity duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          className={`absolute inset-0 block overflow-hidden rounded-[10px] transition-opacity duration-[1400ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
             index === visibleIndex
               ? "pointer-events-auto opacity-100"
               : "pointer-events-none opacity-0"
@@ -126,8 +155,6 @@ export function CustomisedToursSection({
   );
   const sectionRef = useRef<HTMLElement>(null);
   const [isSectionReady, setIsSectionReady] = useState(false);
-  const [activeTourIndex, setActiveTourIndex] = useState(0);
-  const hasAlternatingTours = tourSlots.some((slot) => slot.length > 1);
 
   useEffect(() => {
     const section = sectionRef.current;
@@ -161,22 +188,6 @@ export function CustomisedToursSection({
 
     return () => observer.disconnect();
   }, [isSectionReady]);
-
-  useEffect(() => {
-    if (!isSectionReady || !hasAlternatingTours) {
-      return;
-    }
-
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
-
-    const interval = window.setInterval(() => {
-      setActiveTourIndex((currentIndex) => (currentIndex === 0 ? 1 : 0));
-    }, 4200);
-
-    return () => window.clearInterval(interval);
-  }, [hasAlternatingTours, isSectionReady]);
 
   return (
     <section
@@ -213,8 +224,10 @@ export function CustomisedToursSection({
           <div>
             <RevealOnView visible={isSectionReady}>
               <CustomisedTourCard
-                activeIndex={activeTourIndex}
                 className={customisedTourLayouts[0].className}
+                initialIndex={0}
+                isReady={isSectionReady}
+                rotationInterval={5200}
                 sizes={customisedTourLayouts[0].sizes}
                 tours={tourSlots[0]}
               />
@@ -231,10 +244,10 @@ export function CustomisedToursSection({
 
             <Button
               nativeButton={false}
-              render={<Link href={getTourCalendarHref()} />}
+              render={<Link href="/destinations" />}
               className="mt-11 h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:px-6 sm:text-button lg:min-w-[200px]"
             >
-              Customise your tour
+              Customise Your Tour
               <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
             </Button>
           </div>
@@ -251,8 +264,10 @@ export function CustomisedToursSection({
 
             <RevealOnView delay={160} visible={isSectionReady}>
               <CustomisedTourCard
-                activeIndex={activeTourIndex}
                 className={customisedTourLayouts[1].className}
+                initialIndex={0}
+                isReady={isSectionReady}
+                rotationInterval={6800}
                 sizes={customisedTourLayouts[1].sizes}
                 tours={tourSlots[1]}
               />
@@ -262,8 +277,10 @@ export function CustomisedToursSection({
           <div className="lg:pt-[21px]">
             <RevealOnView delay={280} visible={isSectionReady}>
               <CustomisedTourCard
-                activeIndex={activeTourIndex}
                 className={customisedTourLayouts[2].className}
+                initialIndex={0}
+                isReady={isSectionReady}
+                rotationInterval={8400}
                 sizes={customisedTourLayouts[2].sizes}
                 tours={tourSlots[2]}
               />

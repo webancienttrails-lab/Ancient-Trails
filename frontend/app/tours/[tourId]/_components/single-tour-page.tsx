@@ -2096,8 +2096,7 @@ function TourGallery({
           className="object-cover"
         />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0)_58%,rgba(0,0,0,0.42)_100%)]" />
-        <span className="absolute bottom-4 left-4 inline-flex items-center gap-2 rounded-[6px] border border-white/45 bg-secondary/75 px-3 py-2 font-sans text-[15px] font-bold text-white shadow-[0_10px_20px_rgba(0,0,0,0.18)] backdrop-blur-sm">
-          <Landmark className="size-4" strokeWidth={1.7} />
+        <span className="absolute bottom-4 left-4 inline-flex items-center gap-2 rounded-[6px] border border-white/45 bg-secondary/75 px-3 py-2 font-sans text-[15px] font-normal text-white shadow-[0_10px_20px_rgba(0,0,0,0.18)] backdrop-blur-sm">
           {tourType || "Heritage Walk"}
         </span>
       </div>
@@ -2270,7 +2269,7 @@ function TourTabs({
                 aria-pressed={activeTab === value}
                 onClick={() => handleTabClick(tab)}
                 className={cn(
-                  "relative flex min-h-12 items-center justify-center gap-2 border-r border-b border-border px-2.5 font-sans text-[14px] font-bold transition-colors last:border-r-0 sm:text-[15px] xl:border-b-0",
+                  "relative flex min-h-12 items-center justify-center gap-2 border-r border-b border-border px-2 font-sans text-[14px] font-semibold transition-colors last:border-r-0 sm:text-[15px] xl:border-b-0",
                   activeTab === value
                     ? "bg-muted/45 text-primary"
                     : "text-secondary hover:bg-primary/5 hover:text-primary"
@@ -2363,7 +2362,7 @@ function SummaryPanel({
           "A thoughtfully designed tour with expert-led storytelling, local culture and curated heritage experiences."}
       </p>
       {tour.notes ? (
-        <p className="mt-3 max-w-[820px] rounded-[6px] bg-muted px-3 py-2 font-sans text-[15px] font-semibold leading-[1.6] text-accent">
+        <p className="mt-3 max-w-[820px] rounded-[6px] bg-muted px-3 py-2 font-sans text-[14px] font-semibold leading-[1.6] text-accent">
           {tour.notes}
         </p>
       ) : null}
@@ -3821,11 +3820,7 @@ function PriceCard({
             </strong>
           </div>
 
-        {offerText ? (
-          <span className="shrink-0 rounded-full bg-accent px-2 py-1 font-sans text-[15px] font-bold text-white">
-            {offerText}
-          </span>
-        ) : null}
+       
         </div>
       </div>
 
@@ -4228,11 +4223,11 @@ function HelpCard() {
         <h2 className="font-heading text-[18px] font-bold">Need Help?</h2>
         <p className="mt-1.5 flex flex-wrap items-center gap-x-1 text-[14px] font-semibold">
           <PhoneCall className="size-3.5 text-primary" />
-          Call us:011-43033003 | 43131313
+          Call Us : 011-43033003 | 43131313
         </p>
         <p className="mt-1 flex flex-wrap items-center gap-x-1 text-[14px] font-semibold">
           <Mail className="size-3.5 text-primary" />
-          Mail us:Holidays@ancient.com
+          Mail Us : Holidays@ancient.com
         </p>
       </div>
     </article>
@@ -4267,15 +4262,15 @@ function ExpertPanel({ expert }: { expert: PublicExpert }) {
         </p>
 
         <div className="mt-4 flex flex-wrap items-center gap-4 text-primary">
-          <span className="inline-flex items-center gap-2 font-sans text-[15px] font-bold text-secondary">
+          <span className="inline-flex items-center gap-2 font-sans text-[15px] font-semibold text-secondary">
             <Landmark className="size-5 text-primary" strokeWidth={1.5} />
             Heritage Context
           </span>
-          <span className="inline-flex items-center gap-2 font-sans text-[15px] font-bold text-secondary">
+          <span className="inline-flex items-center gap-2 font-sans text-[15px] font-semibold text-secondary">
             <BookOpen className="size-5 text-primary" strokeWidth={1.5} />
             Storytelling
           </span>
-          <span className="inline-flex items-center gap-2 font-sans text-[15px] font-bold text-secondary">
+          <span className="inline-flex items-center gap-2 font-sans text-[15px] font-semibold text-secondary">
             <Clock3 className="size-5 text-primary" strokeWidth={1.5} />
             Field Experience
           </span>
@@ -4285,7 +4280,7 @@ function ExpertPanel({ expert }: { expert: PublicExpert }) {
           nativeButton={false}
           render={<Link href="/about" />}
           variant="outline"
-          className="mt-5 justify-between px-5 text-[15px] font-normal"
+          className="mt-5 justify-between px-5 text-[16px] font-normal"
         >
           View Profile
           <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />

@@ -179,6 +179,7 @@ export function TourShowcaseCard({
             </strong>
           </span>
           <Button
+            nativeButton={false}
             render={<Link href={href} aria-label={`${ctaLabel} ${title}`} />}
             className="h-[34px] min-w-[134px] shrink-0 gap-4 px-4 text-[12px] font-normal sm:min-w-[144px] sm:text-[14px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >

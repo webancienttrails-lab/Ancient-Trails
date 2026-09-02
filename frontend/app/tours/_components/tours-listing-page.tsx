@@ -1426,8 +1426,8 @@ function ResultsHeader({
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <p className="font-sans text-[11px] font-bold uppercase text-primary">
-          {loadError ? "Fallback tours" : "Tour results"}
+        <p className="font-sans text-[16px] font-medium uppercase text-primary">
+          {loadError ? "Fallback tours" : "Tour Results"}
         </p>
         <h2 className="mt-1 font-heading text-[30px] font-bold leading-tight text-secondary sm:text-[36px]">
           Available Tours
@@ -1610,10 +1610,7 @@ function TourListRow({ item }: { item: TourListItem }) {
             className="object-cover"
           />
           <span className="absolute left-2.5 top-2.5 mt-1 rounded-[6px] bg-primary px-2 py-1 font-sans text-[11px] font-bold leading-none text-white">
-            {compactDurationLabel(
-              item.tour.durationDn,
-              item.durationDays || item.destination?.recommendedDurationDays || 1
-            )}
+            BESTSELLER
           </span>
         </div>
 

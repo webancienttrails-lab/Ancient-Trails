@@ -379,7 +379,7 @@ export function TopDestinationsSection({
             render={<Link href="/destinations" />}
             className="h-11 w-full min-w-0 justify-center gap-3 px-5 text-[15px] font-normal sm:w-auto sm:px-6 sm:text-button lg:min-w-[230px]"
           >
-            View all destinations
+            View All Destinations
             <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
           </Button>
         </div>
@@ -459,11 +459,10 @@ export function TopDestinationsSection({
               const alignRight = destination.markerX > 72;
 
               return (
-                <button
+                <Link
                   key={`map-${destination.destinationId}-${index}`}
-                  type="button"
-                  aria-label={`Show ${destination.name}`}
-                  onClick={() => selectDestination(destination.destinationId)}
+                  href={getDestinationHref(destination)}
+                  aria-label={`Explore ${destination.name}`}
                   onFocus={() => selectDestination(destination.destinationId)}
                   onMouseEnter={() => selectDestination(destination.destinationId)}
                   className={cn(
@@ -478,7 +477,7 @@ export function TopDestinationsSection({
                   <MapPushPin active={isActive} />
                   <span
                     className={cn(
-                      "pointer-events-none absolute z-30 w-[160px] translate-y-0 rounded-[8px] border border-primary/15 bg-white p-2 text-center opacity-0 shadow-[0_16px_34px_rgba(50,50,50,0.16)] transition-[opacity,transform] duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100",
+                      "pointer-events-auto absolute z-30 w-[160px] translate-y-0 rounded-[8px] border border-primary/15 bg-white p-2 text-center opacity-0 shadow-[0_16px_34px_rgba(50,50,50,0.16)] transition-[opacity,transform] duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100",
                       showBelow ? "top-full mt-3" : "bottom-full mb-3",
                       !isActive && (showBelow ? "translate-y-1" : "-translate-y-1"),
                       isActive && "opacity-100",
@@ -518,7 +517,7 @@ export function TopDestinationsSection({
                       </span>
                     </span>
                   </span>
-                </button>
+                </Link>
               );
             })}
           </div>
@@ -565,7 +564,7 @@ export function TopDestinationsSection({
                   {activeDestination.description}
                 </p>
 
-                <div className="mt-3 mb-4 grid min-h-[80px] grid-cols-2 gap-x-4 gap-y-2.5">
+                <div className="mt-3 mb-5 grid min-h-[70px] grid-cols-2 gap-x-3 gap-y-2">
                   {activeHighlights.map(({ icon: Icon, label }) => (
                     <div
                       key={label}
