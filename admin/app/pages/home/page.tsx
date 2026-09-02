@@ -178,6 +178,30 @@ function formatDate(value: string | null) {
   }).format(date);
 }
 
+function getDefaultDepartureId(
+  departures: AdminTourDeparture[],
+  tourId: string
+) {
+  const today = new Date();
+
+  today.setHours(0, 0, 0, 0);
+
+  const tourDepartures = departures
+    .filter((departure) => departure.tourId === tourId && departure.departureDate)
+    .sort(
+      (left, right) =>
+        new Date(left.departureDate || "").getTime() -
+        new Date(right.departureDate || "").getTime()
+    );
+
+  return (
+    tourDepartures.find(
+      (departure) =>
+        new Date(departure.departureDate || "").getTime() >= today.getTime()
+    ) || tourDepartures[0]
+  )?.departureId || "";
+}
+
 export default function PagesHomePage() {
   const toast = useToast();
   const [form, setForm] = useState<HomeFormState>(emptyForm);
@@ -298,7 +322,14 @@ export default function PagesHomePage() {
           ? {
               ...tour,
               [field]: value,
-              ...(field === "tourId" ? { departureId: "" } : {}),
+              ...(field === "tourId"
+                ? {
+                    departureId: getDefaultDepartureId(
+                      departures,
+                      String(value)
+                    ),
+                  }
+                : {}),
             }
           : tour
       ),
@@ -387,7 +418,7 @@ export default function PagesHomePage() {
       upcomingTours: [
         ...currentForm.upcomingTours,
         {
-          departureId: "",
+          departureId: getDefaultDepartureId(departures, nextTour.tourId),
           sortOrder: currentForm.upcomingTours.length,
           tourId: nextTour.tourId,
         },

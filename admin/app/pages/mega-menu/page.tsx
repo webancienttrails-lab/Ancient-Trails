@@ -70,6 +70,8 @@ const emptyForm: FormState = {
   tourShortTrails: [],
 };
 
+const TOUR_MENU_TOTAL_LIMIT = 4;
+
 const indianRegionOptions = [
   "North India",
   "South India",
@@ -205,6 +207,15 @@ function getInternationalRegionDescription(
 }
 
 function createFormState(content: MegaMenuContent): FormState {
+  const tourHeritage = content.tourMenu.heritageTours.slice(
+    0,
+    TOUR_MENU_TOTAL_LIMIT
+  );
+  const tourShortTrails = content.tourMenu.shortTrails.slice(
+    0,
+    Math.max(0, TOUR_MENU_TOTAL_LIMIT - tourHeritage.length)
+  );
+
   return {
     destinationIndia: [],
     destinationIndiaRegions: (content.destinationIndiaRegions || []).map((item, index) => ({
@@ -227,10 +238,10 @@ function createFormState(content: MegaMenuContent): FormState {
     destinationTopCities: content.destinationMenu.topCities.map((item, index) =>
       createReference(item.referenceId, index)
     ),
-    tourHeritage: content.tourMenu.heritageTours.map((item, index) =>
+    tourHeritage: tourHeritage.map((item, index) =>
       createReference(item.referenceId, index)
     ),
-    tourShortTrails: content.tourMenu.shortTrails.map((item, index) =>
+    tourShortTrails: tourShortTrails.map((item, index) =>
       createReference(item.referenceId, index)
     ),
   };
@@ -373,7 +384,9 @@ export default function PagesMegaMenuPage() {
         detail: "Tour links in the Tours dropdown",
         icon: LayoutList,
         label: "Tour Menu",
-        value: `${form.tourHeritage.length + form.tourShortTrails.length}/8`,
+        value: `${
+          form.tourHeritage.length + form.tourShortTrails.length
+        }/${TOUR_MENU_TOTAL_LIMIT}`,
       },
       {
         detail: "Destination links in the Destinations dropdown",
@@ -420,6 +433,20 @@ export default function PagesMegaMenuPage() {
     }));
   }
 
+  function addTourSelection(key: "tourHeritage" | "tourShortTrails") {
+    const selectedTourCount = form.tourHeritage.length + form.tourShortTrails.length;
+
+    if (selectedTourCount >= TOUR_MENU_TOTAL_LIMIT) {
+      toast.error(
+        "Limit reached",
+        `Tours Mega Menu can show up to ${TOUR_MENU_TOTAL_LIMIT} tour links.`
+      );
+      return;
+    }
+
+    addSelection(key, tourOptions, TOUR_MENU_TOTAL_LIMIT);
+  }
+
   function updateSelection(key: SelectionKey, index: number, referenceId: string) {
     setForm((currentForm) => ({
       ...currentForm,
@@ -437,6 +464,9 @@ export default function PagesMegaMenuPage() {
   }
 
   const isBusy = isSaving || Boolean(uploadingRegionImage);
+  const isTourMenuLimitReached =
+    form.tourHeritage.length + form.tourShortTrails.length >=
+    TOUR_MENU_TOTAL_LIMIT;
 
   function addRegion(key: RegionCollectionKey, limit: number) {
     if (form[key].length >= limit) {
@@ -574,9 +604,10 @@ export default function PagesMegaMenuPage() {
         <section className="grid gap-5 xl:grid-cols-2">
           <EditorPanel title="Tours Mega Menu">
             <SelectionPanel
+              addDisabled={isTourMenuLimitReached}
               isLoading={isLoading}
-              limit={4}
-              onAdd={() => addSelection("tourHeritage", tourOptions, 4)}
+              limit={TOUR_MENU_TOTAL_LIMIT}
+              onAdd={() => addTourSelection("tourHeritage")}
               onRemove={(index) => removeSelection("tourHeritage", index)}
               onUpdate={(index, referenceId) =>
                 updateSelection("tourHeritage", index, referenceId)
@@ -586,9 +617,10 @@ export default function PagesMegaMenuPage() {
               title="Heritage Tours"
             />
             <SelectionPanel
+              addDisabled={isTourMenuLimitReached}
               isLoading={isLoading}
-              limit={4}
-              onAdd={() => addSelection("tourShortTrails", tourOptions, 4)}
+              limit={TOUR_MENU_TOTAL_LIMIT}
+              onAdd={() => addTourSelection("tourShortTrails")}
               onRemove={(index) => removeSelection("tourShortTrails", index)}
               onUpdate={(index, referenceId) =>
                 updateSelection("tourShortTrails", index, referenceId)
@@ -780,6 +812,7 @@ function EditorPanel({
 }
 
 function SelectionPanel({
+  addDisabled = false,
   isLoading,
   limit,
   onAdd,
@@ -789,6 +822,7 @@ function SelectionPanel({
   selections,
   title,
 }: {
+  addDisabled?: boolean;
   isLoading: boolean;
   limit: number;
   onAdd: () => void;
@@ -813,7 +847,7 @@ function SelectionPanel({
           type="button"
           variant="outline"
           onClick={onAdd}
-          disabled={isLoading || selections.length >= limit}
+          disabled={isLoading || addDisabled || selections.length >= limit}
           className="h-9 rounded-sm px-3 text-xs font-bold"
         >
           <Plus className="size-4" data-icon="inline-start" />
