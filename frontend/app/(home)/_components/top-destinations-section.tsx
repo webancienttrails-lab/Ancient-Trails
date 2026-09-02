@@ -564,7 +564,7 @@ export function TopDestinationsSection({
                   {activeDestination.description}
                 </p>
 
-                <div className="mt-3 mb-5 grid min-h-[70px] grid-cols-2 gap-x-3 gap-y-2">
+                <div className="mt-3 mb-5 grid min-h-[70px] grid-cols-2 gap-x-3 gap-y-1">
                   {activeHighlights.map(({ icon: Icon, label }) => (
                     <div
                       key={label}

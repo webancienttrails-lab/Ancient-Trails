@@ -24,6 +24,8 @@ import { createPortal } from "react-dom";
 
 import { Header } from "@/components/layout/header";
 import { TourShowcaseCard } from "@/components/tours/tour-showcase-card";
+import { useToast } from "@/components/ui/toast";
+import { listenForTravellerSessionChanges } from "@/lib/auth";
 import {
   getHomeMediaUrl,
   getTourDestinationIds,
@@ -40,6 +42,13 @@ import {
 } from "@/lib/home-travel";
 import { getTourCalendarHref, getTourHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
+import {
+  getWishlistTourIds,
+  listenForWishlistChanges,
+  normalizeWishlistTourId,
+  toggleWishlistTour,
+  type WishlistTourSnapshot,
+} from "@/lib/wishlist";
 
 const fallbackImages = [
   "/home assets/destination/Hampi.webp",
@@ -510,16 +519,56 @@ function getTourExpertName(tour: PublicTour, experts: PublicExpert[]) {
   return matchedExpert?.fullName.trim() || getReadableExpertName(tour.expertId);
 }
 
+function getTourExpert(tour: PublicTour, experts: PublicExpert[]) {
+  return experts.find(
+    (expert) => normalizeCode(expert.expertId) === normalizeCode(tour.expertId)
+  );
+}
+
+function createWishlistSnapshot({
+  destination,
+  durationLabel,
+  fallbackImage,
+  nextDeparture,
+  price,
+  tour,
+}: {
+  destination: PublicDestination;
+  durationLabel: string;
+  fallbackImage: string;
+  nextDeparture?: PublicTourDeparture;
+  price: number;
+  tour: PublicTour;
+}): WishlistTourSnapshot {
+  return {
+    categoryLabel: tour.category || tour.tourType || "Heritage",
+    description:
+      tour.description ||
+      "An expert-led Ancient Trails journey through heritage, culture and local stories.",
+    destinationLabel: destination.destinationName,
+    difficultyLabel: tour.difficulty || "Moderate",
+    durationLabel,
+    href: getTourHref(tour),
+    image: getTourImage(tour, fallbackImage),
+    nextDepartureLabel: formatDate(nextDeparture?.departureDate || null),
+    priceLabel: price > 0 ? `${formatPrice(price)} +` : "On request",
+    title: tour.tourName,
+    tourId: normalizeWishlistTourId(tour.tourId),
+  };
+}
+
 export function SingleDestinationPage({
   destinationId,
 }: {
   destinationId: string;
 }) {
+  const toast = useToast();
   const [destination, setDestination] = useState<PublicDestination | null>(null);
   const [relatedTours, setRelatedTours] = useState<PublicTour[]>([]);
   const [departures, setDepartures] = useState<PublicTourDeparture[]>([]);
   const [experts, setExperts] = useState<PublicExpert[]>([]);
   const [experiences, setExperiences] = useState<PublicExperience[]>([]);
+  const [wishlistTourIds, setWishlistTourIds] = useState<string[]>([]);
   const [lightbox, setLightbox] = useState<LightboxState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -595,6 +644,66 @@ export function SingleDestinationPage({
       isMounted = false;
     };
   }, [destinationId]);
+
+  useEffect(() => {
+    const syncWishlist = () => {
+      setWishlistTourIds(getWishlistTourIds());
+    };
+
+    syncWishlist();
+
+    const stopWishlistListener = listenForWishlistChanges(syncWishlist);
+    const stopSessionListener =
+      listenForTravellerSessionChanges(syncWishlist);
+
+    return () => {
+      stopWishlistListener();
+      stopSessionListener();
+    };
+  }, []);
+
+  const wishlistedTourIds = useMemo(
+    () => new Set(wishlistTourIds),
+    [wishlistTourIds]
+  );
+
+  function handleWishlistToggle({
+    durationLabel,
+    fallbackImage,
+    nextDeparture,
+    price,
+    tour,
+  }: {
+    durationLabel: string;
+    fallbackImage: string;
+    nextDeparture?: PublicTourDeparture;
+    price: number;
+    tour: PublicTour;
+  }) {
+    if (!destination) {
+      return;
+    }
+
+    const { isWishlisted, items } = toggleWishlistTour(
+      createWishlistSnapshot({
+        destination,
+        durationLabel,
+        fallbackImage,
+        nextDeparture,
+        price,
+        tour,
+      })
+    );
+
+    setWishlistTourIds(items.map((wishlistItem) => wishlistItem.tourId));
+
+    if (isWishlisted) {
+      toast.success("Added to wishlist", `${tour.tourName} is saved.`);
+      return;
+    }
+
+    toast.info("Removed from wishlist", `${tour.tourName} was removed.`);
+  }
 
   const images = useMemo(
     () =>
@@ -707,7 +816,9 @@ export function SingleDestinationPage({
           destination={destination}
           experts={experts}
           images={images}
+          onWishlistToggle={handleWishlistToggle}
           tours={relatedTours}
+          wishlistedTourIds={wishlistedTourIds}
         />
 
         {lightbox ? (
@@ -1720,13 +1831,23 @@ function ToursSection({
   destination,
   experts,
   images,
+  onWishlistToggle,
   tours,
+  wishlistedTourIds,
 }: {
   departures: PublicTourDeparture[];
   destination: PublicDestination;
   experts: PublicExpert[];
   images: string[];
+  onWishlistToggle: (item: {
+    durationLabel: string;
+    fallbackImage: string;
+    nextDeparture?: PublicTourDeparture;
+    price: number;
+    tour: PublicTour;
+  }) => void;
   tours: PublicTour[];
+  wishlistedTourIds: Set<string>;
 }) {
   if (tours.length === 0) {
     return null;
@@ -1751,17 +1872,33 @@ function ToursSection({
       </div>
 
       <div className="mt-5 grid justify-start gap-5 [grid-template-columns:repeat(auto-fit,minmax(280px,320px))]">
-        {tours.slice(0, 3).map((tour, index) => (
-          <DestinationTourCard
-            key={tour.id || tour.tourId}
-            destination={destination}
-            fallbackImage={images[index % images.length] || fallbackImages[0]}
-            expertName={getTourExpertName(tour, experts)}
-            nextDeparture={getNextTourDeparture(tour, departures)}
-            price={getLowestTourPrice(tour, departures)}
-            tour={tour}
-          />
-        ))}
+        {tours.slice(0, 3).map((tour, index) => {
+          const fallbackImage = images[index % images.length] || fallbackImages[0];
+          const nextDeparture = getNextTourDeparture(tour, departures);
+          const price = getLowestTourPrice(tour, departures);
+          const durationLabel = compactDurationLabel(
+            tour.durationDn,
+            destination.recommendedDurationDays || 1
+          );
+
+          return (
+            <DestinationTourCard
+              key={tour.id || tour.tourId}
+              destination={destination}
+              durationLabel={durationLabel}
+              expert={getTourExpert(tour, experts)}
+              expertName={getTourExpertName(tour, experts)}
+              fallbackImage={fallbackImage}
+              isWishlisted={wishlistedTourIds.has(
+                normalizeWishlistTourId(tour.tourId)
+              )}
+              nextDeparture={nextDeparture}
+              onWishlistToggle={onWishlistToggle}
+              price={price}
+              tour={tour}
+            />
+          );
+        })}
       </div>
     </section>
   );
@@ -1769,16 +1906,30 @@ function ToursSection({
 
 function DestinationTourCard({
   destination,
+  durationLabel,
+  expert,
   expertName,
   fallbackImage,
+  isWishlisted,
   nextDeparture,
+  onWishlistToggle,
   price,
   tour,
 }: {
   destination: PublicDestination;
+  durationLabel: string;
+  expert?: PublicExpert;
   expertName: string;
   fallbackImage: string;
+  isWishlisted: boolean;
   nextDeparture?: PublicTourDeparture;
+  onWishlistToggle: (item: {
+    durationLabel: string;
+    fallbackImage: string;
+    nextDeparture?: PublicTourDeparture;
+    price: number;
+    tour: PublicTour;
+  }) => void;
   price: number;
   tour: PublicTour;
 }) {
@@ -1787,15 +1938,35 @@ function DestinationTourCard({
       allDeparturesHref={getTourCalendarHref({ destination, tour })}
       badgeLabel="BESTSELLER"
       difficultyLabel={getTourDifficultyLabel(tour)}
-      durationLabel={compactDurationLabel(
-        tour.durationDn,
-        destination.recommendedDurationDays || 1
-      )}
+      durationLabel={durationLabel}
+      expertImage={getHomeMediaUrl(expert?.image || "")}
       expertName={expertName}
+      expertSpecialties={expert?.expertiseTags || []}
+      expertSpecialty={
+        expert?.expertiseTags[0] ||
+        tour.category ||
+        tour.tourType ||
+        "Heritage Tours"
+      }
+      favoriteLabel={
+        isWishlisted
+          ? `Remove ${tour.tourName} from wishlist`
+          : `Save ${tour.tourName}`
+      }
       href={getTourHref(tour)}
       image={getTourImage(tour, fallbackImage)}
       imageSizes="(min-width: 1280px) 320px, (min-width: 640px) 50vw, 100vw"
+      isFavorite={isWishlisted}
       nextDepartureLabel={formatDate(nextDeparture?.departureDate || null)}
+      onFavoriteToggle={() =>
+        onWishlistToggle({
+          durationLabel,
+          fallbackImage,
+          nextDeparture,
+          price,
+          tour,
+        })
+      }
       priceLabel={price > 0 ? `${formatPrice(price)} +` : "On request"}
       showBadge={tour.isBestseller}
       title={tour.tourName}

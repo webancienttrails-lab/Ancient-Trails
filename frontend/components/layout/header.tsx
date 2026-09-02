@@ -55,7 +55,6 @@ import {
   getDestinationHref,
   getDestinationsHref,
   getTourHref,
-  getTourCalendarHref,
   slugifyRoute,
 } from "@/lib/routes";
 
@@ -92,20 +91,20 @@ const tourColumns = [
     title: "Heritage Tours",
     icon: Landmark,
     items: [
-      { title: "Kerala Tour", image: "/home assets/Khajuraho.webp", href: getTourCalendarHref({ tour: { title: "Kerala Tour" } }) },
-      { title: "Vaishnavdevi", image: "/home assets/destination/Varanasi.webp", href: getTourCalendarHref({ tour: { title: "Vaishnavdevi" } }) },
-      { title: "White Spiti", image: "/home assets/destination/North_d.webp", href: getTourCalendarHref({ tour: { title: "White Spiti" } }) },
-      { title: "Kashmir", image: "/home assets/Haridwar.webp", href: getTourCalendarHref({ destination: { name: "Kashmir" } }) },
+      { title: "Kerala Tour", image: "/home assets/Khajuraho.webp", href: getTourHref({ title: "Kerala Tour" }) },
+      { title: "Vaishnavdevi", image: "/home assets/destination/Varanasi.webp", href: getTourHref({ title: "Vaishnavdevi" }) },
+      { title: "White Spiti", image: "/home assets/destination/North_d.webp", href: getTourHref({ title: "White Spiti" }) },
+      { title: "Kashmir", image: "/home assets/Haridwar.webp", href: getTourHref({ title: "Kashmir" }) },
     ],
   },
   {
     title: "Short Trails",
     icon: Mountain,
     items: [
-      { title: "Kerala Tour", image: "/home assets/destination/Hampi.webp", href: getTourCalendarHref({ tour: { title: "Kerala Tour" } }) },
-      { title: "Vaishnavdevi", image: "/home assets/destination/Udaipur.webp", href: getTourCalendarHref({ tour: { title: "Vaishnavdevi" } }) },
-      { title: "White Spiti", image: "/home assets/destination/North_d.webp", href: getTourCalendarHref({ tour: { title: "White Spiti" } }) },
-      { title: "Kashmir", image: "/home assets/Haridwar.webp", href: getTourCalendarHref({ destination: { name: "Kashmir" } }) },
+      { title: "Kerala Tour", image: "/home assets/destination/Hampi.webp", href: getTourHref({ title: "Kerala Tour" }) },
+      { title: "Vaishnavdevi", image: "/home assets/destination/Udaipur.webp", href: getTourHref({ title: "Vaishnavdevi" }) },
+      { title: "White Spiti", image: "/home assets/destination/North_d.webp", href: getTourHref({ title: "White Spiti" }) },
+      { title: "Kashmir", image: "/home assets/Haridwar.webp", href: getTourHref({ title: "Kashmir" }) },
     ],
   },
 ];
@@ -116,14 +115,14 @@ const featuredTours = [
     subtitle: "Explore Heritage Beyond Borders",
     image: "/home assets/destination/hawa-mahal.webp",
     icon: Route,
-    href: "/#customised-tours",
+    href: "/destinations",
   },
   {
     title: "Specialised Tours",
     subtitle: "Designed Around Your Interests",
     image: "/home assets/Special_Tour/Assam.png",
     icon: Binoculars,
-    href: "/#specialised-tours",
+    href: "/tours",
   },
 ];
 
@@ -321,11 +320,9 @@ function buildTourMenuItems(
   fallbackImages: string[]
 ) {
   return items.map((item, index) => ({
-    href: getTourCalendarHref({
-      tour: {
-        tourId: item.tourId,
-        tourName: item.tourName,
-      },
+    href: getTourHref({
+      tourId: item.tourId,
+      tourName: item.tourName,
     }),
     image: resolveMegaMenuImage(
       item.image,
@@ -498,11 +495,9 @@ function getMegaMenuSearchItems(
     ...content.tourMenu.heritageTours.map((tour) => ({
       title: tour.tourName,
       description: "Heritage tour",
-      href: getTourCalendarHref({
-        tour: {
-          tourId: tour.tourId,
-          tourName: tour.tourName,
-        },
+      href: getTourHref({
+        tourId: tour.tourId,
+        tourName: tour.tourName,
       }),
       image: getHomeMediaUrl(tour.image),
       keywords: [tour.tourId, tour.tourName, tour.description].join(" "),
@@ -511,11 +506,9 @@ function getMegaMenuSearchItems(
     ...content.tourMenu.shortTrails.map((tour) => ({
       title: tour.tourName,
       description: "Short trail",
-      href: getTourCalendarHref({
-        tour: {
-          tourId: tour.tourId,
-          tourName: tour.tourName,
-        },
+      href: getTourHref({
+        tourId: tour.tourId,
+        tourName: tour.tourName,
       }),
       image: getHomeMediaUrl(tour.image),
       keywords: [tour.tourId, tour.tourName, tour.description].join(" "),
@@ -1136,9 +1129,17 @@ function AccountMenu({
       }`}
     >
       <div className="px-6 py-6">
-        <p className="font-heading text-[28px] font-bold leading-[1.12] text-secondary">
-          Hello, {displayName}
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <p className="min-w-0 flex-1 truncate font-heading text-[28px] font-bold leading-[1.12] text-secondary">
+            Hello, {displayName}
+          </p>
+          <Link
+            href="/me/wishlist"
+            className="mt-1 shrink-0 font-sans text-[12px] font-bold uppercase leading-none text-primary transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+          >
+            View Wishlist
+          </Link>
+        </div>
 
         <div className="mt-5 space-y-4">
           {accountMenuItems.map(({ title, description, href, icon: Icon }) => (

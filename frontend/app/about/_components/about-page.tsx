@@ -83,14 +83,7 @@ const valueItems = [
   },
 ];
 
-const specialityItems = [
-  { title: "Heritage & Culture Tours", icon: Route },
-  { title: "Temple Trails", icon: Landmark },
-  { title: "Archaeological Journeys", icon: MapPin },
-  { title: "Spiritual Retreats", icon: Mountain },
-  { title: "Art, Craft & Local Experiences", icon: Leaf },
-  { title: "Festival & Event Tours", icon: Flag },
-];
+
 
 function getSortedStats(content: AboutPageContentType | null) {
   return [...(content?.stats || [])].sort(
@@ -264,7 +257,7 @@ export function AboutPageContent() {
       {experts.length > 0 ? (
         <TeamSection experts={experts} />
       ) : null}
-      <SpecializedSection />
+      
     </main>
   );
 }
@@ -434,7 +427,7 @@ function StatsSection({
               <Icon className="size-8 text-primary" strokeWidth={1.7} />
               <CountUpValue
                 value={stat.value}
-                className="mt-5 font-heading text-title font-semibold leading-none text-secondary"
+                className="mt-5 font-sans  font-semibold leading-none text-secondary text-[26px]"
               />
               <span className="mt-2 font-sans text-description font-medium leading-tight text-secondary/76">
                 {stat.label}
@@ -764,33 +757,4 @@ function ProfilePlaceholder({ name }: { name: string }) {
   );
 }
 
-function SpecializedSection() {
-  return (
-    <section className="bg-[#fff8f2] px-5 pb-14 sm:px-8 lg:px-0">
-      <div className="mx-auto w-full max-w-[1220px] text-center">
-        <p className="font-sans text-eyebrow font-medium uppercase leading-none tracking-normal text-primary">
-          We Are Specialized In
-        </p>
-        <h2 className="mt-5 font-heading text-title font-bold leading-none tracking-normal text-secondary">
-          Journeys that Celebrate India&apos;s Heritage
-        </h2>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          {specialityItems.map(({ icon: Icon, title }) => (
-            <article
-              key={title}
-              className="flex min-h-[78px] items-center gap-4 rounded-[8px] border border-[#ead8c5] bg-white px-5 text-left shadow-[0_12px_28px_rgba(80,50,25,0.05)]"
-            >
-              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
-                <Icon className="size-5" strokeWidth={1.7} />
-              </span>
-              <h3 className="font-sans text-description font-bold leading-[1.35] text-secondary">
-                {title}
-              </h3>
-            </article>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}

@@ -10,36 +10,48 @@ export function SpecialisedToursSection() {
       <div className="mx-auto grid w-full max-w-[1300px] items-center gap-10 px-5 sm:px-0 md:grid-cols-[minmax(300px,420px)_minmax(0,1fr)] md:gap-12 lg:grid-cols-[540px_minmax(0,1fr)] lg:gap-16">
         <div className="grid w-full max-w-[540px] gap-7 sm:grid-cols-[1fr_1fr] lg:grid-cols-[240px_265px]">
           <div className="grid gap-7">
-            <div className="relative h-[190px] overflow-hidden rounded-[8px]">
+            <Link
+              href="/tours"
+              aria-label="View all specialised tours"
+              className="group/photo relative h-[190px] overflow-hidden rounded-[8px]"
+            >
               <Image
                 src="/home assets/Egypt.webp"
                 alt="Egyptian pyramids during a specialised tour"
                 fill
                 sizes="(min-width: 1024px) 240px, 50vw"
-                className="object-cover"
+                className="object-cover transition-transform duration-[720ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/photo:scale-105"
               />
-            </div>
+            </Link>
 
-            <div className="relative h-[190px] overflow-hidden rounded-[8px]">
+            <Link
+              href="/tours"
+              aria-label="View all specialised tours"
+              className="group/photo relative h-[190px] overflow-hidden rounded-[8px]"
+            >
               <Image
                 src="/home assets/Vietnam.webp"
                 alt="Vietnamese heritage site during a specialised tour"
                 fill
                 sizes="(min-width: 1024px) 240px, 50vw"
-                className="object-cover"
+                className="object-cover transition-transform duration-[720ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/photo:scale-105"
               />
-            </div>
+            </Link>
           </div>
 
-          <div className="relative min-h-[320px] overflow-hidden rounded-[8px] sm:min-h-[407px]">
+          <Link
+            href="/tours"
+            aria-label="View all specialised tours"
+            className="group/photo relative min-h-[320px] overflow-hidden rounded-[8px] sm:min-h-[407px]"
+          >
             <Image
               src="/home assets/Combodia.webp"
               alt="Colombian heritage site during a specialised tour"
               fill
               sizes="(min-width: 1024px) 265px, 50vw"
-              className="object-cover"
+              className="object-cover transition-transform duration-[720ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/photo:scale-105"
             />
-          </div>
+          </Link>
         </div>
 
         <div className="w-full max-w-[850px]">

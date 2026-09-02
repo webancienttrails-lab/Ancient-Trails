@@ -188,7 +188,7 @@ export function TourShowcaseCard({
         </div>
 
         <div className="mt-1 border-t border-[#d6d1cb]">
-          <div className="flex items-center justify-between gap-3 py-2">
+          <div className="flex items-center justify-between gap-3 pt-2">
             <span className="font-sans text-[12px] font-medium leading-none text-secondary/62">
               Tour Includes
             </span>
@@ -319,7 +319,7 @@ function TourIncludeIcon({
       aria-label={label}
       role="img"
       title={label}
-      className="grid size-[12px] place-items-center text-secondary/72"
+      className="grid size-[14px] place-items-center text-secondary/72"
     >
       <Icon className="size-4" strokeWidth={2.4} />
     </span>

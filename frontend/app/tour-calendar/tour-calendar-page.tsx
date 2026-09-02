@@ -1555,7 +1555,7 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
               <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
             </Link>
 
-            <div className="flex min-w-0 items-center gap-2 lg:mt-3 lg:w-full lg:justify-end">
+            <div className="flex min-w-0 items-center gap-2 lg:mt-3 lg:w-full lg:justify-end pr-2">
               <ExpertAvatar expert={item.expert} index={index} size="compact" />
               <span className="min-w-0 font-sans lg:text-right">
                 <span className="block text-[9px] font-semibold uppercase leading-none text-secondary/48">

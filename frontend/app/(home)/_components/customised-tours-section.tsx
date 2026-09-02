@@ -9,7 +9,6 @@ import {
   fallbackCustomisedTours,
   type HomeCustomisedTourCard,
 } from "@/lib/home-travel";
-import { getDestinationHref } from "@/lib/routes";
 import { RevealOnView, TextReveal } from "./reveal-on-view";
 
 const customisedTourLayouts = [
@@ -95,10 +94,7 @@ function CustomisedTourCard({
       {tours.map((tour, index) => (
         <Link
           key={`${tour.destinationId || tour.title}-${index}`}
-          href={getDestinationHref({
-            destinationId: tour.destinationId,
-            destinationName: tour.title,
-          })}
+          href="/destinations"
           aria-label={`Explore ${tour.title}`}
           aria-hidden={index !== visibleIndex}
           tabIndex={index === visibleIndex ? 0 : -1}

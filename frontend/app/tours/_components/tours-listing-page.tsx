@@ -1506,7 +1506,7 @@ function TourResults({
         {Array.from({ length: 9 }).map((_item, index) => (
           <div
             key={index}
-            className="h-[420px] w-full max-w-[320px] animate-pulse rounded-[18px] bg-[#ead8c5]/65"
+            className="h-[420px] w-full max-w-[360px] animate-pulse rounded-[18px] bg-[#ead8c5]/65"
           />
         ))}
       </div>
@@ -1523,7 +1523,11 @@ function TourResults({
         {items.map((item) => (
           <TourListRow
             key={item.tour.id || item.tour.tourId}
+            isWishlisted={favoriteTourIds.has(
+              normalizeWishlistTourId(item.tour.tourId)
+            )}
             item={item}
+            onWishlistToggle={onWishlistToggle}
           />
         ))}
       </div>
@@ -1583,35 +1587,61 @@ function TourCard({
       }
       href={getTourHref(item.tour)}
       image={item.image}
-      imageSizes="(min-width: 1280px) 320px, (min-width: 640px) 50vw, 100vw"
+      imageSizes="(min-width: 1280px) 360px, (min-width: 640px) 50vw, 100vw"
       isFavorite={isWishlisted}
       nextDepartureLabel={formatDate(item.nextDeparture?.departureDate || null)}
       onFavoriteToggle={() => onWishlistToggle(item)}
       priceLabel={formatTourCardPrice(item.lowestPrice)}
       showBadge={item.tour.isBestseller}
       title={item.tour.tourName}
-      className="w-full max-w-[320px]"
+      className="w-full max-w-[360px]"
     />
   );
 }
 
-function TourListRow({ item }: { item: TourListItem }) {
+function TourListRow({
+  isWishlisted,
+  item,
+  onWishlistToggle,
+}: {
+  isWishlisted: boolean;
+  item: TourListItem;
+  onWishlistToggle: (item: TourListItem) => void;
+}) {
   const seats = getTourListSeatInfo(item);
 
   return (
     <article className="rounded-[12px] border border-[#e8cbaa] bg-white p-3 transition-all hover:-translate-y-0.5 hover:border-primary/55 sm:p-3.5">
-      <div className="grid gap-2.5 xl:grid-cols-[190px_minmax(0,1fr)] xl:items-start">
+      <div className="grid gap-2.5 xl:grid-cols-[240px_minmax(0,1fr)] xl:items-start">
         <div className="relative h-[145px] overflow-hidden rounded-[8px] bg-muted sm:h-[160px] xl:h-[122px]">
           <Image
             src={item.image}
             alt={item.tour.tourName}
             fill
-            sizes="(min-width: 1280px) 190px, 100vw"
+            sizes="(min-width: 1280px) 240px, 100vw"
             className="object-cover"
           />
-          <span className="absolute left-2.5 top-2.5 mt-1 rounded-[6px] bg-primary px-2 py-1 font-sans text-[11px] font-bold leading-none text-white">
-            BESTSELLER
-          </span>
+          {item.tour.isBestseller ? (
+            <span className="absolute left-2.5 top-2.5 mt-1 rounded-[6px] bg-primary px-2 py-1 font-sans text-[11px] font-bold leading-none text-white">
+              BESTSELLER
+            </span>
+          ) : null}
+          <button
+            type="button"
+            aria-label={
+              isWishlisted
+                ? `Remove ${item.tour.tourName} from wishlist`
+                : `Save ${item.tour.tourName}`
+            }
+            aria-pressed={isWishlisted}
+            onClick={() => onWishlistToggle(item)}
+            className="absolute right-2.5 top-2.5 z-10 grid size-9 place-items-center rounded-full bg-[#2b241f]/80 text-white shadow-[0_10px_24px_rgba(35,23,15,0.28)] backdrop-blur-[2px] transition-colors hover:bg-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-white/45"
+          >
+            <Heart
+              className={cn("size-4", isWishlisted && "fill-current")}
+              strokeWidth={isWishlisted ? 0 : 1.9}
+            />
+          </button>
         </div>
 
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_210px]">
@@ -1664,7 +1694,7 @@ function TourListRow({ item }: { item: TourListItem }) {
               <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
             </Link>
 
-            <div className="flex min-w-0 items-center gap-2 lg:mt-3 lg:w-full lg:justify-end">
+            <div className="flex min-w-0 items-center gap-2 lg:mt-3 lg:w-full lg:justify-end pr-2">
               <ExpertAvatar expert={item.expert} name={item.expertName} />
               <span className="min-w-0 font-sans lg:text-right">
                 <span className="block text-[9px] font-semibold uppercase leading-none text-secondary/48">

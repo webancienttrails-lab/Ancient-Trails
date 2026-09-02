@@ -10,15 +10,17 @@ import {
   ChevronDown,
   Heart,
   Home,
+  Landmark,
   LogOut,
   Mail,
   Menu,
+  Mountain,
   Phone,
   UserRound,
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +36,18 @@ import {
   type TravellerUser,
 } from "@/lib/auth";
 import {
+  getHomeMediaUrl,
+  listPublicMegaMenu,
+  type PublicMegaMenuContent,
+  type PublicMegaMenuDestinationReference,
+  type PublicMegaMenuTourReference,
+} from "@/lib/home-travel";
+import {
+  getDestinationHref,
+  getDestinationsHref,
+  getTourHref,
+} from "@/lib/routes";
+import {
   getStoredProfilePhoto,
   listenForProfilePhotoChanges,
 } from "@/lib/profile-photo";
@@ -45,6 +59,56 @@ const navItems = [
   { label: "Destinations", href: "/destinations" },
   { label: "Experiences", href: "/experiences" },
   { label: "Tour Calendar", href: "/tour-calendar" },
+];
+
+const tourMenuColumns = [
+  {
+    title: "Heritage Tours",
+    icon: Landmark,
+    items: [
+      { title: "Kerala Tour", image: "/home assets/Khajuraho.webp", href: getTourHref({ title: "Kerala Tour" }) },
+      { title: "Vaishnavdevi", image: "/home assets/destination/Varanasi.webp", href: getTourHref({ title: "Vaishnavdevi" }) },
+      { title: "White Spiti", image: "/home assets/destination/North_d.webp", href: getTourHref({ title: "White Spiti" }) },
+      { title: "Kashmir", image: "/home assets/Haridwar.webp", href: getTourHref({ title: "Kashmir" }) },
+    ],
+  },
+  {
+    title: "Short Trails",
+    icon: Mountain,
+    items: [
+      { title: "Kerala Tour", image: "/home assets/destination/Hampi.webp", href: getTourHref({ title: "Kerala Tour" }) },
+      { title: "Vaishnavdevi", image: "/home assets/destination/Udaipur.webp", href: getTourHref({ title: "Vaishnavdevi" }) },
+      { title: "White Spiti", image: "/home assets/destination/North_d.webp", href: getTourHref({ title: "White Spiti" }) },
+      { title: "Kashmir", image: "/home assets/Haridwar.webp", href: getTourHref({ title: "Kashmir" }) },
+    ],
+  },
+];
+
+const indianDestinationImages = [
+  "/home assets/destination/North_d.webp",
+  "/home assets/destination/hawa-mahal.webp",
+  "/home assets/destination/Hampi.webp",
+  "/home assets/destination/Amritsar.webp",
+  "/home assets/Khajuraho.webp",
+];
+
+const internationalDestinationImages = [
+  "/home assets/Vietnam.webp",
+  "/home assets/Indonesia.webp",
+  "/home assets/Egypt.webp",
+  "/home assets/Special_Tour/Assam.png",
+  "/home assets/Combodia.webp",
+];
+
+const topCityImages = [
+  "/home assets/destination/Amritsar.webp",
+  "/home assets/destination/hawa-mahal.webp",
+  "/home assets/destination/Varanasi.webp",
+  "/home assets/Khajuraho.webp",
+  "/home assets/Egypt.webp",
+  "/home assets/Indonesia.webp",
+  "/home assets/Egypt.webp",
+  "/home assets/destination/Hampi.webp",
 ];
 
 const accountMenuItems = [
@@ -80,6 +144,80 @@ const mobileMenuItems: Array<{
   },
   ...accountMenuItems.map(({ title, href, icon }) => ({ title, href, icon })),
 ];
+
+function hasMegaMenuSettings(content: PublicMegaMenuContent | null) {
+  if (!content) {
+    return false;
+  }
+
+  return (
+    content.tourMenu.heritageTours.length > 0 ||
+    content.tourMenu.shortTrails.length > 0 ||
+    content.destinationMenu.india.length > 0 ||
+    content.destinationMenu.international.length > 0 ||
+    content.destinationMenu.topCities.length > 0
+  );
+}
+
+function resolveMegaMenuImage(source: string, fallback: string) {
+  return getHomeMediaUrl(source || fallback);
+}
+
+function buildTourMenuItems(
+  items: PublicMegaMenuTourReference[],
+  fallbackImages: string[]
+) {
+  return items.map((item, index) => ({
+    href: getTourHref({
+      tourId: item.tourId,
+      tourName: item.tourName,
+    }),
+    image: resolveMegaMenuImage(
+      item.image,
+      fallbackImages[index % fallbackImages.length] || fallbackImages[0]
+    ),
+    title: item.tourName,
+  }));
+}
+
+function buildDestinationMenuItems(
+  items: PublicMegaMenuDestinationReference[],
+  fallbackImages: string[]
+) {
+  return items.map((item, index) => ({
+    description: item.description,
+    href:
+      item.href ||
+      (item.destinationId
+        ? getDestinationHref({
+            destinationId: item.destinationId,
+            destinationName: item.destinationName,
+          })
+        : getDestinationsHref(item.title || item.destinationName)),
+    image: resolveMegaMenuImage(
+      item.image,
+      fallbackImages[index % fallbackImages.length] || fallbackImages[0]
+    ),
+    title: item.title || item.destinationName,
+  }));
+}
+
+function buildCityMenuItems(
+  items: PublicMegaMenuDestinationReference[],
+  fallbackImages: string[]
+) {
+  return items.map((item, index) => ({
+    href: getDestinationHref({
+      destinationId: item.destinationId,
+      destinationName: item.destinationName,
+    }),
+    image: resolveMegaMenuImage(
+      item.image,
+      fallbackImages[index % fallbackImages.length] || fallbackImages[0]
+    ),
+    title: item.city || item.destinationName,
+  }));
+}
 
 function getTravellerDisplayName(user: TravellerUser | null) {
   if (!user) {
@@ -337,7 +475,62 @@ export function DashboardTopBar() {
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [hoveredNavItem, setHoveredNavItem] = useState<string | null>(null);
+  const [megaMenuContent, setMegaMenuContent] =
+    useState<PublicMegaMenuContent | null>(null);
   const accountMenuCloseTimeoutRef = useRef(0);
+  const hasConfiguredMegaMenu = hasMegaMenuSettings(megaMenuContent);
+  const activeTourColumns = useMemo(() => {
+    if (!hasConfiguredMegaMenu || !megaMenuContent) {
+      return undefined;
+    }
+
+    return [
+      {
+        ...tourMenuColumns[0],
+        items: buildTourMenuItems(
+          megaMenuContent.tourMenu.heritageTours,
+          tourMenuColumns[0].items.map((item) => item.image)
+        ),
+      },
+      {
+        ...tourMenuColumns[1],
+        items: buildTourMenuItems(
+          megaMenuContent.tourMenu.shortTrails,
+          tourMenuColumns[1].items.map((item) => item.image)
+        ),
+      },
+    ];
+  }, [hasConfiguredMegaMenu, megaMenuContent]);
+  const activeIndianDestinations = useMemo(
+    () =>
+      hasConfiguredMegaMenu && megaMenuContent
+        ? buildDestinationMenuItems(
+            megaMenuContent.destinationMenu.india,
+            indianDestinationImages
+          )
+        : undefined,
+    [hasConfiguredMegaMenu, megaMenuContent]
+  );
+  const activeInternationalDestinations = useMemo(
+    () =>
+      hasConfiguredMegaMenu && megaMenuContent
+        ? buildDestinationMenuItems(
+            megaMenuContent.destinationMenu.international,
+            internationalDestinationImages
+          )
+        : undefined,
+    [hasConfiguredMegaMenu, megaMenuContent]
+  );
+  const activeTopCities = useMemo(
+    () =>
+      hasConfiguredMegaMenu && megaMenuContent
+        ? buildCityMenuItems(
+            megaMenuContent.destinationMenu.topCities,
+            topCityImages
+          )
+        : undefined,
+    [hasConfiguredMegaMenu, megaMenuContent]
+  );
 
   useEffect(() => {
     const syncTravellerSession = () => {
@@ -362,6 +555,30 @@ export function DashboardTopBar() {
   useEffect(() => {
     return () => {
       window.clearTimeout(accountMenuCloseTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadMegaMenu() {
+      try {
+        const response = await listPublicMegaMenu();
+
+        if (isMounted) {
+          setMegaMenuContent(response.data.megaMenu);
+        }
+      } catch {
+        if (isMounted) {
+          setMegaMenuContent(null);
+        }
+      }
+    }
+
+    loadMegaMenu();
+
+    return () => {
+      isMounted = false;
     };
   }, []);
 
@@ -458,8 +675,16 @@ export function DashboardTopBar() {
             hoveredNavItem ? "block" : "hidden"
           }`}
         />
-        <ToursMegaMenu isOpen={hoveredNavItem === "Tours"} />
-        <DestinationsMegaMenu isOpen={hoveredNavItem === "Destinations"} />
+        <ToursMegaMenu
+          isOpen={hoveredNavItem === "Tours"}
+          tourMenuColumns={activeTourColumns}
+        />
+        <DestinationsMegaMenu
+          cityItems={activeTopCities}
+          indianItems={activeIndianDestinations}
+          internationalItems={activeInternationalDestinations}
+          isOpen={hoveredNavItem === "Destinations"}
+        />
 
         <div className="ml-auto flex items-center gap-4">
           <Button

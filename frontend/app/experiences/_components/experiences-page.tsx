@@ -756,14 +756,14 @@ function ExperienceDestinationCard({
       aria-label={`Read traveller experiences for ${destination.destinationName}`}
       className="group block"
     >
-      <article className="grid h-[102px] grid-cols-[102px_minmax(0,1fr)_50px] items-stretch overflow-hidden rounded-[9px] border border-[#eee9e4] bg-white transition-transform duration-300 hover:-translate-y-0.5">
+      <article className="grid h-[102px] grid-cols-[128px_minmax(0,1fr)_50px] items-stretch overflow-hidden rounded-[9px] border border-[#eee9e4] bg-white transition-transform duration-300 hover:-translate-y-0.5 hover:border-primary">
         <div className="relative m-0 overflow-hidden rounded-[8px] bg-muted">
           <Image
             src={image}
             alt={destination.destinationName}
             fill
             unoptimized
-            sizes="102px"
+            sizes="128px"
             className="object-cover transition-transform duration-700 group-hover:scale-105"
           />
         </div>
@@ -1581,7 +1581,7 @@ function TravellerRatingSection({
         </div>
       </div>
 
-      <div className="mt-7 grid gap-4 md:grid-cols-2">
+      <div className="mt-7 grid gap-2 md:grid-cols-2">
         {rows.map(({ icon: Icon, label, value }) => (
           <div
             key={label}
@@ -1742,7 +1742,7 @@ function ReviewsGrid({
   experiences: PublicExperience[];
   images: string[];
 }) {
-  const [visibleReviewCount, setVisibleReviewCount] = useState(8);
+  const [visibleReviewCount, setVisibleReviewCount] = useState(12);
   const reviewsPerLoad = 4;
   const reviewItems =
     experiences.length > 0
@@ -1777,18 +1777,18 @@ function ReviewsGrid({
     "lg:min-h-[230px]",
   ];
   const reviewLineClamps = [
-    "line-clamp-4",
-    "line-clamp-6",
-    "line-clamp-5",
-    "line-clamp-7",
-    "line-clamp-7",
-    "line-clamp-4",
-    "line-clamp-7",
-    "line-clamp-5",
-    "line-clamp-5",
-    "line-clamp-7",
-    "line-clamp-4",
-    "line-clamp-6",
+    "line-clamp-3",
+    "line-clamp-3",
+    "line-clamp-3",
+    "line-clamp-3",
+    "line-clamp-3",
+    "line-clamp-3",
+    "line-clamp-3",
+    "line-clamp-3",
+    "line-clamp-3",
+    "line-clamp-3",
+    "line-clamp-3",
+    "line-clamp-3",
   ];
 
   return (
@@ -1796,7 +1796,7 @@ function ReviewsGrid({
       <h2 className="font-heading text-title font-bold leading-none text-secondary">
         Written Reviews
       </h2>
-      <div className="mt-7 columns-1 gap-4 sm:columns-2 lg:columns-4">
+      <div className="mt-7 columns-1 gap-6 sm:columns-2 lg:columns-4">
         {masonryReviews.map(({ experience, key }, index) => (
           <ReviewCard
             key={key}
@@ -1808,7 +1808,7 @@ function ReviewsGrid({
           />
         ))}
       </div>
-      <div className="absolute inset-x-0 bottom-0 flex h-28 items-end justify-center bg-gradient-to-t from-background via-background/90 to-transparent pb-2">
+      <div className="absolute inset-x-0 bottom-0 flex h-64 items-center justify-center bg-gradient-to-t from-background via-background/80 to-transparent pb-2">
         <button
           type="button"
           onClick={() =>
@@ -1816,7 +1816,7 @@ function ReviewsGrid({
               currentCount + reviewsPerLoad
             )
           }
-          className="inline-flex h-10 min-w-[150px] items-center justify-center rounded-full border border-primary bg-white px-5 font-sans text-button font-medium text-primary shadow-[0_10px_24px_rgba(50,50,50,0.12)] transition-colors hover:bg-primary hover:text-white"
+          className="inline-flex h-10 min-w-[150px] items-center justify-center rounded-full border border-primary bg-transparent px-5 font-sans text-button font-medium text-primary transition-colors hover:bg-primary hover:text-white"
         >
           Load more
         </button>
@@ -1846,7 +1846,7 @@ function ReviewCard({
   return (
     <article
       className={cn(
-        "mb-4 flex break-inside-avoid flex-col rounded-[4px] border border-[#eee8e2] bg-white px-5 py-5 shadow-[0_4px_12px_rgba(50,50,50,0.08)]",
+        "mb-6 flex break-inside-avoid flex-col rounded-[10px] border border-[#eee8e2] bg-white px-5 py-5 ",
         className
       )}
     >

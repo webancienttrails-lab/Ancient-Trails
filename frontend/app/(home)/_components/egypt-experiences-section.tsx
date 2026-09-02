@@ -22,6 +22,7 @@ import {
   type HomeExperienceCard,
   type PublicExperience,
 } from "@/lib/home-travel";
+import { slugifyRoute } from "@/lib/routes";
 import { RevealOnView, TextReveal } from "./reveal-on-view";
 
 const egyptCards: HomeExperienceCard[] = [
@@ -440,6 +441,17 @@ function getSectionTitle(
   return "Traveller Experiences";
 }
 
+function getExperienceDetailHref(experience: HomeExperienceCard | undefined) {
+  const routeValue = experience
+    ? slugifyRoute(experience.destinationName) ||
+      slugifyRoute(experience.title) ||
+      experience.destinationId ||
+      experience.experienceId
+    : "egypt";
+
+  return `/experiences/${encodeURIComponent(routeValue)}`;
+}
+
 function TravellerReviewCarousel({
   slides,
 }: {
@@ -453,35 +465,27 @@ function TravellerReviewCarousel({
     : 0;
 
   useEffect(() => {
-    if (activeIndex <= slides.length - 1) {
-      return;
-    }
-
-    setActiveIndex(0);
-  }, [activeIndex, slides.length]);
-
-  useEffect(() => {
     if (slides.length <= 1) {
       return;
     }
 
     const intervalId = window.setInterval(() => {
-      setActiveIndex((currentIndex) => (currentIndex + 1) % slides.length);
+      setActiveIndex((currentIndex) => {
+        const safeIndex = currentIndex <= slides.length - 1 ? currentIndex : 0;
+
+        return (safeIndex + 1) % slides.length;
+      });
     }, REVIEW_AUTOSLIDE_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
   }, [slides.length]);
 
   function showPreviousReview() {
-    setActiveIndex((currentIndex) =>
-      currentIndex === 0 ? slides.length - 1 : currentIndex - 1
-    );
+    setActiveIndex(boundedIndex === 0 ? slides.length - 1 : boundedIndex - 1);
   }
 
   function showNextReview() {
-    setActiveIndex((currentIndex) =>
-      currentIndex === slides.length - 1 ? 0 : currentIndex + 1
-    );
+    setActiveIndex(boundedIndex === slides.length - 1 ? 0 : boundedIndex + 1);
   }
 
   if (!activeSlide) {
@@ -854,6 +858,7 @@ export function EgyptExperiencesSection({
       ? destinationReviewState.slides
       : fallbackReviewSlides;
   const sectionTitle = getSectionTitle(displayExperiences, hasLiveExperiences);
+  const experiencesHref = getExperienceDetailHref(displayExperiences[0]);
   const openGallery =
     galleryImages.length > 0
       ? (index = 0) => setLightboxIndex(index % galleryImages.length)
@@ -996,7 +1001,7 @@ export function EgyptExperiencesSection({
         <aside className="flex h-full flex-col items-center justify-between text-center lg:w-full lg:max-w-[356px] lg:justify-self-end">
           <Button
             nativeButton={false}
-            render={<Link href="/experiences" />}
+            render={<Link href={experiencesHref} />}
             className="mb-8 h-11 w-full min-w-0 justify-between gap-3 px-5 text-[14px] font-normal sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:mb-14 lg:min-w-[270px]"
           >
             View All Traveller Experiences
