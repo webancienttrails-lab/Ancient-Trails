@@ -40,19 +40,19 @@ const footerColumns: Array<{
       { label: "How we work", href: "/#about" },
       { label: "Why travel with us", href: "/#why-choose-us" },
       { label: "Travel Blog", href: "/blog" },
-      { label: "Terms & Conditions", href: "#" },
-      { label: "Privacy Policy", href: "#" },
+      { label: "Terms & Conditions", href: "/terms-and-conditions" },
+      { label: "Privacy Policy", href: "/privacy-policy" },
     ],
   },
   {
     title: "Support",
     icon: Headphones,
     links: [
-      { label: "FAQs", href: "/#faqs" },
+      { label: "FAQs", href: "/faq" },
       { label: "Booking Guide", href: "#" },
       { label: "Payment Policy", href: "#" },
       { label: "Cancellation Policy", href: "#" },
-      { label: "Contact Us", href: "#" },
+      { label: "Contact Us", href: "/contact" },
     ],
   },
 ];
