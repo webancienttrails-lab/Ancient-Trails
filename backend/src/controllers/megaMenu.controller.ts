@@ -12,7 +12,7 @@ import { Tour } from "../models/tour.model";
 import { HttpError } from "../utils/httpError";
 
 const megaMenuPageKey = "main";
-const megaMenuTourLimit = 4;
+const megaMenuTourSectionLimit = 4;
 
 const referencePayloadSchema = z.object({
   referenceId: z
@@ -43,18 +43,15 @@ const megaMenuPayloadSchema = z
     destinationInternational: z.array(referencePayloadSchema).max(5).default([]),
     destinationInternationalRegions: z.array(regionPayloadSchema).max(5).default([]),
     destinationTopCities: z.array(referencePayloadSchema).max(8).default([]),
-    tourHeritage: z.array(referencePayloadSchema).max(megaMenuTourLimit).default([]),
-    tourShortTrails: z.array(referencePayloadSchema).max(megaMenuTourLimit).default([]),
-  })
-  .refine(
-    (payload) =>
-      payload.tourHeritage.length + payload.tourShortTrails.length <=
-      megaMenuTourLimit,
-    {
-      message: `Tours Mega Menu can show up to ${megaMenuTourLimit} tour links`,
-      path: ["tourHeritage"],
-    }
-  );
+    tourHeritage: z
+      .array(referencePayloadSchema)
+      .max(megaMenuTourSectionLimit)
+      .default([]),
+    tourShortTrails: z
+      .array(referencePayloadSchema)
+      .max(megaMenuTourSectionLimit)
+      .default([]),
+  });
 
 type MegaMenuPayload = z.infer<typeof megaMenuPayloadSchema>;
 
@@ -225,11 +222,11 @@ async function validateReferenceIds({
 async function formatMegaMenu(page: MegaMenuPageDocument) {
   const tourHeritage = sortBySortOrder(page.tourHeritage).slice(
     0,
-    megaMenuTourLimit
+    megaMenuTourSectionLimit
   );
   const tourShortTrails = sortBySortOrder(page.tourShortTrails).slice(
     0,
-    Math.max(0, megaMenuTourLimit - tourHeritage.length)
+    megaMenuTourSectionLimit
   );
   const hasIndiaRegions = (page.destinationIndiaRegions || []).length > 0;
   const hasInternationalRegions =

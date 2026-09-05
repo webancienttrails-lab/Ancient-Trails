@@ -74,6 +74,11 @@ const completeGoogleTravellerProfileSchema = z.object({
   firstName: nameSchema,
   lastName: nameSchema,
   mobileNumber: mobileNumberSchema,
+  mobileNumberOtp: z
+    .string()
+    .trim()
+    .regex(/^\d{4,9}$/, "OTP must be 4 to 9 digits")
+    .optional(),
 });
 
 const updateTravellerProfileSchema = z.object({
@@ -770,6 +775,11 @@ export async function completeGoogleTravellerProfile(
   const googleProfile = verifyTravellerGoogleRegistrationToken(
     payload.registrationToken
   );
+  const hasVerifiedMobileOtp = Boolean(payload.mobileNumberOtp);
+
+  if (payload.mobileNumberOtp) {
+    await verifyOtp(payload.mobileNumber, payload.mobileNumberOtp);
+  }
 
   let traveller = await User.findOne({
     $or: [
@@ -837,6 +847,8 @@ export async function completeGoogleTravellerProfile(
     traveller.email = googleProfile.email;
     traveller.mobileNumber = payload.mobileNumber;
     traveller.firebaseUid = googleProfile.firebaseUid;
+    traveller.isMobileVerified =
+      hasVerifiedMobileOtp || traveller.isMobileVerified;
     traveller.lastLoginAt = new Date();
 
     if (!traveller.roles.includes(UserRole.TRAVELLER)) {
@@ -854,7 +866,7 @@ export async function completeGoogleTravellerProfile(
         firebaseUid: googleProfile.firebaseUid,
         roles: [UserRole.TRAVELLER],
         status: UserStatus.ACTIVE,
-        isMobileVerified: false,
+        isMobileVerified: hasVerifiedMobileOtp,
         lastLoginAt: new Date(),
       });
     } catch (error) {
