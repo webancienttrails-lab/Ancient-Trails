@@ -1,11 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import {
-  Bell,
+  ArrowLeft,
   BookOpen,
   CalendarDays,
-  ChevronDown,
   Globe2,
   Image as ImageIcon,
   MapPin,
@@ -17,10 +17,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import {
-  AdminDashboardShell,
-  AdminSidebarToggle,
-} from "@/components/admin-dashboard/admin-dashboard-shell";
+import { AdminDashboardShell } from "@/components/admin-dashboard/admin-dashboard-shell";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -321,8 +318,13 @@ export function AboutPageEditor() {
         onSubmit={handleSubmit}
         className="mx-auto flex w-full max-w-[1480px] flex-col gap-5"
       >
-        <AboutHeader isBusy={isBusy} isSaving={isSaving} />
-
+        <Link
+          href="/pages"
+          className="inline-flex w-fit items-center gap-2 text-sm font-semibold text-foreground/65 transition-colors hover:text-primary"
+        >
+          <ArrowLeft className="size-4" />
+          Back to Pages
+        </Link>
         <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <p className="text-sm text-foreground/60">
             Update the About page counters and team profiles shown on the public
@@ -398,71 +400,6 @@ export function AboutPageEditor() {
         </section>
       </form>
     </AdminDashboardShell>
-  );
-}
-
-function AboutHeader({
-  isBusy,
-  isSaving,
-}: {
-  isBusy: boolean;
-  isSaving: boolean;
-}) {
-  const toast = useToast();
-
-  return (
-    <header className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 items-center gap-4">
-        <AdminSidebarToggle />
-        <div className="min-w-0">
-          <h1 className="font-sans text-2xl font-bold tracking-normal text-foreground">
-            About Page
-          </h1>
-          <div className="mt-1 flex items-center gap-2 text-xs text-foreground/55">
-            <span>Dashboard</span>
-            <span aria-hidden="true">&gt;</span>
-            <span>Pages</span>
-            <span aria-hidden="true">&gt;</span>
-            <span className="font-medium text-foreground/75">About</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          onClick={() =>
-            toast.info("Notifications", "About page editor is ready.")
-          }
-          className="relative grid size-10 place-items-center rounded-sm border border-border bg-white text-foreground transition-colors hover:border-primary hover:text-primary"
-          type="button"
-          aria-label="Notifications"
-        >
-          <Bell className="size-5" />
-          <span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-bold text-white">
-            1
-          </span>
-        </button>
-        <Button
-          type="submit"
-          disabled={isBusy}
-          className="h-10 rounded-sm px-4 text-xs font-bold"
-        >
-          <Save className="size-4" data-icon="inline-start" />
-          {isSaving ? "Saving..." : "Save"}
-        </Button>
-        <button
-          onClick={() => toast.info("Admin profile", "Profile menu will open here.")}
-          className="flex h-10 items-center gap-2 rounded-sm border border-border bg-white px-2.5 text-sm font-semibold transition-colors hover:border-primary"
-          type="button"
-        >
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#7a3b22] text-xs font-bold text-white">
-            AU
-          </span>
-          <span className="hidden sm:inline">Admin User</span>
-          <ChevronDown className="size-4 text-foreground/45" />
-        </button>
-      </div>
-    </header>
   );
 }
 

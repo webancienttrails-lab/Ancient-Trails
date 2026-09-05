@@ -1,14 +1,8 @@
 "use client";
 
 import type { FormEvent, ReactNode } from "react";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  usePathname,
-  useRouter,
-  useSearchParams,
-} from "next/navigation";
-import {
-  ArrowLeft,
   Bell,
   CalendarDays,
   CheckCircle2,
@@ -31,8 +25,15 @@ import {
   AdminDashboardShell,
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
-import { HeaderDateRangePicker } from "@/components/admin-dashboard/header-date-range-picker";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
@@ -90,11 +91,6 @@ type DestinationFormState = Omit<
 };
 type DestinationSheetMode = "add" | "view" | "edit";
 
-type DestinationRouteState = {
-  id: string | null;
-  mode: DestinationSheetMode | null;
-};
-
 const emptyDestinationForm: DestinationFormState = {
   destinationId: "",
   destinationName: "",
@@ -119,6 +115,15 @@ const emptyDestinationForm: DestinationFormState = {
   bannerImage: "",
   galleryImages: "",
 };
+
+const thumbTones = [
+  "from-orange-500 via-amber-300 to-stone-700",
+  "from-amber-500 via-orange-200 to-stone-800",
+  "from-sky-500 via-orange-200 to-stone-800",
+  "from-lime-600 via-amber-200 to-stone-700",
+  "from-green-600 via-lime-200 to-cyan-700",
+  "from-emerald-500 via-sky-300 to-slate-700",
+];
 
 const domesticRegionOptions = [
   "North India",
@@ -421,82 +426,7 @@ function createDestinationMetrics(
 }
 
 export default function DestinationsPage() {
-  return (
-    <Suspense fallback={null}>
-      <DestinationsPageContent />
-    </Suspense>
-  );
-}
-
-function getDestinationRouteState(
-  pathname: string,
-  id: string | null
-): DestinationRouteState {
-  const segments = pathname
-    .split("/")
-    .filter(Boolean);
-
-  const destinationsIndex =
-    segments.findIndex(
-      (segment) =>
-        segment === "destinations"
-    );
-
-  const pageSegment =
-    destinationsIndex >= 0
-      ? segments[destinationsIndex + 1]
-      : "";
-
-  if (pageSegment === "add") {
-    return {
-      id: null,
-      mode: "add",
-    };
-  }
-
-  if (
-    pageSegment === "edit" &&
-    id
-  ) {
-    return {
-      id,
-      mode: "edit",
-    };
-  }
-
-  if (
-    pageSegment === "view" &&
-    id
-  ) {
-    return {
-      id,
-      mode: "view",
-    };
-  }
-
-  return {
-    id: null,
-    mode: null,
-  };
-}
-
-function DestinationsPageContent() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const toast = useToast();
-  const searchParamString =
-    searchParams.toString();
-  const routeState = useMemo(
-    () =>
-      getDestinationRouteState(
-        pathname,
-        new URLSearchParams(
-          searchParamString
-        ).get("id")
-      ),
-    [pathname, searchParamString]
-  );
   const [destinations, setDestinations] = useState<AdminDestination[]>([]);
   const [homePageContent, setHomePageContent] =
     useState<HomePageContent | null>(null);
@@ -504,11 +434,7 @@ function DestinationsPageContent() {
   const [isLoadingDestinations, setIsLoadingDestinations] = useState(true);
   const [isLoadingHomePage, setIsLoadingHomePage] = useState(true);
   const [destinationSheetMode, setDestinationSheetMode] =
-    useState<DestinationSheetMode | null>(
-      routeState.mode === "add"
-        ? "add"
-        : null
-    );
+    useState<DestinationSheetMode | null>(null);
   const [selectedDestination, setSelectedDestination] =
     useState<AdminDestination | null>(null);
   const [isSavingDestination, setIsSavingDestination] = useState(false);
@@ -540,28 +466,7 @@ function DestinationsPageContent() {
       }
 
       if (destinationsResult.status === "fulfilled") {
-        const loadedDestinations =
-          destinationsResult.value.data.destinations;
-
-        setDestinations(loadedDestinations);
-
-        if (
-          routeState.mode &&
-          routeState.mode !== "add"
-        ) {
-          const destination =
-            loadedDestinations.find(
-              (item) =>
-                item.id === routeState.id
-            );
-
-          if (destination) {
-            setDestinationSheetMode(routeState.mode);
-            setSelectedDestination(destination);
-            setDestinationForm(destinationToForm(destination));
-            setUploadingKeyLandmarkImageIndex(null);
-          }
-        }
+        setDestinations(destinationsResult.value.data.destinations);
       } else {
         toast.error(
           "Unable to load destinations",
@@ -587,7 +492,7 @@ function DestinationsPageContent() {
     return () => {
       isMounted = false;
     };
-  }, [routeState, toast]);
+  }, [toast]);
 
   const filteredDestinations = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -649,28 +554,28 @@ function DestinationsPageContent() {
   }
 
   function openAddDestinationSheet() {
-    router.push("/destinations/add");
+    setSelectedDestination(null);
+    setDestinationForm(emptyDestinationForm);
+    setUploadingKeyLandmarkImageIndex(null);
+    setDestinationSheetMode("add");
   }
 
   function openViewDestinationSheet(destination: AdminDestination) {
-    router.push(
-      `/destinations/view?id=${encodeURIComponent(destination.id)}`
-    );
+    setSelectedDestination(destination);
+    setDestinationForm(destinationToForm(destination));
+    setUploadingKeyLandmarkImageIndex(null);
+    setDestinationSheetMode("view");
   }
 
   function openEditDestinationSheet(destination: AdminDestination) {
-    router.push(
-      `/destinations/edit?id=${encodeURIComponent(destination.id)}`
-    );
+    setSelectedDestination(destination);
+    setDestinationForm(destinationToForm(destination));
+    setUploadingKeyLandmarkImageIndex(null);
+    setDestinationSheetMode("edit");
   }
 
   function closeDestinationSheet() {
     if (isDestinationFormBusy) {
-      return;
-    }
-
-    if (routeState.mode) {
-      router.push("/destinations");
       return;
     }
 
@@ -936,7 +841,6 @@ function DestinationsPageContent() {
         setDestinationForm(emptyDestinationForm);
         setUploadingKeyLandmarkImageIndex(null);
         toast.success("Destination updated", response.message);
-        router.push("/destinations");
         return;
       }
 
@@ -951,7 +855,6 @@ function DestinationsPageContent() {
       setDestinationForm(emptyDestinationForm);
       setUploadingKeyLandmarkImageIndex(null);
       toast.success("Destination added", response.message);
-      router.push("/destinations");
     } catch (error) {
       toast.error(
         destinationSheetMode === "edit"
@@ -962,64 +865,6 @@ function DestinationsPageContent() {
     } finally {
       setIsSavingDestination(false);
     }
-  }
-
-  if (routeState.mode) {
-    return (
-      <AdminDashboardShell activeLabel="Destinations">
-        <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-5">
-          <div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => router.push("/destinations")}
-              className="h-10 rounded-sm border-border bg-white px-3 text-xs font-bold"
-            >
-              <ArrowLeft className="size-4" />
-              Back to Destinations
-            </Button>
-          </div>
-
-          {routeState.mode !== "add" &&
-          isLoadingDestinations ? (
-            <section className="rounded-sm border border-border bg-white p-8 text-sm text-foreground/60 shadow-sm shadow-stone-200/40">
-              Loading destination...
-            </section>
-          ) : null}
-
-          {destinationSheetMode ? (
-            <DestinationFormDialog
-              form={destinationForm}
-              mode={destinationSheetMode}
-              isOpen
-              isBusy={isDestinationFormBusy}
-              isSaving={isSavingDestination}
-              isUploadingThumbnailImage={isUploadingThumbnailImage}
-              isUploadingBannerImage={isUploadingBannerImage}
-              uploadingKeyLandmarkImageIndex={uploadingKeyLandmarkImageIndex}
-              isUploadingGalleryImages={isUploadingGalleryImages}
-              onThumbnailImageUpload={handleThumbnailImageUpload}
-              onBannerImageUpload={handleBannerImageUpload}
-              onClose={closeDestinationSheet}
-              onGalleryImagesUpload={handleGalleryImagesUpload}
-              onKeyLandmarkImageUpload={handleKeyLandmarkImageUpload}
-              onRemoveThumbnailImage={handleRemoveThumbnailImage}
-              onRemoveBannerImage={handleRemoveBannerImage}
-              onRemoveGalleryImage={handleRemoveGalleryImage}
-              onRemoveKeyLandmarkImage={handleRemoveKeyLandmarkImage}
-              onSubmit={handleSaveDestination}
-              onUpdate={updateDestinationForm}
-            />
-          ) : !isLoadingDestinations ? (
-            <section className="rounded-sm border border-red-200 bg-red-50 p-6">
-              <p className="text-sm font-bold text-red-700">
-                Destination not found.
-              </p>
-            </section>
-          ) : null}
-        </div>
-      </AdminDashboardShell>
-    );
   }
 
   return (
@@ -1144,7 +989,6 @@ function AdminPageTopbar({
           />
         </label>
 
-        <HeaderDateRangePicker />
 
         <button
           onClick={() =>
@@ -1309,7 +1153,7 @@ function DestinationTable({
             ) : null}
 
             {!isLoading
-              ? destinations.map((destination) => (
+              ? destinations.map((destination, index) => (
                   <tr
                     key={destination.id}
                     className="border-t border-border transition-colors hover:bg-muted/25"
@@ -1327,13 +1171,23 @@ function DestinationTable({
                       data-mobile-primary
                       className="px-3 py-3"
                     >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-foreground">
-                          {destination.destinationName}
-                        </p>
-                        <p className="mt-1 text-[10px] text-foreground/45">
-                          Added on {formatDate(destination.createdAt)}
-                        </p>
+                      <div className="flex items-center gap-2.5">
+                        <DestinationThumb
+                          photo={
+                            destination.thumbnailImage ||
+                            destination.bannerImage ||
+                            destination.galleryImages[0]
+                          }
+                          tone={thumbTones[index % thumbTones.length]}
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-foreground">
+                            {destination.destinationName}
+                          </p>
+                          <p className="mt-1 text-[10px] text-foreground/45">
+                            Added on {formatDate(destination.createdAt)}
+                          </p>
+                        </div>
                       </div>
                     </td>
                     <td data-label="Type" className="px-2.5 py-3">
@@ -1549,6 +1403,28 @@ function DestinationActionsMenu({
   );
 }
 
+function DestinationThumb({ photo, tone }: { photo?: string; tone: string }) {
+  return (
+    <div
+      className={cn(
+        "grid h-14 w-20 shrink-0 place-items-center overflow-hidden rounded-sm bg-gradient-to-br",
+        !photo && tone
+      )}
+      style={
+        photo
+          ? {
+              backgroundImage: `url("${getDestinationMediaUrl(photo)}")`,
+              backgroundPosition: "center",
+              backgroundSize: "cover",
+            }
+          : undefined
+      }
+    >
+      {!photo ? <MapPin className="size-5 text-white/80" /> : null}
+    </div>
+  );
+}
+
 function CountryFlag({ country }: { country: string }) {
   if (country.toLowerCase().includes("egypt")) {
     return (
@@ -1619,13 +1495,13 @@ function DestinationFormDialog({
   ) => void;
 }) {
   const isReadOnly = mode === "view";
-  const panelTitle =
+  const sheetTitle =
     mode === "edit"
       ? "Edit Destination"
       : mode === "view"
         ? "View Destination"
         : "Add Destination";
-  const panelDescription =
+  const sheetDescription =
     mode === "edit"
       ? "Update the destination profile and travel requirements."
       : mode === "view"
@@ -1651,25 +1527,33 @@ function DestinationFormDialog({
       ? [form.region, ...regionOptions]
       : regionOptions;
 
-  if (!isOpen) {
-    return null;
-  }
-
   return (
-    <section className="overflow-hidden rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
+    <Sheet
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+    >
+      <SheetContent
+        side="right"
+        showCloseButton={false}
+        className="w-full gap-0 border-l border-border bg-white p-0 shadow-2xl shadow-stone-900/20 duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] data-[side=right]:w-full data-[side=right]:sm:max-w-[620px]"
+      >
       <form
         onSubmit={onSubmit}
-        className="flex min-h-0 flex-col bg-white"
+        className="flex h-full min-h-0 flex-col bg-white"
       >
-        <div className="border-b border-border px-7 py-6">
+        <SheetHeader className="border-b border-border px-7 py-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="font-sans text-xl font-bold tracking-normal text-foreground">
-              {panelTitle}
-              </h2>
-              <p className="mt-1 text-xs text-foreground/55">
-              {panelDescription}
-              </p>
+              <SheetTitle className="font-sans text-xl font-bold tracking-normal text-foreground">
+              {sheetTitle}
+              </SheetTitle>
+              <SheetDescription className="mt-1 text-xs text-foreground/55">
+              {sheetDescription}
+              </SheetDescription>
             </div>
           <button
             type="button"
@@ -1681,9 +1565,9 @@ function DestinationFormDialog({
               <X className="size-4" />
           </button>
           </div>
-        </div>
+        </SheetHeader>
 
-          <div className="grid min-h-0 flex-1 gap-5 px-7 py-6 sm:grid-cols-2">
+          <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto px-7 py-6 sm:grid-cols-2">
           <FormField label="Destination ID" required>
             <input
               required
@@ -1979,7 +1863,7 @@ function DestinationFormDialog({
         </div>
 
           {!isReadOnly ? (
-          <div className="border-t border-border bg-white px-7 py-6">
+          <SheetFooter className="border-t border-border bg-white px-7 py-6">
           <Button
             type="submit"
             disabled={isBusy}
@@ -1987,10 +1871,11 @@ function DestinationFormDialog({
           >
             {submitButtonLabel}
           </Button>
-          </div>
+          </SheetFooter>
           ) : null}
       </form>
-    </section>
+      </SheetContent>
+    </Sheet>
   );
 }
 

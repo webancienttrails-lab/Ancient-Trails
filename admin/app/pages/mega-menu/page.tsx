@@ -3,9 +3,9 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
-  Bell,
-  ChevronDown,
+  ArrowLeft,
   LayoutList,
   MapPin,
   Plus,
@@ -16,11 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import {
-  AdminDashboardShell,
-  AdminSidebarToggle,
-} from "@/components/admin-dashboard/admin-dashboard-shell";
-import { HeaderDateRangePicker } from "@/components/admin-dashboard/header-date-range-picker";
+import { AdminDashboardShell } from "@/components/admin-dashboard/admin-dashboard-shell";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -70,7 +66,7 @@ const emptyForm: FormState = {
   tourShortTrails: [],
 };
 
-const TOUR_MENU_TOTAL_LIMIT = 4;
+const TOUR_MENU_SECTION_LIMIT = 4;
 
 const indianRegionOptions = [
   "North India",
@@ -209,11 +205,11 @@ function getInternationalRegionDescription(
 function createFormState(content: MegaMenuContent): FormState {
   const tourHeritage = content.tourMenu.heritageTours.slice(
     0,
-    TOUR_MENU_TOTAL_LIMIT
+    TOUR_MENU_SECTION_LIMIT
   );
   const tourShortTrails = content.tourMenu.shortTrails.slice(
     0,
-    Math.max(0, TOUR_MENU_TOTAL_LIMIT - tourHeritage.length)
+    TOUR_MENU_SECTION_LIMIT
   );
 
   return {
@@ -386,7 +382,7 @@ export default function PagesMegaMenuPage() {
         label: "Tour Menu",
         value: `${
           form.tourHeritage.length + form.tourShortTrails.length
-        }/${TOUR_MENU_TOTAL_LIMIT}`,
+        }/${TOUR_MENU_SECTION_LIMIT * 2}`,
       },
       {
         detail: "Destination links in the Destinations dropdown",
@@ -434,17 +430,7 @@ export default function PagesMegaMenuPage() {
   }
 
   function addTourSelection(key: "tourHeritage" | "tourShortTrails") {
-    const selectedTourCount = form.tourHeritage.length + form.tourShortTrails.length;
-
-    if (selectedTourCount >= TOUR_MENU_TOTAL_LIMIT) {
-      toast.error(
-        "Limit reached",
-        `Tours Mega Menu can show up to ${TOUR_MENU_TOTAL_LIMIT} tour links.`
-      );
-      return;
-    }
-
-    addSelection(key, tourOptions, TOUR_MENU_TOTAL_LIMIT);
+    addSelection(key, tourOptions, TOUR_MENU_SECTION_LIMIT);
   }
 
   function updateSelection(key: SelectionKey, index: number, referenceId: string) {
@@ -464,10 +450,6 @@ export default function PagesMegaMenuPage() {
   }
 
   const isBusy = isSaving || Boolean(uploadingRegionImage);
-  const isTourMenuLimitReached =
-    form.tourHeritage.length + form.tourShortTrails.length >=
-    TOUR_MENU_TOTAL_LIMIT;
-
   function addRegion(key: RegionCollectionKey, limit: number) {
     if (form[key].length >= limit) {
       toast.error("Limit reached", `This mega menu section can show up to ${limit} regions.`);
@@ -579,8 +561,13 @@ export default function PagesMegaMenuPage() {
         onSubmit={handleSubmit}
         className="mx-auto flex w-full max-w-[1480px] flex-col gap-5"
       >
-        <MegaMenuHeader />
-
+        <Link
+          href="/pages"
+          className="inline-flex w-fit items-center gap-2 text-sm font-semibold text-foreground/65 transition-colors hover:text-primary"
+        >
+          <ArrowLeft className="size-4" />
+          Back to Pages
+        </Link>
         <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <p className="text-sm text-foreground/60">
             Choose the tour and destination records shown in the public header mega menus.
@@ -604,9 +591,8 @@ export default function PagesMegaMenuPage() {
         <section className="grid gap-5 xl:grid-cols-2">
           <EditorPanel title="Tours Mega Menu">
             <SelectionPanel
-              addDisabled={isTourMenuLimitReached}
               isLoading={isLoading}
-              limit={TOUR_MENU_TOTAL_LIMIT}
+              limit={TOUR_MENU_SECTION_LIMIT}
               onAdd={() => addTourSelection("tourHeritage")}
               onRemove={(index) => removeSelection("tourHeritage", index)}
               onUpdate={(index, referenceId) =>
@@ -617,9 +603,8 @@ export default function PagesMegaMenuPage() {
               title="Heritage Tours"
             />
             <SelectionPanel
-              addDisabled={isTourMenuLimitReached}
               isLoading={isLoading}
-              limit={TOUR_MENU_TOTAL_LIMIT}
+              limit={TOUR_MENU_SECTION_LIMIT}
               onAdd={() => addTourSelection("tourShortTrails")}
               onRemove={(index) => removeSelection("tourShortTrails", index)}
               onUpdate={(index, referenceId) =>
@@ -705,58 +690,6 @@ export default function PagesMegaMenuPage() {
         </section>
       </form>
     </AdminDashboardShell>
-  );
-}
-
-function MegaMenuHeader() {
-  const toast = useToast();
-
-  return (
-    <header className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 items-center gap-4">
-        <AdminSidebarToggle />
-        <div className="min-w-0">
-          <h1 className="font-sans text-2xl font-bold tracking-normal text-foreground">
-            Mega Menu
-          </h1>
-          <div className="mt-1 flex items-center gap-2 text-xs text-foreground/55">
-            <span>Dashboard</span>
-            <span aria-hidden="true">&gt;</span>
-            <span>Pages</span>
-            <span aria-hidden="true">&gt;</span>
-            <span className="font-medium text-foreground/75">Mega Menu</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <HeaderDateRangePicker />
-        <button
-          onClick={() =>
-            toast.info("Notifications", "Mega menu editor is ready.")
-          }
-          className="relative grid size-10 place-items-center rounded-sm border border-border bg-white text-foreground transition-colors hover:border-primary hover:text-primary"
-          type="button"
-          aria-label="Notifications"
-        >
-          <Bell className="size-5" />
-          <span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-bold text-white">
-            1
-          </span>
-        </button>
-        <button
-          onClick={() => toast.info("Admin profile", "Profile menu will open here.")}
-          className="flex h-10 items-center gap-2 rounded-sm border border-border bg-white px-2.5 text-sm font-semibold transition-colors hover:border-primary"
-          type="button"
-        >
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#7a3b22] text-xs font-bold text-white">
-            AU
-          </span>
-          <span className="hidden sm:inline">Admin User</span>
-          <ChevronDown className="size-4 text-foreground/45" />
-        </button>
-      </div>
-    </header>
   );
 }
 

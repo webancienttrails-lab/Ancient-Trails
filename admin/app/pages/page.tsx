@@ -12,7 +12,6 @@ import {
   FileCheck2,
   FileText,
   Filter,
-  Link2,
   MoreHorizontal,
   PencilLine,
   Plus,
@@ -53,6 +52,7 @@ type PageMetric = {
 type AdminPageRecord = {
   description: string;
   editorHref?: string;
+  previewHref: string;
   slug: string;
   status: "Published" | "Draft";
   thumbnailTone: string;
@@ -111,6 +111,7 @@ const pages: AdminPageRecord[] = [
     title: "Home",
     description: "Manage content for homepage hero, sections, features, etc.",
     editorHref: "/pages/home",
+    previewHref: "/",
     slug: "/",
     status: "Published",
     thumbnailTone: "from-orange-500 via-amber-200 to-stone-800",
@@ -123,6 +124,7 @@ const pages: AdminPageRecord[] = [
     title: "About",
     description: "Manage content for about us page, mission, vision, team.",
     editorHref: "/pages/about",
+    previewHref: "/about",
     slug: "/about",
     status: "Published",
     thumbnailTone: "from-emerald-700 via-stone-300 to-stone-800",
@@ -134,6 +136,7 @@ const pages: AdminPageRecord[] = [
   {
     title: "Tours",
     description: "Manage content for tours listing and details page.",
+    previewHref: "/tours",
     slug: "/tours",
     status: "Published",
     thumbnailTone: "from-sky-700 via-amber-200 to-stone-700",
@@ -145,6 +148,7 @@ const pages: AdminPageRecord[] = [
   {
     title: "Destinations",
     description: "Manage content for destinations listing and details page.",
+    previewHref: "/destinations",
     slug: "/destinations",
     status: "Published",
     thumbnailTone: "from-primary via-stone-300 to-[#7a3b22]",
@@ -157,6 +161,7 @@ const pages: AdminPageRecord[] = [
     title: "Mega Menu",
     description: "Manage which tours and destinations appear in header mega menus.",
     editorHref: "/pages/mega-menu",
+    previewHref: "/",
     slug: "Header navigation",
     status: "Published",
     thumbnailTone: "from-[#7a3b22] via-orange-200 to-stone-800",
@@ -168,6 +173,7 @@ const pages: AdminPageRecord[] = [
   {
     title: "Experiences",
     description: "Manage content for experiences and travel stories.",
+    previewHref: "/experiences",
     slug: "/experiences",
     status: "Draft",
     thumbnailTone: "from-teal-700 via-amber-200 to-stone-800",
@@ -179,6 +185,7 @@ const pages: AdminPageRecord[] = [
   {
     title: "Tour Calendar",
     description: "Manage content for tour calendar and schedule.",
+    previewHref: "/tour-calendar",
     slug: "/tour-calendar",
     status: "Published",
     thumbnailTone: "from-stone-200 via-white to-stone-500",
@@ -190,6 +197,7 @@ const pages: AdminPageRecord[] = [
   {
     title: "Contact Us",
     description: "Manage contact page content and contact details.",
+    previewHref: "/contact-us",
     slug: "/contact-us",
     status: "Published",
     thumbnailTone: "from-stone-200 via-orange-100 to-stone-500",
@@ -202,6 +210,20 @@ const pages: AdminPageRecord[] = [
 
 const statusOptions = ["All Status", "Published", "Draft"];
 const typeOptions = ["All Types", "Main Page", "Feature Page", "Utility Page"];
+const frontendPreviewBaseUrl =
+  process.env.NEXT_PUBLIC_FRONTEND_URL || "http://localhost:3000";
+
+function getPagePreviewUrl(previewHref: string) {
+  if (/^https?:\/\//i.test(previewHref)) {
+    return previewHref;
+  }
+
+  const normalizedPath = previewHref.startsWith("/")
+    ? previewHref
+    : `/${previewHref}`;
+
+  return `${frontendPreviewBaseUrl.replace(/\/+$/, "")}${normalizedPath}`;
+}
 
 export default function PagesPage() {
   const toast = useToast();
@@ -431,13 +453,19 @@ function PagesTable() {
                 className="border-t border-border transition-colors hover:bg-muted/25"
               >
                 <td data-label="Page" data-mobile-primary className="px-4 py-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-bold text-foreground">
-                      {page.title}
-                    </p>
-                    <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-foreground/55">
-                      {page.description}
-                    </p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <PagePreviewFrame
+                      previewHref={page.previewHref}
+                      title={page.title}
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-bold text-foreground">
+                        {page.title}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-foreground/55">
+                        {page.description}
+                      </p>
+                    </div>
                   </div>
                 </td>
                 <td data-label="Page Type" className="px-4 py-3">
@@ -484,7 +512,11 @@ function PagesTable() {
                   </span>
                 </td>
                 <td data-actions data-label="Actions" className="px-4 py-3">
-                  <RowActions editorHref={page.editorHref} itemName={page.title} />
+                  <RowActions
+                    editorHref={page.editorHref}
+                    itemName={page.title}
+                    previewHref={page.previewHref}
+                  />
                 </td>
               </tr>
             ))}
@@ -500,12 +532,12 @@ function PagesTable() {
 function RowActions({
   editorHref,
   itemName,
+  previewHref,
 }: {
   editorHref?: string;
   itemName: string;
+  previewHref: string;
 }) {
-  const toast = useToast();
-
   return (
     <div className="flex justify-end">
       <DropdownMenu>
@@ -525,8 +557,14 @@ function RowActions({
           className="w-40 rounded-sm border border-border bg-white p-1 shadow-lg shadow-stone-200/70"
         >
           <DropdownMenuItem
-            onClick={() => toast.info("Preview", `${itemName} preview will open.`)}
-            className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
+            render={
+              <Link
+                href={getPagePreviewUrl(previewHref)}
+                target="_blank"
+                rel="noreferrer"
+                className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-2 text-xs font-semibold"
+              />
+            }
           >
             <Eye className="size-4 text-foreground/60" />
             Preview
@@ -544,23 +582,40 @@ function RowActions({
               Edit Content
             </DropdownMenuItem>
           ) : null}
-          <DropdownMenuItem
-            onClick={() => toast.info("Open Page", `${itemName} link is ready.`)}
-            className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
-          >
-            <Link2 className="size-4 text-primary" />
-            Open Page
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => toast.info("Page Actions", `${itemName} menu is ready.`)}
-            className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
-          >
-            <MoreHorizontal className="size-4 text-foreground/60" />
-            More Actions
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+  );
+}
+
+function PagePreviewFrame({
+  previewHref,
+  title,
+}: {
+  previewHref: string;
+  title: string;
+}) {
+  const previewUrl = getPagePreviewUrl(previewHref);
+
+  return (
+    <Link
+      href={previewUrl}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={`Preview ${title}`}
+      className="group hidden shrink-0 overflow-hidden rounded-sm border border-border bg-muted shadow-sm transition-colors hover:border-primary sm:block"
+    >
+      <span className="relative block h-[72px] w-[118px] overflow-hidden bg-white">
+        <iframe
+          src={previewUrl}
+          title={`${title} page preview`}
+          loading="lazy"
+          tabIndex={-1}
+          className="pointer-events-none absolute left-0 top-0 h-[576px] w-[944px] origin-top-left scale-[0.125] border-0 bg-white"
+        />
+        <span className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-black/5 transition-colors group-hover:ring-primary/35" />
+      </span>
+    </Link>
   );
 }
 
