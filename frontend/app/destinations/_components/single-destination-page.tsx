@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowDown,
   ArrowRight,
   Camera,
   ChevronLeft,
@@ -40,7 +41,11 @@ import {
   type PublicTour,
   type PublicTourDeparture,
 } from "@/lib/home-travel";
-import { getTourCalendarHref, getTourHref } from "@/lib/routes";
+import {
+  getTourCalendarHref,
+  getTourHref,
+  slugifyRoute,
+} from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import {
   getWishlistTourIds,
@@ -49,6 +54,12 @@ import {
   toggleWishlistTour,
   type WishlistTourSnapshot,
 } from "@/lib/wishlist";
+
+function getExperiencesHref(destination: PublicDestination) {
+  return `/experiences/${encodeURIComponent(
+    slugifyRoute(destination.destinationName) || destination.destinationId
+  )}`;
+}
 
 const fallbackImages = [
   "/home assets/destination/Hampi.webp",
@@ -87,6 +98,7 @@ const shortDateFormatter = new Intl.DateTimeFormat("en-GB", {
   month: "short",
   year: "numeric",
 });
+const destinationToursSectionId = "destination-tours";
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
@@ -914,20 +926,40 @@ function DestinationOverview({
           </p>
         </div>
 
-        <span className="absolute right-4 top-4  px-4 py-2 font-sans text-[14px] font-bold text-white ">
-          Recommended Days: {getRecommendedDayNightLabel(destination)}
-        </span>
-
-        <div className="absolute inset-x-4 bottom-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="flex items-center gap-2 font-sans text-[14px] font-bold text-white">
-            Best Time To Visit - {getBestSeason(destination, tours)}
-          </p>
-          {destination.unescoSite ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 font-sans text-[15px] font-normal text-white">
-             
-            UNESCO Site
+        {destination.unescoSite ? (
+          <span
+            aria-label="UNESCO Site"
+            className="absolute right-4 top-4 inline-flex items-center gap-2 font-sans text-[14px] font-bold text-white"
+          >
+            <span>UNESCO Site</span>
+            <span className="grid size-12 place-items-center rounded-full bg-primary">
+              <Image
+                src="/unesco.svg"
+                alt=""
+                width={30}
+                height={30}
+                className="size-7 object-contain"
+              />
             </span>
-          ) : null}
+          </span>
+        ) : null}
+
+        <div className="absolute inset-x-4 bottom-4 flex flex-wrap items-end justify-between gap-3">
+          <div className="grid gap-2">
+            <p className="flex items-center gap-2 font-sans text-[14px] font-bold text-white">
+              Recommended Days: {getRecommendedDayNightLabel(destination)}
+            </p>
+            <p className="flex items-center gap-2 font-sans text-[14px] font-bold text-white">
+              Best Time To Visit - {getBestSeason(destination, tours)}
+            </p>
+          </div>
+          <Link
+            href={getTourCalendarHref({ destination })}
+            className="inline-flex w-fit items-center gap-2 rounded-full border border-white bg-black/55 px-4 py-2 font-sans text-[15px] font-normal leading-none text-white"
+          >
+            Customise my {destination.destinationName} Tour
+            <ArrowRight className="size-4" />
+          </Link>
         </div>
       </article>
 
@@ -968,11 +1000,11 @@ function DestinationOverview({
             {getHeritageIntro(destination)}
           </p>
           <Link
-            href={getTourCalendarHref({ destination })}
-            className="group/button mt-5 inline-flex h-11 items-center justify-center gap-4 rounded-[24px] border border-primary bg-primary px-6 font-sans text-button font-medium leading-none text-white transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-white hover:text-primary"
+            href={`#${destinationToursSectionId}`}
+            className="mt-5 inline-flex w-fit items-center gap-2 font-sans text-description font-medium uppercase text-primary transition-colors "
           >
-            Customise Now
-            <ArrowRight className="size-4" />
+            Scroll to view tours in {destination.destinationName}
+            <ArrowDown className="size-4" />
           </Link>
         </div>
       </aside>
@@ -1479,8 +1511,8 @@ function TravellerExperienceSection({
           Exploring {destination.destinationName} with Us
         </h2>
         <Link
-          href="/experiences"
-          className="mt-4 inline-flex items-center gap-2 font-sans text-description font-medium uppercase text-primary"
+          href={getExperiencesHref(destination)}
+          className="mt-4 inline-flex items-center gap-2 font-sans text-description font-medium uppercase text-primary transition-colors hover:text-secondary"
         >
           Reviews & Experiences
           <ArrowRight className="size-4" />
@@ -1748,19 +1780,24 @@ function DestinationReviewSlider({
     activeIndex?: number
   ) => void;
 }) {
+  const reviewExperiences = experiences.slice(0, 4);
   const [activeIndex, setActiveIndex] = useState(0);
-  const boundedIndex = experiences[activeIndex] ? activeIndex : 0;
+  const boundedIndex = reviewExperiences[activeIndex] ? activeIndex : 0;
 
-  if (experiences.length === 0) {
+  if (reviewExperiences.length === 0) {
     return null;
   }
 
   function showPreviousReview() {
-    setActiveIndex(boundedIndex === 0 ? experiences.length - 1 : boundedIndex - 1);
+    setActiveIndex(
+      boundedIndex === 0 ? reviewExperiences.length - 1 : boundedIndex - 1
+    );
   }
 
   function showNextReview() {
-    setActiveIndex(boundedIndex === experiences.length - 1 ? 0 : boundedIndex + 1);
+    setActiveIndex(
+      boundedIndex === reviewExperiences.length - 1 ? 0 : boundedIndex + 1
+    );
   }
 
   return (
@@ -1770,7 +1807,7 @@ function DestinationReviewSlider({
           className="flex transition-transform duration-500 ease-out"
           style={{ transform: `translateX(-${boundedIndex * 100}%)` }}
         >
-          {experiences.map((experience) => (
+          {reviewExperiences.map((experience) => (
             <div
               key={experience.id || experience.experienceId}
               className="w-full shrink-0 pr-1"
@@ -1785,7 +1822,7 @@ function DestinationReviewSlider({
         </div>
       </div>
 
-      {experiences.length > 1 ? (
+      {reviewExperiences.length > 1 ? (
         <div className="mt-1 flex items-center justify-between gap-4">
           <button
             type="button"
@@ -1797,7 +1834,7 @@ function DestinationReviewSlider({
           </button>
 
           <div className="flex items-center justify-center gap-2">
-            {experiences.map((experience, index) => (
+            {reviewExperiences.map((experience, index) => (
               <button
                 key={`${experience.id || experience.experienceId}-dot`}
                 type="button"
@@ -1854,7 +1891,7 @@ function ToursSection({
   }
 
   return (
-    <section className="mt-10">
+    <section id={destinationToursSectionId} className="mt-10 scroll-mt-28">
       <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
         Plan your visit
       </p>

@@ -109,10 +109,6 @@ export function TourShowcaseCard({
             </span>
             <span className="truncate">{durationLabel}</span>
           </span>
-
-          {/* <span className="absolute bottom-4 right-4 hidden h-9 max-w-[50%] items-center rounded-full bg-[#2b241f]/80 px-4 font-sans text-[13px] font-medium leading-none text-white shadow-[0_10px_22px_rgba(35,23,15,0.24)] backdrop-blur-[2px] sm:inline-flex">
-            <span className="truncate">{difficultyLabel}</span>
-          </span> */}
         </Link>
 
         {favoriteLabel ? (
@@ -170,14 +166,13 @@ export function TourShowcaseCard({
           />
         </div>
         <div className="mt-2 py-2 flex flex-nowrap items-center justify-between gap-2.5 border-t border-[#d6d1cb]">
-          <span className="min-w-0 flex-1 font-sans">
-            <span className="block text-[12px] font-medium leading-none text-secondary/72 sm:text-[13px]">
-              Starting from
-            </span>
-            <strong className="mt-1 block truncate font-sans text-[22px] font-semibold leading-none text-secondary sm:text-[24px]">
-              {priceLabel}
-            </strong>
-          </span>
+          <Link
+            href={`${href}#itinerary`}
+            aria-label={`View itinerary for ${title}`}
+            className="inline-flex items-center font-sans text-[14px] font-medium text-secondary transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+          >
+            View Itinerary
+          </Link>
           <Button
             nativeButton={false}
             render={<Link href={href} aria-label={`${ctaLabel} ${title}`} />}
@@ -200,7 +195,7 @@ export function TourShowcaseCard({
           </div>
         </div>
 
-        
+
       </div>
     </article>
   );
@@ -260,7 +255,7 @@ export function TourExpertHoverPopup({
       <strong
         tabIndex={hasPopup ? 0 : undefined}
         className={cn(
-          "block min-w-0 truncate text-right text-[14px] font-semibold leading-none text-secondary outline-none transition-colors hover:text-primary focus-visible:text-primary sm:text-[15px]",
+          "block min-w-0 truncate text-right text-[14px] font-semibold leading-none text-secondary outline-none transition-colors hover:text-primary focus-visible:text-primary sm:text-[14px]",
           triggerClassName
         )}
       >
@@ -268,39 +263,44 @@ export function TourExpertHoverPopup({
       </strong>
 
       {hasPopup ? (
-        <span className="pointer-events-none absolute bottom-full right-0 z-20 mb-2 flex w-[240px] items-start gap-3 rounded-[8px] border border-[#e8cbaa] bg-white p-3 text-left opacity-0 shadow-[0_14px_30px_rgba(35,23,15,0.16)] transition-opacity duration-200 group-hover/expert:opacity-100 group-focus-within/expert:opacity-100">
-          <span className="relative grid size-12 shrink-0 place-items-center overflow-hidden rounded-full bg-[#fff1e5] font-sans text-[13px] font-bold text-primary">
-            {image ? (
-              <Image
-                src={image}
-                alt={name}
-                fill
-                sizes="48px"
-                className="object-cover"
-              />
-            ) : (
-              initials
-            )}
-          </span>
-          <span className="min-w-0 font-sans">
-            <span className="block truncate text-[14px] font-bold leading-tight text-secondary">
-              {name}
+        <span className="pointer-events-none absolute bottom-full right-0 z-20 mb-2 w-[252px] rounded-[10px] border border-[#e8cbaa] bg-white p-3 text-left opacity-0 shadow-[0_14px_30px_rgba(35,23,15,0.16)] transition-opacity duration-200 group-hover/expert:opacity-100 group-focus-within/expert:opacity-100">
+          <div className="flex items-center gap-3">
+            <span className="relative grid size-11 shrink-0 place-items-center overflow-hidden rounded-full bg-[#fff1e5] font-sans text-[13px] font-bold text-primary">
+              {image ? (
+                <Image
+                  src={image}
+                  alt={name}
+                  fill
+                  sizes="44px"
+                  className="object-cover"
+                />
+              ) : (
+                initials
+              )}
             </span>
-            <span className="mt-1 block text-[11px] font-semibold uppercase leading-none text-secondary/45">
-              Expert in
-            </span>
-            <ul className="mt-1.5 space-y-1">
-              {displayedSpecialties.map((item) => (
-                <li
-                  key={item}
-                  className="flex min-w-0 items-start gap-1.5 text-[11px] font-normal leading-tight text-secondary"
-                >
-                  <span className="mt-[5px] size-1 shrink-0 rounded-full bg-secondary" />
-                  <span className="min-w-0">{item}</span>
-                </li>
-              ))}
-            </ul>
-          </span>
+
+            <div className="min-w-0 flex-1 font-sans">
+              <span className="block truncate text-[14px] font-bold leading-tight text-secondary">
+                {name}
+              </span>
+              <span className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-secondary/45">
+                Expert in
+              </span>
+            </div>
+          </div>
+
+          <div className="my-2.5 h-px w-full bg-[#ead8c5]" />
+
+          <ul className="flex flex-wrap gap-1.5">
+            {displayedSpecialties.map((item) => (
+              <li
+                key={item}
+                className="rounded-full border border-[#ead8c5] bg-[#fffaf5] px-2 py-1 text-[10px] font-medium leading-none text-secondary/70"
+              >
+                {item}
+              </li>
+            ))}
+          </ul>
         </span>
       ) : null}
     </span>

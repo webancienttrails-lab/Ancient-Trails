@@ -31,6 +31,30 @@ export function getDestinationHref(destination: {
   )}`;
 }
 
+export function getExpertAnchorId(expert: {
+  expertId?: string;
+  fullName?: string;
+  name?: string;
+}) {
+  return (
+    slugifyRoute(expert.expertId || "") ||
+    slugifyRoute(expert.fullName || expert.name || "") ||
+    "expert"
+  );
+}
+
+export function getExpertHref(expert?: {
+  expertId?: string;
+  fullName?: string;
+  name?: string;
+}) {
+  if (!expert) {
+    return "/experts";
+  }
+
+  return `/experts#${getExpertAnchorId(expert)}`;
+}
+
 export function getTourCalendarHref({
   destination,
   tour,
@@ -77,17 +101,24 @@ export function getDestinationsHref(search = "") {
 export function getToursHref({
   adults,
   children,
+  destination = "",
   month = "",
   search = "",
 }: {
   adults?: number;
   children?: number;
+  destination?: string;
   month?: string;
   search?: string;
 } = {}) {
   const params = new URLSearchParams();
+  const trimmedDestination = destination.trim();
   const trimmedSearch = search.trim();
   const trimmedMonth = month.trim();
+
+  if (trimmedDestination) {
+    params.set("destination", trimmedDestination);
+  }
 
   if (trimmedSearch) {
     params.set("search", trimmedSearch);

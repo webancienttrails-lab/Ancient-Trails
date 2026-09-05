@@ -85,7 +85,7 @@ export function SpecialisedToursSection() {
 
           <Button
             nativeButton={false}
-            render={<Link href="/tours" />}
+           render={<Link href="/specialised-tours" />}
             className="mt-10 h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:mt-14 lg:min-w-[250px]"
           >
             View All Specialised Tours

@@ -233,12 +233,18 @@ function isIndiaDestination(destination: PublicDestination) {
 function getRegionLabels(destination: PublicDestination) {
   const explicitRegions = splitLabels(destination.region || "");
 
-  if (explicitRegions.length > 0) {
-    return uniqueLabels(explicitRegions);
+  if (!isIndiaDestination(destination)) {
+    return explicitRegions.length > 0
+      ? uniqueLabels(explicitRegions)
+      : [];
   }
 
-  if (!isIndiaDestination(destination)) {
-    return ["International"];
+  const specificRegions = explicitRegions.filter(
+    (label) => !isGenericRegionLabel(label)
+  );
+
+  if (specificRegions.length > 0) {
+    return uniqueLabels(specificRegions);
   }
 
   const stateKey = normalizeKey(destination.state);
@@ -246,11 +252,21 @@ function getRegionLabels(destination: PublicDestination) {
     region.keywords.some((keyword) => stateKey.includes(keyword))
   );
 
-  return [matchedRegion?.label || "India"];
+  return matchedRegion ? [matchedRegion.label] : [];
 }
 
 function getCountryLabels(destination: PublicDestination) {
   return uniqueLabels(splitLabels(destination.countryRegion || ""));
+}
+
+function isGenericRegionLabel(label: string) {
+  const key = normalizeKey(label);
+
+  return key === "india" || key === "domestic" || key === "international";
+}
+
+function removeGenericRegionOptions(options: CountOption[]) {
+  return options.filter((option) => !isGenericRegionLabel(option.label));
 }
 
 function getDestinationImage(destination: PublicDestination, index: number) {
@@ -586,8 +602,10 @@ export function DestinationsPage({
         if (isMounted) {
           const loadedDestinations = destinationsResponse.data.destinations;
           const loadedRegionOptions = sortRegionOptions(
-            createCountOptions(loadedDestinations, (destination) =>
-              getRegionLabels(destination)
+            removeGenericRegionOptions(
+              createCountOptions(loadedDestinations, (destination) =>
+                getRegionLabels(destination)
+              )
             )
           );
           const loadedCountryOptions = createCountOptions(
@@ -603,6 +621,16 @@ export function DestinationsPage({
           const initialCountry = initialRegion
             ? undefined
             : getInitialRegionOption(initialSearchQuery, loadedCountryOptions);
+          const initialCountryDestination = initialCountry
+            ? loadedDestinations.find(
+                (destination) =>
+                  !isIndiaDestination(destination) &&
+                  matchesOption([initialCountry.value], getCountryLabels(destination))
+              )
+            : undefined;
+          const initialCountryRegion = initialCountryDestination
+            ? getRegionLabels(initialCountryDestination)[0]
+            : "";
 
           setDestinations(loadedDestinations);
           setTours(toursResponse?.data.tours || []);
@@ -618,6 +646,9 @@ export function DestinationsPage({
             );
           } else if (initialCountry) {
             setSearchQuery("");
+            setSelectedRegions(
+              initialCountryRegion ? [normalizeKey(initialCountryRegion)] : []
+            );
             setSelectedStates([initialCountry.value]);
             setActiveCategory("international");
           }
@@ -654,8 +685,10 @@ export function DestinationsPage({
   const regionOptions = useMemo(
     () =>
       sortRegionOptions(
-        createCountOptions(filterOptionDestinations, (destination) =>
-          getRegionLabels(destination)
+        removeGenericRegionOptions(
+          createCountOptions(filterOptionDestinations, (destination) =>
+            getRegionLabels(destination)
+          )
         )
       ),
     [filterOptionDestinations]
@@ -673,14 +706,19 @@ export function DestinationsPage({
       matchesOption(activeSelectedRegions, getRegionLabels(destination))
     );
   }, [activeSelectedRegions, filterOptionDestinations]);
+  const hasSelectedRegion = activeSelectedRegions.length > 0;
+  const dependentFilterDestinations = useMemo(
+    () => (hasSelectedRegion ? regionScopedDestinations : []),
+    [hasSelectedRegion, regionScopedDestinations]
+  );
   const stateOptions = useMemo(
     () =>
-      createCountOptions(regionScopedDestinations, (destination) =>
+      createCountOptions(dependentFilterDestinations, (destination) =>
         activeCategory === "international"
           ? getCountryLabels(destination)
           : [destination.state]
       ),
-    [activeCategory, regionScopedDestinations]
+    [activeCategory, dependentFilterDestinations]
   );
   const tourCategoriesByDestinationId = useMemo(
     () => getDestinationTourCategoryLabels(tours),
@@ -704,8 +742,11 @@ export function DestinationsPage({
     );
   }, [activeCategory, activeSelectedStates, regionScopedDestinations]);
   const focusOptions = useMemo(
-    () => createCountOptions(stateScopedDestinations, getFocusLabels),
-    [stateScopedDestinations]
+    () =>
+      hasSelectedRegion
+        ? createCountOptions(stateScopedDestinations, getFocusLabels)
+        : [],
+    [hasSelectedRegion, stateScopedDestinations]
   );
   const activeSelectedFocuses = useMemo(
     () => keepAvailableSelections(selectedFocuses, focusOptions),
@@ -811,6 +852,8 @@ export function DestinationsPage({
   function toggleRegion(value: string) {
     resetVisibleDestinations();
     setSelectedRegions((current) => toggleSelection(current, value));
+    setSelectedStates([]);
+    setSelectedFocuses([]);
   }
 
   function toggleState(value: string) {
@@ -827,7 +870,6 @@ export function DestinationsPage({
     resetVisibleDestinations();
     setSearchQuery("");
     setActiveCategory("india");
-    setSelectedInterests([]);
     setSelectedRegions([]);
     setSelectedStates([]);
     setSelectedFocuses([]);
@@ -1023,6 +1065,7 @@ function DestinationSidebar({
   function handleRegionToggle(value: string) {
     if (!hasSelection(selectedRegions, value)) {
       setIsStateFilterOpen(true);
+      setIsFocusFilterOpen(true);
     }
 
     onRegionToggle(value);
@@ -1039,7 +1082,7 @@ function DestinationSidebar({
   return (
     <aside className="lg:sticky lg:top-[70px] lg:self-start">
       <div className="mb-4 flex items-center justify-between gap-3 font-sans leading-none">
-        <div className="flex items-center gap-2 text-[13px] font-semibold uppercase text-primary">
+        <div className="flex items-center gap-2 text-[13px] font-semibold uppercase text-secondary">
           <SlidersHorizontal className="size-4" strokeWidth={1.8} />
           <span>Filter your search</span>
         </div>
@@ -1160,9 +1203,19 @@ function InterestFilter({
 }) {
   return (
     <div className="space-y-3 border-b border-primary/45 pb-5">
-      <p className="font-sans text-description font-medium uppercase leading-none text-secondary">
-        Pick your interest
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-sans text-description font-medium uppercase leading-none text-secondary">
+          Pick your interest
+        </p>
+        <button
+          type="button"
+          onClick={() => selectedInterests.forEach((value) => onInterestToggle(value))}
+          disabled={selectedInterests.length === 0}
+          className="font-sans text-[12px] font-bold leading-none text-secondary/55 transition-colors hover:text-secondary disabled:pointer-events-none disabled:text-secondary/30"
+        >
+          Clear all
+        </button>
+      </div>
       <div className="flex flex-wrap gap-x-3 gap-y-3">
         {interestTabs.map((tab) => {
           const isActive = hasSelection(selectedInterests, tab.value);
@@ -1176,12 +1229,14 @@ function InterestFilter({
               className={cn(
                 "inline-flex h-9 min-w-[112px] items-center justify-center gap-2 rounded-full border px-5 font-sans text-[15px] font-normal leading-none transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
                 isActive
-                  ? "border-primary bg-primary text-white shadow-[0_6px_14px_rgba(212,114,32,0.18)]"
-                  : "border-primary/70 bg-white text-secondary hover:bg-primary hover:text-white"
+                  ? "border-primary bg-primary text-white "
+                  : "border-primary/70 bg-white hover:bg-primary hover:text-white"
               )}
             >
-              <span>{tab.label}</span>
-              <span aria-hidden="true">{isActive ? "-" : "+"}</span>
+              <span className="text-[15px] leading-none">{tab.label}</span>
+              <span aria-hidden="true" className="text-[15px] leading-none">
+                {isActive ? "-" : "+"}
+              </span>
             </button>
           );
         })}

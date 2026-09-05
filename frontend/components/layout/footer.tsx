@@ -25,14 +25,11 @@ const footerColumns: Array<{
     title: "Explore",
     icon: Compass,
     links: [
-      { label: "All Tours", href: "/#upcoming-tours" },
+       { label: "Heritage Tours", href: "/heritage-tours" },
+       { label: "Short Trails", href: "/short-trails" },
       { label: "Experiences", href: "/experiences" },
       { label: "Destination Guide", href: "/destinations" },
-      { label: "Heritage Tours", href: "/#upcoming-tours" },
-      { label: "Cultural Tours", href: "/#upcoming-tours" },
-      { label: "Customised Tours", href: "/#customised-tours" },
-      { label: "Specialised Tours", href: "/#specialised-tours" },
-      { label: "International Tours", href: "/#upcoming-tours" },
+      { label: "Tour Experts", href: "/experts" }
     ],
   },
   {

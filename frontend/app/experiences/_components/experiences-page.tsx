@@ -91,6 +91,15 @@ const experienceStats: Array<{
   { label: "Countries Explored", value: "10+" },
 ];
 
+const experienceHeaderStats: Array<{
+  label: string;
+  value: string;
+}> = [
+  { label: "Curated Tours", value: "150+" },
+  { label: "Happy Travellers", value: "25K" },
+  { label: "Countries explored", value: "10+" },
+];
+
 const experienceStatFormatter = new Intl.NumberFormat("en-IN");
 
 function getErrorMessage(error: unknown) {
@@ -372,9 +381,19 @@ function buildDestinationGroups(
     });
 }
 
-function HeaderBand() {
+function HeaderBand({
+  description,
+  stats = experienceHeaderStats,
+  subtitle,
+  title = "Experiences",
+}: {
+  description?: string;
+  stats?: Array<{ label: string; value: string }>;
+  subtitle?: string;
+  title?: string;
+}) {
   return (
-    <section className="relative h-[200px] overflow-hidden bg-secondary">
+    <section className="relative h-[260px] overflow-hidden bg-secondary md:h-[200px]">
       <Image
         src="/home assets/Heritage Banner.webp"
         alt="Ancient Trails heritage landscape"
@@ -383,9 +402,31 @@ function HeaderBand() {
         sizes="100vw"
         className="object-cover object-center"
       />
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(35,18,9,0.34)_100%)]" />
-      <div className="relative z-10 mx-auto w-full max-w-[1300px] px-5 sm:px-0">
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(20,16,12,0.7)_100%)]" />
+      <div className="relative z-10 mx-auto flex h-full w-full max-w-[1300px] flex-col px-5 sm:px-8 lg:px-0">
         <Header />
+        <div className="flex flex-1 items-center pb-6 md:pb-6">
+          <div className="max-w-[760px] text-center text-white">
+          
+            {stats.length > 0 ? (
+              <div className="mt-6 flex flex-wrap gap-3 text-left ">
+                {stats.map((stat) => (
+                  <div
+                    key={stat.label}
+                    className="border-r-1 border-white pr-3 last:border-none pr-0 "
+                  >
+                    <span className="block font-description text-[20px] font-semibold leading-none text-white">
+                      {stat.value}
+                    </span>
+                    <span className="mt-1 block font-sans text-[16px]  tracking-[0.10em] text-white">
+                      {stat.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -485,33 +526,33 @@ function CountUpStatValue({
   );
 }
 
-function ExperienceStatsStrip() {
-  return (
-    <section className={`${detailContainerClassName} relative z-20 -mt-[44px]`}>
-      <div className="mx-auto grid max-w-[1080px] overflow-hidden rounded-[10px] border border-primary/15 bg-white sm:grid-cols-2 lg:grid-cols-5">
-        {experienceStats.map((stat, index) => (
-            <article
-              key={stat.label}
-              className={cn(
-                "flex min-h-[82px] flex-col items-center justify-center px-2 py-3 text-center",
-                index > 0 && "border-t border-border sm:border-l sm:border-t-0",
-                index === 2 && "sm:border-t lg:border-t-0",
-                index === 4 && "sm:col-span-2 lg:col-span-1"
-              )}
-            >
-              <CountUpStatValue
-                value={stat.value}
-                className="font-description text-[24px] font-semibold leading-none tracking-normal text-secondary"
-              />
-              <span className="mt-1.5 font-description text-description font-medium leading-none text-secondary/70">
-                {stat.label}
-              </span>
-            </article>
-        ))}
-      </div>
-    </section>
-  );
-}
+// function ExperienceStatsStrip() {
+//   return (
+//     <section className={`${detailContainerClassName} relative z-20 -mt-[44px]`}>
+//       <div className="mx-auto grid max-w-[1080px] overflow-hidden rounded-[10px] border border-primary/15 bg-white sm:grid-cols-2 lg:grid-cols-5">
+//         {experienceStats.map((stat, index) => (
+//             <article
+//               key={stat.label}
+//               className={cn(
+//                 "flex min-h-[82px] flex-col items-center justify-center px-2 py-3 text-center",
+//                 index > 0 && "border-t border-border sm:border-l sm:border-t-0",
+//                 index === 2 && "sm:border-t lg:border-t-0",
+//                 index === 4 && "sm:col-span-2 lg:col-span-1"
+//               )}
+//             >
+//               <CountUpStatValue
+//                 value={stat.value}
+//                 className="font-description text-[24px] font-semibold leading-none tracking-normal text-secondary"
+//               />
+//               <span className="mt-1.5 font-description text-description font-medium leading-none text-secondary/70">
+//                 {stat.label}
+//               </span>
+//             </article>
+//         ))}
+//       </div>
+//     </section>
+//   );
+// }
 
 export function ExperiencesPage() {
   const [destinations, setDestinations] = useState<PublicDestination[]>([]);
@@ -594,7 +635,11 @@ export function ExperiencesPage() {
 
   return (
     <main className="min-h-screen bg-background text-secondary">
-      <HeaderBand />
+      <HeaderBand
+        description="Real stories, moments and memories from travellers who explored these destinations with Ancient Trails."
+        stats={experienceHeaderStats}
+        title="Experiences"
+      />
 
       <ExperienceTopBar
         activeCategory={activeCategory}
@@ -902,7 +947,6 @@ export function SingleExperiencePage({
     return (
       <main className="min-h-screen bg-background text-secondary">
         <HeaderBand />
-        <ExperienceStatsStrip />
         <section className={`${detailContainerClassName} py-10`}>
           <div className="h-[360px] animate-pulse rounded-[8px] bg-muted" />
           <div className="mt-10 h-[260px] animate-pulse rounded-[8px] bg-muted" />
@@ -915,7 +959,6 @@ export function SingleExperiencePage({
     return (
       <main className="min-h-screen bg-background text-secondary">
         <HeaderBand />
-        <ExperienceStatsStrip />
         <section className="mx-auto mt-10 max-w-[720px] px-5 pb-20">
           <div className="rounded-[8px] border border-[#ead8c5] bg-white p-8 text-center shadow-[0_18px_44px_rgba(50,50,50,0.08)]">
             <h1 className="font-heading text-title font-bold leading-none tracking-normal text-secondary">
@@ -943,8 +986,12 @@ export function SingleExperiencePage({
 
   return (
     <main className="min-h-screen bg-background text-secondary">
-      <HeaderBand />
-      <ExperienceStatsStrip />
+      <HeaderBand
+        description="Real stories, moments and memories from travellers who explored this destination with Ancient Trails."
+        stats={experienceHeaderStats}
+        subtitle={getRegionLabel(detail.destination)}
+        title={detail.destination.destinationName}
+      />
 
       <section className={`${detailContainerClassName} pb-20 pt-8`}>
         <ExperienceDetailHero
@@ -963,12 +1010,12 @@ export function SingleExperiencePage({
           averageRating={averageRating}
           experiences={detail.experiences}
         />
+         <ExperiencePlanTripCta destination={detail.destination} images={images} />
         <TravellerMomentsSection
           destination={detail.destination}
           experiences={detail.experiences}
           images={images}
         />
-        <ExperiencePlanTripCta destination={detail.destination} images={images} />
         <ReviewsGrid experiences={detail.experiences} images={images} />
       </section>
 
@@ -1095,10 +1142,7 @@ function ExperienceDetailHero({
         </div>
 
         <aside className="w-full">
-          <p className="max-w-[360px] font-sans text-description font-medium leading-[1.35] text-primary">
-            Every Journey we organise is built on trust, safety and
-            unforgettable memories
-          </p>
+          
 
           <div className="mt-9">
             <p className="font-sans text-description font-normal uppercase leading-none text-secondary">
@@ -1394,19 +1438,7 @@ function ExploringWithUsSection({
                 this destination.
               </p>
             )}
-            <div className="pt-6">
-              <p className="font-sans text-description font-medium text-secondary/70">
-                Ready to plan your Journey?
-                <span className="block">Let&apos;s get started!</span>
-              </p>
-              <Link
-                href={getTourCalendarHref({ destination })}
-                className="group/button mt-3 inline-flex h-11 items-center justify-center gap-4 rounded-[24px] border border-primary bg-primary px-6 font-sans text-button font-medium leading-none text-white transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-white hover:text-primary"
-              >
-                Plan your trip
-                <ArrowRight className="size-4" />
-              </Link>
-            </div>
+            
           </div>
         </div>
       </div>
@@ -1448,29 +1480,34 @@ function ExperienceReviewSlider({
 }: {
   experiences: PublicExperience[];
 }) {
+  const reviewExperiences = experiences.slice(0, 4);
   const [activeIndex, setActiveIndex] = useState(0);
-  const boundedIndex = experiences[activeIndex] ? activeIndex : 0;
+  const boundedIndex = reviewExperiences[activeIndex] ? activeIndex : 0;
 
   useEffect(() => {
-    if (experiences.length <= 1) {
+    if (reviewExperiences.length <= 1) {
       return;
     }
 
     const interval = window.setInterval(() => {
       setActiveIndex((currentIndex) =>
-        currentIndex === experiences.length - 1 ? 0 : currentIndex + 1
+        currentIndex === reviewExperiences.length - 1 ? 0 : currentIndex + 1
       );
     }, 4500);
 
     return () => window.clearInterval(interval);
-  }, [experiences.length]);
+  }, [reviewExperiences.length]);
 
   function showPreviousReview() {
-    setActiveIndex(boundedIndex === 0 ? experiences.length - 1 : boundedIndex - 1);
+    setActiveIndex(
+      boundedIndex === 0 ? reviewExperiences.length - 1 : boundedIndex - 1
+    );
   }
 
   function showNextReview() {
-    setActiveIndex(boundedIndex === experiences.length - 1 ? 0 : boundedIndex + 1);
+    setActiveIndex(
+      boundedIndex === reviewExperiences.length - 1 ? 0 : boundedIndex + 1
+    );
   }
 
   return (
@@ -1484,7 +1521,7 @@ function ExperienceReviewSlider({
           className="flex transition-transform duration-700 ease-out"
           style={{ transform: `translateX(-${boundedIndex * 100}%)` }}
         >
-          {experiences.map((experience) => (
+          {reviewExperiences.map((experience) => (
             <div
               key={experience.id || experience.experienceId}
               className="w-full shrink-0"
@@ -1495,7 +1532,7 @@ function ExperienceReviewSlider({
         </div>
       </div>
 
-      {experiences.length > 1 ? (
+      {reviewExperiences.length > 1 ? (
         <div className="mt-4 flex items-center justify-between gap-4">
           <button
             type="button"
@@ -1507,7 +1544,7 @@ function ExperienceReviewSlider({
           </button>
 
           <div className="flex items-center justify-center gap-3">
-            {experiences.map((experience, index) => (
+            {reviewExperiences.map((experience, index) => (
               <button
                 key={`${experience.id || experience.experienceId}-voice-dot`}
                 type="button"
@@ -1616,6 +1653,8 @@ function TravellerMomentsSection({
   experiences: PublicExperience[];
   images: string[];
 }) {
+  const [activeMomentIndex, setActiveMomentIndex] = useState<number | null>(null);
+
   const availableVideos = uniqueValues(
     experiences.flatMap((experience) => experience.travellerVideos)
   ).map(getHomeMediaUrl);
@@ -1639,53 +1678,151 @@ function TravellerMomentsSection({
         experience?.travellerVideoTitles[0] ||
         experience?.title ||
         `${destination.destinationName} moment`,
-      video: availableVideos[index % availableVideos.length] || getExperienceVideo(experience),
+      video:
+        availableVideos[index % availableVideos.length] ||
+        getExperienceVideo(experience),
     };
   });
+  const activeMoment =
+    activeMomentIndex === null ? null : moments[activeMomentIndex] || null;
 
   return (
-    <section className="mt-12">
-      <h2 className="font-heading text-title font-bold leading-none text-secondary">
-        Traveller Moments
-      </h2>
-      <div className="mt-7 grid grid-cols-2 gap-4 lg:grid-cols-7">
-        {moments.map((moment, index) => (
-          <article
-            key={`${moment.image}-${index}`}
-            className={cn(
-              "relative h-[190px] overflow-hidden rounded-[8px] bg-muted shadow-[0_8px_18px_rgba(50,50,50,0.08)] lg:h-[210px] xl:h-[225px]",
-              momentLayouts[index % momentLayouts.length]
-            )}
+    <>
+      <section className="mt-12">
+        <h2 className="font-heading text-title font-bold leading-none text-secondary">
+          Traveller Moments
+        </h2>
+        <div className="mt-7 grid grid-cols-2 gap-4 lg:grid-cols-7">
+          {moments.map((moment, index) => (
+            <button
+              key={`${moment.image}-${index}`}
+              type="button"
+              aria-label={moment.title}
+              onClick={() => setActiveMomentIndex(index)}
+              className={cn(
+                "group relative h-[190px] overflow-hidden rounded-[8px] bg-muted text-left shadow-[0_8px_18px_rgba(50,50,50,0.08)] focus:outline-none focus:ring-3 focus:ring-primary/20 lg:h-[210px] xl:h-[225px]",
+                momentLayouts[index % momentLayouts.length]
+              )}
+            >
+              {moment.video ? (
+                <video
+                  className="size-full object-cover"
+                  muted
+                  playsInline
+                  poster={moment.image}
+                  preload="metadata"
+                  src={moment.video}
+                />
+              ) : (
+                <Image
+                  src={moment.image}
+                  alt={moment.title}
+                  fill
+                  unoptimized
+                  sizes="240px"
+                  className="object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+                />
+              )}
+              <span className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0)_45%,rgba(0,0,0,0.18)_100%)]" />
+              <span className="absolute left-1/2 top-1/2 grid size-10 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-secondary text-white transition-transform group-hover:scale-110">
+                <Play className="ml-0.5 size-5 fill-current" strokeWidth={0} />
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {activeMoment ? (
+        <ExperienceMomentLightbox
+          moment={activeMoment}
+          onClose={() => setActiveMomentIndex(null)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function ExperienceMomentLightbox({
+  moment,
+  onClose,
+}: {
+  moment: { image: string; title: string; video?: string };
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <section
+      aria-label={`${moment.title} preview`}
+      aria-modal="true"
+      role="dialog"
+      className="fixed inset-0 z-[2147483647] bg-black/82 text-white"
+    >
+      <button
+        type="button"
+        aria-label="Close media preview"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+      />
+
+      <div className="relative z-10 flex h-full flex-col">
+        <div className="flex h-[70px] items-center justify-between px-5 md:px-8">
+          <p className="font-sans text-[18px] font-semibold tracking-wide text-white/92">
+            {moment.title}
+          </p>
+          <button
+            type="button"
+            aria-label="Close media preview"
+            onClick={onClose}
+            className="transition-colors hover:text-primary"
           >
-            {moment.video ? (
-              <video
-                autoPlay
-                className="size-full object-cover"
-                loop
-                muted
-                playsInline
-                poster={moment.image}
-                preload="metadata"
-                src={moment.video}
-              />
-            ) : (
+            <X className="size-7" strokeWidth={2} />
+          </button>
+        </div>
+
+        <div className="flex min-h-0 flex-1 items-center justify-center px-5 pb-16 md:px-24">
+          {moment.video ? (
+            <video
+              autoPlay
+              controls
+              className="h-[calc(100vh-9rem)] w-full max-w-[1120px] rounded-[10px] bg-black object-contain"
+              playsInline
+              preload="metadata"
+              src={moment.video}
+            />
+          ) : (
+            <div className="relative h-[calc(100vh-9rem)] w-full max-w-[1120px]">
               <Image
                 src={moment.image}
                 alt={moment.title}
                 fill
+                priority
                 unoptimized
-                sizes="240px"
-                className="object-cover"
+                sizes="(min-width: 1280px) 1120px, calc(100vw - 3rem)"
+                className="rounded-[10px] object-contain"
               />
-            )}
-            <span className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0)_45%,rgba(0,0,0,0.18)_100%)]" />
-            <span className="absolute left-1/2 top-1/2 grid size-10 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-secondary text-white">
-              <Play className="ml-0.5 size-5 fill-current" strokeWidth={0} />
-            </span>
-          </article>
-        ))}
+            </div>
+          )}
+        </div>
       </div>
-    </section>
+    </section>,
+    document.body
   );
 }
 
@@ -1816,7 +1953,7 @@ function ReviewsGrid({
               currentCount + reviewsPerLoad
             )
           }
-          className="inline-flex h-10 min-w-[150px] items-center justify-center rounded-full border border-primary bg-transparent px-5 font-sans text-button font-medium text-primary transition-colors hover:bg-primary hover:text-white"
+          className="inline-flex h-10 min-w-[150px] items-center justify-center rounded-full border border-primary bg-primary px-5 font-sans text-button font-medium text-white transition-colors hover:bg-transparent hover:text-primary"
         >
           Load more
         </button>

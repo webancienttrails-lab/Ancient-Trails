@@ -4,16 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft,
-  ArrowRight,
   BookOpen,
   CalendarDays,
-  Flag,
   Globe2,
-  Landmark,
   Leaf,
   MapPin,
-  Mountain,
   Route,
   Users,
   type LucideIcon,
@@ -32,6 +27,7 @@ import {
   listPublicExperts,
   type PublicExpert,
 } from "@/lib/home-travel";
+import { getExpertHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
 const statIconMap: Record<AboutStatIcon, LucideIcon> = {
@@ -299,7 +295,7 @@ function HeroSection() {
             </p>
             <Button
               nativeButton={false}
-              render={<Link href="/#upcoming-tours" />}
+              render={<Link href="/tours" />}
               className="mt-7 h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:min-w-[220px]"
             >
               Explore Our Journeys
@@ -410,7 +406,7 @@ function StatsSection({
 }) {
   return (
     <section className="relative z-20 mx-auto -mt-[86px] w-full max-w-[1300px] px-5 sm:px-0">
-      <div className="grid overflow-hidden rounded-[12px] border border-primary/15 bg-white shadow-[0_22px_58px_rgba(50,36,22,0.13)] backdrop-blur sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid overflow-hidden rounded-[12px] border border-primary/15 bg-white shadow-[0_20px_58px_rgba(50,36,22,0.10)] backdrop-blur sm:grid-cols-2 lg:grid-cols-5">
         {stats.map((stat, index) => {
           const Icon = statIconMap[stat.icon] || BookOpen;
 
@@ -443,10 +439,8 @@ function StatsSection({
 function MissionVisionSection() {
   return (
     <section className="relative bg-background px-5 pb-16 pt-12 sm:px-0 lg:pb-20">
-      <div className="relative mx-auto w-full max-w-[1300px] overflow-hidden rounded-[12px] border border-primary/15 bg-[linear-gradient(135deg,rgba(212,114,32,0.12)_0%,rgba(212,114,32,0.04)_48%,rgba(255,255,255,0.92)_100%)] p-5 shadow-[0_16px_48px_rgba(80,50,25,0.07)] sm:p-7 lg:p-9">
-        <p className="font-sans text-eyebrow font-medium uppercase text-primary">
-          Our Purpose
-        </p>
+      <div className="relative mx-auto w-full max-w-[1300px] overflow-hidden rounded-[12px] sm:p-7 lg:p-9">
+        
         <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_1px_1fr] lg:gap-10">
           <StoryPanel
             title="Our Mission"
@@ -585,6 +579,9 @@ function FounderSection({
             <h2 className="mt-2 font-heading text-title font-bold leading-none text-secondary">
               {getDisplayFounderName(name)}
             </h2>
+            <p className="mt-3 font-sans text-[15px] font-semibold leading-none text-primary">
+              {role}
+            </p>
             
             <p className="mt-5 max-w-[520px] font-sans text-description leading-[1.55] text-secondary">
               {bio}
@@ -643,22 +640,10 @@ function TeamSection({ experts }: { experts: PublicExpert[] }) {
     return () => window.clearInterval(interval);
   }, [experts.length]);
 
-  function moveTeam(direction: "left" | "right") {
-    if (experts.length <= 1) {
-      return;
-    }
-
-    setActiveIndex((currentIndex) =>
-      direction === "left"
-        ? (currentIndex - 1 + experts.length) % experts.length
-        : (currentIndex + 1) % experts.length
-    );
-  }
-
   return (
-    <section className="bg-background px-5 pb-12 sm:px-8 lg:px-0">
+    <section id="team" className="bg-background px-5 pb-12 sm:px-8 lg:px-0">
       <div className="mx-auto w-full max-w-[1220px]">
-        <div className="flex items-end justify-between gap-5">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="font-sans text-eyebrow font-medium uppercase leading-none tracking-normal text-primary">
               Our Team
@@ -668,24 +653,15 @@ function TeamSection({ experts }: { experts: PublicExpert[] }) {
             </h2>
           </div>
 
-          <div className="hidden items-center gap-3 sm:flex">
-            <button
-              type="button"
-              onClick={() => moveTeam("left")}
-              aria-label="Scroll team left"
-              className="grid size-10 place-items-center rounded-full border border-primary/12 bg-white text-secondary/65 shadow-[0_10px_24px_rgba(80,50,25,0.08)] transition-colors hover:bg-primary hover:text-white"
-            >
-              <ArrowLeft className="size-4" strokeWidth={2} />
-            </button>
-            <button
-              type="button"
-              onClick={() => moveTeam("right")}
-              aria-label="Scroll team right"
-              className="grid size-10 place-items-center rounded-full border border-primary/12 bg-white text-secondary/65 shadow-[0_10px_24px_rgba(80,50,25,0.08)] transition-colors hover:bg-primary hover:text-white"
-            >
-              <ArrowRight className="size-4" strokeWidth={2} />
-            </button>
-          </div>
+          <Button
+            nativeButton={false}
+            render={<Link href="/experts" />}
+            variant="outline"
+            className="h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:min-w-[200px]"
+          >
+            View all experts
+            <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />
+          </Button>
         </div>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -704,18 +680,20 @@ function TeamSection({ experts }: { experts: PublicExpert[] }) {
 function TeamCard({ expert }: { expert: PublicExpert }) {
   const name = expert.fullName;
   const image = expert.image;
-  const role = getExpertRole(expert);
   const bio = getExpertBio(expert);
-  const tags = expert?.expertiseTags.slice(0, 2) || [];
+  const tags = expert?.expertiseTags.slice(0, 3) || [];
 
   return (
-    <article className="overflow-hidden rounded-[8px] border border-[#ead8c5] bg-white shadow-[0_16px_36px_rgba(80,50,25,0.09)]">
+    <Link
+      href={getExpertHref(expert)}
+      className="group block overflow-hidden rounded-[8px] border border-[#ead8c5] bg-white shadow-[0_16px_36px_rgba(80,50,25,0.09)] transition-transform duration-300 hover:-translate-y-1"
+    >
       <div className="relative h-[230px] bg-[#eadfd6]">
         {image ? (
           <div
             role="img"
             aria-label={name}
-            className="absolute inset-0 bg-cover bg-center"
+            className="absolute inset-0 bg-cover bg-center transition-transform duration-[720ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.035]"
             style={getImageStyle(image)}
           />
         ) : (
@@ -727,7 +705,7 @@ function TeamCard({ expert }: { expert: PublicExpert }) {
           {name}
         </h3>
         
-        <p className="mt-4 line-clamp-2 min-h-[100px] text-[14px] text-description font-medium leading-[1.55] text-secondary/72">
+        <p className="mt-4 line-clamp-3 min-h-[66px] text-[14px] text-description font-medium leading-[1.55] text-secondary/72">
           {bio}
         </p>
         {tags.length > 0 ? (
@@ -743,7 +721,7 @@ function TeamCard({ expert }: { expert: PublicExpert }) {
           </div>
         ) : null}
       </div>
-    </article>
+    </Link>
   );
 }
 
@@ -756,5 +734,3 @@ function ProfilePlaceholder({ name }: { name: string }) {
     </div>
   );
 }
-
-

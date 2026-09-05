@@ -457,35 +457,41 @@ function TravellerReviewCarousel({
 }: {
   slides: TravellerReviewSlide[];
 }) {
+  const reviewSlides = slides.slice(0, 4);
   const [activeIndex, setActiveIndex] = useState(0);
-  const boundedIndex = slides[activeIndex] ? activeIndex : 0;
-  const activeSlide = slides[boundedIndex] || slides[0];
+  const boundedIndex = reviewSlides[activeIndex] ? activeIndex : 0;
+  const activeSlide = reviewSlides[boundedIndex] || reviewSlides[0];
   const filledStars = activeSlide
     ? Math.max(1, Math.min(5, Math.floor(activeSlide.rating)))
     : 0;
 
   useEffect(() => {
-    if (slides.length <= 1) {
+    if (reviewSlides.length <= 1) {
       return;
     }
 
     const intervalId = window.setInterval(() => {
       setActiveIndex((currentIndex) => {
-        const safeIndex = currentIndex <= slides.length - 1 ? currentIndex : 0;
+        const safeIndex =
+          currentIndex <= reviewSlides.length - 1 ? currentIndex : 0;
 
-        return (safeIndex + 1) % slides.length;
+        return (safeIndex + 1) % reviewSlides.length;
       });
     }, REVIEW_AUTOSLIDE_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
-  }, [slides.length]);
+  }, [reviewSlides.length]);
 
   function showPreviousReview() {
-    setActiveIndex(boundedIndex === 0 ? slides.length - 1 : boundedIndex - 1);
+    setActiveIndex(
+      boundedIndex === 0 ? reviewSlides.length - 1 : boundedIndex - 1
+    );
   }
 
   function showNextReview() {
-    setActiveIndex(boundedIndex === slides.length - 1 ? 0 : boundedIndex + 1);
+    setActiveIndex(
+      boundedIndex === reviewSlides.length - 1 ? 0 : boundedIndex + 1
+    );
   }
 
   if (!activeSlide) {
@@ -510,7 +516,7 @@ function TravellerReviewCarousel({
           className="flex transition-transform duration-500 ease-out"
           style={{ transform: `translateX(-${boundedIndex * 100}%)` }}
         >
-          {slides.map((slide) => (
+          {reviewSlides.map((slide) => (
             <article
               key={slide.id}
               className="w-full shrink-0 px-1"
@@ -546,7 +552,7 @@ function TravellerReviewCarousel({
        
       </p>
 
-      {slides.length > 1 ? (
+      {reviewSlides.length > 1 ? (
         <div className="mt-7 flex w-full items-center justify-between gap-4">
           <button
             type="button"
@@ -558,7 +564,7 @@ function TravellerReviewCarousel({
           </button>
 
           <div className="flex items-center justify-center gap-3">
-            {slides.map((slide, index) => (
+            {reviewSlides.map((slide, index) => (
               <button
                 key={`${slide.id}-dot`}
                 type="button"
@@ -1000,12 +1006,13 @@ export function EgyptExperiencesSection({
 
         <aside className="flex h-full flex-col items-center justify-between text-center lg:w-full lg:max-w-[356px] lg:justify-self-end">
           <Button
+            variant="outline"
             nativeButton={false}
             render={<Link href={experiencesHref} />}
             className="mb-8 h-11 w-full min-w-0 justify-between gap-3 px-5 text-[14px] font-normal sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:mb-14 lg:min-w-[270px]"
           >
             View All Traveller Experiences
-            <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+            <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />
           </Button>
 
           <TravellerReviewCarousel slides={reviewSlides} />

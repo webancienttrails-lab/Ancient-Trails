@@ -70,6 +70,7 @@ type MonthOption = {
 };
 
 type PlannerSuggestion = {
+  destinationId: string;
   id: string;
   label: string;
   meta: string;
@@ -81,11 +82,15 @@ const planTripButtonClassName =
   "group h-12 min-w-[210px] justify-between gap-5 px-5 font-semibold shadow-none text-[17px]";
 const panelPadding = 12;
 
-function PlanTripButtonContent() {
+function PlanTripButtonContent({
+  arrowClassName = "group-hover/button:brightness-0 group-hover/button:invert",
+}: {
+  arrowClassName?: string;
+}) {
   return (
     <>
       Plan Your Trip
-      <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />
+      <ButtonArrow className={arrowClassName} />
     </>
   );
 }
@@ -318,6 +323,7 @@ function createSuggestions({
 
     seenSuggestionIds.add(id);
     suggestions.push({
+      destinationId: destination.destinationId,
       id,
       label: destination.destinationName,
       meta:
@@ -331,6 +337,27 @@ function createSuggestions({
   return suggestions.slice(0, 8);
 }
 
+function getMatchingPlannerDestinationId(
+  query: string,
+  destinations: PlannerDestination[]
+) {
+  const queryKey = normalizeText(query);
+
+  if (!queryKey) {
+    return "";
+  }
+
+  return (
+    destinations.find((destination) =>
+      [
+        destination.destinationId,
+        destination.destinationName,
+        destination.city,
+      ].some((value) => normalizeText(value || "") === queryKey)
+    )?.destinationId || ""
+  );
+}
+
 export function PlanTripLauncher() {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
@@ -340,6 +367,7 @@ export function PlanTripLauncher() {
   const [isCtaFlying, setIsCtaFlying] = useState(false);
   const [isCtaSettled, setIsCtaSettled] = useState(false);
   const [destinationQuery, setDestinationQuery] = useState("");
+  const [selectedDestinationId, setSelectedDestinationId] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
   const [adultCount, setAdultCount] = useState(2);
   const [childCount, setChildCount] = useState(0);
@@ -597,18 +625,24 @@ export function PlanTripLauncher() {
       return;
     }
 
+    const destinationValue =
+      selectedDestinationId ||
+      getMatchingPlannerDestinationId(destinationQuery, destinations);
+
     router.push(
       getToursHref({
         adults: adultCount,
         children: childCount,
+        destination: destinationValue,
         month: effectiveSelectedMonth,
-        search: destinationQuery.trim(),
+        search: destinationValue ? "" : destinationQuery.trim(),
       })
     );
   };
 
   const handleSuggestionSelect = (suggestion: PlannerSuggestion) => {
     setDestinationQuery(suggestion.searchValue);
+    setSelectedDestinationId(suggestion.destinationId);
     setActiveField("month");
   };
 
@@ -687,7 +721,7 @@ export function PlanTripLauncher() {
               isCtaSettled ? "pointer-events-auto" : "pointer-events-none"
             } ${hasDestinationQuery ? "" : "cursor-not-allowed opacity-60"}`}
           >
-            <PlanTripButtonContent />
+            <PlanTripButtonContent arrowClassName="group-hover/button:brightness-100 group-hover/button:invert-0" />
           </Button>
         </div>
       ) : null}
@@ -726,6 +760,7 @@ export function PlanTripLauncher() {
               onFocus={() => setActiveField("destination")}
               onQueryChange={(value) => {
                 setDestinationQuery(value);
+                setSelectedDestinationId("");
                 setActiveField("destination");
               }}
               onSearch={handleSearchTours}
@@ -790,6 +825,7 @@ export function PlanTripInline({
   const router = useRouter();
   const [activeField, setActiveField] = useState<ActiveField>(null);
   const [destinationQuery, setDestinationQuery] = useState(initialSearchQuery);
+  const [selectedDestinationId, setSelectedDestinationId] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(initialMonthValue);
   const [adultCount, setAdultCount] = useState(
     Math.min(12, Math.max(1, initialAdultCount))
@@ -920,12 +956,17 @@ export function PlanTripInline({
       return;
     }
 
+    const destinationValue =
+      selectedDestinationId ||
+      getMatchingPlannerDestinationId(destinationQuery, destinations);
+
     router.push(
       getToursHref({
         adults: adultCount,
         children: childCount,
+        destination: destinationValue,
         month: effectiveSelectedMonth,
-        search: destinationQuery.trim(),
+        search: destinationValue ? "" : destinationQuery.trim(),
       })
     );
   };
@@ -954,11 +995,13 @@ export function PlanTripInline({
           onFocus={() => setActiveField("destination")}
           onQueryChange={(value) => {
             setDestinationQuery(value);
+            setSelectedDestinationId("");
             setActiveField("destination");
           }}
           onSearch={handleSearchTours}
           onSuggestionSelect={(suggestion) => {
             setDestinationQuery(suggestion.searchValue);
+            setSelectedDestinationId(suggestion.destinationId);
             setActiveField("month");
           }}
         />
@@ -998,7 +1041,7 @@ export function PlanTripInline({
             hasDestinationQuery ? "" : "cursor-not-allowed opacity-60"
           }`}
         >
-          <PlanTripButtonContent />
+          <PlanTripButtonContent arrowClassName="group-hover/button:brightness-100 group-hover/button:invert-0" />
         </Button>
       </div>
     </div>

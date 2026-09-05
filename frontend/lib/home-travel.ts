@@ -234,6 +234,7 @@ export type HomeTourCard = {
   destinationId: string;
   duration: string;
   image: string;
+  isBestseller?: boolean;
   title: string;
   tourId: string;
 };
@@ -586,6 +587,28 @@ function getDateValue(value: string | null): number {
   return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
+function getOrdinalSuffix(day: number) {
+  const teenRemainder = day % 100;
+
+  if (teenRemainder >= 11 && teenRemainder <= 13) {
+    return "th";
+  }
+
+  if (day % 10 === 1) {
+    return "st";
+  }
+
+  if (day % 10 === 2) {
+    return "nd";
+  }
+
+  if (day % 10 === 3) {
+    return "rd";
+  }
+
+  return "th";
+}
+
 function formatTravelDate(value: string | null): string {
   if (!value) {
     return "Coming Soon";
@@ -597,13 +620,11 @@ function formatTravelDate(value: string | null): string {
     return "Coming Soon";
   }
 
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  })
-    .format(date)
-    .replace(",", "");
+  const day = date.getDate();
+  const month = new Intl.DateTimeFormat("en-GB", { month: "short" }).format(date);
+  const year = date.getFullYear();
+
+  return `${day}${getOrdinalSuffix(day)} ${month} ${year}`;
 }
 
 function getTourImage(tour: PublicTour | undefined, fallbackImage: string) {
@@ -917,6 +938,7 @@ export function buildUpcomingTourCards(
           duration:
             tour.durationDn || (departure ? createDurationFromDates(departure) : ""),
           image: getTourImage(tour, "/home assets/Khajuraho.webp"),
+          isBestseller: Boolean(tour.isBestseller),
           title: tour.tourName,
           tourId: tour.tourId,
         } satisfies HomeTourCard;
@@ -954,6 +976,7 @@ export function buildUpcomingTourCards(
         destinationId: departure.destinationId || getPrimaryTourDestinationId(tour),
         duration: tour.durationDn || createDurationFromDates(departure),
         image: getTourImage(tour, "/home assets/Khajuraho.webp"),
+        isBestseller: Boolean(tour.isBestseller),
         title: tour.tourName,
         tourId: tour.tourId,
       } satisfies HomeTourCard;
@@ -972,6 +995,7 @@ export function buildUpcomingTourCards(
       destinationId: getPrimaryTourDestinationId(tour),
       duration: tour.durationDn,
       image: getTourImage(tour, "/home assets/Khajuraho.webp"),
+      isBestseller: Boolean(tour.isBestseller),
       title: tour.tourName,
       tourId: tour.tourId,
     });

@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { CalendarDays, Compass, Landmark, MapPin, Users } from "lucide-react";
+import { Compass, Landmark, MapPin, Users } from "lucide-react";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
 import { getDestinationHref } from "@/lib/routes";
@@ -161,13 +161,20 @@ const defaultDestinationId = "HOYSALAS";
 
 const fallbackTourCategories = [
   "Heritage",
-  "Monuments",
-  "Temples",
-  "Adventure",
+  "Nature",
+  "Photography",
+  "UNESCO Site",
   "Architecture",
   "Culture",
-  "Nature",
+  "Temples",
   "Festival Trails",
+];
+
+const destinationCategoryFallbacks = [
+  "Heritage",
+  "Nature",
+  "Photography",
+  "UNESCO Site",
 ];
 
 function getDestinationHighlights(destination: TopDestination) {
@@ -214,6 +221,62 @@ function getTourCategoryLabels(value: string) {
   const fallbackValue = value.trim();
 
   return labels.length > 0 ? labels : fallbackValue ? [fallbackValue] : [];
+}
+
+function getDestinationFallbackCategories(destination: TopDestination) {
+  const searchText = [
+    destination.name,
+    destination.state,
+    destination.description,
+    destination.landmarks.join(" "),
+    destination.tourName,
+  ]
+    .join(" ")
+    .toLowerCase();
+  const categories: string[] = [];
+
+  if (
+    /heritage|ancient|historic|history|cultural|culture|temple|palace|fort|cave|ghat|sacred|stone|sculpture/.test(
+      searchText
+    )
+  ) {
+    categories.push("Heritage");
+  }
+
+  if (/nature|lake|river|cliff|landscape|boulder|forest|hill|mountain/.test(searchText)) {
+    categories.push("Nature");
+  }
+
+  if (/photo|view|sunrise|sunset|graceful|dramatic|sculpture|architecture|palace|lake/.test(searchText)) {
+    categories.push("Photography");
+  }
+
+  if (/unesco|hampi|khajuraho/.test(searchText)) {
+    categories.push("UNESCO Site");
+  }
+
+  const fallbackIndex = Math.abs(
+    destination.destinationId
+      .split("")
+      .reduce((total, character) => total + character.charCodeAt(0), 0)
+  );
+
+  return getUniqueTourCategories(
+    categories.length > 0
+      ? categories
+      : [
+          destinationCategoryFallbacks[
+            fallbackIndex % destinationCategoryFallbacks.length
+          ],
+          "Heritage",
+        ]
+  ).slice(0, 3);
+}
+
+function getDestinationCategoryLabels(destination: TopDestination) {
+  const labels = getTourCategoryLabels(destination.focus);
+
+  return labels.length > 0 ? labels : getDestinationFallbackCategories(destination);
 }
 
 function getCompactTourCategoryLabel(labels: string[], sourceValue = "") {
@@ -327,7 +390,7 @@ export function TopDestinationsSection({
       (destination) => destination.destinationId === activeDestinationId
     ) || displayedDestinations[0] || topDestinations[0];
   const activeHighlights = getDestinationHighlights(activeDestination);
-  const activeTourCategoryLabels = getTourCategoryLabels(activeDestination.focus);
+  const activeTourCategoryLabels = getDestinationCategoryLabels(activeDestination);
 
   function selectDestination(destinationId: string) {
     if (destinationId === activeDestination.destinationId) {
@@ -377,7 +440,7 @@ export function TopDestinationsSection({
           <Button
             nativeButton={false}
             render={<Link href="/destinations" />}
-            className="h-11 w-full min-w-0 justify-center gap-3 px-5 text-[15px] font-normal sm:w-auto sm:px-6 sm:text-button lg:min-w-[230px]"
+            className="h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:min-w-[230px]"
           >
             View All Destinations
             <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />

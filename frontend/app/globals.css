@@ -121,6 +121,12 @@
   line-height: 1;
 }
 
+a.bg-primary,
+button.bg-primary,
+[role="button"].bg-primary {
+  font-size: 17px;
+}
+
 .text-header {
   font-size: var(--font-size-header);
   line-height: 1.2;

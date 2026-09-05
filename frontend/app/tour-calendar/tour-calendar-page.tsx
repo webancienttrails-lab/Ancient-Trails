@@ -6,14 +6,18 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   BadgeCheck,
+  BedDouble,
   BookOpen,
+  Bus,
   CalendarDays,
+  Camera,
   ChevronLeft,
   ChevronRight,
   Clock3,
   Landmark,
   MapPin,
   Sprout,
+  UserRoundCheck,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -67,15 +71,6 @@ type SortMode = "price-low" | "price-high";
 
 const monthNameFormatter = new Intl.DateTimeFormat("en-US", {
   month: "long",
-});
-const dayMonthFormatter = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit",
-  month: "short",
-});
-const fullDateFormatter = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
 });
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
   currency: "INR",
@@ -236,39 +231,69 @@ function buildCalendarDays(monthDate: Date): CalendarDay[] {
   });
 }
 
-function formatFullDate(value: string | Date) {
-  const date = typeof value === "string" ? new Date(value) : value;
+function getOrdinalSuffix(day: number) {
+  const teenRemainder = day % 100;
+
+  if (teenRemainder >= 11 && teenRemainder <= 13) {
+    return "th";
+  }
+
+  if (day % 10 === 1) {
+    return "st";
+  }
+
+  if (day % 10 === 2) {
+    return "nd";
+  }
+
+  if (day % 10 === 3) {
+    return "rd";
+  }
+
+  return "th";
+}
+
+function formatOrdinalDate(value: string | null) {
+  if (!value) {
+    return "Coming Soon";
+  }
+
+  const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
     return "Coming Soon";
   }
 
-  return fullDateFormatter.format(date).replace(",", "");
+  const day = date.getDate();
+  const month = new Intl.DateTimeFormat("en-GB", { month: "short" }).format(date);
+
+  return `${day}${getOrdinalSuffix(day)} ${month} ${date.getFullYear()}`;
 }
 
-function formatDateRange(departure: PublicTourDeparture) {
-  if (!departure.departureDate || !departure.returnDate) {
+function compactDurationLabel(value: string) {
+  const source = value.trim();
+
+  if (!source) {
     return "Coming Soon";
   }
 
-  const departureDate = new Date(departure.departureDate);
-  const returnDate = new Date(departure.returnDate);
+  const dayNightMatch = source.match(
+    /(\d+)\s*(?:days?|d)\b\s*(?:[/,-]|and)?\s*(\d+)\s*(?:nights?|n)\b/i
+  );
 
-  if (
-    Number.isNaN(departureDate.getTime()) ||
-    Number.isNaN(returnDate.getTime())
-  ) {
-    return formatFullDate(departure.departureDate);
+  if (dayNightMatch) {
+    return `${dayNightMatch[1]}D/${dayNightMatch[2]}N`;
   }
 
-  const start = dayMonthFormatter.format(departureDate).replace(",", "");
-  const end = dayMonthFormatter.format(returnDate).replace(",", "");
+  const dayMatch = source.match(/(\d+)\s*(?:days?|d)\b/i);
 
-  if (departureDate.getFullYear() !== returnDate.getFullYear()) {
-    return `${start} ${departureDate.getFullYear()} - ${end} ${returnDate.getFullYear()}`;
+  if (dayMatch) {
+    const days = Number(dayMatch[1]);
+
+    return days > 1 ? `${days}D/${days - 1}N` : "1 Day";
   }
 
-  return `${start} - ${end} ${returnDate.getFullYear()}`;
+  return source.replace(/\s*\/\s*/g, "/").replace(/\s+/g, " ");
 }
 
 function formatPrice(value: number) {
@@ -368,6 +393,19 @@ function statusBadgeClassName(status: DepartureStatus) {
       return "bg-[#d95c34] text-white";
     case "full":
       return "bg-[#bdb2a6] text-white";
+  }
+}
+
+function getDepartureStatusLabel(status: DepartureStatus) {
+  switch (status) {
+    case "available":
+      return "Available";
+    case "few":
+      return "Few Seats";
+    case "almost":
+      return "Almost Full";
+    case "full":
+      return "Full";
   }
 }
 
@@ -1046,14 +1084,10 @@ export function TourCalendarPage({
         getDateKey(departure.departureDate) === selectedDateKey
     )
     : [];
-  const upcomingDepartures =
+  const visibleDepartures =
     isDateFilterActive && selectedDateDepartures.length > 0
       ? selectedDateDepartures
-      : sortedCalendarFilteredDepartures.filter(
-        ({ departure }) =>
-          getDateValue(departure.departureDate) >=
-          startOfDay(new Date()).getTime()
-      );
+      : sortedCalendarFilteredDepartures;
   const visibleExperts = getUniqueExperts(calendarFilteredDepartures, experts);
 
   function clearDateSelection() {
@@ -1104,7 +1138,7 @@ export function TourCalendarPage({
 
         <UpcomingDeparturesPanel
           destinationOptions={destinationOptions}
-          departures={upcomingDepartures}
+          departures={visibleDepartures}
           isLoading={isLoading}
           loadError={loadError}
           selectedDestinationId={selectedDestinationId}
@@ -1370,7 +1404,7 @@ function UpcomingDeparturesPanel({
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
           <h2 className="font-heading text-[19px] font-bold leading-none text-secondary">
-            Upcoming Departures
+            All Departures
           </h2>
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
             <span className="shrink-0 font-sans text-[12px] font-bold text-secondary">
@@ -1455,7 +1489,7 @@ function UpcomingDeparturesPanel({
             message={
               isLoading
                 ? "Loading live departures..."
-                : loadError || "No upcoming departures match these filters."
+                : loadError || "No departures match these filters."
             }
           />
         )}
@@ -1470,121 +1504,181 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
   const filledSeats = getFilledSeats(item.departure);
   const seatsLeft = getDepartureSeatsLeft(item.departure);
   const filledPercent = getFilledSeatPercent(item.departure);
+  const tourIncludes = [
+    { icon: BedDouble, label: "Accommodation" },
+    { icon: Camera, label: "Sightseeing" },
+    { icon: UserRoundCheck, label: "Expert guide" },
+    { icon: Bus, label: "Local transport" },
+  ];
 
   return (
-    <article className="rounded-[12px] border border-[#e8cbaa] bg-white p-3  transition-all hover:-translate-y-0.5 hover:border-primary/55  sm:p-3.5">
-      <div className="grid gap-2.5 xl:grid-cols-[190px_minmax(0,1fr)] xl:items-start">
-        <div className="relative h-[145px] overflow-hidden rounded-[8px] bg-muted sm:h-[160px] xl:h-[122px]">
-          <Image
-            src={getTourImage(item.tour)}
-            alt={item.tour.tourName}
-            fill
-            sizes="(min-width: 1280px) 190px, 100vw"
-            className="object-cover"
-          />
+    <article className="overflow-visible rounded-[12px] border border-[#e8cbaa] bg-white p-2 transition-all hover:-translate-y-0.5 hover:border-primary/55 sm:p-2.5">
+      <div className="grid gap-2.5 xl:grid-cols-[245px_minmax(0,1fr)_210px] xl:items-stretch">
+        <div className="relative h-[140px] overflow-hidden rounded-[8px] bg-muted sm:h-[165px] xl:h-auto">
+          <Link
+            href={getTourHref(item.tour)}
+            aria-label={`View ${item.tour.tourName}`}
+            className="absolute inset-0 block focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25"
+          >
+            <Image
+              src={getTourImage(item.tour)}
+              alt={item.tour.tourName}
+              fill
+              sizes="(min-width: 1280px) 260px, 100vw"
+              className="object-cover transition-transform duration-700 hover:scale-[1.035]"
+            />
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.08)_0%,rgba(18,12,8,0.02)_48%,rgba(18,12,8,0.55)_100%)]" />
+            <span className="absolute bottom-2 left-2 inline-flex h-7 max-w-[calc(100%-1rem)] items-center gap-2 rounded-full bg-[#2b241f]/80 px-2.5 font-sans text-[12px] font-medium leading-none text-white shadow-[0_10px_22px_rgba(35,23,15,0.24)] backdrop-blur-[2px]">
+              <span className="grid size-[17px] shrink-0 place-items-center rounded-full bg-white text-[#2b241f]">
+                <Clock3 className="size-2.5" strokeWidth={2.3} />
+              </span>
+              <span className="truncate">{compactDurationLabel(item.tour.durationDn)}</span>
+            </span>
+          </Link>
+
           <span
             className={cn(
-              "absolute left-2.5 top-2.5 rounded-[6px] px-2 py-1 font-sans text-[11px] mt-1 space-y-5px] font-bold leading-none",
+              "absolute left-2 top-2 rounded-[6px] px-2 py-1 font-sans text-[11px] font-bold leading-none",
               statusBadgeClassName(status)
             )}
           >
-            BESTSELLER
+            {getDepartureStatusLabel(status)}
           </span>
         </div>
 
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_210px]">
-          <div className="min-w-0">
-            <h3 className="max-w-[310px] font-heading text-[20px] font-bold leading-[1.08] tracking-normal text-secondary sm:text-[23px]">
-              {item.tour.tourName}
-            </h3>
-
-            <div className="mt-2.5 grid gap-3 sm:grid-cols-[180px_60px_92px] sm:items-start">
-              <div className="space-y-2 font-sans text-[13px] font-semibold leading-tight text-secondary/70 sm:text-[12px]">
-                <p className="flex min-w-0 items-center gap-1.5">
-                  <CalendarDays className="size-3.5 shrink-0 text-primary" strokeWidth={2} />
-                  <span className="min-w-0 whitespace-nowrap">{formatDateRange(item.departure)}</span>
-                </p>
-                <p className="flex min-w-0 items-center gap-1.5">
-                  <MapPin className="size-3.5 shrink-0 text-primary" strokeWidth={2} />
-                  <span className="truncate">{getDestinationName(item)}</span>
-                </p>
-              </div>
-
-              <span className="font-sans">
-                
-              </span>
-
-              <span className="font-sans">
-                <strong className="block text-[15px] font-bold leading-none text-secondary sm:text-[16px]">
-                  {formatPrice(item.departure.priceAdult)}
-                </strong>
-                <span className="mt-1 block text-[10px] font-medium leading-none text-secondary/58 sm:text-[11px]">
-                  per person
-                </span>
-              </span>
-            </div>
-
-            <div className="mt-3 border-t border-[#e8cbaa] pt-2.5 sm:max-w-[356px]">
-              <p className="flex flex-wrap items-center gap-x-3 gap-y-1.5 font-sans text-[12px] font-semibold leading-tight text-secondary/60 sm:text-[13px]">
-                <span className="font-bold text-primary">
-                  {filledSeats}/{capacity} seats
-                </span>
-              </p>
-
-              <div className="mt-2 h-1 overflow-hidden rounded-full bg-[#e8edf1]">
-                <span
-                  className={cn(
-                    "block h-full rounded-full",
-                    getSeatProgressColorClass(filledPercent)
-                  )}
-                  style={{ width: `${filledPercent}%` }}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-2.5 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center lg:flex lg:flex-col lg:items-end">
+        <div className="flex min-w-0 flex-col px-0.5">
+          <h3 className="font-heading text-[20px] font-bold leading-[1.04] tracking-normal text-secondary sm:text-[23px]">
             <Link
               href={getTourHref(item.tour)}
-              className={buttonVariants({
-                className:
-                  "h-9 w-full justify-between gap-3 px-3 text-[13px] font-normal hover:border-primary hover:bg-white hover:text-primary hover:shadow-none",
-              })}
+              className="line-clamp-2 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
             >
-              Book Now
-              <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+              {item.tour.tourName}
             </Link>
+          </h3>
 
-            <div className="flex min-w-0 items-center gap-2 lg:mt-3 lg:w-full lg:justify-end pr-2">
-              <ExpertAvatar expert={item.expert} index={index} size="compact" />
-              <span className="min-w-0 font-sans lg:text-right">
-                <span className="block text-[9px] font-semibold uppercase leading-none text-secondary/48">
-                  Expert
-                </span>
-                <TourExpertHoverPopup
-                  image={getExpertImage(item.expert, index)}
-                  name={getExpertName(item)}
-                  specialties={item.expert?.expertiseTags || []}
-                  specialty={
-                    item.expert?.expertiseTags[0] ||
-                    item.tour.category ||
-                    item.tour.tourType ||
-                    "Heritage Tours"
-                  }
-                  triggerClassName="mt-1 text-[13px] font-bold leading-none sm:text-[13px]"
-                />
-                <Link
-                  href="/about"
-                  className="mt-1 inline-flex text-[13px] font-bold leading-none text-primary transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
-                >
-                  View Profile
-                </Link>
+          <time className="mt-2 block font-sans text-[16px] font-medium leading-none text-primary">
+            {formatOrdinalDate(item.departure.departureDate)}
+          </time>
+
+          <div className="mt-3 w-full max-w-none">
+            <DepartureSeatProgress
+              capacity={capacity}
+              filled={filledSeats}
+              progressPercent={filledPercent}
+              seatsLeft={seatsLeft}
+            />
+          </div>
+
+          
+
+          <div className="mt-4 border-t border-[#d6d1cb] pt-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-sans text-[12px] font-medium leading-none text-secondary/62">
+                Tour Includes
               </span>
+              <div className="flex shrink-0 items-center gap-3 text-primary">
+                {tourIncludes.map(({ icon, label }) => (
+                  <DepartureIncludeIcon key={label} icon={icon} label={label} />
+                ))}
+              </div>
             </div>
           </div>
         </div>
+
+        <div className="grid gap-2.5 border-t border-[#d6d1cb] pt-3 text-right font-sans xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0">
+          <div className="min-w-0 justify-self-end">
+            <span className="block text-right text-[12px] font-medium leading-none text-secondary/62">
+              Tour Expert
+            </span>
+            <div className="mt-0 flex min-w-0 items-center justify-end gap-2">
+              <ExpertAvatar expert={item.expert} index={index} size="compact" />
+              <TourExpertHoverPopup
+                image={getExpertImage(item.expert, index)}
+                name={getExpertName(item)}
+                specialties={item.expert?.expertiseTags || []}
+                specialty={
+                  item.expert?.expertiseTags[0] ||
+                  item.tour.category ||
+                  item.tour.tourType ||
+                  "Heritage Tours"
+                }
+                triggerClassName="text-right text-[14px] font-semibold leading-tight sm:text-[15px]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <span className="block text-[12px] font-medium leading-none text-secondary/62">
+              Starting from
+            </span>
+            <strong className="mt-1.5 block truncate text-[22px] font-semibold leading-none text-secondary">
+              {formatPrice(item.departure.priceAdult)}
+            </strong>
+          </div>
+
+          <Link
+            href={getTourHref(item.tour)}
+            aria-label={`Book Now ${item.tour.tourName}`}
+            className={buttonVariants({
+              className:
+                "mt-auto h-9 w-full justify-between gap-3 px-4 text-[13px] font-normal hover:border-primary hover:bg-white hover:text-primary hover:shadow-none",
+            })}
+          >
+            Book Now
+            <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+          </Link>
+        </div>
       </div>
     </article>
+  );
+}
+
+function DepartureSeatProgress({
+  capacity,
+  filled,
+  progressPercent,
+  seatsLeft,
+}: {
+  capacity: number;
+  filled: number;
+  progressPercent: number;
+  seatsLeft: number;
+}) {
+  return (
+    <div className="w-full min-w-0 max-w-none">
+      <p className="flex items-center justify-between gap-2 font-sans text-[12px] font-semibold leading-none text-secondary/60">
+        <span className="font-bold text-primary">
+          {seatsLeft > 0 ? `${seatsLeft} seats left` : "Seats full"}
+        </span>
+        <span>{filled}/{capacity}</span>
+      </p>
+
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#e8edf1]">
+        <span
+          className="block h-full rounded-full bg-[#2faa5d]"
+          style={{ width: `${progressPercent}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DepartureIncludeIcon({
+  icon: Icon,
+  label,
+}: {
+  icon: LucideIcon;
+  label: string;
+}) {
+  return (
+    <span
+      aria-label={label}
+      role="img"
+      title={label}
+      className="grid size-[18px] place-items-center text-secondary/72"
+    >
+      <Icon className="size-4" strokeWidth={2.3} />
+    </span>
   );
 }
 

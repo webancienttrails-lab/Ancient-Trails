@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { Clock3 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
@@ -11,7 +12,7 @@ import {
   type HomeTourCard,
 } from "@/lib/home-travel";
 import { getTourHref } from "@/lib/routes";
-import { RevealOnView, TextReveal } from "./reveal-on-view";
+import { TextReveal } from "./reveal-on-view";
 
 type TourCardProps = {
   className: string;
@@ -119,6 +120,11 @@ function TourCard({ tour, className, sizes }: TourCardProps) {
       />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.04)_0%,rgba(18,12,8,0.14)_46%,rgba(18,12,8,0.82)_100%)]" />
       <div className="absolute inset-x-0 top-0 h-16 bg-[linear-gradient(180deg,rgba(0,0,0,0.72)_0%,rgba(0,0,0,0)_100%)]" />
+      {tour.isBestseller ? (
+        <span className="absolute left-3 top-3 rounded-[6px] bg-primary px-2 py-1 font-sans text-[11px] font-bold leading-none text-white shadow-[0_10px_20px_rgba(0,0,0,0.18)]">
+          BESTSELLER
+        </span>
+      ) : null}
       <time className="absolute right-3 top-3 font-sans text-[14px] font-semibold leading-none text-white">
         {formatDepartureDate(tour.date)}
       </time>
@@ -126,7 +132,10 @@ function TourCard({ tour, className, sizes }: TourCardProps) {
         <h3 className="line-clamp-1 font-sans text-[18px] font-semibold leading-none ">
           {tour.title}
         </h3>
-        <span className="mt-1 inline-flex h-6 items-center rounded-full bg-black/68 px-2.5 font-sans text-[12px] font-normal leading-none text-white shadow-[0_8px_18px_rgba(0,0,0,0.24)] backdrop-blur-[2px]">
+        <span className="mt-2 inline-flex h-6 items-center gap-1.5 rounded-full bg-black/68 px-2.5 font-sans text-[12px] font-normal leading-none text-white shadow-[0_8px_18px_rgba(0,0,0,0.24)] backdrop-blur-[2px]">
+          <span className="grid size-4 shrink-0 place-items-center rounded-full bg-white text-secondary">
+            <Clock3 className="size-2.5" strokeWidth={2.2} />
+          </span>
           {compactDurationLabel(tour.duration)}
         </span>
       </div>
@@ -179,50 +188,35 @@ export function UpcomingToursSection() {
               </div>
             </TextReveal>
 
-            <RevealOnView
-              motion="scale"
-              rootMargin="0px 0px 320px 0px"
-              className="mt-5 lg:mt-6"
-            >
+            <div className="mt-5 lg:mt-6">
               <TourCard
                 tour={tours[0]}
                 className="h-[140px] sm:h-[210px] lg:h-auto lg:aspect-[2.24/1]"
                 sizes="(min-width: 1300px) 650px, (min-width: 1024px) 44vw, 100vw"
               />
-            </RevealOnView>
+            </div>
 
             <div className="mt-3 grid grid-cols-2 gap-3 sm:mt-4 sm:gap-4">
-              <RevealOnView delay={220} replay>
-                <TourCard
-                  tour={tours[3]}
-                  className="h-[102px] sm:h-[160px] lg:h-auto lg:aspect-[1.5/1]"
-                  sizes="(min-width: 1300px) 325px, (min-width: 1024px) 27vw, (min-width: 640px) 40vw, 100vw"
-                />
-              </RevealOnView>
-              <RevealOnView delay={340} replay>
-                <TourCard
-                  tour={tours[4]}
-                  className="h-[102px] sm:h-[160px] lg:h-auto lg:aspect-[1.5/1]"
-                  sizes="(min-width: 1300px) 325px, (min-width: 1024px) 27vw, (min-width: 640px) 40vw, 100vw"
-                />
-              </RevealOnView>
+              <TourCard
+                tour={tours[3]}
+                className="h-[102px] sm:h-[160px] lg:h-auto lg:aspect-[1.5/1]"
+                sizes="(min-width: 1300px) 325px, (min-width: 1024px) 27vw, (min-width: 640px) 40vw, 100vw"
+              />
+              <TourCard
+                tour={tours[4]}
+                className="h-[102px] sm:h-[160px] lg:h-auto lg:aspect-[1.5/1]"
+                sizes="(min-width: 1300px) 325px, (min-width: 1024px) 27vw, (min-width: 640px) 40vw, 100vw"
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:h-full lg:gap-x-4">
             <div className="flex h-full flex-col lg:pt-5">
-              <RevealOnView
-                delay={120}
-                motion="scale"
-                rootMargin="0px 0px 320px 0px"
-                className="lg:flex-1"
-              >
-                <TourCard
-                  tour={tours[1]}
-                  className="h-[156px] sm:h-[220px] lg:h-full lg:aspect-auto"
-                  sizes="(min-width: 1300px) 410px, (min-width: 1024px) 32vw, 100vw"
-                />
-              </RevealOnView>
+              <TourCard
+                tour={tours[1]}
+                className="h-[156px] sm:h-[220px] lg:h-full lg:flex-1 lg:aspect-auto"
+                sizes="(min-width: 1300px) 410px, (min-width: 1024px) 32vw, 100vw"
+              />
 
               <TextReveal delay={120}>
                 <p className="mt-3 max-w-[260px] font-sans text-[13px] font-medium leading-[1.25] text-accent sm:mt-4 sm:text-[15px] lg:mt-5">
@@ -232,26 +226,17 @@ export function UpcomingToursSection() {
             </div>
 
             <div className="flex h-full flex-col lg:pt-5">
-              <RevealOnView
-                delay={220}
-                motion="scale"
-                rootMargin="0px 0px 320px 0px"
-                className="lg:flex-1"
-              >
-                <TourCard
-                  tour={tours[2]}
-                  className="h-[102px] sm:h-[160px] lg:h-full lg:aspect-auto"
-                  sizes="(min-width: 1300px) 500px, (min-width: 1024px) 39vw, 100vw"
-                />
-              </RevealOnView>
+              <TourCard
+                tour={tours[2]}
+                className="h-[102px] sm:h-[160px] lg:h-full lg:flex-1 lg:aspect-auto"
+                sizes="(min-width: 1300px) 500px, (min-width: 1024px) 39vw, 100vw"
+              />
 
-              <RevealOnView delay={460} replay className="mt-3 sm:mt-4 lg:flex-1">
-                <TourCard
-                  tour={tours[5]}
-                  className="h-[102px] sm:h-[160px] lg:h-full lg:aspect-auto"
-                  sizes="(min-width: 1300px) 500px, (min-width: 1024px) 39vw, 100vw"
-                />
-              </RevealOnView>
+              <TourCard
+                tour={tours[5]}
+                className="mt-3 h-[102px] sm:mt-4 sm:h-[160px] lg:h-full lg:flex-1 lg:aspect-auto"
+                sizes="(min-width: 1300px) 500px, (min-width: 1024px) 39vw, 100vw"
+              />
 
               <div className="mt-4 flex justify-start lg:mt-6 lg:justify-end">
                 <Button

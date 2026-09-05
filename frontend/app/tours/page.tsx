@@ -12,6 +12,7 @@ type ToursRouteProps = {
   searchParams?: Promise<{
     adults?: string;
     children?: string;
+    destination?: string;
     month?: string;
     search?: string;
   }>;
@@ -29,6 +30,7 @@ function parseGuestCount(value: string | undefined, fallback: number, minimum: n
 
 export default async function ToursRoute({ searchParams }: ToursRouteProps) {
   const params = await searchParams;
+  const initialDestinationValue = params?.destination || "";
   const initialSearchQuery = params?.search || "";
   const initialMonthValue = params?.month || "";
   const initialAdultCount = parseGuestCount(params?.adults, 2, 1);
@@ -36,9 +38,10 @@ export default async function ToursRoute({ searchParams }: ToursRouteProps) {
 
   return (
     <ToursListingPage
-      key={`${initialSearchQuery}-${initialMonthValue}-${initialAdultCount}-${initialChildCount}`}
+      key={`${initialDestinationValue}-${initialSearchQuery}-${initialMonthValue}-${initialAdultCount}-${initialChildCount}`}
       initialAdultCount={initialAdultCount}
       initialChildCount={initialChildCount}
+      initialDestinationValue={initialDestinationValue}
       initialMonthValue={initialMonthValue}
       initialSearchQuery={initialSearchQuery}
     />

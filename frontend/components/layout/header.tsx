@@ -42,10 +42,12 @@ import {
   getHomeMediaUrl,
   listPublicDestinations,
   listPublicExperiences,
+  listPublicExperts,
   listPublicMegaMenu,
   listPublicTours,
   type PublicDestination,
   type PublicExperience,
+  type PublicExpert,
   type PublicMegaMenuContent,
   type PublicMegaMenuDestinationReference,
   type PublicMegaMenuTourReference,
@@ -481,6 +483,28 @@ function getExperienceSearchItem(
       experience.thingsToKnow.join(" "),
     ].join(" "),
     type: "Experience",
+  };
+}
+
+function getExpertSearchItem(expert: PublicExpert): HeaderSearchItem {
+  return {
+    title: expert.fullName,
+    description:
+      expert.expertiseTags.join(" • ") ||
+      expert.qualifications.join(" • ") ||
+      "Heritage travel expert",
+    href: `/experts#${slugifyRoute(expert.expertId || expert.fullName || "expert")}`,
+    image: getHomeMediaUrl(expert.image || ""),
+    keywords: [
+      expert.expertId,
+      expert.fullName,
+      expert.fullBiography,
+      expert.expertiseTags.join(" "),
+      expert.qualifications.join(" "),
+      expert.languages.join(" "),
+      "tour expert guide heritage specialist",
+    ].join(" "),
+    type: "Tour Expert",
   };
 }
 
@@ -1637,7 +1661,7 @@ export function Header() {
       setIsSearchLoading(true);
 
       try {
-        const [toursResponse, destinationsResponse, experiencesResponse] =
+        const [toursResponse, destinationsResponse, experiencesResponse, expertsResponse] =
           await Promise.all([
             listPublicTours().catch(() => ({ data: { tours: [] } })),
             listPublicDestinations().catch(() => ({
@@ -1645,6 +1669,9 @@ export function Header() {
             })),
             listPublicExperiences().catch(() => ({
               data: { experiences: [] },
+            })),
+            listPublicExperts().catch(() => ({
+              data: { experts: [] },
             })),
           ]);
 
@@ -1658,6 +1685,7 @@ export function Header() {
               ...experiencesResponse.data.experiences.map(
                 getExperienceSearchItem
               ),
+              ...expertsResponse.data.experts.map(getExpertSearchItem),
             ])
           );
           setHasLoadedSearchData(true);

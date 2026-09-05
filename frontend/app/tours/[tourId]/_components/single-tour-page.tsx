@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import {
   type Dispatch,
   type FormEvent,
@@ -27,10 +28,12 @@ import {
   Clock3,
   Info,
   Landmark,
+  Loader2,
   Mail,
   Minus,
   PhoneCall,
   Plus,
+  ShieldCheck,
   TrendingUp,
   UserRound,
   Users,
@@ -73,13 +76,22 @@ import {
   type BookingPaymentOrder,
 } from "@/lib/booking-payment";
 import {
+  completeGoogleTravellerProfile,
+  completeTravellerProfile,
   getTravellerSession,
   listenForTravellerSessionChanges,
+  loginTravellerWithGoogle,
+  requestTravellerOtp,
+  saveTravellerSession,
+  verifyTravellerOtp,
+  type TravellerSession,
   type TravellerUser,
 } from "@/lib/auth";
+import { getFirebaseAuth } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
 import { Button, ButtonArrow } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 
 type TourTab = "summary" | "itinerary" | "inclusions" | "pricing" | "expert";
 
@@ -168,6 +180,7 @@ const datePickerMonthLabels = [
 const datePickerWeekdayLabels = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
 type CheckoutStatus = "idle" | "creating" | "gateway_open" | "verifying";
+type LeadTravellerAuthMode = "mobile" | "google";
 
 type RazorpayPaymentResponse = {
   razorpay_order_id: string;
@@ -614,8 +627,57 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
+function isGmailAddress(value: string) {
+  return /^[^\s@]+@gmail\.com$/i.test(value.trim());
+}
+
 function isValidMobileNumber(value: string) {
   return /^[0-9\s-]{5,20}$/.test(sanitizeMobileNumber(value));
+}
+
+function isIndiaPhoneCountryCode(value: string) {
+  return extractPhoneCountryCode(value) === "+91";
+}
+
+function getLeadTravellerAuthMobileNumber(form: TravellerDetailForm) {
+  const countryCode = extractPhoneCountryCode(form.phoneCountryCode).replace(
+    /\D/g,
+    ""
+  );
+  const mobileDigits = sanitizeMobileNumber(form.mobileNumber).replace(/\D/g, "");
+
+  if (!countryCode || !mobileDigits) {
+    return "";
+  }
+
+  if (countryCode === "91") {
+    return mobileDigits.length > 10 && mobileDigits.startsWith("91")
+      ? mobileDigits
+      : `91${mobileDigits}`;
+  }
+
+  return `${countryCode}${mobileDigits}`;
+}
+
+function getBookingErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return "Something went wrong. Please try again.";
+}
+
+function getBookingGoogleErrorMessage(error: unknown) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "auth/popup-closed-by-user"
+  ) {
+    return "Google sign-in was closed before completion.";
+  }
+
+  return getBookingErrorMessage(error);
 }
 
 function isTravellerDetailFormComplete(form: TravellerDetailForm) {
@@ -2817,6 +2879,7 @@ function PricingPanel({
   tour: PublicTour;
   travellerCounts: TravellerCounts;
 }) {
+  const toast = useToast();
   const selectedDeparture = getSelectedDeparture(departures, selectedDepartureId);
   const pricedDeparture = selectedDeparture
     ? toPricedDeparture(selectedDeparture)
@@ -2845,6 +2908,22 @@ function PricingPanel({
   const [travellerDetailForms, setTravellerDetailForms] = useState<
     Record<string, TravellerDetailForm>
   >(createInitialTravellerDetailForms);
+  const [travellerSession, setTravellerSession] = useState<TravellerSession | null>(
+    () => getTravellerSession()
+  );
+  const [leadAuthMode, setLeadAuthMode] =
+    useState<LeadTravellerAuthMode>("mobile");
+  const [leadGoogleRegistrationToken, setLeadGoogleRegistrationToken] =
+    useState("");
+  const [leadOtp, setLeadOtp] = useState("");
+  const [hasLeadOtpBeenRequested, setHasLeadOtpBeenRequested] = useState(false);
+  const [verifiedLeadMobileNumber, setVerifiedLeadMobileNumber] = useState("");
+  const [leadAuthMessage, setLeadAuthMessage] = useState("");
+  const [leadAuthError, setLeadAuthError] = useState("");
+  const [isRequestingLeadOtp, setIsRequestingLeadOtp] = useState(false);
+  const [isVerifyingLeadOtp, setIsVerifyingLeadOtp] = useState(false);
+  const [isLeadGoogleSubmitting, setIsLeadGoogleSubmitting] = useState(false);
+  const [leadOtpCooldownSeconds, setLeadOtpCooldownSeconds] = useState(0);
   const activeTravellerDetailTab =
     travellerDetailTabs.find((tab) => tab.id === activeTravellerDetailId) ||
     travellerDetailTabs[0] || {
@@ -2858,6 +2937,33 @@ function PricingPanel({
     ...defaultTravellerDetailForm,
     ...(travellerDetailForms[activeTravellerDetailTab.id] || {}),
   };
+  const leadTravellerDetails = {
+    ...defaultTravellerDetailForm,
+    ...(travellerDetailForms["adult-1"] || {}),
+  };
+  const isLeadTravellerLoggedIn = Boolean(travellerSession?.token);
+  const isLeadTravellerIndiaNumber = isIndiaPhoneCountryCode(
+    leadTravellerDetails.phoneCountryCode
+  );
+  const leadTravellerAuthMobileNumber =
+    getLeadTravellerAuthMobileNumber(leadTravellerDetails);
+  const isLeadTravellerSessionMobileVerified = Boolean(
+    isLeadTravellerLoggedIn &&
+      travellerSession?.user.isMobileVerified &&
+      getProfileMobileNumber(travellerSession.user.mobileNumber) ===
+        leadTravellerAuthMobileNumber
+  );
+  const hasVerifiedLeadMobileNumber =
+    Boolean(leadTravellerAuthMobileNumber) &&
+    (verifiedLeadMobileNumber === leadTravellerAuthMobileNumber ||
+      isLeadTravellerSessionMobileVerified);
+  const isLeadTravellerEmailReady =
+    isGmailAddress(leadTravellerDetails.email);
+  const isLeadTravellerAuthReady =
+    !isLeadTravellerIndiaNumber ||
+    hasVerifiedLeadMobileNumber;
+  const isLeadTravellerVerificationBusy =
+    isRequestingLeadOtp || isVerifyingLeadOtp || isLeadGoogleSubmitting;
   const areAllTravellerDetailsComplete = useMemo(
     () =>
       travellerDetailTabs.length > 0 &&
@@ -2870,6 +2976,10 @@ function PricingPanel({
       }),
     [travellerDetailForms, travellerDetailTabs]
   );
+  const areTravellerDetailsCompleteForBooking =
+    areAllTravellerDetailsComplete &&
+    isLeadTravellerEmailReady &&
+    isLeadTravellerAuthReady;
   const childInputs = useMemo(
     () =>
       createChildInputs(
@@ -2940,9 +3050,12 @@ function PricingPanel({
   useEffect(
     () =>
       listenForTravellerSessionChanges(() => {
+        const nextTravellerSession = getTravellerSession();
         const leadTravellerForm = getLeadTravellerFormFromProfile(
-          getTravellerSession()?.user ?? null
+          nextTravellerSession?.user ?? null
         );
+
+        setTravellerSession(nextTravellerSession);
 
         if (!leadTravellerForm) {
           return;
@@ -2963,8 +3076,25 @@ function PricingPanel({
   );
 
   useEffect(() => {
-    onTravellerDetailsCompleteChange(areAllTravellerDetailsComplete);
-  }, [areAllTravellerDetailsComplete, onTravellerDetailsCompleteChange]);
+    if (leadOtpCooldownSeconds <= 0) {
+      return;
+    }
+
+    const timerId = window.setInterval(() => {
+      setLeadOtpCooldownSeconds((seconds) => Math.max(seconds - 1, 0));
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timerId);
+    };
+  }, [leadOtpCooldownSeconds]);
+
+  useEffect(() => {
+    onTravellerDetailsCompleteChange(areTravellerDetailsCompleteForBooking);
+  }, [
+    areTravellerDetailsCompleteForBooking,
+    onTravellerDetailsCompleteChange,
+  ]);
 
   useEffect(() => {
     onTravellerDetailsChange(
@@ -3015,6 +3145,260 @@ function PricingPanel({
     }));
   }
 
+  function updateLeadTravellerDetails(updates: Partial<TravellerDetailForm>) {
+    setTravellerDetailForms((current) => ({
+      ...current,
+      "adult-1": {
+        ...defaultTravellerDetailForm,
+        ...(current["adult-1"] || {}),
+        ...updates,
+      },
+    }));
+  }
+
+  function validateLeadTravellerRegistrationDetails() {
+    if (
+      !leadTravellerDetails.firstName.trim() ||
+      !leadTravellerDetails.lastName.trim()
+    ) {
+      return "Enter the lead traveller first and last name before verifying OTP.";
+    }
+
+    if (!isGmailAddress(leadTravellerDetails.email)) {
+      return "Lead traveller email must be a Gmail address.";
+    }
+
+    return "";
+  }
+
+  function saveLeadTravellerSession(
+    session: TravellerSession,
+    messageTitle: string,
+    message: string
+  ) {
+    saveTravellerSession(session);
+    setTravellerSession(session);
+    setVerifiedLeadMobileNumber(leadTravellerAuthMobileNumber);
+    setLeadOtp("");
+    setHasLeadOtpBeenRequested(false);
+    setLeadOtpCooldownSeconds(0);
+    setLeadAuthMessage(message);
+    setLeadAuthError("");
+    toast.success(messageTitle, message);
+  }
+
+  async function handleLeadTravellerGoogleSignIn() {
+    setLeadAuthError("");
+    setLeadAuthMessage("");
+    setIsLeadGoogleSubmitting(true);
+
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({
+        prompt: "select_account",
+      });
+
+      const result = await signInWithPopup(getFirebaseAuth(), provider);
+      const idToken = await result.user.getIdToken();
+      const response = await loginTravellerWithGoogle({ idToken });
+
+      if (response.data.requiresProfile) {
+        if (!isGmailAddress(response.data.email)) {
+          throw new Error("Please use a Gmail address for traveller booking.");
+        }
+
+        const googleMobileNumber = getProfileMobileNumber(
+          response.data.mobileNumber
+        );
+
+        updateLeadTravellerDetails({
+          firstName:
+            leadTravellerDetails.firstName.trim() || response.data.firstName,
+          lastName:
+            leadTravellerDetails.lastName.trim() || response.data.lastName,
+          email: response.data.email,
+          mobileNumber:
+            leadTravellerDetails.mobileNumber.trim() || googleMobileNumber,
+          phoneCountryCode: response.data.mobileNumber
+            ? getProfilePhoneCountryCode(response.data.mobileNumber)
+            : leadTravellerDetails.phoneCountryCode,
+        });
+        setLeadAuthMode("google");
+        setLeadGoogleRegistrationToken(response.data.registrationToken);
+        setVerifiedLeadMobileNumber("");
+        setLeadOtp("");
+        setHasLeadOtpBeenRequested(false);
+        setLeadAuthMessage("Gmail verified. Verify your mobile number to continue.");
+        toast.success("Gmail verified", response.message);
+        return;
+      }
+
+      if (!isGmailAddress(response.data.user.email)) {
+        throw new Error("Please use a Gmail address for traveller booking.");
+      }
+
+      updateLeadTravellerDetails({
+        firstName: response.data.user.firstName || leadTravellerDetails.firstName,
+        lastName: response.data.user.lastName || leadTravellerDetails.lastName,
+        email: response.data.user.email,
+        mobileNumber:
+          getProfileMobileNumber(response.data.user.mobileNumber) ||
+          leadTravellerDetails.mobileNumber,
+        phoneCountryCode: response.data.user.mobileNumber
+          ? getProfilePhoneCountryCode(response.data.user.mobileNumber)
+          : leadTravellerDetails.phoneCountryCode,
+      });
+
+      if (isIndiaPhoneCountryCode(
+        response.data.user.mobileNumber || leadTravellerDetails.phoneCountryCode
+      )) {
+        setLeadAuthMode("google");
+        setLeadGoogleRegistrationToken("");
+        setVerifiedLeadMobileNumber("");
+        setLeadOtp("");
+        setHasLeadOtpBeenRequested(false);
+        setLeadAuthMessage("Gmail verified. Verify your mobile number to continue.");
+        toast.success("Gmail verified", "Verify your mobile number to continue.");
+        return;
+      }
+
+      saveLeadTravellerSession(
+        response.data,
+        "Login successful",
+        response.message
+      );
+    } catch (error) {
+      const message = getBookingGoogleErrorMessage(error);
+
+      setLeadAuthError(message);
+      toast.error("Gmail sign-in failed", message);
+    } finally {
+      setIsLeadGoogleSubmitting(false);
+    }
+  }
+
+  async function handleLeadTravellerRequestOtp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLeadAuthError("");
+    setLeadAuthMessage("");
+
+    if (!leadTravellerAuthMobileNumber || !isValidMobileNumber(leadTravellerDetails.mobileNumber)) {
+      const message = "Enter a valid lead traveller mobile number.";
+
+      setLeadAuthError(message);
+      toast.error("Phone number required", message);
+      return;
+    }
+
+    if (leadAuthMode !== "google" && !isGmailAddress(leadTravellerDetails.email)) {
+      const message = "Lead traveller email must be a Gmail address.";
+
+      setLeadAuthError(message);
+      toast.error("Gmail required", message);
+      return;
+    }
+
+    setIsRequestingLeadOtp(true);
+
+    try {
+      const response = await requestTravellerOtp(leadTravellerAuthMobileNumber);
+
+      setVerifiedLeadMobileNumber("");
+      setLeadOtp("");
+      setHasLeadOtpBeenRequested(true);
+      setLeadOtpCooldownSeconds(60);
+      setLeadAuthMessage(response.message);
+      toast.success("OTP sent", response.message);
+    } catch (error) {
+      const message = getBookingErrorMessage(error);
+
+      setLeadAuthError(message);
+      toast.error("Could not send OTP", message);
+    } finally {
+      setIsRequestingLeadOtp(false);
+    }
+  }
+
+  async function handleLeadTravellerVerifyOtp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLeadAuthError("");
+    setLeadAuthMessage("");
+
+    if (!/^\d{4,9}$/.test(leadOtp.trim())) {
+      const message = "OTP must be 4 to 9 digits.";
+
+      setLeadAuthError(message);
+      toast.error("Invalid OTP", message);
+      return;
+    }
+
+    const registrationError = validateLeadTravellerRegistrationDetails();
+
+    if (registrationError) {
+      setLeadAuthError(registrationError);
+      toast.error("Lead traveller details required", registrationError);
+      return;
+    }
+
+    setIsVerifyingLeadOtp(true);
+
+    try {
+      if (leadAuthMode === "google" && leadGoogleRegistrationToken) {
+        const response = await completeGoogleTravellerProfile({
+          registrationToken: leadGoogleRegistrationToken,
+          firstName: leadTravellerDetails.firstName,
+          lastName: leadTravellerDetails.lastName,
+          mobileNumber: leadTravellerAuthMobileNumber,
+          mobileNumberOtp: leadOtp.trim(),
+        });
+
+        saveLeadTravellerSession(
+          response.data,
+          "Mobile verified",
+          response.message
+        );
+        return;
+      }
+
+      const otpResponse = await verifyTravellerOtp({
+        mobileNumber: leadTravellerAuthMobileNumber,
+        otp: leadOtp.trim(),
+      });
+
+      if (otpResponse.data.requiresProfile) {
+        const profileResponse = await completeTravellerProfile({
+          registrationToken: otpResponse.data.registrationToken,
+          firstName: leadTravellerDetails.firstName,
+          lastName: leadTravellerDetails.lastName,
+          email: leadTravellerDetails.email.trim().toLowerCase(),
+        });
+
+        saveLeadTravellerSession(
+          profileResponse.data,
+          "Mobile verified",
+          profileResponse.message
+        );
+        return;
+      }
+
+      saveLeadTravellerSession(
+        {
+          token: otpResponse.data.token,
+          user: otpResponse.data.user,
+        },
+        "Login successful",
+        otpResponse.message
+      );
+    } catch (error) {
+      const message = getBookingErrorMessage(error);
+
+      setLeadAuthError(message);
+      toast.error("OTP verification failed", message);
+    } finally {
+      setIsVerifyingLeadOtp(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <BookingStep
@@ -3055,14 +3439,12 @@ function PricingPanel({
                 type="button"
                 onClick={() => setSelectedDepartureId(departureId)}
                 className={cn(
-                  "group/departure relative flex h-full w-full flex-col overflow-hidden rounded-[8px] border bg-card p-3 text-left font-sans shadow-[0_6px_14px_rgba(67,43,27,0.04)] transition-all hover:border-primary hover:shadow-[0_10px_20px_rgba(67,43,27,0.06)]",
-                  isSelected
-                    ? "border-primary ring-3 ring-primary/15"
-                    : "border-primary/28"
+                  "group/departure relative flex h-full w-full flex-col overflow-hidden rounded-[8px] border bg-card p-3 text-left font-sans  transition-all hover:border-primary ",
+                  isSelected ? "border-[#2faa5d]" : "border-border"
                 )}
               >
                 <span className="grid gap-2 sm:grid-cols-2">
-                  <span className="rounded-[7px] border border-primary/24 bg-primary/10 px-3 py-2 shadow-[0_8px_18px_rgba(158,92,54,0.08)]">
+                  <span className="rounded-[7px] border border-primary/24 bg-primary/10 px-3 py-2 ">
                     <span className="block text-[11px] font-semibold uppercase leading-none text-primary">
                       Start Date
                     </span>
@@ -3070,7 +3452,7 @@ function PricingPanel({
                       {formatDate(departure.departureDate)}
                     </strong>
                   </span>
-                  <span className="rounded-[7px] border border-accent/24 bg-accent/10 px-3 py-2 shadow-[0_8px_18px_rgba(74,46,30,0.08)]">
+                  <span className="rounded-[7px] border border-accent/24 bg-accent/10 px-3 py-2 ">
                     <span className="block text-[11px] font-semibold uppercase leading-none text-accent">
                       Return Date
                     </span>
@@ -3308,6 +3690,26 @@ function PricingPanel({
               </label>
             </div>
           </div>
+
+          {activeTravellerDetailTab.id === "adult-1" ? (
+            <LeadTravellerVerificationPanel
+              authMode={leadAuthMode}
+              cooldownSeconds={leadOtpCooldownSeconds}
+              errorMessage={leadAuthError}
+              hasOtpBeenRequested={hasLeadOtpBeenRequested}
+              isIndiaNumber={isLeadTravellerIndiaNumber}
+              isLoggedIn={isLeadTravellerLoggedIn}
+              isSubmitting={isLeadTravellerVerificationBusy}
+              message={leadAuthMessage}
+              onGoogleSignIn={handleLeadTravellerGoogleSignIn}
+              onOtpChange={setLeadOtp}
+              onRequestOtp={handleLeadTravellerRequestOtp}
+              onVerifyOtp={handleLeadTravellerVerifyOtp}
+              otp={leadOtp}
+              phoneNumber={leadTravellerAuthMobileNumber}
+              verified={hasVerifiedLeadMobileNumber}
+            />
+          ) : null}
         </div>
 
         <p className="mt-4 font-sans text-[14px] font-medium text-secondary/72">
@@ -3362,6 +3764,123 @@ function PricingPanel({
         travellerCounts={travellerCounts}
       />
     </div>
+  );
+}
+
+function LeadTravellerVerificationPanel({
+  authMode,
+  cooldownSeconds,
+  errorMessage,
+  hasOtpBeenRequested,
+  isIndiaNumber,
+  isLoggedIn,
+  isSubmitting,
+  message,
+  onGoogleSignIn,
+  onOtpChange,
+  onRequestOtp,
+  onVerifyOtp,
+  otp,
+  phoneNumber,
+  verified,
+}: {
+  authMode: LeadTravellerAuthMode;
+  cooldownSeconds: number;
+  errorMessage: string;
+  hasOtpBeenRequested: boolean;
+  isIndiaNumber: boolean;
+  isLoggedIn: boolean;
+  isSubmitting: boolean;
+  message: string;
+  onGoogleSignIn: () => void;
+  onOtpChange: (value: string) => void;
+  onRequestOtp: (event: FormEvent<HTMLFormElement>) => void;
+  onVerifyOtp: (event: FormEvent<HTMLFormElement>) => void;
+  otp: string;
+  phoneNumber: string;
+  verified: boolean;
+}) {
+  if (!isIndiaNumber) {
+    return null;
+  }
+
+  return (
+    <section className="mt-4 rounded-[8px] border border-primary/20 bg-primary/5 p-3 font-sans">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h4 className="text-[14px] font-bold text-secondary">
+            Verify your number
+          </h4>
+          <p className="mt-1 text-[12px] font-medium leading-[1.45] text-secondary/65">
+            {verified
+              ? "Your lead traveller mobile number is verified."
+              : isLoggedIn
+                ? "Verify this lead traveller number before booking."
+                : "Verify your +91 mobile number before booking."}
+          </p>
+        </div>
+        {!isLoggedIn && !verified ? (
+          <button
+            type="button"
+            onClick={onGoogleSignIn}
+            disabled={isSubmitting}
+            className="inline-flex h-10 shrink-0 items-center justify-center rounded-[6px] border border-border bg-white px-4 text-[13px] font-bold text-secondary transition-colors hover:border-primary hover:text-primary disabled:pointer-events-none disabled:opacity-55"
+          >
+            {isSubmitting && authMode === "google"
+              ? "Connecting..."
+              : "Sign in with Google"}
+          </button>
+        ) : null}
+      </div>
+
+      {!verified ? (
+        <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <form onSubmit={onRequestOtp} className="contents">
+            <button
+              type="submit"
+              disabled={isSubmitting || cooldownSeconds > 0 || !phoneNumber}
+              className="inline-flex h-10 items-center justify-center rounded-[6px] bg-primary px-4 text-[13px] font-bold text-white transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-55"
+            >
+              {cooldownSeconds > 0
+                ? `Resend OTP in ${cooldownSeconds}s`
+                : isSubmitting && authMode !== "google"
+                  ? "Sending OTP..."
+                  : "Send OTP"}
+            </button>
+          </form>
+        </div>
+      ) : null}
+
+      {hasOtpBeenRequested && !verified ? (
+        <form onSubmit={onVerifyOtp} className="mt-2 flex flex-col gap-2 sm:flex-row">
+          <input
+            aria-label="Lead traveller OTP"
+            className="h-10 min-w-0 flex-1 rounded-[6px] border border-border bg-background px-3 text-[13px] font-semibold tracking-[0.2em] text-secondary outline-none focus:border-primary focus:ring-3 focus:ring-primary/15"
+            inputMode="numeric"
+            maxLength={9}
+            onChange={(event) => onOtpChange(event.target.value.replace(/\D/g, ""))}
+            placeholder="Enter OTP"
+            value={otp}
+          />
+          <button
+            type="submit"
+            disabled={isSubmitting || !otp}
+            className="inline-flex h-10 items-center justify-center rounded-[6px] border border-primary bg-white px-4 text-[13px] font-bold text-primary transition-colors hover:bg-primary hover:text-white disabled:pointer-events-none disabled:opacity-55"
+          >
+            {isSubmitting ? "Verifying..." : "Verify OTP"}
+          </button>
+        </form>
+      ) : null}
+
+      {message ? (
+        <p className="mt-2 text-[12px] font-medium text-primary">{message}</p>
+      ) : null}
+      {errorMessage ? (
+        <p className="mt-2 text-[12px] font-semibold text-destructive">
+          {errorMessage}
+        </p>
+      ) : null}
+    </section>
   );
 }
 

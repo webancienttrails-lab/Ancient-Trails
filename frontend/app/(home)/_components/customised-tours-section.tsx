@@ -112,6 +112,7 @@ function CustomisedTourCard({
             className="object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-secondary/20 via-transparent to-secondary/10" />
+          <div className="absolute inset-x-0 top-0 h-16 bg-[linear-gradient(180deg,rgba(0,0,0,0.72)_0%,rgba(0,0,0,0)_100%)]" />
           <h3 className="absolute left-4 top-4 font-sans text-description font-bold uppercase leading-none text-white">
             {tour.title}
           </h3>

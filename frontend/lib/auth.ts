@@ -75,6 +75,7 @@ export type CompleteGoogleTravellerProfilePayload = {
   firstName: string;
   lastName: string;
   mobileNumber: string;
+  mobileNumberOtp?: string;
 };
 
 export type UpdateTravellerProfilePayload = {
