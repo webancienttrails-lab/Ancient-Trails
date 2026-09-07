@@ -49,6 +49,7 @@ import {
   type AdminExpert,
   type ExpertPayload,
 } from "@/lib/experts";
+import { shouldOpenTableRow } from "@/lib/table-row-click";
 import { cn } from "@/lib/utils";
 
 type ExpertMetric = {
@@ -805,7 +806,12 @@ function ExpertTable({
               ? experts.map((expert) => (
                   <tr
                     key={expert.id}
-                    className="border-t border-border transition-colors hover:bg-muted/25"
+                    onClick={(event) => {
+                      if (shouldOpenTableRow(event)) {
+                        onView(expert);
+                      }
+                    }}
+                    className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
                   >
                     <td
                       data-label="Expert ID"

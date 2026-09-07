@@ -43,6 +43,7 @@ import {
 } from "@/lib/tours";
 
 import { cn } from "@/lib/utils";
+import { shouldOpenTableRow } from "@/lib/table-row-click";
 
 /* =========================================================
    TYPES
@@ -926,7 +927,12 @@ function BookingTable({
           return (
             <tr
               key={booking.id}
-              className="border-b border-border transition-colors last:border-b-0 hover:bg-muted/20"
+              onClick={(event) => {
+                if (shouldOpenTableRow(event)) {
+                  onView(booking);
+                }
+              }}
+              className="cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-muted/20"
             >
               {/* ID */}
 

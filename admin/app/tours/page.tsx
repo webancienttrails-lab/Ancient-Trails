@@ -54,6 +54,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { shouldOpenTableRow } from "@/lib/table-row-click";
 import {
   listAdminDestinations,
   type AdminDestination,
@@ -196,7 +197,7 @@ const emptyTourForm: TourFormState = {
 };
 
 const fallbackTourTypeOptions = ["Domestic", "International"];
-const fallbackTourFormatOptions = ["Heritage Tours", "Short Trails"];
+const fallbackTourFormatOptions = ["Long Trails", "Short Trails"];
 
 const emptyDepartureForm: DepartureFormState = {
   departureId: "",
@@ -1967,7 +1968,12 @@ function TourMasterTable({
                   return (
                     <tr
                       key={tour.id}
-                  className="border-t border-border transition-colors hover:bg-muted/25"
+                  onClick={(event) => {
+                    if (shouldOpenTableRow(event)) {
+                      onView(tour);
+                    }
+                  }}
+                  className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
                 >
                   <td
                     data-label="Tour ID"
@@ -2109,7 +2115,12 @@ function TourDepartureTable({
               ? departures.map((departure) => (
                   <tr
                     key={departure.id}
-                    className="border-t border-border transition-colors hover:bg-muted/25"
+                    onClick={(event) => {
+                      if (shouldOpenTableRow(event)) {
+                        onView(departure);
+                      }
+                    }}
+                    className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
                   >
                     <td
                       data-label="Departure ID"

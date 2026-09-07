@@ -4,7 +4,6 @@ import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   Bell,
-  CalendarDays,
   CheckCircle2,
   ChevronDown,
   Clock3,
@@ -66,6 +65,7 @@ import {
   type HomePageContent,
   type HomePagePayload,
 } from "@/lib/home";
+import { shouldOpenTableRow } from "@/lib/table-row-click";
 import { cn } from "@/lib/utils";
 
 type DestinationMetric = {
@@ -1107,22 +1107,21 @@ function DestinationTable({
 }) {
   return (
     <>
-      <div className="max-w-full overflow-hidden">
+      <div className="max-w-full overflow-x-auto">
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <colgroup>
             <col className="w-[12%]" />
-            <col className="w-[24%]" />
-            <col className="w-[9%]" />
-            <col className="w-[14%]" />
-            <col className="w-[12%]" />
-            <col className="w-[6%]" />
+            <col className="w-[27%]" />
             <col className="w-[10%]" />
-            <col className="w-[6%]" />
-            <col className="w-[7%]" />
+            <col className="w-[15%]" />
+            <col className="w-[14%]" />
+            <col className="w-[8%]" />
+            <col className="w-[9%]" />
+            <col className="w-[5%]" />
           </colgroup>
           <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
             <tr>
-              <th className="px-2.5 py-3 font-bold">Destination ID</th>
+              <th className="px-2.5 py-3 font-bold">ID</th>
               <th className="px-3 py-3 font-bold">Destination</th>
               <th className="px-2.5 py-3 font-bold">Type</th>
               <th className="px-2.5 py-3 font-bold">Country</th>
@@ -1131,14 +1130,13 @@ function DestinationTable({
               <th className="px-2.5 py-3 text-center font-bold">
                 Top Destination
               </th>
-              <th className="px-2.5 py-3 font-bold">Days</th>
               <th className="px-2.5 py-3 text-right font-bold">Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr>
-                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={9}>
+                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={8}>
                   Loading destinations...
                 </td>
               </tr>
@@ -1146,7 +1144,7 @@ function DestinationTable({
 
             {!isLoading && destinations.length === 0 ? (
               <tr>
-                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={9}>
+                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={8}>
                   No destinations added yet.
                 </td>
               </tr>
@@ -1156,10 +1154,15 @@ function DestinationTable({
               ? destinations.map((destination, index) => (
                   <tr
                     key={destination.id}
-                    className="border-t border-border transition-colors hover:bg-muted/25"
+                    onClick={(event) => {
+                      if (shouldOpenTableRow(event)) {
+                        onView(destination);
+                      }
+                    }}
+                    className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
                   >
                     <td
-                      data-label="Destination ID"
+                      data-label="ID"
                       className="px-2.5 py-3 text-xs font-semibold text-foreground/70"
                     >
                       <span className="block truncate">
@@ -1203,8 +1206,7 @@ function DestinationTable({
                       </span>
                     </td>
                     <td data-label="Country" className="px-2.5 py-3">
-                      <div className="flex min-w-0 items-start gap-2 text-xs text-foreground/70">
-                        <CountryFlag country={destination.countryRegion} />
+                      <div className="min-w-0 text-xs text-foreground/70">
                         <div className="min-w-0">
                           <span className="block truncate">
                             {destination.countryRegion}
@@ -1250,12 +1252,6 @@ function DestinationTable({
                         limitReached={topDestinationCount >= 8}
                         onToggle={onToggleTopDestination}
                       />
-                    </td>
-                    <td data-label="Days" className="px-2.5 py-3">
-                      <span className="inline-flex items-center gap-1 text-xs text-foreground/65">
-                        <CalendarDays className="size-3.5 shrink-0" />
-                        <span>{destination.recommendedDurationDays}</span>
-                      </span>
                     </td>
                     <td
                       data-actions
@@ -1319,29 +1315,24 @@ function TopDestinationToggle({
     isLoading || isSaving || isTemporarilyLocked || isLimitDisabled;
 
   return (
-    <label
+    <input
+      checked={isChecked}
+      disabled={isDisabled}
+      onChange={(event) => onToggle(destination, event.target.checked)}
+      type="checkbox"
       className={cn(
-        "inline-grid size-9 place-items-center rounded-sm border border-border bg-white transition-colors",
-        isChecked && "border-primary bg-primary/10",
-        isLimitDisabled && "cursor-not-allowed opacity-45",
+        "size-4 accent-primary disabled:cursor-not-allowed",
+        isLimitDisabled && "opacity-45",
         isSaving && "opacity-60",
-        !isDisabled && "cursor-pointer hover:border-primary"
+        !isDisabled && "cursor-pointer"
       )}
       title={
         isLimitDisabled
           ? "Top Destinations can show up to 8 cards."
           : undefined
       }
-    >
-      <input
-        checked={isChecked}
-        disabled={isDisabled}
-        onChange={(event) => onToggle(destination, event.target.checked)}
-        type="checkbox"
-        className="size-4 accent-primary disabled:cursor-not-allowed"
-        aria-label={`Mark ${destination.destinationName} as a top destination`}
-      />
-    </label>
+      aria-label={`Mark ${destination.destinationName} as a top destination`}
+    />
   );
 }
 
@@ -1422,26 +1413,6 @@ function DestinationThumb({ photo, tone }: { photo?: string; tone: string }) {
     >
       {!photo ? <MapPin className="size-5 text-white/80" /> : null}
     </div>
-  );
-}
-
-function CountryFlag({ country }: { country: string }) {
-  if (country.toLowerCase().includes("egypt")) {
-    return (
-      <span className="grid h-3 w-5 overflow-hidden rounded-sm border border-border">
-        <span className="bg-red-500" />
-        <span className="bg-white" />
-        <span className="bg-black" />
-      </span>
-    );
-  }
-
-  return (
-    <span className="grid h-3 w-5 overflow-hidden rounded-sm border border-border">
-      <span className="bg-orange-500" />
-      <span className="bg-white" />
-      <span className="bg-emerald-600" />
-    </span>
   );
 }
 

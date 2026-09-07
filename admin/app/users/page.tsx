@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { shouldOpenTableRow } from "@/lib/table-row-click";
 import { cn } from "@/lib/utils";
 
 type UserMetric = {
@@ -440,6 +441,8 @@ function ToolbarSelect({
 }
 
 function UsersTable({ users: visibleUsers }: { users: UserRecord[] }) {
+  const toast = useToast();
+
   return (
     <>
       <div className="max-w-full overflow-hidden">
@@ -469,7 +472,12 @@ function UsersTable({ users: visibleUsers }: { users: UserRecord[] }) {
               visibleUsers.map((user) => (
                 <tr
                   key={user.email}
-                  className="border-t border-border transition-colors hover:bg-muted/25"
+                  onClick={(event) => {
+                    if (shouldOpenTableRow(event)) {
+                      toast.info("View User", `${user.name} details.`);
+                    }
+                  }}
+                  className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
                 >
                   <td data-label="User" data-mobile-primary className="px-4 py-4">
                     <div className="flex min-w-0 items-center gap-3">

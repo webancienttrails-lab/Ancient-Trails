@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Archive,
   Bell,
@@ -50,6 +51,7 @@ import {
   type BlogCategory,
   type BlogStatus,
 } from "@/lib/blogs";
+import { shouldOpenTableRow } from "@/lib/table-row-click";
 import { cn } from "@/lib/utils";
 
 type BlogMetric = {
@@ -531,6 +533,8 @@ function BlogTable({
   onDelete: (blog: AdminBlog) => void;
   totalCount: number;
 }) {
+  const router = useRouter();
+
   return (
     <>
       <div className="max-w-full overflow-hidden">
@@ -576,7 +580,12 @@ function BlogTable({
               ? blogs.map((post) => (
                   <tr
                     key={post.id}
-                    className="border-t border-border transition-colors hover:bg-muted/25"
+                    onClick={(event) => {
+                      if (shouldOpenTableRow(event)) {
+                        router.push(`/blog/view?id=${encodeURIComponent(post.id)}`);
+                      }
+                    }}
+                    className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
                   >
                     <td data-label="Blog" data-mobile-primary className="px-4 py-3">
                       <div className="min-w-0">

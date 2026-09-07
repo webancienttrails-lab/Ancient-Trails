@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { shouldOpenTableRow } from "@/lib/table-row-click";
 import { cn } from "@/lib/utils";
 
 type EnquiryMetric = {
@@ -520,6 +521,8 @@ function FilterSelect({
 }
 
 function EnquiriesTable({ enquiries }: { enquiries: EnquiryRecord[] }) {
+  const toast = useToast();
+
   return (
     <>
       <div className="max-w-full overflow-hidden">
@@ -549,7 +552,12 @@ function EnquiriesTable({ enquiries }: { enquiries: EnquiryRecord[] }) {
               enquiries.map((enquiry) => (
                 <tr
                   key={enquiry.id}
-                  className="border-t border-border transition-colors hover:bg-muted/25"
+                  onClick={(event) => {
+                    if (shouldOpenTableRow(event)) {
+                      toast.info(enquiry.subject, enquiry.message);
+                    }
+                  }}
+                  className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
                 >
                   <td
                     data-label="Enquiry ID"

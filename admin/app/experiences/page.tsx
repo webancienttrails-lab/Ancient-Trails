@@ -70,6 +70,7 @@ import {
   type ExperiencePayload,
   type ExperienceStatus,
 } from "@/lib/experiences";
+import { shouldOpenTableRow } from "@/lib/table-row-click";
 import { cn } from "@/lib/utils";
 
 type ExperienceMetric = {
@@ -1099,7 +1100,12 @@ function ExperiencesTable({
               ? experiences.map((experience) => (
                   <tr
                     key={experience.id}
-                    className="border-t border-border transition-colors hover:bg-muted/25"
+                    onClick={(event) => {
+                      if (shouldOpenTableRow(event)) {
+                        onView(experience);
+                      }
+                    }}
+                    className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
                   >
                     <td
                       data-label="Experience"

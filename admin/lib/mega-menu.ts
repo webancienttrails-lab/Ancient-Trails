@@ -37,7 +37,8 @@ export type MegaMenuRegionSetting = {
 export type MegaMenuContent = {
   id: string;
   tourMenu: {
-    heritageTours: MegaMenuTourReference[];
+    longTrails: MegaMenuTourReference[];
+    heritageTours?: MegaMenuTourReference[];
     shortTrails: MegaMenuTourReference[];
   };
   destinationMenu: {

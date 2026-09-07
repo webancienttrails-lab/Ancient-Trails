@@ -203,7 +203,11 @@ function getInternationalRegionDescription(
 }
 
 function createFormState(content: MegaMenuContent): FormState {
-  const tourHeritage = content.tourMenu.heritageTours.slice(
+  const tourLongTrails = (
+    content.tourMenu.longTrails ||
+    content.tourMenu.heritageTours ||
+    []
+  ).slice(
     0,
     TOUR_MENU_SECTION_LIMIT
   );
@@ -234,7 +238,7 @@ function createFormState(content: MegaMenuContent): FormState {
     destinationTopCities: content.destinationMenu.topCities.map((item, index) =>
       createReference(item.referenceId, index)
     ),
-    tourHeritage: tourHeritage.map((item, index) =>
+    tourHeritage: tourLongTrails.map((item, index) =>
       createReference(item.referenceId, index)
     ),
     tourShortTrails: tourShortTrails.map((item, index) =>
@@ -600,7 +604,7 @@ export default function PagesMegaMenuPage() {
               }
               options={tourOptions}
               selections={form.tourHeritage}
-              title="Heritage Tours"
+              title="Long Trails"
             />
             <SelectionPanel
               isLoading={isLoading}

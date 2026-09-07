@@ -44,6 +44,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { shouldOpenTableRow } from "@/lib/table-row-click";
 import { cn } from "@/lib/utils";
 
 type TestimonialMetric = {
@@ -439,6 +440,8 @@ function ToolbarSelect({
 }
 
 function TestimonialsTable() {
+  const toast = useToast();
+
   return (
     <>
       <div className="max-w-full overflow-hidden">
@@ -471,7 +474,15 @@ function TestimonialsTable() {
             {testimonials.map((testimonial) => (
               <tr
                 key={testimonial.id}
-                className="border-t border-border transition-colors hover:bg-muted/25"
+                onClick={(event) => {
+                  if (shouldOpenTableRow(event)) {
+                    toast.info(
+                      "View",
+                      `${testimonial.customer.name} details will open here.`
+                    );
+                  }
+                }}
+                className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
               >
                 <td
                   data-label="Testimonial"

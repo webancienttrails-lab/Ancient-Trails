@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { shouldOpenTableRow } from "@/lib/table-row-click";
 import { cn } from "@/lib/utils";
 
 type PageMetric = {
@@ -185,6 +186,7 @@ const pages: AdminPageRecord[] = [
   {
     title: "Tour Calendar",
     description: "Manage content for tour calendar and schedule.",
+    editorHref: "/pages/tour-calendar",
     previewHref: "/tour-calendar",
     slug: "/tour-calendar",
     status: "Published",
@@ -450,7 +452,16 @@ function PagesTable() {
             {pages.map((page) => (
               <tr
                 key={page.slug}
-                className="border-t border-border transition-colors hover:bg-muted/25"
+                onClick={(event) => {
+                  if (shouldOpenTableRow(event)) {
+                    window.open(
+                      getPagePreviewUrl(page.previewHref),
+                      "_blank",
+                      "noopener,noreferrer"
+                    );
+                  }
+                }}
+                className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
               >
                 <td data-label="Page" data-mobile-primary className="px-4 py-3">
                   <div className="flex min-w-0 items-center gap-3">
