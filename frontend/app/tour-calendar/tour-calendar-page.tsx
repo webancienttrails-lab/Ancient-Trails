@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/select";
 import {
   fallbackUpcomingTours,
+  getTourCalendarPageContent,
   getHomeMediaUrl,
   getTourDestinationIds,
   listPublicDestinations,
@@ -43,6 +44,7 @@ import {
   type PublicDestination,
   type PublicExpert,
   type PublicTour,
+  type PublicTourCalendarFestival,
   type PublicTourDeparture,
 } from "@/lib/home-travel";
 import { getTourHref, matchesRouteValue } from "@/lib/routes";
@@ -81,6 +83,7 @@ const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const departureCapacityFallback = 25;
 const currentDateDotClassName = "bg-[#2faa5d]";
 const departureDateDotClassName = "bg-primary";
+const festivalDateDotClassName = "bg-primary/50";
 const monthOptions = Array.from({ length: 12 }, (_item, monthIndex) => ({
   label: monthNameFormatter.format(new Date(2026, monthIndex, 1)),
   value: monthIndex,
@@ -164,7 +167,10 @@ function getTodayKey() {
   return getDateKey(new Date());
 }
 
-function getCalendarYearOptions(departures: EnrichedDeparture[]) {
+function getCalendarYearOptions(
+  departures: EnrichedDeparture[],
+  festivals: PublicTourCalendarFestival[]
+) {
   const currentYear = new Date().getFullYear();
   const years = new Set<number>([
     currentYear - 1,
@@ -178,6 +184,13 @@ function getCalendarYearOptions(departures: EnrichedDeparture[]) {
       : null;
 
     if (date && !Number.isNaN(date.getTime())) {
+      years.add(date.getFullYear());
+    }
+  });
+  festivals.forEach((festival) => {
+    const date = new Date(festival.date);
+
+    if (!Number.isNaN(date.getTime())) {
       years.add(date.getFullYear());
     }
   });
@@ -598,7 +611,26 @@ function sortDeparturesByPrice(
   departures: EnrichedDeparture[],
   sortMode: SortMode
 ) {
+  const today = startOfDay(new Date()).getTime();
+
   return [...departures].sort((left, right) => {
+    const leftDate = getDateValue(left.departure.departureDate);
+    const rightDate = getDateValue(right.departure.departureDate);
+    const leftIsUpcoming = leftDate >= today;
+    const rightIsUpcoming = rightDate >= today;
+
+    if (leftIsUpcoming !== rightIsUpcoming) {
+      return leftIsUpcoming ? -1 : 1;
+    }
+
+    const dateDifference = leftIsUpcoming
+      ? leftDate - rightDate
+      : rightDate - leftDate;
+
+    if (dateDifference !== 0) {
+      return dateDifference;
+    }
+
     const priceDifference =
       sortMode === "price-high"
         ? right.departure.priceAdult - left.departure.priceAdult
@@ -608,10 +640,7 @@ function sortDeparturesByPrice(
       return priceDifference;
     }
 
-    return (
-      getDateValue(left.departure.departureDate) -
-      getDateValue(right.departure.departureDate)
-    );
+    return left.tour.tourName.localeCompare(right.tour.tourName);
   });
 }
 
@@ -746,7 +775,7 @@ function createFallbackData(): EnrichedDeparture[] {
       tourId: seed.tourId,
       tourName: seed.tourName,
       tourType: "Curated Tour",
-      tourFormat: index % 2 === 0 ? "Heritage Tours" : "Short Trails",
+      tourFormat: index % 2 === 0 ? "Long Trails" : "Short Trails",
       destinationId: seed.destinationId,
       destinationIds: [seed.destinationId],
       durationDn: seed.durationDn,
@@ -870,6 +899,39 @@ function buildEnrichedDepartures(
     );
 }
 
+function groupFestivalsByDate(festivals: PublicTourCalendarFestival[]) {
+  return festivals.reduce(
+    (map, festival) => {
+      const key = getDateKey(festival.date);
+
+      if (!key) {
+        return map;
+      }
+
+      map[key] = [...(map[key] || []), festival];
+
+      return map;
+    },
+    {} as Record<string, PublicTourCalendarFestival[]>
+  );
+}
+
+function getVisibleMonthFestivals(
+  festivals: PublicTourCalendarFestival[],
+  visibleMonth: Date
+) {
+  const visibleMonthKey = getDateKey(visibleMonth).slice(0, 7);
+
+  return festivals
+    .filter((festival) => getDateKey(festival.date).startsWith(visibleMonthKey))
+    .sort((left, right) => {
+      const dateDifference =
+        getDateValue(left.date) - getDateValue(right.date);
+
+      return dateDifference || left.title.localeCompare(right.title);
+    });
+}
+
 function getUniqueExperts(
   departures: EnrichedDeparture[],
   experts: PublicExpert[]
@@ -916,6 +978,7 @@ export function TourCalendarPage({
   const [enrichedDepartures, setEnrichedDepartures] =
     useState<EnrichedDeparture[]>(fallbackData);
   const [experts, setExperts] = useState<PublicExpert[]>(fallbackExperts);
+  const [festivals, setFestivals] = useState<PublicTourCalendarFestival[]>([]);
   const [selectedTourId, setSelectedTourId] = useState(() =>
     resolveTourFilter(initialTourQuery, fallbackTours)
   );
@@ -944,11 +1007,13 @@ export function TourCalendarPage({
           departuresResponse,
           destinationsResponse,
           expertsResponse,
+          tourCalendarResponse,
         ] = await Promise.all([
           listPublicTours(),
           listPublicTourDepartures(),
           listPublicDestinations(),
           listPublicExperts(),
+          getTourCalendarPageContent().catch(() => null),
         ]);
         const nextDepartures = buildEnrichedDepartures(
           toursResponse.data.tours,
@@ -983,6 +1048,7 @@ export function TourCalendarPage({
               : createFallbackExperts()
           );
           setEnrichedDepartures(sourceDepartures);
+          setFestivals(tourCalendarResponse?.data.tourCalendar.festivals || []);
           setSelectedTourId(nextSelectedTourId);
           setSelectedDestinationId(nextSelectedDestinationId);
           setSelectedDateKey(getTodayKey());
@@ -1013,6 +1079,7 @@ export function TourCalendarPage({
           setLoadError("Live tour calendar is temporarily unavailable.");
           setExperts(createFallbackExperts());
           setEnrichedDepartures(fallbackDepartures);
+          setFestivals([]);
           setSelectedTourId(nextSelectedTourId);
           setSelectedDestinationId(nextSelectedDestinationId);
           setSelectedDateKey(getTodayKey());
@@ -1065,6 +1132,10 @@ export function TourCalendarPage({
       {} as Record<string, EnrichedDeparture[]>
     );
   }, [sortedCalendarFilteredDepartures]);
+  const festivalsByDate = useMemo(
+    () => groupFestivalsByDate(festivals),
+    [festivals]
+  );
 
   const calendarDays = useMemo(
     () => buildCalendarDays(visibleMonth),
@@ -1075,8 +1146,12 @@ export function TourCalendarPage({
     [enrichedDepartures]
   );
   const calendarYearOptions = useMemo(
-    () => getCalendarYearOptions(enrichedDepartures),
-    [enrichedDepartures]
+    () => getCalendarYearOptions(enrichedDepartures, festivals),
+    [enrichedDepartures, festivals]
+  );
+  const visibleMonthFestivals = useMemo(
+    () => getVisibleMonthFestivals(festivals, visibleMonth),
+    [festivals, visibleMonth]
   );
   const selectedDateDepartures = selectedDateKey
     ? sortedCalendarFilteredDepartures.filter(
@@ -1085,7 +1160,7 @@ export function TourCalendarPage({
     )
     : [];
   const visibleDepartures =
-    isDateFilterActive && selectedDateDepartures.length > 0
+    isDateFilterActive
       ? selectedDateDepartures
       : sortedCalendarFilteredDepartures;
   const visibleExperts = getUniqueExperts(calendarFilteredDepartures, experts);
@@ -1127,6 +1202,8 @@ export function TourCalendarPage({
           calendarDays={calendarDays}
           calendarYearOptions={calendarYearOptions}
           departuresByDate={departuresByDate}
+          festivalsByDate={festivalsByDate}
+          festivals={visibleMonthFestivals}
           isDateFilterActive={isDateFilterActive}
           selectedDateKey={selectedDateKey}
           visibleMonth={visibleMonth}
@@ -1185,6 +1262,8 @@ function CalendarPanel({
   calendarDays,
   calendarYearOptions,
   departuresByDate,
+  festivalsByDate,
+  festivals,
   isDateFilterActive,
   selectedDateKey,
   visibleMonth,
@@ -1196,6 +1275,8 @@ function CalendarPanel({
   calendarDays: CalendarDay[];
   calendarYearOptions: number[];
   departuresByDate: Record<string, EnrichedDeparture[]>;
+  festivalsByDate: Record<string, PublicTourCalendarFestival[]>;
+  festivals: PublicTourCalendarFestival[];
   isDateFilterActive: boolean;
   selectedDateKey: string;
   visibleMonth: Date;
@@ -1313,7 +1394,10 @@ function CalendarPanel({
           {calendarDays.map((day) => {
             const key = getDateKey(day.date);
             const dayDepartures = departuresByDate[key] || [];
+            const dayFestivals = festivalsByDate[key] || [];
             const hasDepartures = dayDepartures.length > 0;
+            const hasFestivals = dayFestivals.length > 0;
+            const hasEvents = hasDepartures || hasFestivals;
             const isSelected = isDateFilterActive && selectedDateKey === key;
             const isToday = todayKey === key;
 
@@ -1321,7 +1405,7 @@ function CalendarPanel({
               <button
                 key={key}
                 type="button"
-                disabled={!hasDepartures}
+                disabled={!hasEvents}
                 onClick={() => onSelectDate(key)}
                 aria-pressed={isSelected}
                 className={cn(
@@ -1329,6 +1413,8 @@ function CalendarPanel({
                   day.isCurrentMonth ? "text-secondary" : "text-secondary/32",
                   hasDepartures &&
                   "bg-primary text-secondary text-white",
+                  hasFestivals &&
+                  "rounded-full bg-primary/50 border border-[#df5a01]",
                   isToday &&
                   "rounded-full bg-[#d1fce1] border border-[#2faa5d] ",
                   isSelected &&
@@ -1350,9 +1436,74 @@ function CalendarPanel({
             className={departureDateDotClassName}
             label="Departure date"
           />
+          <CalendarLegendDot
+            className={festivalDateDotClassName}
+            label="Festival date"
+          />
         </div>
+        <FestivalDatesList
+          festivals={festivals}
+          onSelectDate={onSelectDate}
+          selectedDateKey={selectedDateKey}
+        />
       </article>
     </aside>
+  );
+}
+
+function FestivalDatesList({
+  festivals,
+  onSelectDate,
+  selectedDateKey,
+}: {
+  festivals: PublicTourCalendarFestival[];
+  onSelectDate: (key: string) => void;
+  selectedDateKey: string;
+}) {
+  if (festivals.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 border-t border-[#f1ebe6] pt-4 font-sans">
+      <h3 className="text-[13px] font-bold uppercase tracking-normal text-secondary/58">
+        Festivals This Month
+      </h3>
+      <div className="mt-3 grid gap-2">
+        {festivals.map((festival) => {
+          const dateKey = getDateKey(festival.date);
+          const isSelected = selectedDateKey === dateKey;
+
+          return (
+            <button
+              key={festival.id}
+              type="button"
+              onClick={() => onSelectDate(dateKey)}
+              className={cn(
+                "flex items-start justify-between gap-3 rounded-[7px] border px-3 py-2 text-left transition-colors",
+                isSelected
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-[#ead8c5] bg-[#fffaf4] text-secondary hover:border-accent/45"
+              )}
+            >
+              <span className="min-w-0">
+                <strong className="block text-[13px] font-bold leading-tight">
+                  {festival.title}
+                </strong>
+                {festival.description ? (
+                  <span className="mt-1 block text-[12px] font-medium leading-snug text-secondary/58">
+                    {festival.description}
+                  </span>
+                ) : null}
+              </span>
+              <span className="shrink-0 text-[12px] font-bold text-primary">
+                {formatOrdinalDate(festival.date)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -1600,7 +1751,7 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
                   item.expert?.expertiseTags[0] ||
                   item.tour.category ||
                   item.tour.tourType ||
-                  "Heritage Tours"
+                  "Long Trails"
                 }
                 triggerClassName="text-right text-[14px] font-semibold leading-tight sm:text-[15px]"
               />

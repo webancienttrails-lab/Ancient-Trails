@@ -189,6 +189,21 @@ export type HomePageContent = {
   updatedAt: string;
 };
 
+export type PublicTourCalendarFestival = {
+  id: string;
+  title: string;
+  date: string;
+  description: string;
+  sortOrder: number;
+};
+
+export type PublicTourCalendarContent = {
+  id: string;
+  festivals: PublicTourCalendarFestival[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type PublicMegaMenuReference = {
   id: string;
   referenceId: string;
@@ -217,7 +232,8 @@ export type PublicMegaMenuDestinationReference = PublicMegaMenuReference & {
 export type PublicMegaMenuContent = {
   id: string;
   tourMenu: {
-    heritageTours: PublicMegaMenuTourReference[];
+    longTrails: PublicMegaMenuTourReference[];
+    heritageTours?: PublicMegaMenuTourReference[];
     shortTrails: PublicMegaMenuTourReference[];
   };
   destinationMenu: {
@@ -897,6 +913,12 @@ export async function getHomePageContent() {
   return apiRequest<{ home: HomePageContent }>("/api/home");
 }
 
+export async function getTourCalendarPageContent() {
+  return apiRequest<{ tourCalendar: PublicTourCalendarContent }>(
+    "/api/tour-calendar"
+  );
+}
+
 export async function listPublicMegaMenu() {
   return apiRequest<{ megaMenu: PublicMegaMenuContent }>("/api/mega-menu");
 }
@@ -912,11 +934,11 @@ export function buildUpcomingTourCards(
   if (selectedUpcomingTours.length > 0) {
     return [...selectedUpcomingTours]
       .sort((left, right) => left.sortOrder - right.sortOrder)
-      .map((selection) => {
+      .flatMap((selection) => {
         const tour = tourById.get(selection.tourId);
 
         if (!tour) {
-          return null;
+          return [];
         }
 
         const selectedDeparture = selection.departureId
@@ -929,7 +951,7 @@ export function buildUpcomingTourCards(
         const departure =
           selectedDeparture || getBestDatedDeparture(departures, selection.tourId);
 
-        return {
+        return [{
           date: departure
             ? formatTravelDate(departure.departureDate)
             : "Coming Soon",
@@ -941,9 +963,8 @@ export function buildUpcomingTourCards(
           isBestseller: Boolean(tour.isBestseller),
           title: tour.tourName,
           tourId: tour.tourId,
-        } satisfies HomeTourCard;
+        } satisfies HomeTourCard];
       })
-      .filter((card): card is HomeTourCard => Boolean(card))
       .slice(0, limit);
   }
 
@@ -964,14 +985,14 @@ export function buildUpcomingTourCards(
   const selectedDepartures =
     sourceDepartures.length > 0 ? sourceDepartures : datedDepartures;
   const cards = selectedDepartures
-    .map((departure) => {
+    .flatMap((departure) => {
       const tour = tourById.get(departure.tourId);
 
       if (!tour) {
-        return null;
+        return [];
       }
 
-      return {
+      return [{
         date: formatTravelDate(departure.departureDate),
         destinationId: departure.destinationId || getPrimaryTourDestinationId(tour),
         duration: tour.durationDn || createDurationFromDates(departure),
@@ -979,9 +1000,8 @@ export function buildUpcomingTourCards(
         isBestseller: Boolean(tour.isBestseller),
         title: tour.tourName,
         tourId: tour.tourId,
-      } satisfies HomeTourCard;
-    })
-    .filter((card): card is HomeTourCard => Boolean(card));
+      } satisfies HomeTourCard];
+    });
 
   const usedTourIds = new Set(cards.map((card) => card.tourId));
 

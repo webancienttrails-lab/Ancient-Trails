@@ -130,10 +130,14 @@ const availabilityOptions: Array<{ label: string; value: AvailabilityFilter }> =
   { label: "Sold Out", value: "sold-out" },
 ];
 
-const tourTypeFilterLabels = ["Heritage Tours", "Short Trails"];
+const tourTypeFilterLabels = ["Long Trails", "Short Trails"];
+
+function normalizeTourFormat(value = "") {
+  return value.trim() === "Heritage Tours" ? "Long Trails" : value.trim();
+}
 
 function getTourFormat(tour: PublicTour) {
-  return tour.tourFormat || "";
+  return normalizeTourFormat(tour.tourFormat || "");
 }
 
 function getErrorMessage(error: unknown) {
@@ -399,12 +403,7 @@ function getNextDeparture(departures: PublicTourDeparture[]) {
         (left, right) =>
           getDateValue(left.departureDate) - getDateValue(right.departureDate)
       )[0] ||
-    departures
-      .slice()
-      .sort(
-        (left, right) =>
-          getDateValue(left.departureDate) - getDateValue(right.departureDate)
-      )[0]
+    undefined
   );
 }
 
@@ -605,7 +604,7 @@ function createFallbackTours(): PublicTour[] {
     tourId: tour.tourId,
     tourName: tour.title,
     tourType: index % 2 === 0 ? "Heritage Tour" : "Cultural Tour",
-    tourFormat: index % 2 === 0 ? "Heritage Tours" : "Short Trails",
+    tourFormat: index % 2 === 0 ? "Long Trails" : "Short Trails",
     destinationId: tour.destinationId,
     destinationIds: [tour.destinationId],
     durationDn: tour.duration,
@@ -837,7 +836,7 @@ export function ToursListingPage({
     useState<AvailabilityFilter>("all");
   const [adultCount, setAdultCount] = useState(initialAdultCount);
   const [childCount, setChildCount] = useState(initialChildCount);
-  const [sortMode, setSortMode] = useState<SortMode>("recommended");
+  const [sortMode, setSortMode] = useState<SortMode>("earliest");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [currentPage, setCurrentPage] = useState(1);
   const [priceLimit, setPriceLimit] = useState(0);
@@ -980,7 +979,11 @@ export function ToursListingPage({
         const matchesRouteDestination =
           !routeDestinationValue.trim() ||
           getTourDestinationIds(scopedItem.tour).some((destinationId) =>
-            matchesRouteValue(routeDestinationValue, destinationId, destinationId)
+            matchesRouteValue(
+              routeDestinationValue,
+              destinationId,
+              scopedItem.destination?.destinationName || ""
+            )
           );
         const matchesAvailability =
           availabilityFilter === "all" ||
@@ -1583,7 +1586,7 @@ function TourCard({
         item.expert?.expertiseTags[0] ||
         item.tour.category ||
         item.tour.tourType ||
-        "Heritage Tours"
+        "Long Trails"
       }
       favoriteLabel={
         isWishlisted
@@ -1736,7 +1739,7 @@ function TourListRow({
                   item.expert?.expertiseTags[0] ||
                   item.tour.category ||
                   item.tour.tourType ||
-                  "Heritage Tours"
+                  "Long Trails"
                 }
                 triggerClassName="text-right text-[14px] font-semibold leading-tight sm:text-[15px]"
               />

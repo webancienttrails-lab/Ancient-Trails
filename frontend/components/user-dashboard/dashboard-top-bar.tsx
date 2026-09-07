@@ -63,7 +63,7 @@ const navItems = [
 
 const tourMenuColumns = [
   {
-    title: "Heritage Tours",
+    title: "Long Trails",
     icon: Landmark,
     items: [
       { title: "Kerala Tour", image: "/home assets/Khajuraho.webp", href: getTourHref({ title: "Kerala Tour" }) },
@@ -151,12 +151,16 @@ function hasMegaMenuSettings(content: PublicMegaMenuContent | null) {
   }
 
   return (
-    content.tourMenu.heritageTours.length > 0 ||
+    getLongTrailMenuItems(content).length > 0 ||
     content.tourMenu.shortTrails.length > 0 ||
     content.destinationMenu.india.length > 0 ||
     content.destinationMenu.international.length > 0 ||
     content.destinationMenu.topCities.length > 0
   );
+}
+
+function getLongTrailMenuItems(content: PublicMegaMenuContent) {
+  return content.tourMenu.longTrails || content.tourMenu.heritageTours || [];
 }
 
 function resolveMegaMenuImage(source: string, fallback: string) {
@@ -488,7 +492,7 @@ export function DashboardTopBar() {
       {
         ...tourMenuColumns[0],
         items: buildTourMenuItems(
-          megaMenuContent.tourMenu.heritageTours,
+          getLongTrailMenuItems(megaMenuContent),
           tourMenuColumns[0].items.map((item) => item.image)
         ),
       },

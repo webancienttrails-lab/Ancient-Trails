@@ -34,6 +34,7 @@ export type BookingPayload = {
   tourId: string;
   departureId?: string;
   selectedAccommodationOptionId?: string;
+  paymentOption?: "advance" | "full";
   totalGuest: number;
   adultCount: number;
   childCount: number;

@@ -90,7 +90,7 @@ const accountMenuItems = [
 
 const tourColumns = [
   {
-    title: "Heritage Tours",
+    title: "Long Trails",
     icon: Landmark,
     items: [
       { title: "Kerala Tour", image: "/home assets/Khajuraho.webp", href: getTourHref({ title: "Kerala Tour" }) },
@@ -124,7 +124,7 @@ const featuredTours = [
     subtitle: "Designed Around Your Interests",
     image: "/home assets/Special_Tour/Assam.png",
     icon: Binoculars,
-    href: "/tours",
+    href: "/specialised-tours",
   },
 ];
 
@@ -305,12 +305,16 @@ function hasMegaMenuSettings(content: PublicMegaMenuContent | null) {
   }
 
   return (
-    content.tourMenu.heritageTours.length > 0 ||
+    getLongTrailMenuItems(content).length > 0 ||
     content.tourMenu.shortTrails.length > 0 ||
     content.destinationMenu.india.length > 0 ||
     content.destinationMenu.international.length > 0 ||
     content.destinationMenu.topCities.length > 0
   );
+}
+
+function getLongTrailMenuItems(content: PublicMegaMenuContent) {
+  return content.tourMenu.longTrails || content.tourMenu.heritageTours || [];
 }
 
 function resolveMegaMenuImage(source: string, fallback: string) {
@@ -516,9 +520,9 @@ function getMegaMenuSearchItems(
   }
 
   return [
-    ...content.tourMenu.heritageTours.map((tour) => ({
+    ...getLongTrailMenuItems(content).map((tour) => ({
       title: tour.tourName,
-      description: "Heritage tour",
+      description: "Long trail",
       href: getTourHref({
         tourId: tour.tourId,
         tourName: tour.tourName,
@@ -947,7 +951,7 @@ export function ToursMegaMenu({
             )}
             style={megaTextRevealStyle(isOpen, 60)}
           >
-            Our Tours
+            Heritage Tours
           </p>
           <span className="mt-3 block h-px w-8 bg-primary" />
           <p
@@ -1400,7 +1404,7 @@ export function Header() {
       {
         ...tourColumns[0],
         items: buildTourMenuItems(
-          megaMenuContent.tourMenu.heritageTours,
+          getLongTrailMenuItems(megaMenuContent),
           tourColumns[0].items.map((item) => item.image)
         ),
       },

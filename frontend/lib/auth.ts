@@ -158,6 +158,27 @@ export async function requestTravellerProfileMobileChangeOtp(
   );
 }
 
+export async function verifyTravellerProfileMobileChangeOtp(
+  payload: VerifyTravellerOtpPayload
+) {
+  const session = getTravellerSession();
+
+  if (!session?.token) {
+    throw new Error("Please sign in to verify your mobile number.");
+  }
+
+  return apiRequest<RequestTravellerOtpData>(
+    "/api/auth/traveller/profile/verify-mobile-change-otp",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${session.token}`,
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
 export async function updateTravellerProfile(
   payload: UpdateTravellerProfilePayload
 ) {

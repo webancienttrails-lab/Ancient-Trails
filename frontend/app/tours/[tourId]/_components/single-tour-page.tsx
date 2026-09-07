@@ -3,7 +3,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import {
   type Dispatch,
   type FormEvent,
@@ -19,6 +18,7 @@ import { createPortal, flushSync } from "react-dom";
 import {
   BarChart3,
   BedDouble,
+  BedSingle,
   BookOpen,
   CalendarDays,
   Check,
@@ -66,7 +66,6 @@ import {
   validateDepartureForBooking,
   type AccommodationOption,
   type PricedDeparture,
-  type PricingCategory,
 } from "@/lib/tour-booking";
 import {
   cancelBookingPaymentOrder,
@@ -76,18 +75,17 @@ import {
   type BookingPaymentOrder,
 } from "@/lib/booking-payment";
 import {
-  completeGoogleTravellerProfile,
   completeTravellerProfile,
   getTravellerSession,
   listenForTravellerSessionChanges,
-  loginTravellerWithGoogle,
+  requestTravellerProfileMobileChangeOtp,
   requestTravellerOtp,
   saveTravellerSession,
+  verifyTravellerProfileMobileChangeOtp,
   verifyTravellerOtp,
   type TravellerSession,
   type TravellerUser,
 } from "@/lib/auth";
-import { getFirebaseAuth } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
 import { Button, ButtonArrow } from "@/components/ui/button";
@@ -180,7 +178,9 @@ const datePickerMonthLabels = [
 const datePickerWeekdayLabels = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
 type CheckoutStatus = "idle" | "creating" | "gateway_open" | "verifying";
-type LeadTravellerAuthMode = "mobile" | "google";
+type BookingPaymentOption = "advance" | "full";
+
+const BOOKING_TRAVELLER_LIMIT = 6;
 
 type RazorpayPaymentResponse = {
   razorpay_order_id: string;
@@ -627,16 +627,8 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
-function isGmailAddress(value: string) {
-  return /^[^\s@]+@gmail\.com$/i.test(value.trim());
-}
-
 function isValidMobileNumber(value: string) {
   return /^[0-9\s-]{5,20}$/.test(sanitizeMobileNumber(value));
-}
-
-function isIndiaPhoneCountryCode(value: string) {
-  return extractPhoneCountryCode(value) === "+91";
 }
 
 function getLeadTravellerAuthMobileNumber(form: TravellerDetailForm) {
@@ -659,25 +651,22 @@ function getLeadTravellerAuthMobileNumber(form: TravellerDetailForm) {
   return `${countryCode}${mobileDigits}`;
 }
 
+function getProfileAuthMobileNumber(value?: string) {
+  const digits = getProfileMobileDigits(value);
+
+  if (!digits) {
+    return "";
+  }
+
+  return digits.length === 10 ? `91${digits}` : digits;
+}
+
 function getBookingErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
     return error.message;
   }
 
   return "Something went wrong. Please try again.";
-}
-
-function getBookingGoogleErrorMessage(error: unknown) {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: string }).code === "auth/popup-closed-by-user"
-  ) {
-    return "Google sign-in was closed before completion.";
-  }
-
-  return getBookingErrorMessage(error);
 }
 
 function isTravellerDetailFormComplete(form: TravellerDetailForm) {
@@ -693,23 +682,10 @@ function isTravellerDetailFormComplete(form: TravellerDetailForm) {
   );
 }
 
-function hasCompletedTravellerProfile(user: TravellerUser | null) {
-  if (!user) {
-    return false;
-  }
-
-  return Boolean(
-    user.firstName?.trim() &&
-      user.lastName?.trim() &&
-      user.email?.trim() &&
-      getProfileMobileNumber(user.mobileNumber)
-  );
-}
-
 function getLeadTravellerFormFromProfile(
   user: TravellerUser | null
 ): TravellerDetailForm | null {
-  if (!hasCompletedTravellerProfile(user)) {
+  if (!user) {
     return null;
   }
 
@@ -734,22 +710,6 @@ function createInitialTravellerDetailForms(): Record<string, TravellerDetailForm
   );
 
   return leadTravellerForm ? { "adult-1": leadTravellerForm } : {};
-}
-
-function hasEditedLeadTravellerForm(form?: TravellerDetailForm) {
-  if (!form) {
-    return false;
-  }
-
-  return Boolean(
-    form.firstName.trim() ||
-      form.lastName.trim() ||
-      form.email.trim() ||
-      form.mobileNumber.trim() ||
-      form.address.trim() ||
-      form.gender ||
-      form.dateOfBirth.trim()
-  );
 }
 
 function extractPhoneCountryCode(value: string) {
@@ -796,12 +756,14 @@ function createBookingPayload({
   accommodationOption,
   departure,
   forms,
+  paymentOption,
   tour,
   travellerCounts,
 }: {
   accommodationOption: AccommodationOption;
   departure: PublicTourDeparture;
   forms: Record<string, TravellerDetailForm>;
+  paymentOption: BookingPaymentOption;
   tour: PublicTour;
   travellerCounts: TravellerCounts;
 }): BookingPayload {
@@ -860,6 +822,7 @@ function createBookingPayload({
     }),
     accommodationDetails: createAccommodationDetails(accommodationOption),
     gstPercentage: GST_PERCENTAGE,
+    paymentOption,
   };
 }
 
@@ -1121,7 +1084,7 @@ function createFallbackTour(requestedTourId: string): PublicTour {
       tourId: matchedFallback.tourId,
       tourName: matchedFallback.title,
       tourType: "Heritage Walk",
-      tourFormat: "Heritage Tours",
+      tourFormat: "Long Trails",
       destinationId: matchedFallback.destinationId,
       destinationIds: [matchedFallback.destinationId],
       durationDn: matchedFallback.duration,
@@ -1530,6 +1493,8 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
   });
   const [selectedAccommodationOptionId, setSelectedAccommodationOptionId] =
     useState("");
+  const [selectedPaymentOption, setSelectedPaymentOption] =
+    useState<BookingPaymentOption>("advance");
   const [acceptedBookingTermsKey, setAcceptedBookingTermsKey] = useState("");
   const [areTravellerDetailsComplete, setAreTravellerDetailsComplete] =
     useState(false);
@@ -1637,9 +1602,13 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
     () => JSON.stringify(completeTravellerDetailForms),
     [completeTravellerDetailForms]
   );
-  const bookingValidationErrors = selectedDeparture
-    ? validateDeparturePaymentReadiness(selectedDeparture, totalTravellers)
-    : ["Select a scheduled departure."];
+  const bookingValidationErrors = useMemo(
+    () =>
+      selectedDeparture
+        ? validateDeparturePaymentReadiness(selectedDeparture, totalTravellers)
+        : ["Select a scheduled departure."],
+    [selectedDeparture, totalTravellers]
+  );
   const bookingValidationKey = bookingValidationErrors.join("|");
   const selectedAccommodationOption = useMemo(() => {
     if (!selectedPricedDeparture || bookingValidationKey) {
@@ -1679,6 +1648,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
       areTravellerDetailsComplete &&
       selectedAccommodationOption &&
       bookingSubtotal > 0 &&
+      totalTravellers <= BOOKING_TRAVELLER_LIMIT &&
       bookingValidationErrors.length === 0
   );
   const bookingCompletionKey = canBookSeat
@@ -1908,6 +1878,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
             accommodationOption: selectedAccommodationOption,
             departure: selectedDeparture,
             forms: completeTravellerDetailForms,
+            paymentOption: selectedPaymentOption,
             tour: detail.tour,
             travellerCounts,
           })
@@ -1969,6 +1940,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
             itinerary={detail.itinerary}
             primaryDestination={detail.primaryDestination}
             expert={detail.expert}
+            paymentOption={selectedPaymentOption}
             selectedAccommodationOptionId={selectedAccommodationOptionId}
             selectedDepartureId={selectedDepartureId}
             setSelectedAccommodationOptionId={
@@ -1990,11 +1962,8 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
             tour={detail.tour}
           />
           <SidebarBookingSummary
-            selectedAccommodationOption={selectedAccommodationOption}
             selectedDeparture={selectedDeparture}
-            subtotal={bookingSubtotal}
             tour={detail.tour}
-            travellerCounts={travellerCounts}
           />
           <SeatBookingActionCard
             accepted={hasAcceptedBookingTerms}
@@ -2005,6 +1974,25 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
             }
             onBook={handleBookSeat}
             paymentFeedback={paymentFeedback}
+            paymentOption={selectedPaymentOption}
+            onPaymentOptionChange={setSelectedPaymentOption}
+            advanceAmount={
+              selectedPricedDeparture && selectedAccommodationOption
+                ? calculateDeposit({
+                    depositAppliesTo: selectedPricedDeparture.depositAppliesTo,
+                    depositType: selectedPricedDeparture.depositType,
+                    depositValue: selectedPricedDeparture.depositValue,
+                    grandTotal:
+                      bookingSubtotal +
+                      Math.round((bookingSubtotal * GST_PERCENTAGE) / 100),
+                    totalTravellers,
+                  })
+                : 0
+            }
+            fullAmount={
+              bookingSubtotal +
+              Math.round((bookingSubtotal * GST_PERCENTAGE) / 100)
+            }
             selectedDeparture={selectedDeparture}
             tour={detail.tour}
           />
@@ -2217,6 +2205,7 @@ function TourTabs({
   itinerary,
   itineraryDays,
   onTabChange,
+  paymentOption,
   primaryDestination,
   selectedAccommodationOptionId,
   selectedDepartureId,
@@ -2235,6 +2224,7 @@ function TourTabs({
   itinerary: PublicTourItinerary | null;
   itineraryDays: ItineraryDay[];
   onTabChange: (tab: TourTab) => void;
+  paymentOption: BookingPaymentOption;
   primaryDestination: PublicDestination;
   selectedAccommodationOptionId: string;
   selectedDepartureId: string;
@@ -2357,7 +2347,6 @@ function TourTabs({
         >
           <SummaryPanel
             facts={facts}
-            tour={tour}
           />
         </section>
 
@@ -2393,6 +2382,7 @@ function TourTabs({
             setTravellerCounts={setTravellerCounts}
             onTravellerDetailsCompleteChange={onTravellerDetailsCompleteChange}
             onTravellerDetailsChange={onTravellerDetailsChange}
+            paymentOption={paymentOption}
             tour={tour}
             travellerCounts={travellerCounts}
           />
@@ -2411,27 +2401,10 @@ function TourTabs({
 
 function SummaryPanel({
   facts,
-  tour,
 }: {
   facts: TourFact[];
-  tour: PublicTour;
 }) {
-  return (
-    <>
-      <SectionTitle title="Tour Overview" />
-      <p className="mt-3 max-w-[820px] font-sans text-[15px] font-medium leading-[1.7] text-secondary/82">
-        {tour.description ||
-          "A thoughtfully designed tour with expert-led storytelling, local culture and curated heritage experiences."}
-      </p>
-      {tour.notes ? (
-        <p className="mt-3 max-w-[820px] rounded-[6px] bg-muted px-3 py-2 font-sans text-[14px] font-semibold leading-[1.6] text-accent">
-          {tour.notes}
-        </p>
-      ) : null}
-
-      <FactGrid facts={facts} />
-    </>
-  );
+  return <FactGrid facts={facts} />;
 }
 
 function ItineraryPanel({
@@ -2605,71 +2578,6 @@ function formatTravellerSummary(counts: TravellerCounts) {
   ]
     .filter(Boolean)
     .join(", ") || "1 Adult";
-}
-
-function formatPricingCategory(category: PricingCategory) {
-  switch (category) {
-    case "adult":
-      return "Standard Guests";
-    case "extra_bed":
-      return "Extra Bed";
-    case "child_without_extra_bed":
-      return "Child Without Extra Bed";
-    case "single_occupancy":
-      return "Single Occupancy";
-    case "free_child":
-      return "Complimentary Child";
-  }
-}
-
-type PricingRow = {
-  category: PricingCategory;
-  count: number;
-  key: string;
-  unitPrice: number;
-};
-
-const pricingCategorySortOrder: Record<PricingCategory, number> = {
-  adult: 1,
-  extra_bed: 2,
-  child_without_extra_bed: 3,
-  single_occupancy: 4,
-  free_child: 5,
-};
-
-function getPricingRows(option: AccommodationOption) {
-  const rows = new Map<string, PricingRow>();
-
-  option.rooms
-    .flatMap((room) => room.allocations)
-    .forEach((allocation) => {
-      const key = [allocation.pricingCategory, allocation.price].join("-");
-      const existingRow = rows.get(key);
-
-      if (existingRow) {
-        existingRow.count += 1;
-        return;
-      }
-
-      rows.set(key, {
-        category: allocation.pricingCategory,
-        count: 1,
-        key,
-        unitPrice: allocation.price,
-      });
-    });
-
-  return Array.from(rows.values()).sort((left, right) => {
-    const categoryDifference =
-      pricingCategorySortOrder[left.category] -
-      pricingCategorySortOrder[right.category];
-
-    if (categoryDifference !== 0) {
-      return categoryDifference;
-    }
-
-    return right.unitPrice - left.unitPrice;
-  });
 }
 
 function formatBalanceDueDate(value: Date | null) {
@@ -2865,6 +2773,7 @@ function PricingPanel({
   setTravellerCounts,
   onTravellerDetailsCompleteChange,
   onTravellerDetailsChange,
+  paymentOption,
   tour,
   travellerCounts,
 }: {
@@ -2876,6 +2785,7 @@ function PricingPanel({
   setTravellerCounts: Dispatch<SetStateAction<TravellerCounts>>;
   onTravellerDetailsCompleteChange: (isComplete: boolean) => void;
   onTravellerDetailsChange: (forms: Record<string, TravellerDetailForm>) => void;
+  paymentOption: BookingPaymentOption;
   tour: PublicTour;
   travellerCounts: TravellerCounts;
 }) {
@@ -2911,19 +2821,18 @@ function PricingPanel({
   const [travellerSession, setTravellerSession] = useState<TravellerSession | null>(
     () => getTravellerSession()
   );
-  const [leadAuthMode, setLeadAuthMode] =
-    useState<LeadTravellerAuthMode>("mobile");
-  const [leadGoogleRegistrationToken, setLeadGoogleRegistrationToken] =
-    useState("");
   const [leadOtp, setLeadOtp] = useState("");
+  const [leadOtpTargetMobileNumber, setLeadOtpTargetMobileNumber] =
+    useState("");
+  const [leadRegistrationToken, setLeadRegistrationToken] = useState("");
   const [hasLeadOtpBeenRequested, setHasLeadOtpBeenRequested] = useState(false);
   const [verifiedLeadMobileNumber, setVerifiedLeadMobileNumber] = useState("");
   const [leadAuthMessage, setLeadAuthMessage] = useState("");
   const [leadAuthError, setLeadAuthError] = useState("");
   const [isRequestingLeadOtp, setIsRequestingLeadOtp] = useState(false);
   const [isVerifyingLeadOtp, setIsVerifyingLeadOtp] = useState(false);
-  const [isLeadGoogleSubmitting, setIsLeadGoogleSubmitting] = useState(false);
   const [leadOtpCooldownSeconds, setLeadOtpCooldownSeconds] = useState(0);
+  const [isGroupEnquiryOpen, setIsGroupEnquiryOpen] = useState(false);
   const activeTravellerDetailTab =
     travellerDetailTabs.find((tab) => tab.id === activeTravellerDetailId) ||
     travellerDetailTabs[0] || {
@@ -2942,28 +2851,27 @@ function PricingPanel({
     ...(travellerDetailForms["adult-1"] || {}),
   };
   const isLeadTravellerLoggedIn = Boolean(travellerSession?.token);
-  const isLeadTravellerIndiaNumber = isIndiaPhoneCountryCode(
-    leadTravellerDetails.phoneCountryCode
-  );
   const leadTravellerAuthMobileNumber =
     getLeadTravellerAuthMobileNumber(leadTravellerDetails);
+  const travellerProfileAuthMobileNumber = getProfileAuthMobileNumber(
+    travellerSession?.user.mobileNumber
+  );
+  const isLeadTravellerUsingProfileMobile = Boolean(
+    travellerProfileAuthMobileNumber &&
+      travellerProfileAuthMobileNumber === leadTravellerAuthMobileNumber
+  );
   const isLeadTravellerSessionMobileVerified = Boolean(
     isLeadTravellerLoggedIn &&
       travellerSession?.user.isMobileVerified &&
-      getProfileMobileNumber(travellerSession.user.mobileNumber) ===
-        leadTravellerAuthMobileNumber
+      isLeadTravellerUsingProfileMobile
   );
   const hasVerifiedLeadMobileNumber =
     Boolean(leadTravellerAuthMobileNumber) &&
     (verifiedLeadMobileNumber === leadTravellerAuthMobileNumber ||
       isLeadTravellerSessionMobileVerified);
-  const isLeadTravellerEmailReady =
-    isGmailAddress(leadTravellerDetails.email);
-  const isLeadTravellerAuthReady =
-    !isLeadTravellerIndiaNumber ||
-    hasVerifiedLeadMobileNumber;
+  const isLeadTravellerAuthReady = hasVerifiedLeadMobileNumber;
   const isLeadTravellerVerificationBusy =
-    isRequestingLeadOtp || isVerifyingLeadOtp || isLeadGoogleSubmitting;
+    isRequestingLeadOtp || isVerifyingLeadOtp;
   const areAllTravellerDetailsComplete = useMemo(
     () =>
       travellerDetailTabs.length > 0 &&
@@ -2978,7 +2886,6 @@ function PricingPanel({
   );
   const areTravellerDetailsCompleteForBooking =
     areAllTravellerDetailsComplete &&
-    isLeadTravellerEmailReady &&
     isLeadTravellerAuthReady;
   const childInputs = useMemo(
     () =>
@@ -3047,32 +2954,39 @@ function PricingPanel({
       )
     : null;
 
+  const applyLeadTravellerProfile = useCallback((user: TravellerUser | null) => {
+    const leadTravellerForm = getLeadTravellerFormFromProfile(user);
+
+    if (!leadTravellerForm) {
+      return;
+    }
+
+    setTravellerDetailForms((current) => {
+      const currentLeadTraveller = {
+        ...defaultTravellerDetailForm,
+        ...(current["adult-1"] || {}),
+      };
+
+      return {
+        ...current,
+        "adult-1": {
+          ...currentLeadTraveller,
+          ...leadTravellerForm,
+          address: currentLeadTraveller.address,
+        },
+      };
+    });
+  }, []);
+
   useEffect(
     () =>
       listenForTravellerSessionChanges(() => {
         const nextTravellerSession = getTravellerSession();
-        const leadTravellerForm = getLeadTravellerFormFromProfile(
-          nextTravellerSession?.user ?? null
-        );
 
         setTravellerSession(nextTravellerSession);
-
-        if (!leadTravellerForm) {
-          return;
-        }
-
-        setTravellerDetailForms((current) => {
-          if (hasEditedLeadTravellerForm(current["adult-1"])) {
-            return current;
-          }
-
-          return {
-            ...current,
-            "adult-1": leadTravellerForm,
-          };
-        });
+        applyLeadTravellerProfile(nextTravellerSession?.user ?? null);
       }),
-    []
+    [applyLeadTravellerProfile]
   );
 
   useEffect(() => {
@@ -3115,8 +3029,25 @@ function PricingPanel({
         return current;
       }
 
+      if (
+        delta > 0 &&
+        getTotalTravellers(current) <= BOOKING_TRAVELLER_LIMIT &&
+        getTotalTravellers(nextCounts) > BOOKING_TRAVELLER_LIMIT
+      ) {
+        setIsGroupEnquiryOpen(true);
+      }
+
       return nextCounts;
     });
+  }
+
+  function resetLeadOtpChallenge() {
+    setLeadOtp("");
+    setLeadOtpTargetMobileNumber("");
+    setLeadRegistrationToken("");
+    setHasLeadOtpBeenRequested(false);
+    setLeadAuthMessage("");
+    setLeadAuthError("");
   }
 
   function moveDeparture(direction: number) {
@@ -3143,17 +3074,13 @@ function PricingPanel({
         [field]: value,
       },
     }));
-  }
 
-  function updateLeadTravellerDetails(updates: Partial<TravellerDetailForm>) {
-    setTravellerDetailForms((current) => ({
-      ...current,
-      "adult-1": {
-        ...defaultTravellerDetailForm,
-        ...(current["adult-1"] || {}),
-        ...updates,
-      },
-    }));
+    if (
+      activeTravellerDetailTab.id === "adult-1" &&
+      (field === "mobileNumber" || field === "phoneCountryCode")
+    ) {
+      resetLeadOtpChallenge();
+    }
   }
 
   function validateLeadTravellerRegistrationDetails() {
@@ -3164,8 +3091,8 @@ function PricingPanel({
       return "Enter the lead traveller first and last name before verifying OTP.";
     }
 
-    if (!isGmailAddress(leadTravellerDetails.email)) {
-      return "Lead traveller email must be a Gmail address.";
+    if (!isValidEmail(leadTravellerDetails.email)) {
+      return "Enter a valid lead traveller email address before verifying OTP.";
     }
 
     return "";
@@ -3178,103 +3105,16 @@ function PricingPanel({
   ) {
     saveTravellerSession(session);
     setTravellerSession(session);
+    applyLeadTravellerProfile(session.user);
     setVerifiedLeadMobileNumber(leadTravellerAuthMobileNumber);
     setLeadOtp("");
+    setLeadOtpTargetMobileNumber("");
+    setLeadRegistrationToken("");
     setHasLeadOtpBeenRequested(false);
     setLeadOtpCooldownSeconds(0);
     setLeadAuthMessage(message);
     setLeadAuthError("");
     toast.success(messageTitle, message);
-  }
-
-  async function handleLeadTravellerGoogleSignIn() {
-    setLeadAuthError("");
-    setLeadAuthMessage("");
-    setIsLeadGoogleSubmitting(true);
-
-    try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({
-        prompt: "select_account",
-      });
-
-      const result = await signInWithPopup(getFirebaseAuth(), provider);
-      const idToken = await result.user.getIdToken();
-      const response = await loginTravellerWithGoogle({ idToken });
-
-      if (response.data.requiresProfile) {
-        if (!isGmailAddress(response.data.email)) {
-          throw new Error("Please use a Gmail address for traveller booking.");
-        }
-
-        const googleMobileNumber = getProfileMobileNumber(
-          response.data.mobileNumber
-        );
-
-        updateLeadTravellerDetails({
-          firstName:
-            leadTravellerDetails.firstName.trim() || response.data.firstName,
-          lastName:
-            leadTravellerDetails.lastName.trim() || response.data.lastName,
-          email: response.data.email,
-          mobileNumber:
-            leadTravellerDetails.mobileNumber.trim() || googleMobileNumber,
-          phoneCountryCode: response.data.mobileNumber
-            ? getProfilePhoneCountryCode(response.data.mobileNumber)
-            : leadTravellerDetails.phoneCountryCode,
-        });
-        setLeadAuthMode("google");
-        setLeadGoogleRegistrationToken(response.data.registrationToken);
-        setVerifiedLeadMobileNumber("");
-        setLeadOtp("");
-        setHasLeadOtpBeenRequested(false);
-        setLeadAuthMessage("Gmail verified. Verify your mobile number to continue.");
-        toast.success("Gmail verified", response.message);
-        return;
-      }
-
-      if (!isGmailAddress(response.data.user.email)) {
-        throw new Error("Please use a Gmail address for traveller booking.");
-      }
-
-      updateLeadTravellerDetails({
-        firstName: response.data.user.firstName || leadTravellerDetails.firstName,
-        lastName: response.data.user.lastName || leadTravellerDetails.lastName,
-        email: response.data.user.email,
-        mobileNumber:
-          getProfileMobileNumber(response.data.user.mobileNumber) ||
-          leadTravellerDetails.mobileNumber,
-        phoneCountryCode: response.data.user.mobileNumber
-          ? getProfilePhoneCountryCode(response.data.user.mobileNumber)
-          : leadTravellerDetails.phoneCountryCode,
-      });
-
-      if (isIndiaPhoneCountryCode(
-        response.data.user.mobileNumber || leadTravellerDetails.phoneCountryCode
-      )) {
-        setLeadAuthMode("google");
-        setLeadGoogleRegistrationToken("");
-        setVerifiedLeadMobileNumber("");
-        setLeadOtp("");
-        setHasLeadOtpBeenRequested(false);
-        setLeadAuthMessage("Gmail verified. Verify your mobile number to continue.");
-        toast.success("Gmail verified", "Verify your mobile number to continue.");
-        return;
-      }
-
-      saveLeadTravellerSession(
-        response.data,
-        "Login successful",
-        response.message
-      );
-    } catch (error) {
-      const message = getBookingGoogleErrorMessage(error);
-
-      setLeadAuthError(message);
-      toast.error("Gmail sign-in failed", message);
-    } finally {
-      setIsLeadGoogleSubmitting(false);
-    }
   }
 
   async function handleLeadTravellerRequestOtp(event: FormEvent<HTMLFormElement>) {
@@ -3290,21 +3130,19 @@ function PricingPanel({
       return;
     }
 
-    if (leadAuthMode !== "google" && !isGmailAddress(leadTravellerDetails.email)) {
-      const message = "Lead traveller email must be a Gmail address.";
-
-      setLeadAuthError(message);
-      toast.error("Gmail required", message);
-      return;
-    }
-
     setIsRequestingLeadOtp(true);
 
     try {
-      const response = await requestTravellerOtp(leadTravellerAuthMobileNumber);
+      const response = isLeadTravellerLoggedIn && !isLeadTravellerUsingProfileMobile
+        ? await requestTravellerProfileMobileChangeOtp(
+            leadTravellerAuthMobileNumber
+          )
+        : await requestTravellerOtp(leadTravellerAuthMobileNumber);
 
       setVerifiedLeadMobileNumber("");
       setLeadOtp("");
+      setLeadOtpTargetMobileNumber(response.data.mobileNumber);
+      setLeadRegistrationToken("");
       setHasLeadOtpBeenRequested(true);
       setLeadOtpCooldownSeconds(60);
       setLeadAuthMessage(response.message);
@@ -3332,31 +3170,58 @@ function PricingPanel({
       return;
     }
 
-    const registrationError = validateLeadTravellerRegistrationDetails();
+    if (leadOtpTargetMobileNumber !== leadTravellerAuthMobileNumber) {
+      const message = "Mobile number changed. Please request a new OTP.";
 
-    if (registrationError) {
-      setLeadAuthError(registrationError);
-      toast.error("Lead traveller details required", registrationError);
+      setLeadAuthError(message);
+      toast.error("Request OTP again", message);
+      setLeadOtp("");
+      setLeadOtpTargetMobileNumber("");
+      setHasLeadOtpBeenRequested(false);
       return;
     }
 
     setIsVerifyingLeadOtp(true);
 
     try {
-      if (leadAuthMode === "google" && leadGoogleRegistrationToken) {
-        const response = await completeGoogleTravellerProfile({
-          registrationToken: leadGoogleRegistrationToken,
+      if (leadRegistrationToken) {
+        const registrationError = validateLeadTravellerRegistrationDetails();
+
+        if (registrationError) {
+          setLeadAuthError(registrationError);
+          toast.error("Lead traveller details required", registrationError);
+          return;
+        }
+
+        const profileResponse = await completeTravellerProfile({
+          registrationToken: leadRegistrationToken,
           firstName: leadTravellerDetails.firstName,
           lastName: leadTravellerDetails.lastName,
-          mobileNumber: leadTravellerAuthMobileNumber,
-          mobileNumberOtp: leadOtp.trim(),
+          email: leadTravellerDetails.email.trim().toLowerCase(),
         });
 
         saveLeadTravellerSession(
-          response.data,
+          profileResponse.data,
           "Mobile verified",
-          response.message
+          profileResponse.message
         );
+        return;
+      }
+
+      if (isLeadTravellerLoggedIn && !isLeadTravellerUsingProfileMobile) {
+        const response = await verifyTravellerProfileMobileChangeOtp({
+          mobileNumber: leadTravellerAuthMobileNumber,
+          otp: leadOtp.trim(),
+        });
+
+        setVerifiedLeadMobileNumber(response.data.mobileNumber);
+        setLeadOtp("");
+        setLeadOtpTargetMobileNumber("");
+        setLeadRegistrationToken("");
+        setHasLeadOtpBeenRequested(false);
+        setLeadOtpCooldownSeconds(0);
+        setLeadAuthMessage(response.message);
+        toast.success("Mobile verified", response.message);
         return;
       }
 
@@ -3366,6 +3231,15 @@ function PricingPanel({
       });
 
       if (otpResponse.data.requiresProfile) {
+        const registrationError = validateLeadTravellerRegistrationDetails();
+
+        if (registrationError) {
+          setLeadRegistrationToken(otpResponse.data.registrationToken);
+          setLeadAuthError(registrationError);
+          toast.error("Lead traveller details required", registrationError);
+          return;
+        }
+
         const profileResponse = await completeTravellerProfile({
           registrationToken: otpResponse.data.registrationToken,
           firstName: leadTravellerDetails.firstName,
@@ -3425,7 +3299,7 @@ function PricingPanel({
         step="1"
         title="Select Your Dates"
       >
-        <div className="grid auto-rows-fr gap-3 md:grid-cols-2">
+        <div className="grid auto-rows-fr gap-3 md:grid-cols-3">
           {departures.map((departure) => {
             const departureId = getDepartureIdentifier(departure);
             const isSelected = departureId === resolvedSelectedDepartureId;
@@ -3439,37 +3313,39 @@ function PricingPanel({
                 type="button"
                 onClick={() => setSelectedDepartureId(departureId)}
                 className={cn(
-                  "group/departure relative flex h-full w-full flex-col overflow-hidden rounded-[8px] border bg-card p-3 text-left font-sans  transition-all hover:border-primary ",
-                  isSelected ? "border-[#2faa5d]" : "border-border"
+                  "group/departure relative flex h-full w-full flex-col overflow-hidden rounded-[12px] border-2 bg-[#fffdf9] p-2 text-left font-sans  transition-all  sm:p-3",
+                  isSelected
+                    ? "border-[#2faa5d] "
+                    : "border-[#f3d5c3] "
                 )}
               >
-                <span className="grid gap-2 sm:grid-cols-2">
-                  <span className="rounded-[7px] border border-primary/24 bg-primary/10 px-3 py-2 ">
-                    <span className="block text-[11px] font-semibold uppercase leading-none text-primary">
+                <span className="grid gap-3">
+                  <span className="rounded-[10px] border border-[#f3d5c3] bg-[#fff7f1] px-3 py-3">
+                    <span className="block text-[12px] font-semibold uppercase leading-none text-primary">
                       Start Date
                     </span>
-                    <strong className="mt-1.5 block text-[16px] font-bold leading-none text-secondary">
+                    <strong className="mt-2 block text-[16px] font-bold leading-none text-secondary">
                       {formatDate(departure.departureDate)}
                     </strong>
                   </span>
-                  <span className="rounded-[7px] border border-accent/24 bg-accent/10 px-3 py-2 ">
-                    <span className="block text-[11px] font-semibold uppercase leading-none text-accent">
+                  <span className="rounded-[10px] border border-[#f3d5c3] bg-[#fff7f1] px-3 py-3">
+                    <span className="block text-[12px] font-semibold uppercase leading-none text-primary">
                       Return Date
                     </span>
-                    <strong className="mt-1.5 block text-[16px] font-bold leading-none text-secondary">
+                    <strong className="mt-2 block text-[16px] font-bold leading-none text-secondary">
                       {formatDate(departure.returnDate)}
                     </strong>
                   </span>
                 </span>
 
-                <span className="mt-3 block border-t border-border pt-3">
-                  <span className="mb-2 flex items-center justify-between gap-3 text-[12px] font-semibold leading-none text-secondary/62">
+                <span className="mt-4 block border-t border-[#ecd8ca] pt-4">
+                  <span className="mb-3 flex items-center justify-between gap-3 text-[14px] font-semibold leading-none text-secondary/68">
                     <span>Seats</span>
                     <span className="font-bold text-primary">
                       {filledSeats}/{totalSeats}
                     </span>
                   </span>
-                  <span className="block h-1.5 overflow-hidden rounded-full bg-[#e8edf1]">
+                  <span className="block h-3 overflow-hidden rounded-full bg-[#e2e8eb]">
                     <span
                       className={cn(
                         "block h-full rounded-full transition-[width] duration-300",
@@ -3514,6 +3390,22 @@ function PricingPanel({
             onIncrease={() => updateTravellerCount("infants", 1)}
           />
         </div>
+
+        {totalTravellers > BOOKING_TRAVELLER_LIMIT ? (
+          <div className="mt-4 rounded-[8px] border border-primary/20 bg-primary/5 p-3 font-sans">
+            <p className="text-[14px] font-semibold leading-[1.5] text-secondary">
+              Online booking is available for up to {BOOKING_TRAVELLER_LIMIT} travellers.
+              Please enquire for larger groups.
+            </p>
+            <button
+              type="button"
+              onClick={() => setIsGroupEnquiryOpen(true)}
+              className="mt-3 inline-flex h-10 items-center justify-center rounded-full bg-primary px-5 text-[13px] font-bold text-white transition-colors hover:bg-accent"
+            >
+              Enquire Now
+            </button>
+          </div>
+        ) : null}
 
         <div className="mt-4 flex items-start gap-2 rounded-[6px] bg-muted px-3 py-2 font-sans text-[14px] font-medium leading-[1.5] text-secondary/72">
           <Info className="mt-0.5 size-3.5 shrink-0 text-accent" />
@@ -3656,16 +3548,33 @@ function PricingPanel({
               <option>UK +44</option>
               <option>Australia +61</option>
             </select>
-            <input
-              aria-label={`${activeTravellerDetailTab.label} mobile number`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
-              value={activeTravellerDetails.mobileNumber}
-              onChange={(event) =>
-                updateActiveTravellerDetail("mobileNumber", event.target.value)
-              }
-              placeholder="Mobile Number *"
-              type="tel"
-            />
+            <div className="relative">
+              <input
+                aria-label={`${activeTravellerDetailTab.label} mobile number`}
+                className={cn(
+                  "h-11 w-full rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15",
+                  activeTravellerDetailTab.id === "adult-1" &&
+                    hasVerifiedLeadMobileNumber &&
+                    "border-primary/45 pr-10"
+                )}
+                value={activeTravellerDetails.mobileNumber}
+                onChange={(event) =>
+                  updateActiveTravellerDetail("mobileNumber", event.target.value)
+                }
+                placeholder="Mobile Number *"
+                type="tel"
+              />
+              {activeTravellerDetailTab.id === "adult-1" &&
+              hasVerifiedLeadMobileNumber ? (
+                <span
+                  aria-label="Mobile number verified"
+                  className="absolute right-2.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full bg-primary text-white"
+                  title="Mobile number verified"
+                >
+                  <Check className="size-3.5" strokeWidth={2.4} />
+                </span>
+              ) : null}
+            </div>
             <div className="flex h-11 items-center gap-4 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary">
               <span className="font-medium">Gender *</span>
               <label className="inline-flex items-center gap-1.5">
@@ -3691,23 +3600,21 @@ function PricingPanel({
             </div>
           </div>
 
-          {activeTravellerDetailTab.id === "adult-1" ? (
+          {activeTravellerDetailTab.id === "adult-1" &&
+          !hasVerifiedLeadMobileNumber ? (
             <LeadTravellerVerificationPanel
-              authMode={leadAuthMode}
               cooldownSeconds={leadOtpCooldownSeconds}
               errorMessage={leadAuthError}
               hasOtpBeenRequested={hasLeadOtpBeenRequested}
-              isIndiaNumber={isLeadTravellerIndiaNumber}
               isLoggedIn={isLeadTravellerLoggedIn}
+              isProfileMobile={isLeadTravellerUsingProfileMobile}
               isSubmitting={isLeadTravellerVerificationBusy}
               message={leadAuthMessage}
-              onGoogleSignIn={handleLeadTravellerGoogleSignIn}
               onOtpChange={setLeadOtp}
               onRequestOtp={handleLeadTravellerRequestOtp}
               onVerifyOtp={handleLeadTravellerVerifyOtp}
               otp={leadOtp}
               phoneNumber={leadTravellerAuthMobileNumber}
-              verified={hasVerifiedLeadMobileNumber}
             />
           ) : null}
         </div>
@@ -3744,10 +3651,6 @@ function PricingPanel({
             />
           ))}
         </div>
-        <p className="mt-3 font-sans text-[14px] leading-[1.6] text-secondary/65">
-          Pricing is shown for {tour.tourName} and updates with the selected
-          departure and traveller count.
-        </p>
       </BookingStep>
 
       <BookingSummary
@@ -3760,98 +3663,83 @@ function PricingPanel({
         selectedAccommodationOption={selectedAccommodationOption}
         selectedDeparture={selectedDeparture}
         subtotal={subtotal}
+        paymentOption={paymentOption}
         tour={tour}
         travellerCounts={travellerCounts}
       />
+
+      {isGroupEnquiryOpen ? (
+        <EnquiryModal
+          bestDeparture={selectedDeparture}
+          tourName={tour.tourName}
+          onClose={() => setIsGroupEnquiryOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
 
 function LeadTravellerVerificationPanel({
-  authMode,
   cooldownSeconds,
   errorMessage,
   hasOtpBeenRequested,
-  isIndiaNumber,
   isLoggedIn,
+  isProfileMobile,
   isSubmitting,
   message,
-  onGoogleSignIn,
   onOtpChange,
   onRequestOtp,
   onVerifyOtp,
   otp,
   phoneNumber,
-  verified,
 }: {
-  authMode: LeadTravellerAuthMode;
   cooldownSeconds: number;
   errorMessage: string;
   hasOtpBeenRequested: boolean;
-  isIndiaNumber: boolean;
   isLoggedIn: boolean;
+  isProfileMobile: boolean;
   isSubmitting: boolean;
   message: string;
-  onGoogleSignIn: () => void;
   onOtpChange: (value: string) => void;
   onRequestOtp: (event: FormEvent<HTMLFormElement>) => void;
   onVerifyOtp: (event: FormEvent<HTMLFormElement>) => void;
   otp: string;
   phoneNumber: string;
-  verified: boolean;
 }) {
-  if (!isIndiaNumber) {
-    return null;
-  }
-
   return (
     <section className="mt-4 rounded-[8px] border border-primary/20 bg-primary/5 p-3 font-sans">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h4 className="text-[14px] font-bold text-secondary">
-            Verify your number
+            Verify lead mobile number
           </h4>
           <p className="mt-1 text-[12px] font-medium leading-[1.45] text-secondary/65">
-            {verified
-              ? "Your lead traveller mobile number is verified."
-              : isLoggedIn
-                ? "Verify this lead traveller number before booking."
-                : "Verify your +91 mobile number before booking."}
+            {isLoggedIn
+              ? isProfileMobile
+                ? "Verify your login profile mobile number before booking."
+                : "This mobile number is different from your login profile. Verify it before booking."
+              : "Verify the lead traveller mobile number before booking."}
           </p>
         </div>
-        {!isLoggedIn && !verified ? (
-          <button
-            type="button"
-            onClick={onGoogleSignIn}
-            disabled={isSubmitting}
-            className="inline-flex h-10 shrink-0 items-center justify-center rounded-[6px] border border-border bg-white px-4 text-[13px] font-bold text-secondary transition-colors hover:border-primary hover:text-primary disabled:pointer-events-none disabled:opacity-55"
-          >
-            {isSubmitting && authMode === "google"
-              ? "Connecting..."
-              : "Sign in with Google"}
-          </button>
-        ) : null}
       </div>
 
-      {!verified ? (
-        <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-          <form onSubmit={onRequestOtp} className="contents">
-            <button
-              type="submit"
-              disabled={isSubmitting || cooldownSeconds > 0 || !phoneNumber}
-              className="inline-flex h-10 items-center justify-center rounded-[6px] bg-primary px-4 text-[13px] font-bold text-white transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-55"
-            >
-              {cooldownSeconds > 0
-                ? `Resend OTP in ${cooldownSeconds}s`
-                : isSubmitting && authMode !== "google"
-                  ? "Sending OTP..."
-                  : "Send OTP"}
-            </button>
-          </form>
-        </div>
-      ) : null}
+      <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <form onSubmit={onRequestOtp} className="contents">
+          <button
+            type="submit"
+            disabled={isSubmitting || cooldownSeconds > 0 || !phoneNumber}
+            className="inline-flex h-10 items-center justify-center rounded-[6px] bg-primary px-4 text-[13px] font-bold text-white transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-55"
+          >
+            {cooldownSeconds > 0
+              ? `Resend OTP in ${cooldownSeconds}s`
+              : isSubmitting
+                ? "Sending OTP..."
+                : "Send OTP"}
+          </button>
+        </form>
+      </div>
 
-      {hasOtpBeenRequested && !verified ? (
+      {hasOtpBeenRequested ? (
         <form onSubmit={onVerifyOtp} className="mt-2 flex flex-col gap-2 sm:flex-row">
           <input
             aria-label="Lead traveller OTP"
@@ -3913,6 +3801,22 @@ function BookingStep({
   );
 }
 
+function getAccommodationBedIcons(roomType: keyof typeof ROOM_TYPES) {
+  switch (roomType) {
+    case "double":
+      return [BedDouble];
+    case "triple_double":
+      return [BedDouble, BedSingle];
+    case "twin":
+      return [BedSingle, BedSingle];
+    case "triple_twin":
+      return [BedSingle, BedSingle, BedSingle];
+    case "single":
+    default:
+      return [BedSingle];
+  }
+}
+
 function AccommodationOptionCard({
   onSelect,
   option,
@@ -3933,7 +3837,7 @@ function AccommodationOptionCard({
   return (
     <label
       className={cn(
-        "grid cursor-pointer gap-3 rounded-[8px] border bg-background p-3 font-sans transition-colors hover:bg-muted/40 sm:grid-cols-[22px_minmax(0,1fr)_minmax(300px,0.48fr)]",
+        "grid cursor-pointer gap-3 rounded-[8px] border bg-background p-3 font-sans transition-colors hover:bg-muted/40 sm:grid-cols-[22px_minmax(0,1fr)]",
         selected ? "border-primary ring-3 ring-primary/15" : "border-border"
       )}
     >
@@ -3946,14 +3850,15 @@ function AccommodationOptionCard({
       />
       <span className="min-w-0">
         <span className="flex flex-wrap items-center gap-2">
-          <strong className="font-heading text-[15px] font-semibold leading-tight text-secondary">
-            {option.title}
-          </strong>
-          {option.recommended ? (
-            <span className="rounded-full bg-primary/10 px-2 py-1 text-[12px] font-medium uppercase text-primary">
-              Recommended
-            </span>
-          ) : null}
+          <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
+            <strong className="font-description text-[15px] font-semibold leading-tight text-secondary">
+              {option.title}
+            </strong>
+            <strong className="shrink-0 text-[16px] font-semibold text-secondary">
+              {formatCurrency(option.total)}
+            </strong>
+          </span>
+         
         </span>
         <span className="mt-1 block text-[14px] font-medium text-secondary/64">
           {option.description}
@@ -3964,30 +3869,20 @@ function AccommodationOptionCard({
               key={roomType}
               className="inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-white px-2 py-1 text-[14px] font-medium text-secondary/72"
             >
-              <BedDouble className="size-3.5 text-primary" />
+              <span className="inline-flex items-center gap-0.5 text-primary">
+                {getAccommodationBedIcons(
+                  roomType as keyof typeof ROOM_TYPES
+                ).map((Icon, index) => (
+                  <Icon
+                    key={`${roomType}-bed-${index}`}
+                    className="size-3.5"
+                  />
+                ))}
+              </span>
               {ROOM_TYPES[roomType as keyof typeof ROOM_TYPES].title}
               {count && count > 1 ? ` x ${count}` : ""}
             </span>
           ))}
-        </span>
-      </span>
-      <span className="grid gap-1.5 rounded-[7px] bg-muted/45 p-3 text-[14px] text-secondary sm:min-w-[300px]">
-        {getPricingRows(option).map((row) => (
-          <span
-            key={row.key}
-            className="flex items-center justify-between gap-3"
-          >
-            <span className="whitespace-nowrap font-medium">
-              {formatPricingCategory(row.category)}
-            </span>
-            <span className="whitespace-nowrap font-medium">
-              {row.count} x {formatCurrency(row.unitPrice)}
-            </span>
-          </span>
-        ))}
-        <span className="mt-1 flex items-center justify-between border-t border-border pt-2 text-[14px]">
-          <strong className="font-medium">Total</strong>
-          <strong className="font-medium">{formatCurrency(option.total)}</strong>
         </span>
       </span>
     </label>
@@ -4001,6 +3896,7 @@ function BookingSummary({
   grandTotal,
   gstAmount,
   gstPercentage,
+  paymentOption,
   selectedAccommodationOption,
   selectedDeparture,
   subtotal,
@@ -4013,6 +3909,7 @@ function BookingSummary({
   grandTotal: number;
   gstAmount: number;
   gstPercentage: number;
+  paymentOption: BookingPaymentOption;
   selectedAccommodationOption?: AccommodationOption;
   selectedDeparture?: PublicTourDeparture;
   subtotal: number;
@@ -4023,30 +3920,19 @@ function BookingSummary({
   const departureDate = selectedDeparture
     ? formatDate(selectedDeparture.departureDate)
     : "Coming Soon";
+  const isFullPayment = paymentOption === "full";
 
   return (
     <BookingStep step="4" title="Booking Summary">
       <div className="grid gap-2 rounded-[8px] border border-border bg-muted/35 p-3 font-sans text-[14px] text-secondary">
-        <SummaryLine
-          label="Tour"
-          value={tour.tourName}
-        />
-        <SummaryLine
-          label="Departure Date"
-          value={departureDate}
-        />
-        <SummaryLine
-          label="Travellers"
-          value={travellerSummary}
-        />
+        <SummaryLine label="Tour" value={tour.tourName} />
+        <SummaryLine label="Departure Date" value={departureDate} />
+        <SummaryLine label="Travellers" value={travellerSummary} />
         <SummaryLine
           label="Accommodation"
           value={selectedAccommodationOption?.title || "Not selected"}
         />
-        <SummaryLine
-          label="Subtotal"
-          value={formatCurrency(subtotal)}
-        />
+        <SummaryLine label="Subtotal" value={formatCurrency(subtotal)} />
         <SummaryLine
           label={`GST (${gstPercentage}%)`}
           value={formatCurrency(gstAmount)}
@@ -4056,15 +3942,21 @@ function BookingSummary({
           label="Total"
           value={formatCurrency(grandTotal)}
         />
-        <SummaryLine
-          label="Deposit Payable"
-          value={formatCurrency(depositAmount)}
-        />
-        <SummaryLine label="Balance" value={formatCurrency(balanceAmount)} />
-        <SummaryLine
-          label="Balance Due Date"
-          value={formatBalanceDueDate(balanceDueDate)}
-        />
+        {!isFullPayment ? (
+          <>
+            <SummaryLine
+              label="Deposit Payable"
+              value={formatCurrency(depositAmount)}
+            />
+            <SummaryLine label="Balance" value={formatCurrency(balanceAmount)} />
+          </>
+        ) : null}
+        {!isFullPayment ? (
+          <SummaryLine
+            label="Balance Due Date"
+            value={formatBalanceDueDate(balanceDueDate)}
+          />
+        ) : null}
       </div>
     </BookingStep>
   );
@@ -4083,7 +3975,7 @@ function SummaryLine({
     <span
       className={cn(
         "flex items-center justify-between gap-4",
-        strong && "mt-1 border-t border-border pt-2 text-[14px]"
+        strong && "text-[14px]"
       )}
     >
       <span className={cn("font-medium", strong && "font-semibold")}>
@@ -4513,24 +4405,15 @@ function EnquiryField({
 }
 
 function SidebarBookingSummary({
-  selectedAccommodationOption,
   selectedDeparture,
-  subtotal,
   tour,
-  travellerCounts,
 }: {
-  selectedAccommodationOption?: AccommodationOption;
   selectedDeparture?: PublicTourDeparture;
-  subtotal: number;
   tour: PublicTour;
-  travellerCounts: TravellerCounts;
 }) {
-  const taxesAndFees = subtotal > 0 ? Math.round((subtotal * GST_PERCENTAGE) / 100) : 0;
-  const total = subtotal + taxesAndFees;
   const departureDate = selectedDeparture
     ? formatDate(selectedDeparture.departureDate)
     : "Coming Soon";
-  const travellerSummary = formatTravellerSummary(travellerCounts);
 
   return (
     <article className="rounded-[8px] border border-border bg-card p-3 shadow-[0_10px_24px_rgba(67,43,27,0.06)]">
@@ -4540,32 +4423,12 @@ function SidebarBookingSummary({
       </h2>
 
       <div className="mt-3 space-y-2 font-sans">
-        <SidebarSummaryItem
-          icon={BookOpen}
-          label="Tour"
-          value={tour.tourName}
-        />
+        <SidebarSummaryItem icon={BookOpen} label="Tour" value={tour.tourName} />
         <SidebarSummaryItem
           icon={CalendarDays}
           label="Departure Date"
           value={departureDate}
         />
-        <SidebarSummaryItem
-          icon={Users}
-          label="Travellers"
-          value={travellerSummary}
-        />
-        <SidebarSummaryItem
-          icon={BedDouble}
-          label="Accommodation"
-          value={selectedAccommodationOption?.title || "Not selected"}
-        />
-      </div>
-
-      <div className="mt-3 font-sans text-[14px] text-secondary">
-        <SidebarAmountLine label="Subtotal" value={formatCurrency(subtotal)} />
-        <SidebarAmountLine label="Taxes & Fees" value={formatCurrency(taxesAndFees)} />
-        <SidebarAmountLine strong label="Total" value={formatCurrency(total)} />
       </div>
     </article>
   );
@@ -4595,52 +4458,37 @@ function SidebarSummaryItem({
   );
 }
 
-function SidebarAmountLine({
-  label,
-  strong = false,
-  value,
-}: {
-  label: string;
-  strong?: boolean;
-  value: string;
-}) {
-  return (
-    <span
-      className={cn(
-        "flex items-center justify-between gap-4",
-        strong ? "mt-1 border-t border-border pb-1 pt-3 text-[14px]" : "py-1"
-      )}
-    >
-      <span className={cn("font-semibold text-secondary/64", strong && "text-secondary")}>
-        {label}
-      </span>
-      <strong className="text-secondary">{value}</strong>
-    </span>
-  );
-}
-
 function SeatBookingActionCard({
   accepted,
+  advanceAmount,
   canBook,
   checkoutStatus,
+  fullAmount,
   onAcceptedChange,
   onBook,
+  onPaymentOptionChange,
   paymentFeedback,
+  paymentOption,
   selectedDeparture,
   tour,
 }: {
   accepted: boolean;
+  advanceAmount: number;
   canBook: boolean;
   checkoutStatus: CheckoutStatus;
+  fullAmount: number;
   onAcceptedChange: (accepted: boolean) => void;
   onBook: () => void;
+  onPaymentOptionChange: (option: BookingPaymentOption) => void;
   paymentFeedback: string;
+  paymentOption: BookingPaymentOption;
   selectedDeparture?: PublicTourDeparture;
   tour: PublicTour;
 }) {
   const [isEnquiryOpen, setIsEnquiryOpen] = useState(false);
   const isBusy = checkoutStatus !== "idle";
   const isEnabled = accepted && canBook && !isBusy;
+  const payableAdvanceAmount = advanceAmount > 0 ? advanceAmount : fullAmount;
   const buttonLabel =
     checkoutStatus === "creating"
       ? "Opening Payment..."
@@ -4648,43 +4496,16 @@ function SeatBookingActionCard({
         ? "Confirming Booking..."
         : checkoutStatus === "gateway_open"
           ? "Complete Payment..."
-          : "Book Now";
+            : "Book Now";
   const buttonClassName =
     "inline-flex h-11 w-full items-center justify-center rounded-full font-sans text-[14px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20";
 
   return (
     <>
     <article className="rounded-[8px] border border-border bg-card p-3 shadow-[0_10px_24px_rgba(67,43,27,0.05)]">
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          disabled={!isEnabled}
-          onClick={onBook}
-          className={cn(
-            buttonClassName,
-            "text-white",
-            isEnabled
-              ? "bg-primary hover:bg-accent"
-              : "cursor-not-allowed bg-primary/40"
-          )}
-        >
-          {buttonLabel}
-        </button>
-        <button
-          type="button"
-          onClick={() => setIsEnquiryOpen(true)}
-          className={cn(
-            buttonClassName,
-            "border border-primary bg-white text-primary hover:bg-primary hover:text-white"
-          )}
-        >
-          Enquire Now
-        </button>
-      </div>
-
       <label
         className={cn(
-          "mt-3 flex items-start gap-2 font-sans text-[14px] font-medium leading-[1.45]",
+          "flex items-start gap-2 font-sans text-[14px] font-medium leading-[1.45]",
           canBook ? "text-secondary" : "text-secondary/48"
         )}
       >
@@ -4711,6 +4532,73 @@ function SeatBookingActionCard({
           )}
         </span>
       </label>
+
+      {accepted ? (
+        <>
+          <div className="mt-3 grid gap-2 font-sans">
+            <button
+              type="button"
+              aria-pressed={paymentOption === "advance"}
+              onClick={() => onPaymentOptionChange("advance")}
+              className={cn(
+                "flex min-h-12 items-center justify-between gap-3 rounded-[7px] border px-3 py-2 text-left transition-colors",
+                paymentOption === "advance"
+                  ? "border-primary bg-primary/8 text-primary"
+                  : "border-border bg-background text-secondary hover:border-primary/40"
+              )}
+            >
+              <span className="font-semibold">Pay Advance</span>
+              <strong className="whitespace-nowrap text-[13px]">
+                {formatCurrency(payableAdvanceAmount)}
+              </strong>
+            </button>
+            <button
+              type="button"
+              aria-pressed={paymentOption === "full"}
+              onClick={() => onPaymentOptionChange("full")}
+              className={cn(
+                "flex min-h-12 items-center justify-between gap-3 rounded-[7px] border px-3 py-2 text-left transition-colors",
+                paymentOption === "full"
+                  ? "border-primary bg-primary/8 text-primary"
+                  : "border-border bg-background text-secondary hover:border-primary/40"
+              )}
+            >
+              <span className="font-semibold">Pay Full</span>
+              <strong className="whitespace-nowrap text-[13px]">
+                {formatCurrency(fullAmount)}
+              </strong>
+            </button>
+          </div>
+
+        </>
+      ) : null}
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          disabled={!isEnabled}
+          onClick={onBook}
+          className={cn(
+            buttonClassName,
+            "text-white",
+            isEnabled
+              ? "bg-primary hover:bg-accent"
+              : "cursor-not-allowed bg-primary/40"
+          )}
+        >
+          {buttonLabel}
+        </button>
+        <button
+          type="button"
+          onClick={() => setIsEnquiryOpen(true)}
+          className={cn(
+            buttonClassName,
+            "border border-primary bg-white text-primary hover:bg-primary hover:text-white"
+          )}
+        >
+          Enquire Now
+        </button>
+      </div>
 
       {!canBook ? (
         <p className="mt-2 font-sans text-[12px] font-medium leading-[1.4] text-secondary/58">
@@ -4797,7 +4685,7 @@ function ExpertPanel({ expert }: { expert: PublicExpert }) {
 
         <Button
           nativeButton={false}
-          render={<Link href="/about" />}
+          render={<Link href="/experts" />}
           variant="outline"
           className="mt-5 justify-between px-5 text-[16px] font-normal"
         >

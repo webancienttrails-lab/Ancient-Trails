@@ -625,9 +625,12 @@ export function PlanTripLauncher() {
       return;
     }
 
-    const destinationValue =
+    const destinationId =
       selectedDestinationId ||
       getMatchingPlannerDestinationId(destinationQuery, destinations);
+    const destinationValue =
+      destinations.find((destination) => destination.destinationId === destinationId)
+        ?.destinationName || "";
 
     router.push(
       getToursHref({
@@ -956,9 +959,12 @@ export function PlanTripInline({
       return;
     }
 
-    const destinationValue =
+    const destinationId =
       selectedDestinationId ||
       getMatchingPlannerDestinationId(destinationQuery, destinations);
+    const destinationValue =
+      destinations.find((destination) => destination.destinationId === destinationId)
+        ?.destinationName || "";
 
     router.push(
       getToursHref({
