@@ -181,6 +181,7 @@ const bookingPayloadSchema = z
     tourId: requiredCodeField("Tour ID", 40),
     departureId: requiredCodeField("Departure ID", 40).optional(),
     selectedAccommodationOptionId: z.string().trim().max(200).optional(),
+    paymentOption: z.enum(["advance", "full"]).default("advance"),
     totalGuest: nonNegativeIntegerField("Total guest", 1000).min(
       1,
       "Total guest must be at least 1"
@@ -636,10 +637,12 @@ function createBookingDraft(
   payload: BookingPayload,
   snapshotPayload: BookingSnapshotPayload
 ): BookingDraft {
+  const { paymentOption: _paymentOption, ...bookingPayload } = payload;
+
   if (!snapshotPayload) {
     return {
-      ...payload,
-      travellers: payload.travellers.map((traveller) => ({
+      ...bookingPayload,
+      travellers: bookingPayload.travellers.map((traveller) => ({
         ...traveller,
         dateOfBirth: traveller.dateOfBirth
           ? new Date(traveller.dateOfBirth)
@@ -649,7 +652,7 @@ function createBookingDraft(
   }
 
   return {
-    ...payload,
+    ...bookingPayload,
     travellers: snapshotPayload.travellers,
     pricingSnapshot: snapshotPayload.pricingSnapshot,
     subtotal: snapshotPayload.pricingSnapshot.subtotal,
@@ -685,10 +688,18 @@ function createRazorpayClient() {
   });
 }
 
-function getPaymentAmountRupees(bookingDraft: BookingDraft) {
+function getPaymentAmountRupees(
+  bookingDraft: BookingDraft,
+  paymentOption: BookingPayload["paymentOption"]
+) {
   const depositAmount = bookingDraft.depositAmount || 0;
   const grandTotal = bookingDraft.grandTotal || 0;
-  const amount = depositAmount > 0 ? depositAmount : grandTotal;
+  const amount =
+    paymentOption === "full"
+      ? grandTotal
+      : depositAmount > 0
+        ? depositAmount
+        : grandTotal;
 
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new HttpError(400, "Payment amount could not be calculated");
@@ -1215,13 +1226,21 @@ async function createPaidBookingFromPaymentSession({
       }
 
       if (booking.paymentStatus !== "paid") {
+        const totalAmount = booking.grandTotal || session.bookingDraft.grandTotal || 0;
+        const amountPaid = totalAmount > 0
+          ? Math.min(session.amountRupees, Math.round(totalAmount))
+          : session.amountRupees;
+
         booking.paymentStatus = "paid";
         booking.paymentProvider = "razorpay";
         booking.paymentOrderId = session.razorpayOrderId;
         booking.paymentId = paymentId;
         booking.paymentSignature = signature;
         booking.paymentCurrency = session.currency;
-        booking.amountPaid = session.amountRupees;
+        booking.amountPaid = amountPaid;
+        if (totalAmount > 0) {
+          booking.balanceAmount = Math.max(0, Math.round(totalAmount - amountPaid));
+        }
         booking.paymentCapturedAt = new Date();
         booking.confirmationToken =
           booking.confirmationToken || createConfirmationToken();
@@ -1747,7 +1766,10 @@ export async function createBookingPaymentOrder(
   }
 
   const bookingDraft = createBookingDraft(payload, snapshotPayload);
-  const amountRupees = getPaymentAmountRupees(bookingDraft);
+  const amountRupees = getPaymentAmountRupees(
+    bookingDraft,
+    payload.paymentOption
+  );
   const amount = amountRupees * 100;
   const receipt = createReceipt();
   const leadGuest = getLeadGuest(payload);
@@ -1761,6 +1783,7 @@ export async function createBookingPaymentOrder(
     notes: {
       tourId: payload.tourId,
       departureId: payload.departureId || "",
+      paymentOption: payload.paymentOption,
       travellers: payload.totalGuest,
     },
   });

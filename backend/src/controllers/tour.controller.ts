@@ -25,9 +25,35 @@ import { validateDepartureSchedule } from "../services/departure/departure.valid
 import { HttpError } from "../utils/httpError";
 
 const defaultTourTypeOptions = ["Domestic", "International"];
-const defaultTourFormatOptions = ["Heritage Tours", "Short Trails"];
+const defaultTourFormatOptions = ["Long Trails", "Short Trails"];
+const legacyTourFormatAliases: Record<string, string> = {
+  "Heritage Tours": "Long Trails",
+};
 
 const textField = (max: number) => z.string().trim().max(max).default("");
+function normalizeTourFormat(value = "") {
+  const trimmedValue = value.trim();
+
+  return legacyTourFormatAliases[trimmedValue] || trimmedValue;
+}
+
+const tourFormatField = textField(80).transform((value, context) => {
+  const normalizedValue = normalizeTourFormat(value);
+
+  if (
+    normalizedValue &&
+    !defaultTourFormatOptions.includes(normalizedValue)
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "Tour format must be Long Trails or Short Trails",
+    });
+
+    return z.NEVER;
+  }
+
+  return normalizedValue;
+});
 const codePattern = /^[A-Za-z0-9_-]+$/;
 const requiredTextField = (fieldName: string, max: number) =>
   z.string().trim().min(1, `${fieldName} is required`).max(max);
@@ -189,7 +215,7 @@ const tourPayloadSchema = z
     tourId: requiredCodeField("Tour ID", 40),
     tourName: requiredTextField("Tour name", 140),
     tourType: requiredTextField("Tour type", 80),
-    tourFormat: textField(80),
+    tourFormat: tourFormatField,
     destinationId: optionalCodeField("Destination ID", 40),
     destinationIds: destinationIdsSchema,
     durationDn: requiredTextField("Duration (D/N)", 40),
@@ -398,7 +424,7 @@ function formatTour(tour: TourDocument) {
     tourId: tour.tourId,
     tourName: tour.tourName,
     tourType: tour.tourType,
-    tourFormat: tour.tourFormat || "",
+    tourFormat: normalizeTourFormat(tour.tourFormat || ""),
     destinationId: destinationIds[0] || tour.destinationId,
     destinationIds,
     durationDn: tour.durationDn,

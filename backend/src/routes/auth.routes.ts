@@ -8,6 +8,7 @@ import {
   requestTravellerProfileMobileChangeOtp,
   requestTravellerOtp,
   updateTravellerProfile,
+  verifyTravellerProfileMobileChangeOtp,
   verifyTravellerOtpAndLogin,
 } from "../controllers/auth.controller";
 
@@ -22,6 +23,10 @@ router.post("/traveller/google", loginTravellerWithGoogle);
 router.post(
   "/traveller/profile/request-mobile-change-otp",
   requestTravellerProfileMobileChangeOtp
+);
+router.post(
+  "/traveller/profile/verify-mobile-change-otp",
+  verifyTravellerProfileMobileChangeOtp
 );
 router.patch("/traveller/profile", updateTravellerProfile);
 

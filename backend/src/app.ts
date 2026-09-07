@@ -29,6 +29,10 @@ import {
 import publicDestinationRoutes from "./routes/publicDestination.routes";
 import publicExperienceRoutes from "./routes/publicExperience.routes";
 import publicTourRoutes from "./routes/publicTour.routes";
+import {
+  adminTourCalendarPageRoutes,
+  publicTourCalendarPageRoutes,
+} from "./routes/tourCalendarPage.routes";
 import tourRoutes from "./routes/tour.routes";
 import { HttpError } from "./utils/httpError";
 
@@ -180,6 +184,8 @@ app.use("/api/blogs", publicBlogRoutes);
 app.use("/api/admin/blogs", adminBlogRoutes);
 app.use("/api/home", publicHomePageRoutes);
 app.use("/api/admin/home", adminHomePageRoutes);
+app.use("/api/tour-calendar", publicTourCalendarPageRoutes);
+app.use("/api/admin/tour-calendar", adminTourCalendarPageRoutes);
 app.use("/api/mega-menu", publicMegaMenuRoutes);
 app.use("/api/admin/mega-menu", adminMegaMenuRoutes);
 app.use("/api/destinations", publicDestinationRoutes);

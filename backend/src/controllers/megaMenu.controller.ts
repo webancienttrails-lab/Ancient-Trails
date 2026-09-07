@@ -374,11 +374,15 @@ async function formatMegaMenu(page: MegaMenuPageDocument) {
     formatRegionReference(item, index, DestinationType.INTERNATIONAL)
   );
 
+  const longTrails = tourHeritage.map(formatTourReference);
+  const shortTrails = tourShortTrails.map(formatTourReference);
+
   return {
     id: page._id.toString(),
     tourMenu: {
-      heritageTours: tourHeritage.map(formatTourReference),
-      shortTrails: tourShortTrails.map(formatTourReference),
+      longTrails,
+      heritageTours: longTrails,
+      shortTrails,
     },
     destinationMenu: {
       india:

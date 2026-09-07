@@ -408,6 +408,47 @@ export async function requestTravellerProfileMobileChangeOtp(
   });
 }
 
+export async function verifyTravellerProfileMobileChangeOtp(
+  request: Request,
+  response: Response
+): Promise<void> {
+  const payload = parseRequestBody(verifyTravellerOtpSchema, request.body);
+  const authPayload = verifyAuthToken(getBearerToken(request));
+
+  if (!authPayload.roles.includes(UserRole.TRAVELLER)) {
+    throw new HttpError(403, "Traveller access is required");
+  }
+
+  const traveller = await User.findById(authPayload.userId);
+
+  if (!traveller || !traveller.roles.includes(UserRole.TRAVELLER)) {
+    throw new HttpError(404, "Traveller profile not found");
+  }
+
+  if (traveller.status === UserStatus.BLOCKED) {
+    throw new HttpError(403, "This traveller account is blocked");
+  }
+
+  const existingMobileUser = await User.findOne({
+    _id: { $ne: traveller._id },
+    mobileNumber: payload.mobileNumber,
+  });
+
+  if (existingMobileUser) {
+    throw new HttpError(409, "Mobile number is already registered");
+  }
+
+  await verifyOtp(payload.mobileNumber, payload.otp);
+
+  response.status(200).json({
+    success: true,
+    message: "Mobile number verified successfully",
+    data: {
+      mobileNumber: payload.mobileNumber,
+    },
+  });
+}
+
 export async function updateTravellerProfile(
   request: Request,
   response: Response
