@@ -486,16 +486,7 @@ function StoryPanel({
 function ValuesSection() {
   return (
     <section className="relative overflow-hidden bg-background px-5 pb-16 pt-2 sm:px-0 lg:pb-24">
-      <div className="pointer-events-none absolute -right-3 top-[58px] hidden h-[255px] w-[175px] overflow-hidden lg:block">
-        <Image
-          src="/home assets/Heritage Banner.webp"
-          alt=""
-          fill
-          sizes="175px"
-          className="object-cover object-left opacity-[0.42] grayscale contrast-[1.35] brightness-[1.04] mix-blend-multiply"
-        />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,#ffffff_0%,rgba(255,255,255,0)_16%,rgba(255,255,255,0)_78%,#ffffff_100%),linear-gradient(180deg,#ffffff_0%,rgba(255,255,255,0)_10%,rgba(255,255,255,0)_76%,#ffffff_100%)]" />
-      </div>
+      
       <div className="relative mx-auto w-full max-w-[1300px]">
         <div className="text-center">
           <span className="mx-auto block h-px w-[120px] bg-primary" />
@@ -604,7 +595,7 @@ function FounderSection({
             ) : null}
             <Button
               nativeButton={false}
-              render={<Link href="/#about" />}
+              render={<Link href="/experts" />}
               variant="outline"
               className="mt-6 h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:min-w-[190px]"
             >
@@ -646,7 +637,7 @@ function TeamSection({ experts }: { experts: PublicExpert[] }) {
         <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="font-sans text-eyebrow font-medium uppercase leading-none tracking-normal text-primary">
-              Our Team
+              Our Experts
             </p>
             <h2 className="mt-4 font-heading text-title font-bold leading-none tracking-normal text-secondary">
               The Minds Behind the Journeys

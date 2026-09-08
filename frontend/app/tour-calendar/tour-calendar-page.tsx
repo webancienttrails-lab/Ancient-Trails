@@ -323,6 +323,10 @@ function getDateValue(value: string | null) {
   return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
+function isUpcomingDeparture(departure: PublicTourDeparture) {
+  return getDateValue(departure.departureDate) >= startOfDay(new Date()).getTime();
+}
+
 function matchesDepartureSelection(
   item: EnrichedDeparture,
   destinationId: string,
@@ -409,10 +413,10 @@ function statusBadgeClassName(status: DepartureStatus) {
   }
 }
 
-function getDepartureStatusLabel(status: DepartureStatus) {
+function getDepartureStatusLabel(status: DepartureStatus, isBestseller: boolean) {
   switch (status) {
     case "available":
-      return "Available";
+      return isBestseller ? "Best seller" : "";
     case "few":
       return "Few Seats";
     case "almost":
@@ -1108,6 +1112,7 @@ export function TourCalendarPage({
 
   const calendarFilteredDepartures = useMemo(() => {
     return enrichedDepartures.filter((item) =>
+      isUpcomingDeparture(item.departure) &&
       matchesDepartureSelection(item, selectedDestinationId, selectedTourId)
     );
   }, [enrichedDepartures, selectedDestinationId, selectedTourId]);
@@ -1414,7 +1419,7 @@ function CalendarPanel({
                   hasDepartures &&
                   "bg-primary text-secondary text-white",
                   hasFestivals &&
-                  "rounded-full bg-primary/50 border border-[#df5a01]",
+                  "rounded-full  border border-[#002678c4]",
                   isToday &&
                   "rounded-full bg-[#d1fce1] border border-[#2faa5d] ",
                   isSelected &&
@@ -1651,6 +1656,7 @@ function UpcomingDeparturesPanel({
 
 function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture }) {
   const status = getDepartureStatus([item]);
+  const statusLabel = getDepartureStatusLabel(status, item.tour.isBestseller);
   const capacity = getDepartureCapacity(item.departure);
   const filledSeats = getFilledSeats(item.departure);
   const seatsLeft = getDepartureSeatsLeft(item.departure);
@@ -1687,14 +1693,16 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
             </span>
           </Link>
 
-          <span
-            className={cn(
-              "absolute left-2 top-2 rounded-[6px] px-2 py-1 font-sans text-[11px] font-bold leading-none",
-              statusBadgeClassName(status)
-            )}
-          >
-            {getDepartureStatusLabel(status)}
-          </span>
+          {statusLabel ? (
+            <span
+              className={cn(
+                "absolute left-2 top-2 rounded-[6px] px-2 py-1 font-sans text-[11px] font-bold leading-none",
+                statusBadgeClassName(status)
+              )}
+            >
+              {statusLabel}
+            </span>
+          ) : null}
         </div>
 
         <div className="flex min-w-0 flex-col px-0.5">

@@ -679,19 +679,28 @@ function GalleryLightbox({
           </button>
         </div>
 
-        <div className="relative flex min-h-0 flex-1 items-center justify-center px-5 pb-16 md:px-24">
+        <div
+          className="relative flex min-h-0 flex-1 items-center justify-center px-5 pb-16 md:px-24"
+          onClick={onClose}
+        >
           {images.length > 1 ? (
             <button
               type="button"
               aria-label="Previous traveller photo"
-              onClick={showPreviousImage}
+              onClick={(event) => {
+                event.stopPropagation();
+                showPreviousImage();
+              }}
               className="absolute left-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-primary md:left-10"
             >
               <ChevronLeft className="size-8" strokeWidth={2.4} />
             </button>
           ) : null}
 
-          <div className="relative h-[calc(100vh-9rem)] w-full max-w-[1120px]">
+          <div
+            className="relative h-[calc(100vh-9rem)] w-full max-w-[1120px]"
+            onClick={(event) => event.stopPropagation()}
+          >
             <Image
               src={activeImage}
               alt={`${title} traveller photo ${boundedIndex + 1}`}
@@ -707,7 +716,10 @@ function GalleryLightbox({
             <button
               type="button"
               aria-label="Next traveller photo"
-              onClick={showNextImage}
+              onClick={(event) => {
+                event.stopPropagation();
+                showNextImage();
+              }}
               className="absolute right-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-primary md:right-10"
             >
               <ChevronRight className="size-8" strokeWidth={2.4} />

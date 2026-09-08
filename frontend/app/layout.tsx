@@ -25,6 +25,11 @@ export const metadata: Metadata = {
   },
   description:
     "Discover India's heritage, history and culture through curated tours.",
+  icons: {
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
+  },
 };
 
 export default function RootLayout({

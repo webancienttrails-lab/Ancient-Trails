@@ -186,6 +186,7 @@ export function AboutSection() {
           role="dialog"
           aria-modal="true"
           aria-label="Ancient Trails video"
+          onClick={closeVideo}
           className={`fixed inset-0 z-[2147483647] flex items-center justify-center bg-secondary/80 px-5 py-8 backdrop-blur-sm transition-opacity duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
             isVideoVisible ? "opacity-100" : "opacity-0"
           }`}
@@ -200,6 +201,7 @@ export function AboutSection() {
           </button>
 
           <div
+            onClick={(event) => event.stopPropagation()}
             className={`relative w-full max-w-[1040px] origin-center overflow-hidden rounded-[12px] bg-secondary shadow-[0_24px_90px_rgba(0,0,0,0.35)] transition-[opacity,transform,filter] duration-[760ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
               isVideoVisible
                 ? "scale-100 opacity-100 blur-0"
