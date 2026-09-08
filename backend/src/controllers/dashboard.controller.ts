@@ -371,7 +371,7 @@ export async function getAdminDashboardSummary(
       status: "scheduled",
     })
       .sort({ departureDate: 1 })
-      .limit(4),
+      .limit(5),
   ]);
 
   const tourById = new Map(tours.map((tour) => [tour.tourId, tour]));

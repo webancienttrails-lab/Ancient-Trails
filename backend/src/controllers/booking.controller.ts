@@ -160,6 +160,16 @@ const accommodationDetailsPayloadSchema = z.object({
   tripleOccupancy: nonNegativeIntegerField("Triple occupancy", 100),
 });
 
+const adminAccommodationOptionsPayloadSchema = z.object({
+  departureId: requiredCodeField("Departure ID", 40),
+  adultCount: nonNegativeIntegerField("Adult count", 25).min(
+    1,
+    "At least one adult is required"
+  ),
+  childDetails: z.array(childDetailsPayloadSchema).max(25).default([]),
+  gstPercentage: z.coerce.number().min(0).max(100).default(0),
+});
+
 const travellerPayloadSchema = z.object({
   id: requiredTextField("Traveller ID", 80),
   type: z.enum(["adult", "child"]),
@@ -182,6 +192,8 @@ const bookingPayloadSchema = z
     departureId: requiredCodeField("Departure ID", 40).optional(),
     selectedAccommodationOptionId: z.string().trim().max(200).optional(),
     paymentOption: z.enum(["advance", "full"]).default("advance"),
+    paymentMethod: z.enum(["cash", "cheque", "neft"]).optional(),
+    amountPaid: z.coerce.number().min(0).max(1000000000).optional(),
     totalGuest: nonNegativeIntegerField("Total guest", 1000).min(
       1,
       "Total guest must be at least 1"
@@ -405,6 +417,14 @@ function createPaidBookingFilter(): Record<string, unknown> {
   };
 }
 
+function shouldRestoreDeletedBookingSeats(booking: BookingDocument) {
+  return (
+    Boolean(booking.departureId) &&
+    booking.totalGuest > 0 &&
+    (booking.paymentStatus === "paid" || booking.paymentStatus === "pending")
+  );
+}
+
 function formatGuestDetails(guest: IBookingGuestDetails) {
   return {
     title: guest.title,
@@ -432,6 +452,7 @@ function formatBooking(booking: BookingDocument) {
     tourId: booking.tourId,
     departureId: booking.departureId || "",
     selectedAccommodationOptionId: booking.selectedAccommodationOptionId || "",
+    paymentOption: booking.paymentOption || "advance",
     totalGuest: booking.totalGuest,
     adultCount: booking.adultCount,
     childCount: booking.childCount,
@@ -470,6 +491,7 @@ function formatBooking(booking: BookingDocument) {
     balanceAmount: booking.balanceAmount,
     balanceDueDate: booking.balanceDueDate,
     paymentStatus: booking.paymentStatus || "pending",
+    paymentMethod: booking.paymentMethod || "",
     paymentProvider: booking.paymentProvider || "",
     paymentOrderId: booking.paymentOrderId || "",
     paymentId: booking.paymentId || "",
@@ -637,7 +659,7 @@ function createBookingDraft(
   payload: BookingPayload,
   snapshotPayload: BookingSnapshotPayload
 ): BookingDraft {
-  const { paymentOption: _paymentOption, ...bookingPayload } = payload;
+  const bookingPayload = payload;
 
   if (!snapshotPayload) {
     return {
@@ -706,6 +728,18 @@ function getPaymentAmountRupees(
   }
 
   return Math.round(amount);
+}
+
+function getAdminOfflineAmountPaid(bookingDraft: BookingDraft) {
+  if (typeof bookingDraft.amountPaid === "number" && bookingDraft.amountPaid > 0) {
+    return Math.round(bookingDraft.amountPaid);
+  }
+
+  if (bookingDraft.paymentOption === "full" && bookingDraft.grandTotal) {
+    return Math.round(bookingDraft.grandTotal);
+  }
+
+  return Math.round(bookingDraft.depositAmount || bookingDraft.grandTotal || 0);
 }
 
 function createReceipt() {
@@ -2275,6 +2309,76 @@ export async function listBookings(
   });
 }
 
+export async function listBookingAccommodationOptions(
+  request: Request,
+  response: Response
+): Promise<void> {
+  const payload = parseRequestBody(
+    adminAccommodationOptionsPayloadSchema,
+    request.body
+  );
+  const departure = await TourDeparture.findOne({
+    departureId: payload.departureId,
+  });
+
+  if (!departure) {
+    throw new HttpError(400, `Departure ID ${payload.departureId} does not exist`);
+  }
+
+  const pricedDeparture = toPricedDeparture(departure);
+  const totalTravellers = payload.adultCount + payload.childDetails.length;
+  const departureValidation = validateDepartureForBooking(
+    pricedDeparture,
+    totalTravellers
+  );
+
+  if (!departureValidation.isValid) {
+    throw new HttpError(400, departureValidation.errors[0], departureValidation.errors);
+  }
+
+  const options = generateOccupancyOptions({
+    adults: payload.adultCount,
+    children: payload.childDetails.map((child, index) => ({
+      id: `child-${index + 1}`,
+      age: child.age,
+    })),
+    selectedDeparture: pricedDeparture,
+  }).map((option) => {
+    const snapshot = createPricingSnapshot({
+      accommodationOption: option,
+      departure: pricedDeparture,
+      gstPercentage: payload.gstPercentage,
+    });
+
+    return {
+      id: option.id,
+      title: option.title,
+      description: option.description || "",
+      total: option.total,
+      rooms: option.rooms,
+      pricingBreakdown: option.pricingBreakdown,
+      recommended: option.recommended || false,
+      requiresRoommateMatching: option.requiresRoommateMatching || false,
+      preferredSharingType: option.preferredSharingType || "",
+      subtotal: snapshot.subtotal,
+      gstPercentage: snapshot.gstPercentage,
+      gstAmount: snapshot.gstAmount,
+      grandTotal: snapshot.grandTotal,
+      depositAmount: snapshot.depositAmount,
+      balanceAmount: snapshot.balanceAmount,
+      balanceDueDate: snapshot.balanceDueDate,
+    };
+  });
+
+  response.status(200).json({
+    success: true,
+    message: "Accommodation options fetched successfully",
+    data: {
+      options,
+    },
+  });
+}
+
 export async function createBooking(
   request: Request,
   response: Response
@@ -2314,10 +2418,16 @@ export async function createBooking(
           );
         }
 
+        const bookingDraft = createBookingDraft(payload, snapshotPayload);
         const createdBookings = await Booking.create(
           [
             {
-              ...createBookingDraft(payload, snapshotPayload),
+              ...bookingDraft,
+              amountPaid: getAdminOfflineAmountPaid(bookingDraft),
+              paymentCapturedAt: new Date(),
+              paymentCurrency: PAYMENT_CURRENCY,
+              paymentMethod: payload.paymentMethod,
+              paymentStatus: "paid",
             },
           ],
           {
@@ -2331,7 +2441,21 @@ export async function createBooking(
       await session.endSession();
     }
   } else {
-    booking = await Booking.create(payload);
+    const amountPaid = Math.round(payload.amountPaid || 0);
+
+    booking = await Booking.create({
+      ...payload,
+      amountPaid,
+      paymentCapturedAt: amountPaid > 0 ? new Date() : null,
+      paymentCurrency: PAYMENT_CURRENCY,
+      paymentMethod: payload.paymentMethod,
+      paymentStatus: amountPaid > 0 ? "paid" : "pending",
+    });
+  }
+
+  if (booking.paymentStatus === "paid") {
+    await sendBookingConfirmationWhatsappIfNeeded(booking);
+    await sendBookingConfirmationEmailIfNeeded(booking);
   }
 
   response.status(201).json({
@@ -2423,8 +2547,52 @@ export async function deleteBooking(
   request: Request,
   response: Response
 ): Promise<void> {
+  const session = await mongoose.startSession();
+
   try {
-    const booking = await Booking.findByIdAndDelete(request.params.id);
+    let booking: BookingDocument | null = null;
+
+    await session.withTransaction(async () => {
+      booking = await Booking.findByIdAndDelete(request.params.id).session(
+        session
+      );
+
+      if (!booking) {
+        throw new HttpError(404, "Booking not found");
+      }
+
+      if (shouldRestoreDeletedBookingSeats(booking)) {
+        await TourDeparture.updateOne(
+          {
+            departureId: booking.departureId,
+          },
+          {
+            $inc: {
+              seatsAvailable: booking.totalGuest,
+            },
+          },
+          {
+            session,
+          }
+        );
+      }
+
+      await BookingPaymentSession.updateMany(
+        {
+          bookingId: booking._id,
+          status: "pending",
+        },
+        {
+          $set: {
+            failureReason: "Booking deleted before payment completion",
+            status: "expired",
+          },
+        },
+        {
+          session,
+        }
+      );
+    });
 
     if (!booking) {
       throw new HttpError(404, "Booking not found");
@@ -2443,5 +2611,7 @@ export async function deleteBooking(
     }
 
     throw error;
+  } finally {
+    await session.endSession();
   }
 }

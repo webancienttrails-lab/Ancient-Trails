@@ -16,6 +16,7 @@ import { adminBlogRoutes, publicBlogRoutes } from "./routes/blog.routes";
 import bookingRoutes, { publicBookingRoutes } from "./routes/booking.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import destinationRoutes from "./routes/destination.routes";
+import enquiryRoutes from "./routes/enquiry.routes";
 import experienceRoutes from "./routes/experience.routes";
 import expertRoutes, { publicExpertRoutes } from "./routes/expert.routes";
 import {
@@ -34,6 +35,7 @@ import {
   publicTourCalendarPageRoutes,
 } from "./routes/tourCalendarPage.routes";
 import tourRoutes from "./routes/tour.routes";
+import userRoutes from "./routes/user.routes";
 import { HttpError } from "./utils/httpError";
 
 const app = express();
@@ -195,6 +197,8 @@ app.use("/api/experts", publicExpertRoutes);
 app.use("/api/bookings", publicBookingRoutes);
 app.use("/api/admin/dashboard", dashboardRoutes);
 app.use("/api/admin/bookings", bookingRoutes);
+app.use("/api/admin/enquiries", enquiryRoutes);
+app.use("/api/admin/users", userRoutes);
 app.use("/api/admin/destinations", destinationRoutes);
 app.use("/api/admin/experiences", experienceRoutes);
 app.use("/api/admin/experts", expertRoutes);

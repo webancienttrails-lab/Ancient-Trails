@@ -53,6 +53,7 @@ export interface IBooking {
   tourId: string;
   departureId?: string;
   selectedAccommodationOptionId?: string;
+  paymentOption?: "advance" | "full";
   totalGuest: number;
   adultCount: number;
   childCount: number;
@@ -69,6 +70,7 @@ export interface IBooking {
   balanceAmount?: number;
   balanceDueDate?: Date | null;
   paymentStatus?: "pending" | "paid" | "failed" | "refunded";
+  paymentMethod?: "cash" | "cheque" | "neft" | "razorpay";
   paymentProvider?: "razorpay";
   paymentOrderId?: string;
   paymentId?: string;
@@ -291,6 +293,11 @@ const bookingSchema = new Schema<IBooking>(
       ...trimmedString,
       maxlength: 200,
     },
+    paymentOption: {
+      type: String,
+      enum: ["advance", "full"],
+      default: "advance",
+    },
     totalGuest: {
       ...nonNegativeNumber,
       min: 1,
@@ -366,6 +373,11 @@ const bookingSchema = new Schema<IBooking>(
       type: String,
       enum: ["pending", "paid", "failed", "refunded"],
       default: "pending",
+    },
+    paymentMethod: {
+      type: String,
+      enum: ["cash", "cheque", "neft", "razorpay"],
+      default: undefined,
     },
     paymentProvider: {
       type: String,

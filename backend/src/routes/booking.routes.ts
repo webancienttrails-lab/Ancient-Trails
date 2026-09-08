@@ -8,6 +8,7 @@ import {
   createBookingPaymentOrder,
   deleteBooking,
   getBookingConfirmation,
+  listBookingAccommodationOptions,
   listBookings,
   listTravellerBookings,
   updateBooking,
@@ -31,6 +32,7 @@ const router = Router();
 router.use(requireAdmin);
 
 router.get("/", listBookings);
+router.post("/accommodation-options", listBookingAccommodationOptions);
 router.patch("/:id/archive", archiveBooking);
 router.patch("/:id", updateBooking);
 router.delete("/:id", deleteBooking);

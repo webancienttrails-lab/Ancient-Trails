@@ -7,6 +7,8 @@ import {
 } from "mongoose";
 
 export enum UserRole {
+  EXPERT = "expert",
+  STAFF = "staff",
   TRAVELLER = "traveller",
   SUPER_ADMIN = "super_admin",
 }
@@ -99,6 +101,8 @@ const userSchema = new Schema<IUser>(
           return roles.every(
             (role) =>
               role === UserRole.TRAVELLER ||
+              role === UserRole.EXPERT ||
+              role === UserRole.STAFF ||
               role === UserRole.SUPER_ADMIN ||
               role === "admin" ||
               role.endsWith("_admin")

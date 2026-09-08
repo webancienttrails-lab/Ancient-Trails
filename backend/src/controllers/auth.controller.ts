@@ -218,7 +218,13 @@ function getAdminDisplayName() {
 }
 
 function isAdminRole(role: string): boolean {
-  return role === "admin" || role === UserRole.SUPER_ADMIN || role.endsWith("_admin");
+  return (
+    role === "admin" ||
+    role === "expert" ||
+    role === "staff" ||
+    role === UserRole.SUPER_ADMIN ||
+    role.endsWith("_admin")
+  );
 }
 
 export async function loginAdminWithPassword(

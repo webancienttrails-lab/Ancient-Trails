@@ -6,6 +6,7 @@ import multer from "multer";
 import { z } from "zod";
 
 import { Booking } from "../models/booking.model";
+import { BookingPaymentSession } from "../models/bookingPaymentSession.model";
 import { Destination } from "../models/destination.model";
 import { Tour, type TourDocument } from "../models/tour.model";
 import {
@@ -446,15 +447,29 @@ function formatTour(tour: TourDocument) {
   };
 }
 
+type DepartureSeatCounts = {
+  filledSeats: number;
+  reservedSeats: number;
+};
+
+function normalizeSeatCount(value: number | undefined) {
+  return Math.max(0, Math.trunc(value || 0));
+}
+
 function formatTourDeparture(
   departure: TourDepartureDocument,
-  filledSeats = 0
+  seatCounts?: DepartureSeatCounts
 ) {
-  const normalizedFilledSeats = Math.max(0, Math.trunc(filledSeats));
+  const normalizedFilledSeats = normalizeSeatCount(seatCounts?.filledSeats);
+  const normalizedReservedSeats = Math.max(
+    normalizedFilledSeats,
+    normalizeSeatCount(seatCounts?.reservedSeats)
+  );
   const totalSeats = Math.max(
     departure.seatsAvailable,
-    departure.seatsAvailable + normalizedFilledSeats
+    departure.seatsAvailable + normalizedReservedSeats
   );
+  const seatsAvailable = Math.max(0, totalSeats - normalizedFilledSeats);
 
   return {
     id: departure._id.toString(),
@@ -463,7 +478,7 @@ function formatTourDeparture(
     destinationId: departure.destinationId || "",
     departureDate: departure.departureDate,
     returnDate: departure.returnDate,
-    seatsAvailable: departure.seatsAvailable,
+    seatsAvailable,
     filledSeats: normalizedFilledSeats,
     totalSeats,
     priceAdult: departure.priceAdult,
@@ -497,19 +512,18 @@ function formatTourDeparture(
   };
 }
 
-async function getFilledSeatsByDepartureId(departureIds: string[]) {
+async function getSeatCountsByDepartureId(departureIds: string[]) {
   if (departureIds.length === 0) {
-    return new Map<string, number>();
+    return new Map<string, DepartureSeatCounts>();
   }
 
-  const filledSeats = await Booking.aggregate<{
+  const bookingSeatCounts = await Booking.aggregate<{
     _id: string;
     filledSeats: number;
+    reservedSeats: number;
   }>([
     {
       $match: {
-        amountPaid: { $gt: 0 },
-        paymentStatus: "paid",
         $or: [
           { departureId: { $in: departureIds } },
           { "pricingSnapshot.departureId": { $in: departureIds } },
@@ -535,6 +549,15 @@ async function getFilledSeatsByDepartureId(departureIds: string[]) {
           ],
         },
         totalGuest: 1,
+        isPaid: {
+          $and: [
+            { $eq: ["$paymentStatus", "paid"] },
+            { $gt: ["$amountPaid", 0] },
+          ],
+        },
+        hasActiveReservation: {
+          $in: ["$paymentStatus", ["paid", "pending"]],
+        },
       },
     },
     {
@@ -545,17 +568,90 @@ async function getFilledSeatsByDepartureId(departureIds: string[]) {
     {
       $group: {
         _id: "$departureId",
-        filledSeats: { $sum: "$totalGuest" },
+        filledSeats: {
+          $sum: {
+            $cond: ["$isPaid", "$totalGuest", 0],
+          },
+        },
+        reservedSeats: {
+          $sum: {
+            $cond: ["$hasActiveReservation", "$totalGuest", 0],
+          },
+        },
+      },
+    },
+  ]);
+  const orphanPaymentSessionSeatCounts = await BookingPaymentSession.aggregate<{
+    _id: string;
+    reservedSeats: number;
+  }>([
+    {
+      $match: {
+        status: "pending",
+        "bookingDraft.departureId": { $in: departureIds },
+      },
+    },
+    {
+      $lookup: {
+        from: "bookings",
+        let: {
+          bookingId: "$bookingId",
+          orderId: "$razorpayOrderId",
+        },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $or: [
+                  { $eq: ["$_id", "$$bookingId"] },
+                  { $eq: ["$paymentOrderId", "$$orderId"] },
+                ],
+              },
+            },
+          },
+          {
+            $limit: 1,
+          },
+        ],
+        as: "booking",
+      },
+    },
+    {
+      $match: {
+        booking: { $eq: [] },
+      },
+    },
+    {
+      $group: {
+        _id: "$bookingDraft.departureId",
+        reservedSeats: { $sum: "$bookingDraft.totalGuest" },
       },
     },
   ]);
 
-  return new Map(
-    filledSeats.map((item) => [
-      item._id,
-      Math.max(0, Math.trunc(item.filledSeats || 0)),
-    ])
-  );
+  const seatCountsByDepartureId = new Map<string, DepartureSeatCounts>();
+
+  bookingSeatCounts.forEach((item) => {
+    seatCountsByDepartureId.set(item._id, {
+      filledSeats: normalizeSeatCount(item.filledSeats),
+      reservedSeats: normalizeSeatCount(item.reservedSeats),
+    });
+  });
+
+  orphanPaymentSessionSeatCounts.forEach((item) => {
+    const currentCounts = seatCountsByDepartureId.get(item._id) || {
+      filledSeats: 0,
+      reservedSeats: 0,
+    };
+
+    seatCountsByDepartureId.set(item._id, {
+      ...currentCounts,
+      reservedSeats:
+        currentCounts.reservedSeats + normalizeSeatCount(item.reservedSeats),
+    });
+  });
+
+  return seatCountsByDepartureId;
 }
 
 function formatTourItinerary(itinerary: TourItineraryDocument) {
@@ -1055,7 +1151,7 @@ export async function listTourDepartures(
   const departures = await TourDeparture.find(filters)
     .sort({ departureDate: 1, createdAt: -1 })
     .limit(300);
-  const filledSeatsByDepartureId = await getFilledSeatsByDepartureId(
+  const seatCountsByDepartureId = await getSeatCountsByDepartureId(
     departures.map((departure) => departure.departureId)
   );
 
@@ -1066,7 +1162,7 @@ export async function listTourDepartures(
       departures: departures.map((departure) =>
         formatTourDeparture(
           departure,
-          filledSeatsByDepartureId.get(departure.departureId) || 0
+          seatCountsByDepartureId.get(departure.departureId)
         )
       ),
     },
