@@ -442,10 +442,10 @@ export function AdminDashboardShell({
               "fixed top-10 z-[60]",
 
               /*
-               * Sidebar expanded width = 320px
+               * Sidebar expanded width = 256px
                * Toggle width = 44px
                *
-               * 320 - 22 = 298px
+               * 256 - 22 = 234px
                *
                * Sidebar collapsed width = 80px
                * 80 - 22 = 58px
@@ -457,7 +457,7 @@ export function AdminDashboardShell({
 
               isSidebarCollapsed
                 ? "lg:left-[58px]"
-                : "lg:left-[298px]"
+                : "lg:left-[234px]"
             )}
           />
 
@@ -475,7 +475,7 @@ export function AdminDashboardShell({
 
               isSidebarCollapsed
                 ? "lg:ml-20"
-                : "lg:ml-80",
+                : "lg:ml-64",
 
               contentClassName
             )}

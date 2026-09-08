@@ -1,7 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bell,
   CheckCircle2,
@@ -9,12 +9,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
-  Eye,
   Filter,
   Mail,
   MessageCircle,
   MoreHorizontal,
+  Pencil,
   Plus,
+  Save,
   Search,
   XCircle,
   type LucideIcon,
@@ -42,6 +43,12 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { shouldOpenTableRow } from "@/lib/table-row-click";
 import { cn } from "@/lib/utils";
+import {
+  createAdminEnquiry,
+  listAdminEnquiries,
+  updateAdminEnquiry,
+  type EnquiryPayload,
+} from "@/lib/enquiries";
 
 type EnquiryMetric = {
   label: string;
@@ -65,193 +72,8 @@ type EnquiryRecord = {
   status: "New" | "In Progress" | "Replied" | "Closed";
   date: string;
   time: string;
+  createdAt: string;
 };
-
-const enquiryMetrics: EnquiryMetric[] = [
-  {
-    label: "Total Enquiries",
-    value: "289",
-    trend: "+12.3% from Jun 2026",
-    trendClassName: "text-emerald-600",
-    icon: MessageCircle,
-    tone: "bg-primary/10 text-primary",
-  },
-  {
-    label: "New Enquiries",
-    value: "98",
-    trend: "+8.5% from Jun 2026",
-    trendClassName: "text-emerald-600",
-    icon: Mail,
-    tone: "bg-emerald-100 text-emerald-700",
-  },
-  {
-    label: "In Progress",
-    value: "121",
-    trend: "+10.2% from Jun 2026",
-    trendClassName: "text-emerald-600",
-    icon: Clock3,
-    tone: "bg-amber-100 text-amber-700",
-  },
-  {
-    label: "Replied",
-    value: "45",
-    trend: "+5.6% from Jun 2026",
-    trendClassName: "text-emerald-600",
-    icon: CheckCircle2,
-    tone: "bg-violet-100 text-violet-700",
-  },
-  {
-    label: "Closed",
-    value: "25",
-    trend: "-2.1% from Jun 2026",
-    trendClassName: "text-red-600",
-    icon: XCircle,
-    tone: "bg-red-100 text-red-700",
-  },
-];
-
-const enquiries: EnquiryRecord[] = [
-  {
-    id: "ENQ289",
-    initials: "RS",
-    avatarTone: "bg-[#7a3b22]",
-    name: "Rahul Sharma",
-    email: "rahul.sharma@gmail.com",
-    phone: "+91 98765 43210",
-    subject: "Custom Tour Package",
-    message: "Looking for a 7-day heritage tour across Karnataka.",
-    source: "Website",
-    status: "In Progress",
-    date: "31-07-2026",
-    time: "10:30 AM",
-  },
-  {
-    id: "ENQ288",
-    initials: "PM",
-    avatarTone: "bg-primary",
-    name: "Priya Mehta",
-    email: "priya.mehta@gmail.com",
-    phone: "+91 87654 32109",
-    subject: "Group Booking",
-    message: "Planning a trip for 15 people.",
-    source: "Contact Form",
-    status: "New",
-    date: "31-07-2026",
-    time: "09:15 AM",
-  },
-  {
-    id: "ENQ287",
-    initials: "AV",
-    avatarTone: "bg-[#7a3b22]",
-    name: "Arjun Verma",
-    email: "arjun.verma@gmail.com",
-    phone: "+91 76543 21098",
-    subject: "Hampi Tour Details",
-    message: "Need detailed itinerary and price.",
-    source: "Website",
-    status: "Replied",
-    date: "30-07-2026",
-    time: "08:45 PM",
-  },
-  {
-    id: "ENQ286",
-    initials: "SI",
-    avatarTone: "bg-amber-600",
-    name: "Sneha Iyer",
-    email: "sneha.iyer@gmail.com",
-    phone: "+91 65432 10987",
-    subject: "Photography Tour",
-    message: "Interested in heritage and photography tour.",
-    source: "Email",
-    status: "In Progress",
-    date: "30-07-2026",
-    time: "06:20 PM",
-  },
-  {
-    id: "ENQ285",
-    initials: "KP",
-    avatarTone: "bg-[#7a3b22]",
-    name: "Karan Patel",
-    email: "karan.patel@gmail.com",
-    phone: "+91 54321 09876",
-    subject: "General Inquiry",
-    message: "Want to know more about Badami tours.",
-    source: "Phone Call",
-    status: "Closed",
-    date: "29-07-2026",
-    time: "04:10 PM",
-  },
-  {
-    id: "ENQ284",
-    initials: "DN",
-    avatarTone: "bg-emerald-700",
-    name: "Divya Nair",
-    email: "divya.nair@gmail.com",
-    phone: "+91 99887 76655",
-    subject: "Temple Architecture",
-    message: "Need expert-led tour options for South Indian temples.",
-    source: "Website",
-    status: "New",
-    date: "29-07-2026",
-    time: "01:25 PM",
-  },
-  {
-    id: "ENQ283",
-    initials: "AM",
-    avatarTone: "bg-violet-700",
-    name: "Amit Mishra",
-    email: "amit.mishra@gmail.com",
-    phone: "+91 88776 65544",
-    subject: "Family Departure",
-    message: "Checking child pricing and available departures.",
-    source: "Contact Form",
-    status: "Replied",
-    date: "28-07-2026",
-    time: "11:40 AM",
-  },
-  {
-    id: "ENQ282",
-    initials: "NT",
-    avatarTone: "bg-sky-700",
-    name: "Nisha Trivedi",
-    email: "nisha.trivedi@gmail.com",
-    phone: "+91 77665 54433",
-    subject: "Festival Tour",
-    message: "Looking for departures around winter heritage festivals.",
-    source: "Email",
-    status: "In Progress",
-    date: "28-07-2026",
-    time: "10:05 AM",
-  },
-  {
-    id: "ENQ281",
-    initials: "VG",
-    avatarTone: "bg-primary",
-    name: "Vikram Gupta",
-    email: "vikram.gupta@gmail.com",
-    phone: "+91 66554 43322",
-    subject: "Private Guide",
-    message: "Need a private guide for Badami and Aihole.",
-    source: "Phone Call",
-    status: "Closed",
-    date: "27-07-2026",
-    time: "06:50 PM",
-  },
-  {
-    id: "ENQ280",
-    initials: "MR",
-    avatarTone: "bg-[#7a3b22]",
-    name: "Meera Rao",
-    email: "meera.rao@gmail.com",
-    phone: "+91 55443 32211",
-    subject: "Senior Citizen Tour",
-    message: "Need comfortable pacing and accommodation details.",
-    source: "Website",
-    status: "New",
-    date: "27-07-2026",
-    time: "02:15 PM",
-  },
-];
 
 const statusOptions = ["All Status", "New", "In Progress", "Replied", "Closed"];
 const sourceOptions = [
@@ -263,12 +85,62 @@ const sourceOptions = [
 ];
 const dateRangeOptions = ["All Time", "Today", "This Week", "This Month"];
 
+function createEmptyEnquiry(): EnquiryPayload {
+  return {
+    name: "",
+    email: "",
+    phone: "",
+    subject: "",
+    message: "",
+    source: "Website",
+    status: "New",
+  };
+}
+
+function toEnquiryRecord(enquiry: import("@/lib/enquiries").AdminEnquiry): EnquiryRecord {
+  const createdAt = new Date(enquiry.createdAt);
+
+  return {
+    ...enquiry,
+    initials: enquiry.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
+    avatarTone: "bg-primary",
+    date: createdAt.toLocaleDateString("en-GB"),
+    time: createdAt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+    createdAt: createdAt.toISOString(),
+  };
+}
+
 export default function EnquiriesPage() {
   const toast = useToast();
+  const [enquiries, setEnquiries] = useState<EnquiryRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingEnquiry, setEditingEnquiry] = useState<EnquiryRecord | null>(null);
+  const [form, setForm] = useState<EnquiryPayload>(createEmptyEnquiry());
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("All Status");
   const [selectedSource, setSelectedSource] = useState("All Sources");
   const [selectedDateRange, setSelectedDateRange] = useState("All Time");
+
+  async function loadEnquiries() {
+    try {
+      const response = await listAdminEnquiries();
+      setEnquiries(response.data.enquiries.map(toEnquiryRecord));
+    } catch (error) {
+      toast.error("Unable to load enquiries", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void listAdminEnquiries()
+      .then((response) => setEnquiries(response.data.enquiries.map(toEnquiryRecord)))
+      .catch((error: unknown) => {
+        toast.error("Unable to load enquiries", error instanceof Error ? error.message : "Please try again.");
+      })
+      .finally(() => setIsLoading(false));
+  }, [toast]);
 
   const filteredEnquiries = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -296,23 +168,83 @@ export default function EnquiriesPage() {
 
       return matchesSearch && matchesStatus && matchesSource;
     });
-  }, [searchQuery, selectedSource, selectedStatus]);
+  }, [enquiries, searchQuery, selectedSource, selectedStatus]);
+
+  const enquiryMetrics: EnquiryMetric[] = [
+    ["Total Enquiries", enquiries.length, MessageCircle, "bg-primary/10 text-primary"],
+    ["New Enquiries", enquiries.filter((item) => item.status === "New").length, Mail, "bg-emerald-100 text-emerald-700"],
+    ["In Progress", enquiries.filter((item) => item.status === "In Progress").length, Clock3, "bg-amber-100 text-amber-700"],
+    ["Replied", enquiries.filter((item) => item.status === "Replied").length, CheckCircle2, "bg-violet-100 text-violet-700"],
+    ["Closed", enquiries.filter((item) => item.status === "Closed").length, XCircle, "bg-red-100 text-red-700"],
+  ].map(([label, value, icon, tone]) => ({
+    label: String(label),
+    value: String(value),
+    trend: "",
+    trendClassName: "",
+    icon: icon as LucideIcon,
+    tone: String(tone),
+  }));
+
+  function openAddForm() {
+    setEditingEnquiry(null);
+    setForm(createEmptyEnquiry());
+    setIsFormOpen(true);
+  }
+
+  function openEditForm(enquiry: EnquiryRecord) {
+    setEditingEnquiry(enquiry);
+    setForm({
+      name: enquiry.name,
+      email: enquiry.email,
+      phone: enquiry.phone,
+      subject: enquiry.subject,
+      message: enquiry.message,
+      source: enquiry.source,
+      status: enquiry.status,
+    });
+    setIsFormOpen(true);
+  }
+
+  async function saveEnquiry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      if (editingEnquiry) {
+        await updateAdminEnquiry(editingEnquiry.id, form);
+      } else {
+        await createAdminEnquiry(form);
+      }
+      setIsFormOpen(false);
+      await loadEnquiries();
+      toast.success("Enquiry saved", "The enquiry was saved successfully.");
+    } catch (error) {
+      toast.error("Unable to save enquiry", error instanceof Error ? error.message : "Please try again.");
+    }
+  }
+
+  function exportEnquiries() {
+    const header = ["Name", "Email", "Phone", "Subject", "Source", "Status", "Date"];
+    const rows = filteredEnquiries.map((item) => [item.name, item.email, item.phone, item.subject, item.source, item.status, item.createdAt]);
+    const csv = [header, ...rows].map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "enquiries.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <AdminDashboardShell activeLabel="Enquiries">
       <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-5">
-        <EnquiriesHeader />
+        <EnquiriesHeader onAdd={openAddForm} />
 
         <div className="flex justify-end">
           <Button
             type="button"
-            onClick={() =>
-              toast.info("Export Enquiries", "Enquiry export is ready.")
-            }
+            onClick={exportEnquiries}
             className="h-11 rounded-sm px-4 text-xs font-bold"
           >
-            <Plus className="size-4" data-icon="inline-start" />
-            Export Enquiries
+            <span>Export Enquiries</span>
           </Button>
         </div>
 
@@ -336,14 +268,15 @@ export default function EnquiriesPage() {
             onSourceChange={setSelectedSource}
             onStatusChange={setSelectedStatus}
           />
-          <EnquiriesTable enquiries={filteredEnquiries} />
+          <EnquiriesTable enquiries={filteredEnquiries} isLoading={isLoading} onEdit={openEditForm} />
         </section>
       </div>
+      {isFormOpen ? <EnquiryForm editing={Boolean(editingEnquiry)} form={form} onChange={setForm} onClose={() => setIsFormOpen(false)} onSubmit={saveEnquiry} /> : null}
     </AdminDashboardShell>
   );
 }
 
-function EnquiriesHeader() {
+function EnquiriesHeader({ onAdd }: { onAdd: () => void }) {
   const toast = useToast();
 
   return (
@@ -363,6 +296,10 @@ function EnquiriesHeader() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
+        <Button type="button" onClick={onAdd} className="h-10 rounded-sm px-3 text-xs font-bold">
+          <Plus className="size-4" data-icon="inline-start" />
+          Add Enquiry
+        </Button>
         <button
           onClick={() =>
             toast.info("Notifications", "You have 3 enquiry notifications.")
@@ -520,7 +457,15 @@ function FilterSelect({
   );
 }
 
-function EnquiriesTable({ enquiries }: { enquiries: EnquiryRecord[] }) {
+function EnquiriesTable({
+  enquiries,
+  isLoading,
+  onEdit,
+}: {
+  enquiries: EnquiryRecord[];
+  isLoading: boolean;
+  onEdit: (enquiry: EnquiryRecord) => void;
+}) {
   const toast = useToast();
 
   return (
@@ -548,7 +493,13 @@ function EnquiriesTable({ enquiries }: { enquiries: EnquiryRecord[] }) {
             </tr>
           </thead>
           <tbody>
-            {enquiries.length ? (
+            {isLoading ? (
+              <tr>
+                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={7}>
+                  Loading enquiries...
+                </td>
+              </tr>
+            ) : enquiries.length ? (
               enquiries.map((enquiry) => (
                 <tr
                   key={enquiry.id}
@@ -632,7 +583,7 @@ function EnquiriesTable({ enquiries }: { enquiries: EnquiryRecord[] }) {
                     </span>
                   </td>
                   <td data-actions data-label="Actions" className="px-4 py-4">
-                    <EnquiryActions enquiry={enquiry} />
+                    <EnquiryActions enquiry={enquiry} onEdit={onEdit} />
                   </td>
                 </tr>
               ))
@@ -652,30 +603,16 @@ function EnquiriesTable({ enquiries }: { enquiries: EnquiryRecord[] }) {
 
       <div className="flex flex-col gap-3 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-foreground/55">
-          Showing {enquiries.length ? `1 to ${enquiries.length}` : "0"} of 289
+          Showing {enquiries.length ? `1 to ${enquiries.length}` : "0"} of {enquiries.length}
           enquiries
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <PaginationButton label="First page" disabled>
-            <span className="text-sm leading-none">&lt;&lt;</span>
-          </PaginationButton>
+        <div className="flex items-center gap-2">
           <PaginationButton label="Previous page" disabled>
             <ChevronLeft className="size-4" />
           </PaginationButton>
-          {[1, 2, 3, 4, 5].map((page) => (
-            <PaginationButton key={page} label={`Page ${page}`} active={page === 1}>
-              {page}
-            </PaginationButton>
-          ))}
-          <PaginationButton label="More pages">
-            <span className="text-xs leading-none">...</span>
-          </PaginationButton>
-          <PaginationButton label="Page 29">29</PaginationButton>
-          <PaginationButton label="Next page">
+          <PaginationButton label="Page 1" active disabled>1</PaginationButton>
+          <PaginationButton label="Next page" disabled>
             <ChevronRight className="size-4" />
-          </PaginationButton>
-          <PaginationButton label="Last page">
-            <span className="text-sm leading-none">&gt;&gt;</span>
           </PaginationButton>
         </div>
       </div>
@@ -683,7 +620,13 @@ function EnquiriesTable({ enquiries }: { enquiries: EnquiryRecord[] }) {
   );
 }
 
-function EnquiryActions({ enquiry }: { enquiry: EnquiryRecord }) {
+function EnquiryActions({
+  enquiry,
+  onEdit,
+}: {
+  enquiry: EnquiryRecord;
+  onEdit: (enquiry: EnquiryRecord) => void;
+}) {
   const toast = useToast();
 
   return (
@@ -705,11 +648,11 @@ function EnquiryActions({ enquiry }: { enquiry: EnquiryRecord }) {
           className="w-40 rounded-sm border border-border bg-white p-1 shadow-lg shadow-stone-200/70"
         >
           <DropdownMenuItem
-            onClick={() => toast.info(enquiry.subject, enquiry.message)}
+            onClick={() => onEdit(enquiry)}
             className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
           >
-            <Eye className="size-4 text-foreground/60" />
-            View
+            <Pencil className="size-4 text-foreground/60" />
+            Edit
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => toast.info("Reply", `Reply to ${enquiry.name}.`)}
@@ -734,6 +677,63 @@ function EnquiryActions({ enquiry }: { enquiry: EnquiryRecord }) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+    </div>
+  );
+}
+
+function EnquiryForm({
+  editing,
+  form,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  editing: boolean;
+  form: EnquiryPayload;
+  onChange: (form: EnquiryPayload) => void;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const update = (field: keyof EnquiryPayload, value: string) => {
+    onChange({ ...form, [field]: value } as EnquiryPayload);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/35 p-4">
+      <form onSubmit={onSubmit} className="grid w-full max-w-2xl gap-4 rounded-sm border border-border bg-white p-5 shadow-xl">
+        <div className="flex items-center justify-between border-b border-border pb-3">
+          <h2 className="text-lg font-bold">{editing ? "Edit Enquiry" : "Add Enquiry"}</h2>
+          <button type="button" onClick={onClose} className="text-sm font-semibold text-foreground/55 hover:text-foreground">Close</button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {(["name", "email", "phone", "subject"] as const).map((field) => (
+            <label key={field} className="grid gap-1.5 text-xs font-semibold capitalize">
+              {field}
+              <input required value={form[field]} onChange={(event) => update(field, event.target.value)} className="h-10 rounded-sm border border-border px-3 outline-none focus:border-primary" />
+            </label>
+          ))}
+          <label className="grid gap-1.5 text-xs font-semibold">
+            Source
+            <select value={form.source} onChange={(event) => update("source", event.target.value)} className="h-10 rounded-sm border border-border px-3">
+              {sourceOptions.slice(1).map((source) => <option key={source}>{source}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-1.5 text-xs font-semibold">
+            Status
+            <select value={form.status} onChange={(event) => update("status", event.target.value)} className="h-10 rounded-sm border border-border px-3">
+              {statusOptions.slice(1).map((status) => <option key={status}>{status}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-1.5 text-xs font-semibold sm:col-span-2">
+            Message
+            <textarea value={form.message} onChange={(event) => update("message", event.target.value)} className="min-h-24 rounded-sm border border-border px-3 py-2 outline-none focus:border-primary" />
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border pt-3">
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="submit"><Save className="size-4" data-icon="inline-start" />Save Enquiry</Button>
+        </div>
+      </form>
     </div>
   );
 }

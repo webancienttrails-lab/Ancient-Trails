@@ -38,16 +38,22 @@ import { useToast } from "@/components/ui/toast";
 
 import {
   createAdminBooking,
+  listAdminBookingAccommodationOptions,
   listAdminBookings,
   updateAdminBooking,
   type AdminBooking,
+  type BookingAccommodationOption,
   type BookingAccommodationDetails,
   type BookingGuestDetails,
   type BookingPayload,
+  type BookingPaymentMethod,
+  type BookingPaymentOption,
 } from "@/lib/bookings";
 
 import {
+  listAdminTourDepartures,
   listAdminTours,
+  type AdminTourDeparture,
   type AdminTour,
 } from "@/lib/tours";
 
@@ -87,6 +93,11 @@ type BookingFormState = Omit<
   | "guestDetails"
   | "accommodationDetails"
 > & {
+  departureId: string;
+  selectedAccommodationOptionId: string;
+  paymentOption: BookingPaymentOption;
+  paymentMethod: BookingPaymentMethod;
+  amountPaid: string;
   totalGuest: string;
   adultCount: string;
   childCount: string;
@@ -128,6 +139,15 @@ const countryCodeOptions = [
   "+880",
 ];
 
+const paymentMethodOptions: Array<{
+  label: string;
+  value: BookingPaymentMethod;
+}> = [
+  { label: "Cash", value: "cash" },
+  { label: "Cheque", value: "cheque" },
+  { label: "NEFT", value: "neft" },
+];
+
 /* =========================================================
    EMPTY FORM
 ========================================================= */
@@ -143,7 +163,6 @@ function createEmptyGuestDetails(): BookingFormGuestDetails {
     dateOfBirth: "",
     gender: "Male",
     address: "",
-    panNumber: "",
   };
 }
 
@@ -158,6 +177,11 @@ function createEmptyBookingForm(
 ): BookingFormState {
   return {
     tourId,
+    departureId: "",
+    selectedAccommodationOptionId: "",
+    paymentOption: "advance",
+    paymentMethod: "cash",
+    amountPaid: "",
 
     totalGuest: "1",
     adultCount: "1",
@@ -351,9 +375,6 @@ function bookingGuestToForm(
 
     gender: guest.gender,
     address: guest.address,
-
-    panNumber:
-      guest.panNumber || "",
   };
 }
 
@@ -362,6 +383,16 @@ function bookingToForm(
 ): BookingFormState {
   return {
     tourId: booking.tourId,
+    departureId: booking.departureId || "",
+    selectedAccommodationOptionId:
+      booking.selectedAccommodationOptionId || "",
+    paymentOption: booking.paymentOption || "advance",
+    paymentMethod:
+      (booking.paymentMethod as BookingPaymentMethod) || "cash",
+    amountPaid:
+      booking.amountPaid && booking.amountPaid > 0
+        ? String(Math.round(booking.amountPaid))
+        : "",
 
     totalGuest: String(
       booking.totalGuest
@@ -455,6 +486,20 @@ function createBookingPayload(
   return {
     tourId:
       form.tourId.trim(),
+    departureId:
+      form.departureId.trim() ||
+      undefined,
+    selectedAccommodationOptionId:
+      form.selectedAccommodationOptionId.trim() ||
+      undefined,
+    paymentOption:
+      form.paymentOption,
+    paymentMethod:
+      form.paymentMethod,
+    amountPaid:
+      toWholeNumber(
+        form.amountPaid
+      ),
 
     totalGuest,
     adultCount,
@@ -515,10 +560,63 @@ function createBookingPayload(
 
             address:
               guest.address.trim(),
+          };
+        }
+      ),
 
-            panNumber:
-              guest.panNumber?.trim() ||
-              "",
+    travellers:
+      Array.from(
+        {
+          length:
+            totalGuest,
+        },
+        (_, index) => {
+          const guest =
+            form.guestDetails[
+              index
+            ] ||
+            createEmptyGuestDetails();
+          const isChild =
+            index >= adultCount;
+          const childIndex =
+            index - adultCount;
+
+          return {
+            id: isChild
+              ? `child-${
+                  childIndex + 1
+                }`
+              : `adult-${
+                  index + 1
+                }`,
+            type: isChild
+              ? "child"
+              : "adult",
+            title:
+              guest.title.trim(),
+            firstName:
+              guest.firstName.trim(),
+            lastName:
+              guest.lastName.trim(),
+            countryCode:
+              guest.countryCode.trim(),
+            mobileNumber:
+              guest.mobileNumber.trim(),
+            email:
+              guest.email.trim(),
+            dateOfBirth:
+              guest.dateOfBirth,
+            gender:
+              guest.gender.trim(),
+            address:
+              guest.address.trim(),
+            ageOnDeparture: isChild
+              ? toWholeNumber(
+                  form.childDetails[
+                    childIndex
+                  ]?.age || "0"
+                )
+              : undefined,
           };
         }
       ),
@@ -559,6 +657,7 @@ function createBookingPayload(
             .tripleOccupancy
         ),
     },
+    gstPercentage: 5,
   };
 }
 
@@ -686,6 +785,206 @@ export default function BookingInnerPage() {
   );
 }
 
+function formatCurrency(
+  value: number | null | undefined,
+  currency = "INR"
+): string {
+  return new Intl.NumberFormat("en-IN", {
+    currency,
+    maximumFractionDigits: 0,
+    style: "currency",
+  }).format(
+    Math.max(
+      0,
+      Math.round(
+        Number(value) || 0
+      )
+    )
+  );
+}
+
+function getPaymentOptionAmount(
+  option: BookingAccommodationOption | null,
+  paymentOption: BookingPaymentOption
+): string {
+  if (!option) {
+    return "";
+  }
+
+  const amount =
+    paymentOption === "full"
+      ? option.grandTotal
+      : option.depositAmount ||
+        option.grandTotal;
+
+  return amount > 0
+    ? String(Math.round(amount))
+    : "";
+}
+
+function AccommodationOptionCard({
+  onSelect,
+  option,
+  readOnly,
+  selected,
+}: {
+  onSelect: () => void;
+  option: BookingAccommodationOption;
+  readOnly: boolean;
+  selected: boolean;
+}) {
+  return (
+    <label
+      className={cn(
+        "grid cursor-pointer gap-3 rounded-sm border bg-background p-3 transition-colors sm:grid-cols-[22px_minmax(0,1fr)]",
+        readOnly && "cursor-default",
+        selected
+          ? "border-primary ring-3 ring-primary/15"
+          : "border-border hover:bg-muted/40"
+      )}
+    >
+      <input
+        checked={selected}
+        className="mt-1"
+        disabled={readOnly}
+        name="booking-accommodation"
+        onChange={onSelect}
+        type="radio"
+      />
+
+      <span className="min-w-0">
+        <span className="flex flex-wrap items-center justify-between gap-2">
+          <strong className="text-sm font-semibold text-foreground">
+            {option.title}
+          </strong>
+          <strong className="text-sm font-semibold text-foreground">
+            {formatCurrency(option.total)}
+          </strong>
+        </span>
+
+        <span className="mt-1 block text-xs font-medium text-foreground/60">
+          {option.description}
+        </span>
+
+        <span className="mt-2 flex flex-wrap gap-2">
+          {option.rooms.map((room) => (
+            <span
+              key={room.id}
+              className="inline-flex items-center rounded-sm border border-border bg-white px-2 py-1 text-xs font-medium text-foreground/70"
+            >
+              {room.title}: {room.bedSummary}
+            </span>
+          ))}
+        </span>
+      </span>
+    </label>
+  );
+}
+
+function AccommodationPriceBreakdown({
+  option,
+  paymentOption,
+}: {
+  option: BookingAccommodationOption;
+  paymentOption: BookingPaymentOption;
+}) {
+  const isFullPayment = paymentOption === "full";
+
+  return (
+    <div className="grid gap-2 rounded-sm border border-border bg-muted/35 px-4 py-3 text-xs text-foreground/70 sm:col-span-2">
+      <div className="flex items-center justify-between gap-4">
+        <span>Accommodation cost</span>
+        <span className="font-semibold text-foreground">
+          {formatCurrency(option.total)}
+        </span>
+      </div>
+
+      {option.rooms.flatMap((room) =>
+        room.allocations.map((allocation, index) => (
+          <div
+            className="flex items-center justify-between gap-4 pl-3 text-foreground/55"
+            key={`${room.id}-${allocation.label}-${index}`}
+          >
+            <span>
+              {room.title}: {allocation.label}
+            </span>
+            <span>{formatCurrency(allocation.price)}</span>
+          </div>
+        ))
+      )}
+
+      <div className="flex items-center justify-between gap-4">
+        <span>
+          GST ({option.gstPercentage}%)
+        </span>
+        <span>{formatCurrency(option.gstAmount)}</span>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 border-t border-border pt-2 font-bold text-foreground">
+        <span>Total</span>
+        <span>{formatCurrency(option.grandTotal)}</span>
+      </div>
+
+      {!isFullPayment ? (
+        <>
+          <div className="flex items-center justify-between gap-4">
+            <span>Advance payable</span>
+            <span>{formatCurrency(option.depositAmount)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span>Balance</span>
+            <span>{formatCurrency(option.balanceAmount)}</span>
+          </div>
+          {option.balanceDueDate ? (
+            <div className="flex items-center justify-between gap-4">
+              <span>Balance due date</span>
+              <span>{formatDatePickerValue(option.balanceDueDate)}</span>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function createAccommodationDetailsFromOption(
+  option: BookingAccommodationOption
+): BookingFormAccommodationDetails {
+  const singleRooms =
+    option.rooms.filter(
+      (room) => room.roomType === "single"
+    ).length;
+
+  return {
+    singleOccupancyOneRoom:
+      singleRooms === 1 ? "1" : "0",
+    singleOccupancyTwoRooms:
+      singleRooms > 1
+        ? String(singleRooms)
+        : "0",
+    doubleOccupancy: String(
+      option.rooms.filter(
+        (room) =>
+          room.roomType === "double"
+      ).length
+    ),
+    twinOccupancy: String(
+      option.rooms.filter(
+        (room) =>
+          room.roomType === "twin"
+      ).length
+    ),
+    tripleOccupancy: String(
+      option.rooms.filter(
+        (room) =>
+          room.roomType.startsWith(
+            "triple"
+          )
+      ).length
+    ),
+  };
+}
+
 function BookingInnerPageContent() {
   const router = useRouter();
   const pathname = usePathname();
@@ -739,6 +1038,30 @@ function BookingInnerPageContent() {
     useState<AdminTour[]>([]);
 
   const [
+    departures,
+    setDepartures,
+  ] =
+    useState<AdminTourDeparture[]>([]);
+
+  const [
+    selectedBooking,
+    setSelectedBooking,
+  ] =
+    useState<AdminBooking | null>(null);
+
+  const [
+    accommodationOptions,
+    setAccommodationOptions,
+  ] =
+    useState<BookingAccommodationOption[]>([]);
+
+  const [
+    accommodationError,
+    setAccommodationError,
+  ] =
+    useState("");
+
+  const [
     isLoading,
     setIsLoading,
   ] =
@@ -758,6 +1081,49 @@ function BookingInnerPageContent() {
 
   const isReadOnly =
     mode === "view";
+
+  const selectedTour = useMemo(
+    () =>
+      tours.find(
+        (tour) =>
+          tour.tourId ===
+          bookingForm.tourId
+      ) || null,
+    [bookingForm.tourId, tours]
+  );
+
+  const availableDepartures = useMemo(
+    () =>
+      departures.filter(
+        (departure) =>
+          departure.tourId ===
+          bookingForm.tourId
+      ),
+    [bookingForm.tourId, departures]
+  );
+
+  const selectedDeparture = useMemo(
+    () =>
+      departures.find(
+        (departure) =>
+          departure.departureId ===
+          bookingForm.departureId
+      ) || null,
+    [bookingForm.departureId, departures]
+  );
+
+  const selectedAccommodationOption = useMemo(
+    () =>
+      accommodationOptions.find(
+        (option) =>
+          option.id ===
+          bookingForm.selectedAccommodationOptionId
+      ) || null,
+    [
+      accommodationOptions,
+      bookingForm.selectedAccommodationOptionId,
+    ]
+  );
 
   /* =======================================================
      LOAD DATA
@@ -787,8 +1153,14 @@ function BookingInnerPageContent() {
         if (
           mode === "add"
         ) {
-          const toursResponse =
-            await listAdminTours();
+          const [
+            toursResponse,
+            departuresResponse,
+          ] =
+            await Promise.all([
+              listAdminTours(),
+              listAdminTourDepartures(),
+            ]);
 
           if (!isMounted) {
             return;
@@ -800,6 +1172,12 @@ function BookingInnerPageContent() {
           setTours(
             loadedTours
           );
+
+          setDepartures(
+            departuresResponse.data.departures
+          );
+
+          setSelectedBooking(null);
 
           setBookingForm(
             createEmptyBookingForm(
@@ -818,10 +1196,12 @@ function BookingInnerPageContent() {
         const [
           bookingsResponse,
           toursResponse,
+          departuresResponse,
         ] =
           await Promise.all([
             listAdminBookings(),
             listAdminTours(),
+            listAdminTourDepartures(),
           ]);
 
         if (!isMounted) {
@@ -833,6 +1213,10 @@ function BookingInnerPageContent() {
 
         setTours(
           loadedTours
+        );
+
+        setDepartures(
+          departuresResponse.data.departures
         );
 
         const booking =
@@ -854,6 +1238,10 @@ function BookingInnerPageContent() {
           bookingToForm(
             booking
           )
+        );
+
+        setSelectedBooking(
+          booking
         );
       } catch (error) {
         const message =
@@ -887,6 +1275,124 @@ function BookingInnerPageContent() {
     toast,
   ]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadAccommodationOptions() {
+      const adultCount =
+        toWholeNumber(
+          bookingForm.adultCount
+        );
+      const childCount =
+        toWholeNumber(
+          bookingForm.childCount
+        );
+
+      if (
+        !bookingForm.departureId ||
+        adultCount < 1
+      ) {
+        setAccommodationOptions([]);
+        setAccommodationError("");
+        return;
+      }
+
+      try {
+        setAccommodationError("");
+
+        const response =
+          await listAdminBookingAccommodationOptions(
+            {
+              departureId:
+                bookingForm.departureId,
+              adultCount,
+              childDetails: Array.from(
+                { length: childCount },
+                (_, index) => ({
+                  age: toWholeNumber(
+                    bookingForm.childDetails[
+                      index
+                    ]?.age || "0"
+                  ),
+                })
+              ),
+              gstPercentage: 5,
+            }
+          );
+
+        if (!isMounted) {
+          return;
+        }
+
+        const options =
+          response.data.options;
+
+        setAccommodationOptions(
+          options
+        );
+
+        if (
+          options.length > 0 &&
+          !options.some(
+            (option) =>
+              option.id ===
+              bookingForm.selectedAccommodationOptionId
+          )
+        ) {
+          setBookingForm(
+            (currentForm) => {
+              if (
+                currentForm.departureId !==
+                bookingForm.departureId
+              ) {
+                return currentForm;
+              }
+
+              const option =
+                options[0];
+
+              return {
+                ...currentForm,
+                selectedAccommodationOptionId:
+                  option.id,
+                accommodationDetails:
+                  createAccommodationDetailsFromOption(
+                    option
+                  ),
+                amountPaid:
+                  getPaymentOptionAmount(
+                    option,
+                    currentForm.paymentOption
+                  ),
+              };
+            }
+          );
+        }
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        setAccommodationOptions([]);
+        setAccommodationError(
+          getErrorMessage(error)
+        );
+      }
+    }
+
+    loadAccommodationOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    bookingForm.adultCount,
+    bookingForm.childCount,
+    bookingForm.childDetails,
+    bookingForm.departureId,
+    bookingForm.selectedAccommodationOptionId,
+  ]);
+
   /* =======================================================
      FORM UPDATES
   ======================================================= */
@@ -903,6 +1409,17 @@ function BookingInnerPageContent() {
           ...currentForm,
           [field]: value,
         };
+
+        if (field === "tourId") {
+          nextForm.departureId = "";
+          nextForm.selectedAccommodationOptionId = "";
+          nextForm.amountPaid = "";
+        }
+
+        if (field === "departureId") {
+          nextForm.selectedAccommodationOptionId = "";
+          nextForm.amountPaid = "";
+        }
 
         if (
           field ===
@@ -944,6 +1461,9 @@ function BookingInnerPageContent() {
               currentForm.childDetails,
               childCount
             );
+
+          nextForm.selectedAccommodationOptionId = "";
+          nextForm.amountPaid = "";
         }
 
         return nextForm;
@@ -1028,6 +1548,52 @@ function BookingInnerPageContent() {
     );
   }
 
+  function selectAccommodationOption(
+    option: BookingAccommodationOption
+  ) {
+    setBookingForm(
+      (currentForm) => ({
+        ...currentForm,
+        selectedAccommodationOptionId:
+          option.id,
+        accommodationDetails:
+          createAccommodationDetailsFromOption(
+            option
+          ),
+        amountPaid:
+          getPaymentOptionAmount(
+            option,
+            currentForm.paymentOption
+          ),
+      })
+    );
+  }
+
+  function updatePaymentOption(
+    value: BookingPaymentOption
+  ) {
+    setBookingForm(
+      (currentForm) => {
+        const option =
+          accommodationOptions.find(
+            (item) =>
+              item.id ===
+              currentForm.selectedAccommodationOptionId
+          ) || null;
+
+        return {
+          ...currentForm,
+          paymentOption: value,
+          amountPaid:
+            getPaymentOptionAmount(
+              option,
+              value
+            ),
+        };
+      }
+    );
+  }
+
   /* =======================================================
      SAVE
   ======================================================= */
@@ -1062,6 +1628,41 @@ function BookingInnerPageContent() {
       toast.error(
         "Invalid guests",
         "At least one guest is required."
+      );
+
+      return;
+    }
+
+    if (
+      !bookingForm.departureId
+    ) {
+      toast.error(
+        "Departure required",
+        "Select a tour departure for this booking."
+      );
+
+      return;
+    }
+
+    if (
+      !bookingForm.selectedAccommodationOptionId
+    ) {
+      toast.error(
+        "Accommodation required",
+        "Select an accommodation option for this booking."
+      );
+
+      return;
+    }
+
+    if (
+      toWholeNumber(
+        bookingForm.amountPaid
+      ) <= 0
+    ) {
+      toast.error(
+        "Payment amount required",
+        "Enter the amount collected now."
       );
 
       return;
@@ -1376,6 +1977,87 @@ function BookingInnerPageContent() {
                               {
                                 tour.tourName
                               }
+                            </span>
+                          </span>
+                        </SelectItem>
+                      )
+                    )}
+                  </SelectContent>
+                </Select>
+              </FormField>
+
+              <FormField
+                label="Departure"
+                required
+              >
+                <Select
+                  disabled={
+                    isReadOnly ||
+                    availableDepartures.length ===
+                      0
+                  }
+                  name="departureId"
+                  required
+                  value={
+                    bookingForm.departureId
+                  }
+                  onValueChange={(
+                    value
+                  ) =>
+                    updateBookingForm(
+                      "departureId",
+                      String(
+                        value ||
+                          ""
+                      )
+                    )
+                  }
+                >
+                  <SelectTrigger
+                    className={
+                      inputClassName
+                    }
+                  >
+                    <SelectValue
+                      placeholder={
+                        availableDepartures.length
+                          ? "Select departure"
+                          : "No departures available"
+                      }
+                    />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    {availableDepartures.map(
+                      (
+                        departure
+                      ) => (
+                        <SelectItem
+                          key={
+                            departure.id
+                          }
+                          value={
+                            departure.departureId
+                          }
+                        >
+                          <span className="flex min-w-max flex-col gap-0.5">
+                            <span>
+                              {
+                                departure.departureId
+                              }
+                            </span>
+                            <span className="text-xs text-foreground/55">
+                              {formatDatePickerValue(
+                                toDateInputValue(
+                                  departure.departureDate || ""
+                                )
+                              )}
+                              {" - "}
+                              {formatDatePickerValue(
+                                toDateInputValue(
+                                  departure.returnDate || ""
+                                )
+                              )}
                             </span>
                           </span>
                         </SelectItem>
@@ -1857,34 +2539,6 @@ function BookingInnerPageContent() {
                       </FormField>
 
                       <FormField
-                        label="PAN Number"
-                      >
-                        <input
-                          readOnly={
-                            isReadOnly
-                          }
-                          value={
-                            guest.panNumber ||
-                            ""
-                          }
-                          onChange={(
-                            event
-                          ) =>
-                            updateGuestDetails(
-                              index,
-                              "panNumber",
-                              event
-                                .target
-                                .value
-                            )
-                          }
-                          className={
-                            inputClassName
-                          }
-                        />
-                      </FormField>
-
-                      <FormField
                         className="sm:col-span-2"
                         label="Address"
                         required
@@ -1926,23 +2580,178 @@ function BookingInnerPageContent() {
                 Accommodation Details
               </FormSectionTitle>
 
-              <FormField label="Single Occupancy - 1 Room">
+              <div className="grid gap-3 sm:col-span-2">
+                {accommodationError ? (
+                  <div className="rounded-sm border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm font-semibold text-destructive">
+                    {accommodationError}
+                  </div>
+                ) : null}
+
+                {!bookingForm.departureId ? (
+                  <div className="rounded-sm border border-border bg-muted/20 px-4 py-3 text-sm font-semibold text-foreground/60">
+                    Select a departure to load accommodation options.
+                  </div>
+                ) : null}
+
+                {accommodationOptions.map(
+                  (option) => (
+                    <AccommodationOptionCard
+                      key={option.id}
+                      option={option}
+                      selected={
+                        bookingForm.selectedAccommodationOptionId ===
+                        option.id
+                      }
+                      readOnly={isReadOnly}
+                      onSelect={() =>
+                        selectAccommodationOption(
+                          option
+                        )
+                      }
+                    />
+                  )
+                )}
+              </div>
+
+              <FormSectionTitle>
+                Payment Details
+              </FormSectionTitle>
+
+              <FormField
+                label="Payment Method"
+                required
+              >
+                <Select
+                  disabled={isReadOnly}
+                  value={
+                    bookingForm.paymentMethod
+                  }
+                  onValueChange={(
+                    value
+                  ) =>
+                    updateBookingForm(
+                      "paymentMethod",
+                      value as BookingPaymentMethod
+                    )
+                  }
+                >
+                  <SelectTrigger
+                    className={
+                      inputClassName
+                    }
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    {paymentMethodOptions.map(
+                      (
+                        method
+                      ) => (
+                        <SelectItem
+                          key={
+                            method.value
+                          }
+                          value={
+                            method.value
+                          }
+                        >
+                          {
+                            method.label
+                          }
+                        </SelectItem>
+                      )
+                    )}
+                  </SelectContent>
+                </Select>
+              </FormField>
+
+              <FormField
+                label="Pay Now"
+                required
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={isReadOnly}
+                    aria-pressed={
+                      bookingForm.paymentOption ===
+                      "advance"
+                    }
+                    onClick={() =>
+                      updatePaymentOption(
+                        "advance"
+                      )
+                    }
+                    className={cn(
+                      "h-11 rounded-sm border px-3 text-sm font-bold transition-colors disabled:cursor-not-allowed",
+                      bookingForm.paymentOption ===
+                        "advance"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-white text-foreground/65 hover:border-primary/40"
+                    )}
+                  >
+                    <span>Advance</span>
+                    {selectedAccommodationOption ? (
+                      <span className="text-xs font-semibold">
+                        {formatCurrency(
+                          selectedAccommodationOption.depositAmount
+                        )}
+                      </span>
+                    ) : null}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isReadOnly}
+                    aria-pressed={
+                      bookingForm.paymentOption ===
+                      "full"
+                    }
+                    onClick={() =>
+                      updatePaymentOption(
+                        "full"
+                      )
+                    }
+                    className={cn(
+                      "h-11 rounded-sm border px-3 text-sm font-bold transition-colors disabled:cursor-not-allowed",
+                      bookingForm.paymentOption ===
+                        "full"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-white text-foreground/65 hover:border-primary/40"
+                    )}
+                  >
+                    <span>Full</span>
+                    {selectedAccommodationOption ? (
+                      <span className="text-xs font-semibold">
+                        {formatCurrency(
+                          selectedAccommodationOption.grandTotal
+                        )}
+                      </span>
+                    ) : null}
+                  </button>
+                </div>
+              </FormField>
+
+              <FormField
+                label="Amount Paid Now"
+                required
+              >
                 <input
-                  min={0}
+                  required
+                  min={1}
                   type="number"
                   readOnly={
                     isReadOnly
                   }
                   value={
-                    bookingForm
-                      .accommodationDetails
-                      .singleOccupancyOneRoom
+                    bookingForm.amountPaid
                   }
                   onChange={(
                     event
                   ) =>
-                    updateAccommodationDetails(
-                      "singleOccupancyOneRoom",
+                    updateBookingForm(
+                      "amountPaid",
                       event.target
                         .value
                     )
@@ -1953,113 +2762,12 @@ function BookingInnerPageContent() {
                 />
               </FormField>
 
-              <FormField label="Single Occupancy - 2 Rooms">
-                <input
-                  min={0}
-                  type="number"
-                  readOnly={
-                    isReadOnly
-                  }
-                  value={
-                    bookingForm
-                      .accommodationDetails
-                      .singleOccupancyTwoRooms
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    updateAccommodationDetails(
-                      "singleOccupancyTwoRooms",
-                      event.target
-                        .value
-                    )
-                  }
-                  className={
-                    inputClassName
-                  }
+              {selectedAccommodationOption ? (
+                <AccommodationPriceBreakdown
+                  option={selectedAccommodationOption}
+                  paymentOption={bookingForm.paymentOption}
                 />
-              </FormField>
-
-              <FormField label="Double Occupancy">
-                <input
-                  min={0}
-                  type="number"
-                  readOnly={
-                    isReadOnly
-                  }
-                  value={
-                    bookingForm
-                      .accommodationDetails
-                      .doubleOccupancy
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    updateAccommodationDetails(
-                      "doubleOccupancy",
-                      event.target
-                        .value
-                    )
-                  }
-                  className={
-                    inputClassName
-                  }
-                />
-              </FormField>
-
-              <FormField label="Twin Occupancy">
-                <input
-                  min={0}
-                  type="number"
-                  readOnly={
-                    isReadOnly
-                  }
-                  value={
-                    bookingForm
-                      .accommodationDetails
-                      .twinOccupancy
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    updateAccommodationDetails(
-                      "twinOccupancy",
-                      event.target
-                        .value
-                    )
-                  }
-                  className={
-                    inputClassName
-                  }
-                />
-              </FormField>
-
-              <FormField label="Triple Occupancy">
-                <input
-                  min={0}
-                  type="number"
-                  readOnly={
-                    isReadOnly
-                  }
-                  value={
-                    bookingForm
-                      .accommodationDetails
-                      .tripleOccupancy
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    updateAccommodationDetails(
-                      "tripleOccupancy",
-                      event.target
-                        .value
-                    )
-                  }
-                  className={
-                    inputClassName
-                  }
-                />
-              </FormField>
+              ) : null}
             </div>
 
             {/* ================================================= */}

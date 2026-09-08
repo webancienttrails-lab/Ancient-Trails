@@ -781,8 +781,8 @@ function TourThumb({
   return (
     <div
       className={cn(
-        "relative shrink-0 overflow-hidden rounded-sm bg-gradient-to-br",
-        size === "default" ? "h-12 w-16" : "h-9 w-12",
+        "relative shrink-0 overflow-hidden rounded-[10px] bg-gradient-to-br",
+        size === "default" ? "h-9 w-14" : "h-9 w-12",
         !imageUrl && fallbackClassName
       )}
     >

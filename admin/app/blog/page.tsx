@@ -671,6 +671,8 @@ function RowActions({
   onDelete: (blog: AdminBlog) => void;
   post: AdminBlog;
 }) {
+  const router = useRouter();
+
   return (
     <div className="flex justify-end">
       <DropdownMenu>
@@ -690,14 +692,14 @@ function RowActions({
           className="w-36 rounded-sm border border-border bg-white p-1 shadow-lg shadow-stone-200/70"
         >
           <DropdownMenuItem
-            render={<Link href={`/blog/view?id=${post.id}`} />}
+            onClick={() => router.push(`/blog/view?id=${encodeURIComponent(post.id)}`)}
             className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
           >
             <Eye className="size-4 text-foreground/60" />
             View
           </DropdownMenuItem>
           <DropdownMenuItem
-            render={<Link href={`/blog/edit?id=${post.id}`} />}
+            onClick={() => router.push(`/blog/edit?id=${encodeURIComponent(post.id)}`)}
             className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
           >
             <Pencil className="size-4 text-primary" />

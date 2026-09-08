@@ -13,6 +13,7 @@ import {
 } from "react";
 import {
   CalendarDays,
+  ChevronDown,
   CircleDot,
   FileText,
   ArrowLeft,
@@ -680,127 +681,118 @@ export default function PagesHomePage() {
           </Button>
         </section>
 
-        <section
-          data-admin-metric-grid
-          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"
-        >
-          {overviewMetrics.map((metric) => (
-            <OverviewMetric key={metric.label} metric={metric} />
-          ))}
-        </section>
-
-        <section className="grid gap-5 xl:grid-cols-[0.9fr_1.35fr]">
-          <div className="grid gap-5">
-            <EditorPanel
-              actionLabel="Add Tour"
-              onAction={addUpcomingTour}
-              title="Upcoming Tours"
-            >
-              <div className="grid gap-4">
-                {isLoading ? (
-                  <LoadingPanel label="Loading upcoming tours..." />
-                ) : form.upcomingTours.length > 0 ? (
-                  form.upcomingTours.map((tour, index) => (
-                    <UpcomingTourEditor
-                      key={`${tour.tourId}-${index}`}
-                      departures={departures}
-                      index={index}
-                      onRemove={removeUpcomingTour}
-                      onUpdate={updateUpcomingTour}
-                      tour={tour}
-                      tours={tours}
-                    />
-                  ))
-                ) : (
-                  <EmptyState label="No upcoming tours selected." />
-                )}
-              </div>
-            </EditorPanel>
-
-            <EditorPanel
-              actionLabel="Add Destination"
-              onAction={addCustomisedTourDestination}
-              title="Customised Tours"
-            >
-              <div className="grid gap-4">
-                {isLoading ? (
-                  <LoadingPanel label="Loading customised tour destinations..." />
-                ) : form.customisedTourDestinations.length > 0 ? (
-                  form.customisedTourDestinations.map((destination, index) => (
-                    <CustomisedTourDestinationEditor
-                      key={`${destination.destinationId}-${index}`}
-                      destination={destination}
-                      destinations={destinations}
-                      index={index}
-                      onRemove={removeCustomisedTourDestination}
-                      onSelectDestination={selectCustomisedTourDestination}
-                    />
-                  ))
-                ) : (
-                  <EmptyState label="No customised tour destinations selected." />
-                )}
-              </div>
-            </EditorPanel>
-
-            <EditorPanel
-              actionLabel="Add Experience"
-              onAction={addHomeExperience}
-              title="Traveller Experiences"
-            >
-              <div className="grid gap-4">
-                {isLoading ? (
-                  <LoadingPanel label="Loading traveller experiences..." />
-                ) : form.homeExperiences.length > 0 ? (
-                  form.homeExperiences.map((experience, index) => (
-                    <HomeExperienceEditor
-                      key={`${experience.experienceId}-${index}`}
-                      experience={experience}
-                      experiences={publishedExperiences}
-                      index={index}
-                      onRemove={removeHomeExperience}
-                      onSelectExperience={selectHomeExperience}
-                    />
-                  ))
-                ) : (
-                  <EmptyState label="No traveller experiences selected." />
-                )}
-              </div>
-            </EditorPanel>
-          </div>
+        <section className="grid gap-5">
+          <EditorPanel
+            actionLabel="Add Tour"
+            onAction={addUpcomingTour}
+            title="Upcoming Tours"
+          >
+            <div className="grid gap-4 xl:grid-cols-2">
+              {isLoading ? (
+                <LoadingPanel label="Loading upcoming tours..." />
+              ) : form.upcomingTours.length > 0 ? (
+                form.upcomingTours.map((tour, index) => (
+                  <UpcomingTourEditor
+                    key={`${tour.tourId}-${index}`}
+                    departures={departures}
+                    index={index}
+                    onRemove={removeUpcomingTour}
+                    onUpdate={updateUpcomingTour}
+                    tour={tour}
+                    tours={tours}
+                  />
+                ))
+              ) : (
+                <EmptyState label="No upcoming tours selected." />
+              )}
+            </div>
+          </EditorPanel>
 
           <EditorPanel
             actionLabel="Add Destination"
             onAction={addTrendingDestination}
             title="Top Trending Destinations"
           >
-            <MapPositionPreview
-              activeIndex={activeDestinationIndex}
-              destinations={destinations}
-              form={form}
-              onActivate={setActiveDestinationIndex}
-              onUpdate={updateTrendingDestination}
-            />
+            <div className="grid gap-4 xl:grid-cols-[minmax(360px,0.9fr)_minmax(0,1fr)]">
+              <MapPositionPreview
+                activeIndex={activeDestinationIndex}
+                destinations={destinations}
+                form={form}
+                onActivate={setActiveDestinationIndex}
+                onUpdate={updateTrendingDestination}
+              />
 
-            <div className="mt-4 grid gap-4">
+              <div className="grid content-start gap-3">
+                {isLoading ? (
+                  <LoadingPanel label="Loading destinations..." />
+                ) : form.trendingDestinations.length > 0 ? (
+                  form.trendingDestinations.map((destination, index) => (
+                    <TrendingDestinationAccordionItem
+                      key={`${destination.destinationId}-${index}`}
+                      destination={destination}
+                      destinations={destinations}
+                      index={index}
+                      isActive={index === activeDestinationIndex}
+                      onActivate={setActiveDestinationIndex}
+                      onAutoPlace={autoPlaceTrendingDestination}
+                      onRemove={removeTrendingDestination}
+                      onSelectDestination={selectTrendingDestination}
+                      onUpdate={updateTrendingDestination}
+                    />
+                  ))
+                ) : (
+                  <EmptyState label="No trending destinations selected." />
+                )}
+              </div>
+            </div>
+          </EditorPanel>
+
+          <EditorPanel
+            actionLabel="Add Experience"
+            onAction={addHomeExperience}
+            title="Traveller Experiences"
+          >
+            <div className="grid gap-4">
               {isLoading ? (
-                <LoadingPanel label="Loading destinations..." />
-              ) : form.trendingDestinations.length > 0 ? (
-                form.trendingDestinations.map((destination, index) => (
-                  <TrendingDestinationEditor
+                <LoadingPanel label="Loading traveller experiences..." />
+              ) : form.homeExperiences.length > 0 ? (
+                form.homeExperiences.map((experience, index) => (
+                  <HomeExperienceEditor
+                    key={`${experience.experienceId}-${index}`}
+                    experience={experience}
+                    experiences={publishedExperiences}
+                    index={index}
+                    onRemove={removeHomeExperience}
+                    onSelectExperience={selectHomeExperience}
+                  />
+                ))
+              ) : (
+                <EmptyState label="No traveller experiences selected." />
+              )}
+            </div>
+          </EditorPanel>
+
+          <EditorPanel
+            actionLabel="Add Destination"
+            onAction={addCustomisedTourDestination}
+            title="Customised Tours"
+          >
+            <div className="grid gap-4 xl:grid-cols-2">
+              {isLoading ? (
+                <LoadingPanel label="Loading customised tour destinations..." />
+              ) : form.customisedTourDestinations.length > 0 ? (
+                form.customisedTourDestinations.map((destination, index) => (
+                  <CustomisedTourDestinationEditor
                     key={`${destination.destinationId}-${index}`}
                     destination={destination}
                     destinations={destinations}
                     index={index}
-                    isActive={index === activeDestinationIndex}
-                    onActivate={setActiveDestinationIndex}
-                    onAutoPlace={autoPlaceTrendingDestination}
-                    onRemove={removeTrendingDestination}
-                    onSelectDestination={selectTrendingDestination}
-                    onUpdate={updateTrendingDestination}
+                    onRemove={removeCustomisedTourDestination}
+                    onSelectDestination={selectCustomisedTourDestination}
                   />
                 ))
               ) : (
-                <EmptyState label="No trending destinations selected." />
+                <EmptyState label="No customised tour destinations selected." />
               )}
             </div>
           </EditorPanel>
@@ -1164,6 +1156,96 @@ function HomeExperienceEditor({
   );
 }
 
+function TrendingDestinationAccordionItem({
+  destination,
+  destinations,
+  index,
+  isActive,
+  onActivate,
+  onAutoPlace,
+  onRemove,
+  onSelectDestination,
+  onUpdate,
+}: {
+  destination: HomeFormState["trendingDestinations"][number];
+  destinations: AdminDestination[];
+  index: number;
+  isActive: boolean;
+  onActivate: (index: number) => void;
+  onAutoPlace: (index: number) => void;
+  onRemove: (index: number) => void;
+  onSelectDestination: (index: number, destinationId: string) => void;
+  onUpdate: <K extends keyof HomeFormState["trendingDestinations"][number]>(
+    index: number,
+    field: K,
+    value: HomeFormState["trendingDestinations"][number][K]
+  ) => void;
+}) {
+  const selectedDestination = destinations.find(
+    (item) => item.destinationId === destination.destinationId
+  );
+  const destinationImage =
+    selectedDestination?.thumbnailImage ||
+    selectedDestination?.bannerImage ||
+    selectedDestination?.galleryImages[0] ||
+    "";
+
+  return (
+    <details
+      open={isActive}
+      onToggle={(event) => {
+        if (event.currentTarget.open) {
+          onActivate(index);
+        }
+      }}
+      className={cn(
+        "group overflow-hidden rounded-sm border bg-white transition-colors",
+        isActive ? "border-primary/45" : "border-border"
+      )}
+    >
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-2 py-2.5 marker:hidden [&::-webkit-details-marker]:hidden">
+        <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-[8px] border border-border bg-[#fffaf7] text-foreground/35">
+          {destinationImage && selectedDestination ? (
+            <img
+              src={getDestinationMediaUrl(destinationImage)}
+              alt=""
+              className="size-full object-cover"
+            />
+          ) : (
+            <MapPin className="size-4" />
+          )}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-xs font-bold text-foreground">
+            Destination {index + 1}
+          </span>
+          <span className="mt-0.5 block truncate text-[11px] font-medium text-foreground/55">
+            {selectedDestination?.destinationName || destination.destinationId}
+          </span>
+        </span>
+        <span className="hidden shrink-0 text-[11px] font-semibold text-foreground/55 sm:inline">
+          {clampPercent(destination.markerX)}% / {clampPercent(destination.markerY)}%
+        </span>
+        <ChevronDown className="size-4 shrink-0 text-foreground/45 transition-transform group-open:rotate-180" />
+      </summary>
+
+      <div className="border-t border-border p-2.5">
+        <TrendingDestinationEditor
+          destination={destination}
+          destinations={destinations}
+          index={index}
+          isActive={isActive}
+          onActivate={onActivate}
+          onAutoPlace={onAutoPlace}
+          onRemove={onRemove}
+          onSelectDestination={onSelectDestination}
+          onUpdate={onUpdate}
+        />
+      </div>
+    </details>
+  );
+}
+
 function TrendingDestinationEditor({
   destination,
   destinations,
@@ -1192,98 +1274,139 @@ function TrendingDestinationEditor({
   const selectedDestination = destinations.find(
     (item) => item.destinationId === destination.destinationId
   );
+  const destinationImage =
+    selectedDestination?.thumbnailImage ||
+    selectedDestination?.bannerImage ||
+    selectedDestination?.galleryImages[0] ||
+    "";
 
   return (
     <article
       className={cn(
-        "grid gap-3 rounded-sm border bg-[#fffaf7] p-3 transition-colors lg:grid-cols-[112px_minmax(0,1fr)_44px]",
+        "grid min-w-0 gap-3 rounded-sm border bg-[#fffaf7] p-2.5 transition-colors",
         isActive ? "border-primary/45" : "border-border"
       )}
       onFocus={() => onActivate(index)}
       onMouseEnter={() => onActivate(index)}
     >
-      <div className="relative aspect-[1.32/1] overflow-hidden rounded-sm border border-border bg-white">
-        {selectedDestination?.bannerImage ||
-        selectedDestination?.galleryImages[0] ? (
-          <img
-            src={getDestinationMediaUrl(
-              selectedDestination.bannerImage ||
-                selectedDestination.galleryImages[0]
-            )}
-            alt={selectedDestination.destinationName}
-            className="size-full object-cover"
-          />
-        ) : (
-          <span className="grid size-full place-items-center text-foreground/30">
-            <MapPin className="size-8" />
-          </span>
-        )}
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_96px_96px]">
-        <FormField className="sm:col-span-3" label="Destination">
-          <select
-            required
-            value={destination.destinationId}
-            onChange={(event) =>
-              onSelectDestination(index, event.target.value)
-            }
-            className={inputClassName}
-          >
-            {destinations.map((option) => (
-              <option key={option.destinationId} value={option.destinationId}>
-                {option.destinationName} ({option.destinationId})
-              </option>
-            ))}
-          </select>
-        </FormField>
-        <FormField label="Marker X">
-          <input
-            min={0}
-            max={100}
-            step="any"
-            type="number"
-            value={destination.markerX}
-            onChange={(event) =>
-              onUpdate(index, "markerX", Number(event.target.value))
-            }
-            className={inputClassName}
-          />
-        </FormField>
-        <FormField label="Marker Y">
-          <input
-            min={0}
-            max={100}
-            step="any"
-            type="number"
-            value={destination.markerY}
-            onChange={(event) =>
-              onUpdate(index, "markerY", Number(event.target.value))
-            }
-            className={inputClassName}
-          />
-        </FormField>
-        <div className="flex items-end">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-[13px] font-bold text-foreground">
+          Destination {index + 1}
+        </h3>
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => onAutoPlace(index)}
-            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm border border-primary bg-white px-3 text-xs font-bold text-primary transition-colors hover:bg-primary hover:text-white"
+            className="grid size-8 place-items-center rounded-sm border border-primary bg-white text-primary transition-colors hover:bg-primary hover:text-white"
+            aria-label={`Auto position destination ${index + 1}`}
+            title="Auto position"
           >
             <CircleDot className="size-4" />
-            Auto
+          </button>
+          <button
+            type="button"
+            onClick={() => onRemove(index)}
+            className="grid size-8 place-items-center rounded-sm border border-border bg-white text-foreground/55 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+            aria-label={`Remove destination ${index + 1}`}
+          >
+            <Trash2 className="size-4" />
           </button>
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={() => onRemove(index)}
-        className="grid size-11 place-items-center rounded-sm border border-border bg-white text-foreground/55 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-        aria-label={`Remove destination ${index + 1}`}
-      >
-        <Trash2 className="size-4" />
-      </button>
+      <div className="grid gap-3">
+        <div className="grid items-center gap-2 sm:grid-cols-[104px_minmax(0,1fr)]">
+          <span className="text-xs font-medium text-foreground/70">
+            Destination
+          </span>
+          <div className="relative min-w-0">
+            <span className="pointer-events-none absolute left-2 top-1/2 z-10 grid size-7 -translate-y-1/2 place-items-center overflow-hidden rounded-sm border border-border bg-white text-foreground/35">
+              {destinationImage && selectedDestination ? (
+                <img
+                  src={getDestinationMediaUrl(destinationImage)}
+                  alt=""
+                  className="size-full object-cover"
+                />
+              ) : (
+                <MapPin className="size-4" />
+              )}
+            </span>
+            <select
+              required
+              value={destination.destinationId}
+              onChange={(event) =>
+                onSelectDestination(index, event.target.value)
+              }
+              className={cn(inputClassName, "h-9 pl-10 pr-8 text-xs")}
+            >
+              {destinations.map((option) => (
+                <option key={option.destinationId} value={option.destinationId}>
+                  {option.destinationName}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <PositionControl
+          label="Horizontal position"
+          value={destination.markerX}
+          onChange={(value) => onUpdate(index, "markerX", value)}
+        />
+        <PositionControl
+          label="Vertical position"
+          value={destination.markerY}
+          onChange={(value) => onUpdate(index, "markerY", value)}
+        />
+      </div>
     </article>
+  );
+}
+
+function PositionControl({
+  label,
+  onChange,
+  value,
+}: {
+  label: string;
+  onChange: (value: number) => void;
+  value: number;
+}) {
+  const normalizedValue = clampPercent(value);
+
+  function handleChange(nextValue: string) {
+    onChange(clampPercent(Number(nextValue) || 0));
+  }
+
+  return (
+    <div className="grid items-center gap-2 sm:grid-cols-[104px_minmax(88px,1fr)_72px]">
+      <span className="text-xs font-medium leading-snug text-foreground/70">
+        {label}
+      </span>
+      <input
+        min={0}
+        max={100}
+        step="any"
+        type="range"
+        value={normalizedValue}
+        onChange={(event) => handleChange(event.target.value)}
+        className="h-1 w-full min-w-0 accent-foreground"
+      />
+      <label className="relative block">
+        <input
+          min={0}
+          max={100}
+          step="any"
+          type="number"
+          value={normalizedValue}
+          onChange={(event) => handleChange(event.target.value)}
+          className="h-9 w-full rounded-sm border border-border bg-white pl-2 pr-6 text-xs font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+        />
+        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-foreground/55">
+          %
+        </span>
+      </label>
+    </div>
   );
 }
 

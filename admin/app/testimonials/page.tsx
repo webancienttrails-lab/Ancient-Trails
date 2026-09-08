@@ -14,7 +14,6 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
-  Quote,
   Search,
   Star,
   Trash2,
@@ -674,20 +673,11 @@ function TableFooter({
         <PaginationButton label="Previous page" disabled>
           <ChevronLeft className="size-4" />
         </PaginationButton>
-        {[1, 2, 3, 4, 5].map((page) => (
-          <PaginationButton key={page} label={`Page ${page}`} active={page === 1}>
-            {page}
-          </PaginationButton>
-        ))}
-        <PaginationButton label="More pages">
-          <span className="text-xs leading-none">...</span>
+        <PaginationButton label="Page 1" active disabled>
+          1
         </PaginationButton>
-        <PaginationButton label="Page 6">6</PaginationButton>
-        <PaginationButton label="Next page">
+        <PaginationButton label="Next page" disabled>
           <ChevronRight className="size-4" />
-        </PaginationButton>
-        <PaginationButton label="Last page">
-          <span className="text-sm leading-none">&gt;&gt;</span>
         </PaginationButton>
       </div>
     </div>

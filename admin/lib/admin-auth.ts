@@ -32,7 +32,13 @@ const adminUserKey = "ancient_trails_admin_user";
 const adminSessionEvent = "ancient-trails-admin-session-change";
 
 export function isAdminRole(role: string): boolean {
-  return role === "admin" || role === "super_admin" || role.endsWith("_admin");
+  return (
+    role === "admin" ||
+    role === "expert" ||
+    role === "staff" ||
+    role === "super_admin" ||
+    role.endsWith("_admin")
+  );
 }
 
 export async function loginAdmin(payload: AdminLoginPayload) {

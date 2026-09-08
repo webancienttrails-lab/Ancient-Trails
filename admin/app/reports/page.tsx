@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 import {
   Bell,
   BriefcaseBusiness,
@@ -26,6 +27,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/toast";
+import {
+  getAdminDashboardSummary,
+  type AdminDashboardSummary,
+} from "@/lib/dashboard";
+import { listAdminBookings, type AdminBooking } from "@/lib/bookings";
 import { cn } from "@/lib/utils";
 
 type ReportMetric = {
@@ -58,6 +64,133 @@ type BookingSummaryRow = {
   revenue: string;
 };
 
+type ReportTotals = {
+  bookings: number;
+  revenue: number;
+  confirmed: number;
+  pending: number;
+  cancelled: number;
+  completed: number;
+};
+
+const statusColors = {
+  cancelled: "#e85d5d",
+  completed: "#a783df",
+  confirmed: "#52be7f",
+  inProgress: "#f7bd4d",
+  new: "#df6f12",
+  pending: "#f7bd4d",
+  refunded: "#8f8178",
+  replied: "#67c889",
+  closed: "#a783df",
+};
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    currency: "INR",
+    maximumFractionDigits: 0,
+    style: "currency",
+  }).format(value);
+}
+
+function createReportData(
+  summary: AdminDashboardSummary | null,
+  bookings: AdminBooking[]
+) {
+  const metrics = summary?.metrics;
+  const totalRevenue = bookings.reduce(
+    (total, booking) => total + (booking.grandTotal || booking.subtotal || 0),
+    0
+  );
+  const totals: ReportTotals = {
+    bookings: metrics?.totalBookings.value || bookings.length,
+    revenue: totalRevenue,
+    confirmed: countBookingStatus(bookings, "confirmed"),
+    pending: countBookingStatus(bookings, "pending"),
+    cancelled: countBookingStatus(bookings, "cancelled"),
+    completed: countBookingStatus(bookings, "completed"),
+  };
+  const bookingStatus = (summary?.bookingStatus || []).map((item) => ({
+    label: item.key[0].toUpperCase() + item.key.slice(1),
+    value: item.value,
+    percentage: Number(item.percentage.toFixed(1)),
+    color: statusColors[item.key],
+  }));
+  const enquiryStatus = (summary?.enquiryStats || []).map((item) => ({
+    label: item.key === "inProgress" ? "In Progress" : `${item.key[0].toUpperCase()}${item.key.slice(1)}`,
+    value: item.value,
+    percentage: summary?.metrics.totalEnquiries.value
+      ? Number(((item.value / summary.metrics.totalEnquiries.value) * 100).toFixed(1))
+      : 0,
+    color: statusColors[item.key],
+  }));
+  const bookingPoints = summary?.bookingChart.map((bucket) => bucket.current) || [];
+  const revenuePoints = splitRevenueAcrossPoints(bookings, bookingPoints.length);
+
+  return {
+    bookingPoints,
+    bookingStatus,
+    bookingSummary: (summary?.bookingChart || []).map((bucket) => ({
+      date: bucket.label,
+      bookings: bucket.current,
+      revenue: "-",
+      confirmed: 0,
+      pending: 0,
+      cancelled: 0,
+      completed: 0,
+    })),
+    destinations: (summary?.topDestinations || []).map((item) => ({
+      name: item.name,
+      bookings: item.bookings,
+    })),
+    enquiryStatus,
+    enquiryTotal: metrics?.totalEnquiries.value || 0,
+    metrics: [
+      createMetric("Total Bookings", metrics?.totalBookings, Ticket, "bg-primary/10 text-primary"),
+      { label: "Total Revenue", value: formatCurrency(totalRevenue), trend: "Live booking totals", icon: BriefcaseBusiness, tone: "bg-orange-100 text-orange-600" },
+      createMetric("Total Enquiries", metrics?.totalEnquiries, MessageCircle, "bg-amber-100 text-amber-600"),
+      createMetric("Total Users", metrics?.totalUsers, Users, "bg-violet-100 text-violet-600"),
+      createMetric("Total Destinations", metrics?.totalDestinations, MapPin, "bg-emerald-100 text-emerald-600"),
+    ],
+    revenuePoints,
+    totals,
+    bookingTotal: totals.bookings,
+  };
+}
+
+function createMetric(
+  label: string,
+  metric: { value: number; trend: string } | undefined,
+  icon: LucideIcon,
+  tone: string
+): ReportMetric {
+  return {
+    label,
+    value: String(metric?.value || 0),
+    trend: metric?.trend || "Loading...",
+    icon,
+    tone,
+  };
+}
+
+function countBookingStatus(bookings: AdminBooking[], status: string): number {
+  return bookings.filter((booking) => {
+    if (status === "pending") return booking.paymentStatus === "pending";
+    if (status === "cancelled") return booking.paymentStatus === "failed";
+    if (status === "completed") return booking.paymentStatus === "paid";
+    return booking.paymentStatus === "paid";
+  }).length;
+}
+
+function splitRevenueAcrossPoints(bookings: AdminBooking[], pointCount: number): number[] {
+  if (!pointCount) return [];
+  const points = Array.from({ length: pointCount }, () => 0);
+  bookings.forEach((booking, index) => {
+    points[index % pointCount] += booking.grandTotal || booking.subtotal || 0;
+  });
+  return points.map((value) => Math.max(1, Math.round(value / 1000)));
+}
+
 const reportTabs = [
   "Overview",
   "Bookings",
@@ -68,117 +201,24 @@ const reportTabs = [
   "Finance",
 ];
 
-const metrics: ReportMetric[] = [
-  {
-    label: "Total Bookings",
-    value: "156",
-    trend: "+18.6% from Jun 2026",
-    icon: Ticket,
-    tone: "bg-primary/10 text-primary",
-  },
-  {
-    label: "Total Revenue",
-    value: "Rs2,45,800",
-    trend: "+22.4% from Jun 2026",
-    icon: BriefcaseBusiness,
-    tone: "bg-orange-100 text-orange-600",
-  },
-  {
-    label: "Total Enquiries",
-    value: "289",
-    trend: "+12.3% from Jun 2026",
-    icon: MessageCircle,
-    tone: "bg-amber-100 text-amber-600",
-  },
-  {
-    label: "Total Users",
-    value: "1,248",
-    trend: "+16.4% from Jun 2026",
-    icon: Users,
-    tone: "bg-violet-100 text-violet-600",
-  },
-  {
-    label: "Total Destinations",
-    value: "48",
-    trend: "+8% from Jun 2026",
-    icon: MapPin,
-    tone: "bg-emerald-100 text-emerald-600",
-  },
-];
-
-const bookingStatus: StatusItem[] = [
-  { label: "Confirmed", value: 118, percentage: 60.2, color: "#52be7f" },
-  { label: "Pending", value: 26, percentage: 13.3, color: "#f7bd4d" },
-  { label: "Cancelled", value: 8, percentage: 4.1, color: "#e85d5d" },
-  { label: "Completed", value: 44, percentage: 22.4, color: "#a783df" },
-];
-
-const enquiryStatus: StatusItem[] = [
-  { label: "New Enquiries", value: 98, percentage: 33.9, color: "#df6f12" },
-  { label: "In Progress", value: 121, percentage: 41.9, color: "#f7bd4d" },
-  { label: "Replied", value: 45, percentage: 15.6, color: "#67c889" },
-  { label: "Closed", value: 25, percentage: 8.6, color: "#a783df" },
-];
-
-const destinations: DestinationReport[] = [
-  { name: "Badami", bookings: 28 },
-  { name: "Hampi", bookings: 22 },
-  { name: "Aihole", bookings: 18 },
-  { name: "Pattadakal", bookings: 16 },
-  { name: "Bijapur", bookings: 12 },
-];
-
-const bookingSummary: BookingSummaryRow[] = [
-  {
-    date: "01-07-2026 - 07-07-2026",
-    bookings: 28,
-    revenue: "Rs42,600",
-    confirmed: 18,
-    pending: 6,
-    cancelled: 1,
-    completed: 3,
-  },
-  {
-    date: "08-07-2026 - 14-07-2026",
-    bookings: 32,
-    revenue: "Rs51,300",
-    confirmed: 20,
-    pending: 7,
-    cancelled: 2,
-    completed: 3,
-  },
-  {
-    date: "15-07-2026 - 21-07-2026",
-    bookings: 41,
-    revenue: "Rs67,800",
-    confirmed: 27,
-    pending: 8,
-    cancelled: 3,
-    completed: 3,
-  },
-  {
-    date: "22-07-2026 - 31-07-2026",
-    bookings: 55,
-    revenue: "Rs84,100",
-    confirmed: 53,
-    pending: 5,
-    cancelled: 2,
-    completed: 4,
-  },
-];
-
-const bookingTrendPoints = [
-  12, 17, 21, 18, 20, 18, 22, 27, 18, 18, 21, 13, 22, 35, 19, 25, 27, 34, 25,
-  28, 22, 30, 41, 29, 25, 27, 22, 18, 15, 30, 14, 36, 29, 25,
-];
-
-const revenueTrendPoints = [
-  54, 72, 88, 71, 84, 76, 91, 118, 72, 74, 91, 58, 92, 146, 76, 105, 116,
-  148, 101, 120, 90, 124, 176, 121, 101, 111, 84, 71, 60, 126, 64, 153, 126,
-  107,
-];
-
 export default function ReportsPage() {
+  const toast = useToast();
+  const [summary, setSummary] = useState<AdminDashboardSummary | null>(null);
+  const [bookings, setBookings] = useState<AdminBooking[]>([]);
+
+  useEffect(() => {
+    Promise.all([getAdminDashboardSummary(), listAdminBookings()])
+      .then(([summaryResponse, bookingsResponse]) => {
+        setSummary(summaryResponse.data);
+        setBookings(bookingsResponse.data.bookings);
+      })
+      .catch((error: unknown) => {
+        toast.error("Unable to load reports", error instanceof Error ? error.message : "Please try again.");
+      });
+  }, [toast]);
+
+  const reportData = createReportData(summary, bookings);
+
   return (
     <AdminDashboardShell activeLabel="Report">
       <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-4">
@@ -218,7 +258,7 @@ export default function ReportsPage() {
             data-admin-metric-grid
             className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5"
           >
-            {metrics.map((metric) => (
+            {reportData.metrics.map((metric) => (
               <ReportMetricCard key={metric.label} metric={metric} />
             ))}
           </div>
@@ -235,14 +275,17 @@ export default function ReportsPage() {
               </div>
             }
           >
-            <BookingsTrendChart />
+            <BookingsTrendChart
+              bookingPoints={reportData.bookingPoints}
+              revenuePoints={reportData.revenuePoints}
+            />
           </ReportPanel>
 
           <ReportPanel title="Bookings by Status">
             <DonutWithLegend
               centerLabel="Total"
-              centerValue="196"
-              items={bookingStatus}
+              centerValue={String(reportData.bookingTotal)}
+              items={reportData.bookingStatus}
               sizeClassName="size-44"
             />
           </ReportPanel>
@@ -251,13 +294,13 @@ export default function ReportsPage() {
             title="Top Destinations"
             action={<SmallSelectButton label="By Bookings" />}
           >
-            <TopDestinationsList />
+            <TopDestinationsList destinations={reportData.destinations} />
           </ReportPanel>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[1.45fr_0.85fr]">
           <ReportPanel title="Booking Summary" className="overflow-hidden p-0">
-            <BookingSummaryTable />
+            <BookingSummaryTable rows={reportData.bookingSummary} totals={reportData.totals} />
           </ReportPanel>
 
           <ReportPanel
@@ -266,8 +309,8 @@ export default function ReportsPage() {
           >
             <DonutWithLegend
               centerLabel="Total"
-              centerValue="289"
-              items={enquiryStatus}
+              centerValue={String(reportData.enquiryTotal)}
+              items={reportData.enquiryStatus}
               sizeClassName="size-40"
             />
           </ReportPanel>
@@ -443,16 +486,22 @@ function SmallSelectButton({ label }: { label: string }) {
   );
 }
 
-function BookingsTrendChart() {
-  const maxBooking = Math.max(...bookingTrendPoints);
-  const maxRevenue = Math.max(...revenueTrendPoints);
+function BookingsTrendChart({
+  bookingPoints: bookingTrendPoints,
+  revenuePoints: revenueTrendPoints,
+}: {
+  bookingPoints: number[];
+  revenuePoints: number[];
+}) {
+  const maxBooking = Math.max(...bookingTrendPoints, 1);
+  const maxRevenue = Math.max(...revenueTrendPoints, 1);
   const bookingPoints = bookingTrendPoints.map((value, index) => {
-    const x = 44 + (index / (bookingTrendPoints.length - 1)) * 492;
+    const x = 44 + (index / Math.max(bookingTrendPoints.length - 1, 1)) * 492;
     const y = 204 - (value / maxBooking) * 152;
     return { x, y };
   });
   const revenuePoints = revenueTrendPoints.map((value, index) => {
-    const x = 44 + (index / (revenueTrendPoints.length - 1)) * 492;
+    const x = 44 + (index / Math.max(revenueTrendPoints.length - 1, 1)) * 492;
     const y = 204 - (value / maxRevenue) * 152;
     return { x, y };
   });
@@ -644,8 +693,12 @@ function createConicGradient(items: StatusItem[]): string {
   return `conic-gradient(${segments.join(", ")})`;
 }
 
-function TopDestinationsList() {
-  const maxBookings = Math.max(...destinations.map((item) => item.bookings));
+function TopDestinationsList({
+  destinations,
+}: {
+  destinations: DestinationReport[];
+}) {
+  const maxBookings = Math.max(...destinations.map((item) => item.bookings), 1);
 
   return (
     <div className="space-y-3">
@@ -682,7 +735,13 @@ function TopDestinationsList() {
   );
 }
 
-function BookingSummaryTable() {
+function BookingSummaryTable({
+  rows,
+  totals,
+}: {
+  rows: BookingSummaryRow[];
+  totals: ReportTotals;
+}) {
   return (
     <div className="overflow-hidden">
       <div className="max-w-full overflow-x-auto">
@@ -701,7 +760,7 @@ function BookingSummaryTable() {
             </tr>
           </thead>
           <tbody>
-            {bookingSummary.map((row) => (
+            {rows.map((row) => (
               <tr key={row.date} className="border-t border-border">
                 <td
                   data-label="Date"
@@ -741,22 +800,22 @@ function BookingSummaryTable() {
                 Total
               </td>
               <td data-label="Total Bookings" className="px-4 py-3 text-right">
-                156
+                {totals.bookings}
               </td>
               <td data-label="Revenue" className="px-4 py-3 text-right">
-                Rs2,45,800
+                {formatCurrency(totals.revenue)}
               </td>
               <td data-label="Confirmed" className="px-4 py-3 text-right">
-                118
+                {totals.confirmed}
               </td>
               <td data-label="Pending" className="px-4 py-3 text-right">
-                26
+                {totals.pending}
               </td>
               <td data-label="Cancelled" className="px-4 py-3 text-right">
-                8
+                {totals.cancelled}
               </td>
               <td data-label="Completed" className="px-4 py-3 text-right">
-                13
+                {totals.completed}
               </td>
             </tr>
           </tbody>

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BadgeCheck,
   Bell,
@@ -10,11 +10,9 @@ import {
   ChevronRight,
   Filter,
   MoreHorizontal,
-  Plus,
   Search,
   UserPlus,
   UserRoundCheck,
-  UserX,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -41,6 +39,7 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { shouldOpenTableRow } from "@/lib/table-row-click";
 import { cn } from "@/lib/utils";
+import { listAdminUsers, type AdminDirectoryUser, type AdminUserStats } from "@/lib/users";
 
 type UserMetric = {
   label: string;
@@ -52,133 +51,86 @@ type UserMetric = {
 };
 
 type UserRecord = {
+  id: string;
   email: string;
   initials: string;
   joinedOn: string;
   lastActive: string;
   name: string;
   phone: string;
-  role: "Customer" | "Travel Agent";
+  role: "Traveller" | "Expert" | "Staff" | "Admin";
   status: "Active" | "Inactive";
   tone: string;
+  createdAt: string;
 };
-
-const userMetrics: UserMetric[] = [
-  {
-    label: "Total Users",
-    value: "1,248",
-    trend: "+15.4% from Jun 2026",
-    trendClassName: "text-emerald-600",
-    icon: Users,
-    tone: "bg-violet-100 text-violet-700",
-  },
-  {
-    label: "Active Users",
-    value: "1,086",
-    trend: "87.0% of total users",
-    trendClassName: "text-emerald-600",
-    icon: UserRoundCheck,
-    tone: "bg-emerald-100 text-emerald-700",
-  },
-  {
-    label: "New This Month",
-    value: "156",
-    trend: "+12.7% from Jun 2026",
-    trendClassName: "text-emerald-600",
-    icon: UserPlus,
-    tone: "bg-amber-100 text-amber-700",
-  },
-  {
-    label: "Verified Users",
-    value: "932",
-    trend: "74.7% of total users",
-    trendClassName: "text-emerald-600",
-    icon: BadgeCheck,
-    tone: "bg-sky-100 text-sky-700",
-  },
-  {
-    label: "Inactive Users",
-    value: "162",
-    trend: "13.0% of total users",
-    trendClassName: "text-red-600",
-    icon: UserX,
-    tone: "bg-red-100 text-red-700",
-  },
-];
-
-const users: UserRecord[] = [
-  {
-    name: "Rahul Sharma",
-    email: "rahul.sharma@gmail.com",
-    phone: "+91 98765 43210",
-    role: "Customer",
-    status: "Active",
-    initials: "RS",
-    tone: "bg-[#7a3b22]",
-    joinedOn: "30-05-2026",
-    lastActive: "31-07-2026, 10:30 AM",
-  },
-  {
-    name: "Priya Mehta",
-    email: "priya.mehta@gmail.com",
-    phone: "+91 87654 32109",
-    role: "Customer",
-    status: "Active",
-    initials: "PM",
-    tone: "bg-primary",
-    joinedOn: "28-05-2026",
-    lastActive: "31-07-2026, 09:15 AM",
-  },
-  {
-    name: "Arjun Verma",
-    email: "arjun.verma@gmail.com",
-    phone: "+91 76543 21098",
-    role: "Customer",
-    status: "Active",
-    initials: "AV",
-    tone: "bg-[#7a3b22]",
-    joinedOn: "27-05-2026",
-    lastActive: "30-07-2026, 08:45 PM",
-  },
-  {
-    name: "Sneha Iyer",
-    email: "sneha.iyer@gmail.com",
-    phone: "+91 65432 10987",
-    role: "Travel Agent",
-    status: "Active",
-    initials: "SI",
-    tone: "bg-amber-700",
-    joinedOn: "24-05-2026",
-    lastActive: "31-07-2026, 11:20 AM",
-  },
-  {
-    name: "Karan Patel",
-    email: "karan.patel@gmail.com",
-    phone: "+91 54321 09876",
-    role: "Customer",
-    status: "Inactive",
-    initials: "KP",
-    tone: "bg-[#7a3b22]",
-    joinedOn: "18-05-2026",
-    lastActive: "20-07-2026, 06:30 PM",
-  },
-];
-
-const roleOptions = ["All Roles", "Customer", "Travel Agent"];
+const roleOptions = ["All Roles", "Traveller", "Expert", "Staff", "Admin"];
 const statusOptions = ["All Status", "Active", "Inactive"];
 const registrationOptions = ["All Time", "Today", "This Week", "This Month"];
 
+function toUserRecord(user: AdminDirectoryUser): UserRecord {
+  const name = `${user.firstName} ${user.lastName}`.trim();
+  const adminRole = user.roles.find((role) => role !== "traveller" && role !== "super_admin");
+  const role = user.roles.includes("traveller")
+    ? "Traveller"
+    : adminRole === "expert"
+      ? "Expert"
+      : adminRole === "staff"
+        ? "Staff"
+        : "Admin";
+
+  return {
+    id: user.id,
+    name,
+    email: user.email,
+    phone: user.mobileNumber,
+    role,
+    status: user.status === "active" ? "Active" : "Inactive",
+    initials: name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
+    tone: role === "Traveller" ? "bg-primary" : "bg-sky-700",
+    joinedOn: new Date(user.createdAt).toLocaleDateString("en-GB"),
+    lastActive: user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString("en-GB") : "Never",
+    createdAt: user.createdAt,
+  };
+}
+
 export default function UsersPage() {
   const toast = useToast();
+  const [users, setUsers] = useState<UserRecord[]>([]);
+  const [stats, setStats] = useState<AdminUserStats>({
+    travellers: { total: 0, adults: 0, children: 0, newThisMonth: 0 },
+    admins: { expert: 0, staff: 0, admin: 0 },
+  });
+  const [activeTab, setActiveTab] = useState<"traveller" | "admin">("traveller");
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRole, setSelectedRole] = useState("All Roles");
   const [selectedStatus, setSelectedStatus] = useState("All Status");
   const [selectedRegistration, setSelectedRegistration] = useState("All Time");
 
+  useEffect(() => {
+    async function loadUsers() {
+      try {
+        const response = await listAdminUsers();
+        setUsers(response.data.users.map(toUserRecord));
+        setStats(response.data.stats);
+      } catch (error) {
+        toast.error("Unable to load users", error instanceof Error ? error.message : "Please try again.");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    void loadUsers();
+  }, []);
+
+  const tabUsers = users.filter((user) =>
+    activeTab === "traveller" ? user.role === "Traveller" : user.role !== "Traveller"
+  );
+
   const filteredUsers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
-    return users.filter((user) => {
+    return tabUsers.filter((user) => {
       const matchesSearch = query
         ? [user.name, user.email, user.phone, user.role, user.status]
             .join(" ")
@@ -191,7 +143,20 @@ export default function UsersPage() {
 
       return matchesSearch && matchesRole && matchesStatus;
     });
-  }, [searchQuery, selectedRole, selectedStatus]);
+  }, [searchQuery, selectedRole, selectedStatus, tabUsers]);
+
+  const userMetrics: UserMetric[] = activeTab === "traveller"
+    ? [
+        { label: "Total Users", value: String(stats.travellers.total), trend: "", trendClassName: "", icon: Users, tone: "bg-violet-100 text-violet-700" },
+        { label: "Total Adults", value: String(stats.travellers.adults), trend: "", trendClassName: "", icon: UserRoundCheck, tone: "bg-emerald-100 text-emerald-700" },
+        { label: "Total Children", value: String(stats.travellers.children), trend: "", trendClassName: "", icon: UserPlus, tone: "bg-amber-100 text-amber-700" },
+        { label: "New This Month", value: String(stats.travellers.newThisMonth), trend: "", trendClassName: "", icon: BadgeCheck, tone: "bg-sky-100 text-sky-700" },
+      ]
+    : [
+        { label: "Total Expert", value: String(stats.admins.expert), trend: "", trendClassName: "", icon: UserRoundCheck, tone: "bg-violet-100 text-violet-700" },
+        { label: "Total Staff", value: String(stats.admins.staff), trend: "", trendClassName: "", icon: Users, tone: "bg-emerald-100 text-emerald-700" },
+        { label: "Total Admin", value: String(stats.admins.admin), trend: "", trendClassName: "", icon: BadgeCheck, tone: "bg-amber-100 text-amber-700" },
+      ];
 
   return (
     <AdminDashboardShell activeLabel="Users">
@@ -210,14 +175,10 @@ export default function UsersPage() {
               Manage all registered users of Ancient Trails.
             </p>
           </div>
-          <Button
-            type="button"
-            onClick={() => toast.info("Add User", "User form will open here.")}
-            className="h-11 rounded-sm px-4 text-xs font-bold"
-          >
-            <Plus className="size-4" data-icon="inline-start" />
-            Add New User
-          </Button>
+          <div className="flex gap-2">
+            <Button type="button" variant={activeTab === "traveller" ? "default" : "outline"} onClick={() => setActiveTab("traveller")} className="h-11 rounded-sm px-4 text-xs font-bold">Traveller</Button>
+            <Button type="button" variant={activeTab === "admin" ? "default" : "outline"} onClick={() => setActiveTab("admin")} className="h-11 rounded-sm px-4 text-xs font-bold">Admin</Button>
+          </div>
         </section>
 
         <section
@@ -233,14 +194,14 @@ export default function UsersPage() {
           <UsersToolbar
             searchQuery={searchQuery}
             selectedRegistration={selectedRegistration}
-            selectedRole={selectedRole}
+            selectedRole={activeTab === "traveller" ? selectedRole : "All Roles"}
             selectedStatus={selectedStatus}
             onRegistrationChange={setSelectedRegistration}
             onRoleChange={setSelectedRole}
             onSearchQueryChange={setSearchQuery}
             onStatusChange={setSelectedStatus}
           />
-          <UsersTable users={filteredUsers} />
+          <UsersTable users={filteredUsers} isLoading={isLoading} />
         </section>
       </div>
     </AdminDashboardShell>
@@ -440,7 +401,13 @@ function ToolbarSelect({
   );
 }
 
-function UsersTable({ users: visibleUsers }: { users: UserRecord[] }) {
+function UsersTable({
+  users: visibleUsers,
+  isLoading,
+}: {
+  users: UserRecord[];
+  isLoading: boolean;
+}) {
   const toast = useToast();
 
   return (
@@ -468,7 +435,13 @@ function UsersTable({ users: visibleUsers }: { users: UserRecord[] }) {
             </tr>
           </thead>
           <tbody>
-            {visibleUsers.length ? (
+            {isLoading ? (
+              <tr>
+                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={7}>
+                  Loading users...
+                </td>
+              </tr>
+            ) : visibleUsers.length ? (
               visibleUsers.map((user) => (
                 <tr
                   key={user.email}
@@ -503,7 +476,7 @@ function UsersTable({ users: visibleUsers }: { users: UserRecord[] }) {
                     <span
                       className={cn(
                         "inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold",
-                        user.role === "Customer"
+                        user.role === "Traveller"
                           ? "bg-amber-100 text-amber-700"
                           : "bg-sky-100 text-sky-700"
                       )}
@@ -561,7 +534,7 @@ function UsersTable({ users: visibleUsers }: { users: UserRecord[] }) {
         </table>
       </div>
 
-      <TableFooter label="users" showing="1 to 10" total="1,248" lastPage="125" />
+      <TableFooter label="users" showing={visibleUsers.length ? `1 to ${visibleUsers.length}` : "0"} total={String(visibleUsers.length)} />
     </>
   );
 }
@@ -616,12 +589,10 @@ function UserActions({ user }: { user: UserRecord }) {
 
 function TableFooter({
   label,
-  lastPage,
   showing,
   total,
 }: {
   label: string;
-  lastPage: string;
   showing: string;
   total: string;
 }) {
@@ -637,20 +608,9 @@ function TableFooter({
         <PaginationButton label="Previous page" disabled>
           <ChevronLeft className="size-4" />
         </PaginationButton>
-        {[1, 2, 3, 4, 5].map((page) => (
-          <PaginationButton key={page} label={`Page ${page}`} active={page === 1}>
-            {page}
-          </PaginationButton>
-        ))}
-        <PaginationButton label="More pages">
-          <span className="text-xs leading-none">...</span>
-        </PaginationButton>
-        <PaginationButton label={`Page ${lastPage}`}>{lastPage}</PaginationButton>
-        <PaginationButton label="Next page">
+        <PaginationButton label="Page 1" active disabled>1</PaginationButton>
+        <PaginationButton label="Next page" disabled>
           <ChevronRight className="size-4" />
-        </PaginationButton>
-        <PaginationButton label="Last page">
-          <span className="text-sm leading-none">&gt;&gt;</span>
         </PaginationButton>
       </div>
     </div>

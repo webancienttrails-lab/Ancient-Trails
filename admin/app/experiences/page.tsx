@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Bell,
   ChevronDown,
@@ -1235,6 +1236,8 @@ function RowActions({
   onDelete: (experience: AdminExperience) => void;
   onView: (experience: AdminExperience) => void;
 }) {
+  const router = useRouter();
+
   return (
     <div className="flex justify-end">
       <DropdownMenu>
@@ -1262,7 +1265,9 @@ function RowActions({
             View
           </DropdownMenuItem>
           <DropdownMenuItem
-            render={<Link href={`/experiences/edit?id=${experience.id}`} />}
+            onClick={() =>
+              router.push(`/experiences/edit?id=${encodeURIComponent(experience.id)}`)
+            }
             className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
           >
             <Pencil className="size-4 text-primary" />

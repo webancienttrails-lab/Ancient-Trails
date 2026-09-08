@@ -1,7 +1,12 @@
 "use client";
 
 import type { FormEvent, ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import {
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
 import {
   Bell,
   CheckCircle2,
@@ -90,6 +95,11 @@ type DestinationFormState = Omit<
   recommendedDurationDays: string;
 };
 type DestinationSheetMode = "add" | "view" | "edit";
+
+type DestinationRouteState = {
+  id: string | null;
+  mode: DestinationSheetMode | null;
+};
 
 const emptyDestinationForm: DestinationFormState = {
   destinationId: "",
@@ -426,7 +436,69 @@ function createDestinationMetrics(
 }
 
 export default function DestinationsPage() {
+  return (
+    <Suspense fallback={null}>
+      <DestinationsPageContent />
+    </Suspense>
+  );
+}
+
+function getDestinationRouteState(
+  pathname: string,
+  id: string | null
+): DestinationRouteState {
+  const segments = pathname
+    .split("/")
+    .filter(Boolean);
+
+  const destinationsIndex =
+    segments.findIndex(
+      (segment) => segment === "destinations"
+    );
+
+  const pageSegment =
+    destinationsIndex >= 0
+      ? segments[destinationsIndex + 1]
+      : "";
+
+  if (pageSegment === "add") {
+    return {
+      id: null,
+      mode: "add",
+    };
+  }
+
+  if (
+    (pageSegment === "edit" ||
+      pageSegment === "view") &&
+    id
+  ) {
+    return {
+      id,
+      mode: pageSegment === "edit" ? "edit" : "view",
+    };
+  }
+
+  return {
+    id: null,
+    mode: null,
+  };
+}
+
+function DestinationsPageContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const toast = useToast();
+  const searchParamString = searchParams.toString();
+  const routeState = useMemo(
+    () =>
+      getDestinationRouteState(
+        pathname,
+        new URLSearchParams(searchParamString).get("id")
+      ),
+    [pathname, searchParamString]
+  );
   const [destinations, setDestinations] = useState<AdminDestination[]>([]);
   const [homePageContent, setHomePageContent] =
     useState<HomePageContent | null>(null);
@@ -434,7 +506,9 @@ export default function DestinationsPage() {
   const [isLoadingDestinations, setIsLoadingDestinations] = useState(true);
   const [isLoadingHomePage, setIsLoadingHomePage] = useState(true);
   const [destinationSheetMode, setDestinationSheetMode] =
-    useState<DestinationSheetMode | null>(null);
+    useState<DestinationSheetMode | null>(
+      routeState.mode === "add" ? "add" : null
+    );
   const [selectedDestination, setSelectedDestination] =
     useState<AdminDestination | null>(null);
   const [isSavingDestination, setIsSavingDestination] = useState(false);
@@ -466,7 +540,27 @@ export default function DestinationsPage() {
       }
 
       if (destinationsResult.status === "fulfilled") {
-        setDestinations(destinationsResult.value.data.destinations);
+        const loadedDestinations = destinationsResult.value.data.destinations;
+
+        setDestinations(loadedDestinations);
+
+        if (routeState.mode === "add") {
+          setSelectedDestination(null);
+          setDestinationForm(emptyDestinationForm);
+          setUploadingKeyLandmarkImageIndex(null);
+          setDestinationSheetMode("add");
+        } else if (routeState.mode) {
+          const destination = loadedDestinations.find(
+            (item) => item.id === routeState.id
+          );
+
+          if (destination) {
+            setSelectedDestination(destination);
+            setDestinationForm(destinationToForm(destination));
+            setUploadingKeyLandmarkImageIndex(null);
+            setDestinationSheetMode(routeState.mode);
+          }
+        }
       } else {
         toast.error(
           "Unable to load destinations",
@@ -492,7 +586,7 @@ export default function DestinationsPage() {
     return () => {
       isMounted = false;
     };
-  }, [toast]);
+  }, [routeState, toast]);
 
   const filteredDestinations = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -554,28 +648,28 @@ export default function DestinationsPage() {
   }
 
   function openAddDestinationSheet() {
-    setSelectedDestination(null);
-    setDestinationForm(emptyDestinationForm);
-    setUploadingKeyLandmarkImageIndex(null);
-    setDestinationSheetMode("add");
+    router.push("/destinations/add");
   }
 
   function openViewDestinationSheet(destination: AdminDestination) {
-    setSelectedDestination(destination);
-    setDestinationForm(destinationToForm(destination));
-    setUploadingKeyLandmarkImageIndex(null);
-    setDestinationSheetMode("view");
+    router.push(
+      `/destinations/view?id=${encodeURIComponent(destination.id)}`
+    );
   }
 
   function openEditDestinationSheet(destination: AdminDestination) {
-    setSelectedDestination(destination);
-    setDestinationForm(destinationToForm(destination));
-    setUploadingKeyLandmarkImageIndex(null);
-    setDestinationSheetMode("edit");
+    router.push(
+      `/destinations/edit?id=${encodeURIComponent(destination.id)}`
+    );
   }
 
   function closeDestinationSheet() {
     if (isDestinationFormBusy) {
+      return;
+    }
+
+    if (routeState.mode) {
+      router.push("/destinations");
       return;
     }
 
@@ -840,6 +934,9 @@ export default function DestinationsPage() {
         setSelectedDestination(null);
         setDestinationForm(emptyDestinationForm);
         setUploadingKeyLandmarkImageIndex(null);
+        if (routeState.mode) {
+          router.push("/destinations");
+        }
         toast.success("Destination updated", response.message);
         return;
       }
@@ -854,6 +951,9 @@ export default function DestinationsPage() {
       setSelectedDestination(null);
       setDestinationForm(emptyDestinationForm);
       setUploadingKeyLandmarkImageIndex(null);
+      if (routeState.mode) {
+        router.push("/destinations");
+      }
       toast.success("Destination added", response.message);
     } catch (error) {
       toast.error(

@@ -1,7 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Archive,
   Bell,
@@ -70,7 +71,9 @@ const pageTabs = [
   "Feature Pages",
   "Legal Pages",
   "Utility Pages",
-];
+] as const;
+
+type PageTab = (typeof pageTabs)[number];
 
 const pageMetrics: PageMetric[] = [
   {
@@ -137,6 +140,7 @@ const pages: AdminPageRecord[] = [
   {
     title: "Tours",
     description: "Manage content for tours listing and details page.",
+    editorHref: "/tours",
     previewHref: "/tours",
     slug: "/tours",
     status: "Published",
@@ -149,6 +153,7 @@ const pages: AdminPageRecord[] = [
   {
     title: "Destinations",
     description: "Manage content for destinations listing and details page.",
+    editorHref: "/destinations",
     previewHref: "/destinations",
     slug: "/destinations",
     status: "Published",
@@ -174,6 +179,7 @@ const pages: AdminPageRecord[] = [
   {
     title: "Experiences",
     description: "Manage content for experiences and travel stories.",
+    editorHref: "/experiences",
     previewHref: "/experiences",
     slug: "/experiences",
     status: "Draft",
@@ -199,6 +205,7 @@ const pages: AdminPageRecord[] = [
   {
     title: "Contact Us",
     description: "Manage contact page content and contact details.",
+    editorHref: "/settings",
     previewHref: "/contact-us",
     slug: "/contact-us",
     status: "Published",
@@ -227,8 +234,54 @@ function getPagePreviewUrl(previewHref: string) {
   return `${frontendPreviewBaseUrl.replace(/\/+$/, "")}${normalizedPath}`;
 }
 
+function getPageTabType(tab: PageTab): AdminPageRecord["type"] | "Legal Page" | null {
+  switch (tab) {
+    case "Main Pages":
+      return "Main Page";
+    case "Feature Pages":
+      return "Feature Page";
+    case "Legal Pages":
+      return "Legal Page";
+    case "Utility Pages":
+      return "Utility Page";
+    case "All Pages":
+      return null;
+  }
+}
+
 export default function PagesPage() {
   const toast = useToast();
+  const [activeTab, setActiveTab] = useState<PageTab>("All Pages");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState(statusOptions[0]);
+  const [typeFilter, setTypeFilter] = useState(typeOptions[0]);
+  const filteredPages = useMemo(() => {
+    const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+    const tabType = getPageTabType(activeTab);
+
+    return pages.filter((page) => {
+      const matchesTab = !tabType || page.type === tabType;
+      const matchesStatus =
+        statusFilter === "All Status" || page.status === statusFilter;
+      const matchesType =
+        typeFilter === "All Types" || page.type === typeFilter;
+      const matchesSearch =
+        !normalizedSearchQuery ||
+        [
+          page.title,
+          page.description,
+          page.slug,
+          page.type,
+          page.status,
+          page.updatedBy,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedSearchQuery);
+
+      return matchesTab && matchesStatus && matchesType && matchesSearch;
+    });
+  }, [activeTab, searchQuery, statusFilter, typeFilter]);
 
   return (
     <AdminDashboardShell activeLabel="Pages">
@@ -259,9 +312,16 @@ export default function PagesPage() {
         </section>
 
         <section className="overflow-hidden rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
-          <PageTabs />
-          <PagesToolbar />
-          <PagesTable />
+          <PageTabs activeTab={activeTab} onTabChange={setActiveTab} />
+          <PagesToolbar
+            searchQuery={searchQuery}
+            statusFilter={statusFilter}
+            typeFilter={typeFilter}
+            onSearchQueryChange={setSearchQuery}
+            onStatusFilterChange={setStatusFilter}
+            onTypeFilterChange={setTypeFilter}
+          />
+          <PagesTable pages={filteredPages} totalCount={pages.length} />
         </section>
       </div>
     </AdminDashboardShell>
@@ -349,16 +409,23 @@ function MetricCard({ metric }: { metric: PageMetric }) {
   );
 }
 
-function PageTabs() {
+function PageTabs({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: PageTab;
+  onTabChange: (tab: PageTab) => void;
+}) {
   return (
     <div className="flex flex-wrap gap-x-6 gap-y-0 overflow-visible border-b border-border px-4 sm:flex-nowrap sm:overflow-x-auto sm:[-ms-overflow-style:none] sm:[scrollbar-width:none] sm:[&::-webkit-scrollbar]:hidden">
       {pageTabs.map((tab) => (
         <button
           key={tab}
           type="button"
+          onClick={() => onTabChange(tab)}
           className={cn(
             "h-11 shrink-0 border-b-2 px-0 text-xs font-semibold transition-colors",
-            tab === "All Pages"
+            tab === activeTab
               ? "border-primary text-primary"
               : "border-transparent text-foreground/65 hover:text-primary"
           )}
@@ -370,7 +437,21 @@ function PageTabs() {
   );
 }
 
-function PagesToolbar() {
+function PagesToolbar({
+  searchQuery,
+  statusFilter,
+  typeFilter,
+  onSearchQueryChange,
+  onStatusFilterChange,
+  onTypeFilterChange,
+}: {
+  searchQuery: string;
+  statusFilter: string;
+  typeFilter: string;
+  onSearchQueryChange: (value: string) => void;
+  onStatusFilterChange: (value: string) => void;
+  onTypeFilterChange: (value: string) => void;
+}) {
   return (
     <div className="grid gap-3 border-b border-border p-4 xl:grid-cols-[minmax(260px,1fr)_170px_170px_120px] xl:items-end">
       <label className="relative min-w-0">
@@ -379,10 +460,22 @@ function PagesToolbar() {
           className="h-10 w-full rounded-sm border border-border bg-white pl-9 pr-3 text-xs font-medium outline-none transition-colors placeholder:text-foreground/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
           placeholder="Search pages by title or slug..."
           type="search"
+          value={searchQuery}
+          onChange={(event) => onSearchQueryChange(event.target.value)}
         />
       </label>
-      <ToolbarSelect label="Status" options={statusOptions} value="All Status" />
-      <ToolbarSelect label="Page Type" options={typeOptions} value="All Types" />
+      <ToolbarSelect
+        label="Status"
+        options={statusOptions}
+        value={statusFilter}
+        onValueChange={onStatusFilterChange}
+      />
+      <ToolbarSelect
+        label="Page Type"
+        options={typeOptions}
+        value={typeFilter}
+        onValueChange={onTypeFilterChange}
+      />
       <Button
         type="button"
         variant="outline"
@@ -397,10 +490,12 @@ function PagesToolbar() {
 
 function ToolbarSelect({
   label,
+  onValueChange,
   options,
   value,
 }: {
   label: string;
+  onValueChange: (value: string) => void;
   options: string[];
   value: string;
 }) {
@@ -409,7 +504,14 @@ function ToolbarSelect({
       <span className="text-[11px] font-semibold text-foreground/55">
         {label}
       </span>
-      <Select value={value}>
+      <Select
+        value={value}
+        onValueChange={(nextValue) => {
+          if (nextValue) {
+            onValueChange(nextValue);
+          }
+        }}
+      >
         <SelectTrigger className="h-10 min-h-10 rounded-sm border-border bg-white px-3 py-2 text-xs">
           <SelectValue />
         </SelectTrigger>
@@ -425,7 +527,13 @@ function ToolbarSelect({
   );
 }
 
-function PagesTable() {
+function PagesTable({
+  pages,
+  totalCount,
+}: {
+  pages: AdminPageRecord[];
+  totalCount: number;
+}) {
   return (
     <>
       <div className="max-w-full overflow-hidden">
@@ -449,7 +557,8 @@ function PagesTable() {
             </tr>
           </thead>
           <tbody>
-            {pages.map((page) => (
+            {pages.length > 0 ? (
+              pages.map((page) => (
               <tr
                 key={page.slug}
                 onClick={(event) => {
@@ -530,12 +639,22 @@ function PagesTable() {
                   />
                 </td>
               </tr>
-            ))}
+              ))
+            ) : (
+              <tr>
+                <td
+                  className="px-5 py-8 text-center text-xs text-foreground/55"
+                  colSpan={6}
+                >
+                  No pages match the selected filters.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
-      <TableFooter />
+      <TableFooter count={pages.length} totalCount={totalCount} />
     </>
   );
 }
@@ -549,6 +668,8 @@ function RowActions({
   itemName: string;
   previewHref: string;
 }) {
+  const router = useRouter();
+
   return (
     <div className="flex justify-end">
       <DropdownMenu>
@@ -568,26 +689,22 @@ function RowActions({
           className="w-40 rounded-sm border border-border bg-white p-1 shadow-lg shadow-stone-200/70"
         >
           <DropdownMenuItem
-            render={
-              <Link
-                href={getPagePreviewUrl(previewHref)}
-                target="_blank"
-                rel="noreferrer"
-                className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-2 text-xs font-semibold"
-              />
+            onClick={() =>
+              window.open(
+                getPagePreviewUrl(previewHref),
+                "_blank",
+                "noopener,noreferrer"
+              )
             }
+            className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
           >
             <Eye className="size-4 text-foreground/60" />
             Preview
           </DropdownMenuItem>
           {editorHref ? (
             <DropdownMenuItem
-              render={
-                <Link
-                  href={editorHref}
-                  className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-2 text-xs font-semibold"
-                />
-              }
+              onClick={() => router.push(editorHref)}
+              className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
             >
               <PencilLine className="size-4 text-primary" />
               Edit Content
@@ -630,10 +747,18 @@ function PagePreviewFrame({
   );
 }
 
-function TableFooter() {
+function TableFooter({
+  count,
+  totalCount,
+}: {
+  count: number;
+  totalCount: number;
+}) {
   return (
     <div className="flex flex-col gap-3 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-      <p className="text-xs text-foreground/55">Showing 1 to 7 of 15 pages</p>
+      <p className="text-xs text-foreground/55">
+        Showing {count} of {totalCount} pages
+      </p>
       <div className="flex flex-wrap items-center gap-2">
         <PaginationButton label="First page" disabled>
           <span className="text-sm leading-none">&lt;&lt;</span>
@@ -641,16 +766,9 @@ function TableFooter() {
         <PaginationButton label="Previous page" disabled>
           <ChevronLeft className="size-4" />
         </PaginationButton>
-        {[1, 2, 3].map((page) => (
-          <PaginationButton key={page} label={`Page ${page}`} active={page === 1}>
-            {page}
-          </PaginationButton>
-        ))}
-        <PaginationButton label="Next page">
+        <PaginationButton label="Page 1" active disabled>1</PaginationButton>
+        <PaginationButton label="Next page" disabled>
           <ChevronRight className="size-4" />
-        </PaginationButton>
-        <PaginationButton label="Last page">
-          <span className="text-sm leading-none">&gt;&gt;</span>
         </PaginationButton>
       </div>
     </div>

@@ -128,7 +128,7 @@ export function AdminSidebar({
         "lg:shadow-sm",
         "lg:transition-[width] lg:duration-300 lg:ease-out",
 
-        isCollapsed ? "lg:w-20" : "lg:w-80",
+        isCollapsed ? "lg:w-20" : "lg:w-64",
 
         className
       )}
