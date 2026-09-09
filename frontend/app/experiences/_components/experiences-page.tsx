@@ -405,15 +405,15 @@ function HeaderBand({
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(20,16,12,0.7)_100%)]" />
       <div className="relative z-10 mx-auto flex h-full w-full max-w-[1300px] flex-col px-5 sm:px-8 lg:px-0">
         <Header />
-        <div className="flex  items-center pb-6 md:pb-6">
-          <div className="max-w-[760px] text-center text-white">
+        <div className="flex flex-1 items-center justify-center pb-6 md:pb-6">
+          <div className="w-full max-w-[760px] text-center text-white">
           
             {stats.length > 0 ? (
-              <div className="mt-6 flex flex-wrap gap-3 text-left ">
+              <div className="flex flex-wrap items-center justify-center gap-3 text-center">
                 {stats.map((stat) => (
                   <div
                     key={stat.label}
-                    className="border-r-1 border-white pr-3 last:border-none pr-0 "
+                    className="border-r border-white px-4 last:border-none"
                   >
                     <span className="block font-description text-[20px] font-semibold leading-none text-white">
                       {stat.value}

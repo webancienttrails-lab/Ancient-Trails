@@ -296,6 +296,18 @@ function uniqueValues(values: Array<string | undefined>) {
   );
 }
 
+function splitTourCategoryLabels(tour: PublicTour) {
+  return uniqueValues(
+    [tour.category, tour.tourType]
+      .flatMap((value) => (value || "").split(/[,/|]+/))
+      .map((value) => value.trim())
+      .filter(
+        (value) =>
+          !["domestic", "international"].includes(value.toLowerCase())
+      )
+  );
+}
+
 function formatCurrency(value: number) {
   if (!value || value <= 0) {
     return "Price on request";
@@ -1927,6 +1939,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
             selectedImage={selectedImage}
             selectedImageIndex={selectedImageIndex}
             title={detail.tour.tourName}
+            tour={detail.tour}
             tourType={detail.tour.category || detail.tour.tourType}
             onSelectImage={setSelectedImageIndex}
           />
@@ -2116,6 +2129,7 @@ function TourGallery({
   selectedImage,
   selectedImageIndex,
   title,
+  tour,
   tourType,
 }: {
   images: string[];
@@ -2123,9 +2137,13 @@ function TourGallery({
   selectedImage: string;
   selectedImageIndex: number;
   title: string;
+  tour: PublicTour;
   tourType: string;
 }) {
   const thumbnails = images.slice(0, 5);
+  const categoryLabels = splitTourCategoryLabels(tour);
+  const bannerCategoryLabels =
+    categoryLabels.length > 0 ? categoryLabels : [tourType || "Heritage Walk"];
 
   function moveImage(direction: number) {
     const nextIndex =
@@ -2136,7 +2154,7 @@ function TourGallery({
 
   return (
     <section className="mt-5">
-      <div className="relative aspect-[1.95/1] overflow-hidden rounded-[8px] bg-border shadow-[0_12px_30px_rgba(67,43,27,0.1)]">
+      <div className="relative aspect-[1.95/1] overflow-hidden rounded-[8px] bg-border ">
         <Image
           src={selectedImage}
           alt={title}
@@ -2146,9 +2164,16 @@ function TourGallery({
           className="object-cover"
         />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0)_58%,rgba(0,0,0,0.42)_100%)]" />
-        <span className="absolute bottom-4 left-4 inline-flex items-center gap-2 rounded-[6px] border border-white/45 bg-secondary/75 px-3 py-2 font-sans text-[15px] font-normal text-white shadow-[0_10px_20px_rgba(0,0,0,0.18)] backdrop-blur-sm">
-          {tourType || "Heritage Walk"}
-        </span>
+        <div className="absolute bottom-3 left-3 right-3 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5 sm:bottom-4 sm:left-4 sm:right-4 sm:max-w-[calc(100%-2rem)] sm:gap-2">
+          {bannerCategoryLabels.map((label) => (
+            <span
+              key={label}
+              className="inline-flex h-8 max-w-full items-center rounded-full bg-secondary/60 px-3 font-sans text-[12px] font-semibold leading-none text-white backdrop-blur-[2px] sm:px-4"
+            >
+              {label}
+            </span>
+          ))}
+        </div>
       </div>
 
       <div className="mt-3 grid grid-cols-[38px_minmax(0,1fr)_38px] items-center gap-2">
@@ -2156,7 +2181,7 @@ function TourGallery({
           type="button"
           aria-label="Previous photo"
           onClick={() => moveImage(-1)}
-          className="grid size-9 place-items-center rounded-full border border-border bg-white text-primary shadow-[0_8px_18px_rgba(67,43,27,0.08)] transition-colors hover:bg-primary hover:text-white"
+          className="grid size-9 place-items-center rounded-full border border-border bg-white text-primary  transition-colors hover:bg-primary hover:text-white"
         >
           <ChevronLeft className="size-4" />
         </button>
@@ -2188,7 +2213,7 @@ function TourGallery({
           type="button"
           aria-label="Next photo"
           onClick={() => moveImage(1)}
-          className="grid size-9 place-items-center rounded-full border border-border bg-white text-primary shadow-[0_8px_18px_rgba(67,43,27,0.08)] transition-colors hover:bg-primary hover:text-white"
+          className="grid size-9 place-items-center rounded-full border border-border bg-white text-primary  transition-colors hover:bg-primary hover:text-white"
         >
           <ChevronRight className="size-4" />
         </button>
@@ -2307,7 +2332,7 @@ function TourTabs({
     >
       <div
         data-tour-tabs
-        className="sticky top-0 z-[2147483647] overflow-hidden rounded-[8px] border border-border bg-card shadow-[0_14px_34px_rgba(67,43,27,0.09)]"
+        className="sticky top-0 z-[2147483647] overflow-hidden rounded-[8px] border border-border bg-card "
       >
         <div className="grid w-full grid-cols-2 sm:grid-cols-3 xl:grid-cols-[0.9fr_0.95fr_1.3fr_1.35fr_1fr]">
           {tabs.map((tab) => {
@@ -2343,7 +2368,7 @@ function TourTabs({
       <div className="mt-4 space-y-5">
         <section
           id="summary"
-          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4 shadow-[0_12px_30px_rgba(67,43,27,0.07)] sm:p-5"
+          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4  sm:p-5"
         >
           <SummaryPanel
             facts={facts}
@@ -2352,7 +2377,7 @@ function TourTabs({
 
         <section
           id="itinerary"
-          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4 shadow-[0_12px_30px_rgba(67,43,27,0.07)] sm:p-5"
+          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4 sm:p-5"
         >
           <ItineraryPanel
             itinerary={itinerary}
@@ -2364,14 +2389,14 @@ function TourTabs({
 
         <section
           id="inclusions"
-          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4 shadow-[0_12px_30px_rgba(67,43,27,0.07)] sm:p-5"
+          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4  sm:p-5"
         >
           <InclusionsPanel tour={tour} />
         </section>
 
         <section
           id="departure-pricing"
-          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4 shadow-[0_12px_30px_rgba(67,43,27,0.07)] sm:p-5"
+          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4  sm:p-5"
         >
           <PricingPanel
             departures={departures}
@@ -2390,7 +2415,7 @@ function TourTabs({
 
         <section
           id="tour-expert"
-          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4 shadow-[0_12px_30px_rgba(67,43,27,0.07)] sm:p-5"
+          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4  sm:p-5"
         >
           <ExpertPanel expert={expert} />
         </section>
@@ -2586,10 +2611,12 @@ function formatBalanceDueDate(value: Date | null) {
 
 function DateOfBirthPicker({
   ariaLabel,
+  disabled = false,
   onChange,
   value,
 }: {
   ariaLabel: string;
+  disabled?: boolean;
   onChange: (value: string) => void;
   value: string;
 }) {
@@ -2651,21 +2678,23 @@ function DateOfBirthPicker({
     <div ref={pickerRef} className="relative">
       <button
         type="button"
-        aria-expanded={isOpen}
+        aria-expanded={!disabled && isOpen}
         aria-label={ariaLabel}
+        disabled={disabled}
         onClick={() => setIsOpen((current) => !current)}
         className={cn(
           "flex h-11 w-full items-center justify-between rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15",
           displayValue ? "text-secondary" : "text-secondary/40",
-          isOpen && "border-primary ring-3 ring-primary/15"
+          !disabled && isOpen && "border-primary ring-3 ring-primary/15",
+          disabled && "cursor-not-allowed opacity-60"
         )}
       >
         <span>{displayValue || "Date of Birth *"}</span>
         <CalendarDays className="size-4 text-primary" strokeWidth={1.8} />
       </button>
 
-      {isOpen ? (
-        <div className="absolute left-0 top-[calc(100%+8px)] z-50 w-[min(320px,calc(100vw-2rem))] rounded-[8px] border border-primary/25 bg-card p-3 font-sans text-secondary shadow-[0_18px_42px_rgba(67,43,27,0.16)]">
+      {!disabled && isOpen ? (
+        <div className="absolute left-0 top-[calc(100%+8px)] z-50 w-[min(320px,calc(100vw-2rem))] rounded-[8px] border border-primary/25 bg-card p-3 font-sans text-secondary ">
           <div className="flex items-center gap-2">
             <label className="relative min-w-0 flex-1">
               <span className="sr-only">Select month</span>
@@ -2833,19 +2862,6 @@ function PricingPanel({
   const [isVerifyingLeadOtp, setIsVerifyingLeadOtp] = useState(false);
   const [leadOtpCooldownSeconds, setLeadOtpCooldownSeconds] = useState(0);
   const [isGroupEnquiryOpen, setIsGroupEnquiryOpen] = useState(false);
-  const activeTravellerDetailTab =
-    travellerDetailTabs.find((tab) => tab.id === activeTravellerDetailId) ||
-    travellerDetailTabs[0] || {
-      description: "This traveller will serve as the contact person for the booking.",
-      heading: "Lead Traveller",
-      id: "adult-1",
-      label: "Lead Traveller",
-      travellerType: "adult",
-    };
-  const activeTravellerDetails = {
-    ...defaultTravellerDetailForm,
-    ...(travellerDetailForms[activeTravellerDetailTab.id] || {}),
-  };
   const leadTravellerDetails = {
     ...defaultTravellerDetailForm,
     ...(travellerDetailForms["adult-1"] || {}),
@@ -2869,9 +2885,34 @@ function PricingPanel({
     Boolean(leadTravellerAuthMobileNumber) &&
     (verifiedLeadMobileNumber === leadTravellerAuthMobileNumber ||
       isLeadTravellerSessionMobileVerified);
+  const hasLeadRegistrationOtpVerification = Boolean(
+    leadRegistrationToken &&
+      leadOtpTargetMobileNumber === leadTravellerAuthMobileNumber
+  );
+  const canEditTravellerDetailFields =
+    hasVerifiedLeadMobileNumber || hasLeadRegistrationOtpVerification;
+  const resolvedActiveTravellerDetailId = canEditTravellerDetailFields
+    ? activeTravellerDetailId
+    : "adult-1";
+  const activeTravellerDetailTab =
+    travellerDetailTabs.find((tab) => tab.id === resolvedActiveTravellerDetailId) ||
+    travellerDetailTabs[0] || {
+      description: "This traveller will serve as the contact person for the booking.",
+      heading: "Lead Traveller",
+      id: "adult-1",
+      label: "Lead Traveller",
+      travellerType: "adult",
+    };
+  const activeTravellerDetails = {
+    ...defaultTravellerDetailForm,
+    ...(travellerDetailForms[activeTravellerDetailTab.id] || {}),
+  };
   const isLeadTravellerAuthReady = hasVerifiedLeadMobileNumber;
-  const isLeadTravellerVerificationBusy =
-    isRequestingLeadOtp || isVerifyingLeadOtp;
+  const areLeadTravellerProfileFieldsReady = Boolean(
+    leadTravellerDetails.firstName.trim() &&
+      leadTravellerDetails.lastName.trim() &&
+      isValidEmail(leadTravellerDetails.email)
+  );
   const areAllTravellerDetailsComplete = useMemo(
     () =>
       travellerDetailTabs.length > 0 &&
@@ -3083,6 +3124,24 @@ function PricingPanel({
     }
   }
 
+  function updateLeadTravellerDetail(
+    field: TravellerDetailField,
+    value: TravellerDetailForm[TravellerDetailField]
+  ) {
+    setTravellerDetailForms((current) => ({
+      ...current,
+      "adult-1": {
+        ...defaultTravellerDetailForm,
+        ...(current["adult-1"] || {}),
+        [field]: value,
+      },
+    }));
+
+    if (field === "mobileNumber" || field === "phoneCountryCode") {
+      resetLeadOtpChallenge();
+    }
+  }
+
   function validateLeadTravellerRegistrationDetails() {
     if (
       !leadTravellerDetails.firstName.trim() ||
@@ -3162,6 +3221,42 @@ function PricingPanel({
     setLeadAuthError("");
     setLeadAuthMessage("");
 
+    if (leadRegistrationToken) {
+      const registrationError = validateLeadTravellerRegistrationDetails();
+
+      if (registrationError) {
+        setLeadAuthError(registrationError);
+        toast.error("Lead traveller details required", registrationError);
+        return;
+      }
+
+      setIsVerifyingLeadOtp(true);
+
+      try {
+        const profileResponse = await completeTravellerProfile({
+          registrationToken: leadRegistrationToken,
+          firstName: leadTravellerDetails.firstName,
+          lastName: leadTravellerDetails.lastName,
+          email: leadTravellerDetails.email.trim().toLowerCase(),
+        });
+
+        saveLeadTravellerSession(
+          profileResponse.data,
+          "Mobile verified",
+          profileResponse.message
+        );
+      } catch (error) {
+        const message = getBookingErrorMessage(error);
+
+        setLeadAuthError(message);
+        toast.error("Profile could not be completed", message);
+      } finally {
+        setIsVerifyingLeadOtp(false);
+      }
+
+      return;
+    }
+
     if (!/^\d{4,9}$/.test(leadOtp.trim())) {
       const message = "OTP must be 4 to 9 digits.";
 
@@ -3235,8 +3330,14 @@ function PricingPanel({
 
         if (registrationError) {
           setLeadRegistrationToken(otpResponse.data.registrationToken);
-          setLeadAuthError(registrationError);
-          toast.error("Lead traveller details required", registrationError);
+          setLeadAuthMessage(
+            "Mobile number verified. Complete lead traveller details to continue."
+          );
+          setLeadAuthError("");
+          toast.success(
+            "Mobile verified",
+            "Complete lead traveller details to continue."
+          );
           return;
         }
 
@@ -3397,15 +3498,43 @@ function PricingPanel({
               Online booking is available for up to {BOOKING_TRAVELLER_LIMIT} travellers.
               Please enquire for larger groups.
             </p>
-            <button
+            <Button
               type="button"
               onClick={() => setIsGroupEnquiryOpen(true)}
-              className="mt-3 inline-flex h-10 items-center justify-center rounded-full bg-primary px-5 text-[13px] font-bold text-white transition-colors hover:bg-accent"
+              className="mt-3 justify-between gap-4 px-5 font-normal"
             >
               Enquire Now
-            </button>
+              <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+            </Button>
           </div>
         ) : null}
+
+        <LeadTravellerVerificationPanel
+          canCompleteProfile={areLeadTravellerProfileFieldsReady}
+          cooldownSeconds={leadOtpCooldownSeconds}
+          errorMessage={leadAuthError}
+          hasOtpBeenRequested={hasLeadOtpBeenRequested}
+          isCompletingProfile={hasLeadRegistrationOtpVerification}
+          isLoggedIn={isLeadTravellerLoggedIn}
+          isProfileMobile={isLeadTravellerUsingProfileMobile}
+          isRequestingOtp={isRequestingLeadOtp}
+          isVerified={hasVerifiedLeadMobileNumber}
+          isVerifyingOtp={isVerifyingLeadOtp}
+          message={leadAuthMessage}
+          mobileNumber={leadTravellerDetails.mobileNumber}
+          onMobileNumberChange={(value) =>
+            updateLeadTravellerDetail("mobileNumber", value)
+          }
+          onOtpChange={setLeadOtp}
+          onPhoneCountryCodeChange={(value) =>
+            updateLeadTravellerDetail("phoneCountryCode", value)
+          }
+          onRequestOtp={handleLeadTravellerRequestOtp}
+          onVerifyOtp={handleLeadTravellerVerifyOtp}
+          otp={leadOtp}
+          phoneCountryCode={leadTravellerDetails.phoneCountryCode}
+          phoneNumber={leadTravellerAuthMobileNumber}
+        />
 
         <div className="mt-4 flex items-start gap-2 rounded-[6px] bg-muted px-3 py-2 font-sans text-[14px] font-medium leading-[1.5] text-secondary/72">
           <Info className="mt-0.5 size-3.5 shrink-0 text-accent" />
@@ -3433,8 +3562,11 @@ function PricingPanel({
                     "h-9 shrink-0 rounded-[6px] px-3 font-sans text-[14px] font-medium transition-colors focus:outline-none focus:ring-3 focus:ring-primary/15",
                     isSelected
                       ? "bg-primary text-white shadow-[0_5px_12px_rgba(212,114,32,0.18)]"
-                      : "text-secondary/68 hover:bg-background hover:text-secondary"
+                      : "text-secondary/68 hover:bg-background hover:text-secondary",
+                    !canEditTravellerDetailFields &&
+                      "cursor-not-allowed opacity-55 hover:bg-transparent"
                   )}
+                  disabled={!canEditTravellerDetailFields}
                   id={`traveller-tab-${travellerTab.id}`}
                   onClick={() => setActiveTravellerDetailId(travellerTab.id)}
                   role="tab"
@@ -3464,159 +3596,153 @@ function PricingPanel({
             {activeTravellerDetailTab.description}
           </p>
 
-          <div className="mt-3 grid gap-3 md:grid-cols-[0.55fr_1.25fr_1.25fr]">
-            <select
-              aria-label={`${activeTravellerDetailTab.label} title`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
-              value={activeTravellerDetails.title}
-              onChange={(event) =>
-                updateActiveTravellerDetail("title", event.target.value)
-              }
-            >
-              <option>Mr</option>
-              <option>Ms</option>
-              <option>Mrs</option>
-              <option>Dr</option>
-            </select>
-            <input
-              aria-label={`${activeTravellerDetailTab.label} first name`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
-              value={activeTravellerDetails.firstName}
-              onChange={(event) =>
-                updateActiveTravellerDetail("firstName", event.target.value)
-              }
-              placeholder="First Name *"
-              type="text"
-            />
-            <input
-              aria-label={`${activeTravellerDetailTab.label} last name`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
-              value={activeTravellerDetails.lastName}
-              onChange={(event) =>
-                updateActiveTravellerDetail("lastName", event.target.value)
-              }
-              placeholder="Last Name *"
-              type="text"
-            />
-          </div>
-
-          <div className="mt-3 grid gap-3 md:grid-cols-3">
-            <input
-              aria-label={`${activeTravellerDetailTab.label} email`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
-              value={activeTravellerDetails.email}
-              onChange={(event) =>
-                updateActiveTravellerDetail("email", event.target.value)
-              }
-              placeholder="Email *"
-              type="email"
-            />
-            <DateOfBirthPicker
-              key={`${activeTravellerDetailTab.id}-date-of-birth`}
-              ariaLabel={`${activeTravellerDetailTab.label} date of birth`}
-              value={activeTravellerDetails.dateOfBirth}
-              onChange={(nextValue) =>
-                updateActiveTravellerDetail("dateOfBirth", nextValue)
-              }
-            />
-            <input
-              aria-label={`${activeTravellerDetailTab.label} address`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
-              value={activeTravellerDetails.address}
-              onChange={(event) =>
-                updateActiveTravellerDetail("address", event.target.value)
-              }
-              placeholder="Address *"
-              type="text"
-            />
-          </div>
-
-          <div className="mt-3 grid gap-3 md:grid-cols-[0.9fr_1fr_1.2fr]">
-            <select
-              aria-label={`${activeTravellerDetailTab.label} phone country code`}
-              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
-              value={activeTravellerDetails.phoneCountryCode}
-              onChange={(event) =>
-                updateActiveTravellerDetail(
-                  "phoneCountryCode",
-                  event.target.value
-                )
-              }
-            >
-              <option>India +91</option>
-              <option>US +1</option>
-              <option>UK +44</option>
-              <option>Australia +61</option>
-            </select>
-            <div className="relative">
-              <input
-                aria-label={`${activeTravellerDetailTab.label} mobile number`}
-                className={cn(
-                  "h-11 w-full rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15",
-                  activeTravellerDetailTab.id === "adult-1" &&
-                    hasVerifiedLeadMobileNumber &&
-                    "border-primary/45 pr-10"
-                )}
-                value={activeTravellerDetails.mobileNumber}
-                onChange={(event) =>
-                  updateActiveTravellerDetail("mobileNumber", event.target.value)
-                }
-                placeholder="Mobile Number *"
-                type="tel"
-              />
-              {activeTravellerDetailTab.id === "adult-1" &&
-              hasVerifiedLeadMobileNumber ? (
-                <span
-                  aria-label="Mobile number verified"
-                  className="absolute right-2.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full bg-primary text-white"
-                  title="Mobile number verified"
-                >
-                  <Check className="size-3.5" strokeWidth={2.4} />
-                </span>
-              ) : null}
-            </div>
-            <div className="flex h-11 items-center gap-4 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary">
-              <span className="font-medium">Gender *</span>
-              <label className="inline-flex items-center gap-1.5">
-                <input
-                  checked={activeTravellerDetails.gender === "male"}
-                  name={`traveller-gender-${activeTravellerDetailTab.id}`}
-                  onChange={() => updateActiveTravellerDetail("gender", "male")}
-                  type="radio"
-                />
-                Male
-              </label>
-              <label className="inline-flex items-center gap-1.5">
-                <input
-                  checked={activeTravellerDetails.gender === "female"}
-                  name={`traveller-gender-${activeTravellerDetailTab.id}`}
-                  onChange={() =>
-                    updateActiveTravellerDetail("gender", "female")
-                  }
-                  type="radio"
-                />
-                Female
-              </label>
-            </div>
-          </div>
-
-          {activeTravellerDetailTab.id === "adult-1" &&
-          !hasVerifiedLeadMobileNumber ? (
-            <LeadTravellerVerificationPanel
-              cooldownSeconds={leadOtpCooldownSeconds}
-              errorMessage={leadAuthError}
-              hasOtpBeenRequested={hasLeadOtpBeenRequested}
-              isLoggedIn={isLeadTravellerLoggedIn}
-              isProfileMobile={isLeadTravellerUsingProfileMobile}
-              isSubmitting={isLeadTravellerVerificationBusy}
-              message={leadAuthMessage}
-              onOtpChange={setLeadOtp}
-              onRequestOtp={handleLeadTravellerRequestOtp}
-              onVerifyOtp={handleLeadTravellerVerifyOtp}
-              otp={leadOtp}
-              phoneNumber={leadTravellerAuthMobileNumber}
-            />
+          {!canEditTravellerDetailFields ? (
+            <p className="mt-3 rounded-[6px] border border-primary/15 bg-primary/5 px-3 py-2 font-sans text-[13px] font-semibold text-secondary/70">
+              Verify the lead traveller mobile number to unlock traveller details.
+            </p>
           ) : null}
+
+          <fieldset
+            disabled={!canEditTravellerDetailFields}
+            className={cn(
+              "mt-3 space-y-3",
+              !canEditTravellerDetailFields && "opacity-60"
+            )}
+          >
+            <div className="grid gap-3 md:grid-cols-[0.55fr_1.25fr_1.25fr]">
+              <select
+                aria-label={`${activeTravellerDetailTab.label} title`}
+                className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
+                value={activeTravellerDetails.title}
+                onChange={(event) =>
+                  updateActiveTravellerDetail("title", event.target.value)
+                }
+              >
+                <option>Mr</option>
+                <option>Ms</option>
+                <option>Mrs</option>
+                <option>Dr</option>
+              </select>
+              <input
+                aria-label={`${activeTravellerDetailTab.label} first name`}
+                className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
+                value={activeTravellerDetails.firstName}
+                onChange={(event) =>
+                  updateActiveTravellerDetail("firstName", event.target.value)
+                }
+                placeholder="First Name *"
+                type="text"
+              />
+              <input
+                aria-label={`${activeTravellerDetailTab.label} last name`}
+                className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
+                value={activeTravellerDetails.lastName}
+                onChange={(event) =>
+                  updateActiveTravellerDetail("lastName", event.target.value)
+                }
+                placeholder="Last Name *"
+                type="text"
+              />
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <input
+                aria-label={`${activeTravellerDetailTab.label} email`}
+                className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
+                value={activeTravellerDetails.email}
+                onChange={(event) =>
+                  updateActiveTravellerDetail("email", event.target.value)
+                }
+                placeholder="Email *"
+                type="email"
+              />
+              <DateOfBirthPicker
+                key={`${activeTravellerDetailTab.id}-date-of-birth`}
+                ariaLabel={`${activeTravellerDetailTab.label} date of birth`}
+                disabled={!canEditTravellerDetailFields}
+                value={activeTravellerDetails.dateOfBirth}
+                onChange={(nextValue) =>
+                  updateActiveTravellerDetail("dateOfBirth", nextValue)
+                }
+              />
+              <input
+                aria-label={`${activeTravellerDetailTab.label} address`}
+                className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
+                value={activeTravellerDetails.address}
+                onChange={(event) =>
+                  updateActiveTravellerDetail("address", event.target.value)
+                }
+                placeholder="Address *"
+                type="text"
+              />
+            </div>
+
+            <div
+              className={cn(
+                "grid gap-3",
+                activeTravellerDetailTab.id === "adult-1"
+                  ? "md:grid-cols-3"
+                  : "md:grid-cols-[0.9fr_1fr_1.2fr]"
+              )}
+            >
+              {activeTravellerDetailTab.id !== "adult-1" ? (
+                <>
+                  <select
+                    aria-label={`${activeTravellerDetailTab.label} phone country code`}
+                    className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
+                    value={activeTravellerDetails.phoneCountryCode}
+                    onChange={(event) =>
+                      updateActiveTravellerDetail(
+                        "phoneCountryCode",
+                        event.target.value
+                      )
+                    }
+                  >
+                    <option>India +91</option>
+                    <option>US +1</option>
+                    <option>UK +44</option>
+                    <option>Australia +61</option>
+                  </select>
+                  <input
+                    aria-label={`${activeTravellerDetailTab.label} mobile number`}
+                    className="h-11 w-full rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
+                    value={activeTravellerDetails.mobileNumber}
+                    onChange={(event) =>
+                      updateActiveTravellerDetail(
+                        "mobileNumber",
+                        event.target.value
+                      )
+                    }
+                    placeholder="Mobile Number *"
+                    type="tel"
+                  />
+                </>
+              ) : null}
+              <div className="flex h-11 items-center gap-4 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary">
+                <span className="font-medium">Gender *</span>
+                <label className="inline-flex items-center gap-1.5">
+                  <input
+                    checked={activeTravellerDetails.gender === "male"}
+                    name={`traveller-gender-${activeTravellerDetailTab.id}`}
+                    onChange={() => updateActiveTravellerDetail("gender", "male")}
+                    type="radio"
+                  />
+                  Male
+                </label>
+                <label className="inline-flex items-center gap-1.5">
+                  <input
+                    checked={activeTravellerDetails.gender === "female"}
+                    name={`traveller-gender-${activeTravellerDetailTab.id}`}
+                    onChange={() =>
+                      updateActiveTravellerDetail("gender", "female")
+                    }
+                    type="radio"
+                  />
+                  Female
+                </label>
+              </div>
+            </div>
+          </fieldset>
         </div>
 
         <p className="mt-4 font-sans text-[14px] font-medium text-secondary/72">
@@ -3680,84 +3806,165 @@ function PricingPanel({
 }
 
 function LeadTravellerVerificationPanel({
+  canCompleteProfile,
   cooldownSeconds,
   errorMessage,
   hasOtpBeenRequested,
+  isCompletingProfile,
   isLoggedIn,
   isProfileMobile,
-  isSubmitting,
+  isRequestingOtp,
+  isVerified,
+  isVerifyingOtp,
   message,
+  mobileNumber,
+  onMobileNumberChange,
   onOtpChange,
+  onPhoneCountryCodeChange,
   onRequestOtp,
   onVerifyOtp,
   otp,
+  phoneCountryCode,
   phoneNumber,
 }: {
+  canCompleteProfile: boolean;
   cooldownSeconds: number;
   errorMessage: string;
   hasOtpBeenRequested: boolean;
+  isCompletingProfile: boolean;
   isLoggedIn: boolean;
   isProfileMobile: boolean;
-  isSubmitting: boolean;
+  isRequestingOtp: boolean;
+  isVerified: boolean;
+  isVerifyingOtp: boolean;
   message: string;
+  mobileNumber: string;
+  onMobileNumberChange: (value: string) => void;
   onOtpChange: (value: string) => void;
+  onPhoneCountryCodeChange: (value: string) => void;
   onRequestOtp: (event: FormEvent<HTMLFormElement>) => void;
   onVerifyOtp: (event: FormEvent<HTMLFormElement>) => void;
   otp: string;
+  phoneCountryCode: string;
   phoneNumber: string;
 }) {
+  const isBusy = isRequestingOtp || isVerifyingOtp;
+  const requestOtpButtonLabel = isVerified
+    ? "Verified"
+    : isCompletingProfile
+      ? "OTP Verified"
+      : cooldownSeconds > 0
+        ? `Resend OTP in ${cooldownSeconds}s`
+        : isRequestingOtp
+          ? "Sending OTP..."
+          : "Send OTP";
+
   return (
     <section className="mt-4 rounded-[8px] border border-primary/20 bg-primary/5 p-3 font-sans">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h4 className="text-[14px] font-bold text-secondary">
-            Verify lead mobile number
-          </h4>
-          <p className="mt-1 text-[12px] font-medium leading-[1.45] text-secondary/65">
-            {isLoggedIn
-              ? isProfileMobile
-                ? "Verify your login profile mobile number before booking."
-                : "This mobile number is different from your login profile. Verify it before booking."
-              : "Verify the lead traveller mobile number before booking."}
-          </p>
-        </div>
-      </div>
+      <h4 className="text-[14px] font-bold text-secondary">
+        Lead Traveller Mobile Verification
+      </h4>
+      <p className="mt-1 text-[12px] font-medium leading-[1.45] text-secondary/65">
+        {isLoggedIn
+          ? isProfileMobile
+            ? "Verify your login profile mobile number before booking."
+            : "This mobile number is different from your login profile. Verify it before booking."
+          : "Verify the lead traveller mobile number before booking."}
+      </p>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-        <form onSubmit={onRequestOtp} className="contents">
-          <button
-            type="submit"
-            disabled={isSubmitting || cooldownSeconds > 0 || !phoneNumber}
-            className="inline-flex h-10 items-center justify-center rounded-[6px] bg-primary px-4 text-[13px] font-bold text-white transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-55"
-          >
-            {cooldownSeconds > 0
-              ? `Resend OTP in ${cooldownSeconds}s`
-              : isSubmitting
-                ? "Sending OTP..."
-                : "Send OTP"}
-          </button>
-        </form>
-      </div>
-
-      {hasOtpBeenRequested ? (
-        <form onSubmit={onVerifyOtp} className="mt-2 flex flex-col gap-2 sm:flex-row">
+      <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(120px,0.9fr)_minmax(160px,1.1fr)_auto_minmax(120px,0.9fr)_auto]">
+        <select
+          aria-label="Lead traveller phone country code"
+          className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+          value={phoneCountryCode}
+          onChange={(event) => onPhoneCountryCodeChange(event.target.value)}
+        >
+          <option>India +91</option>
+          <option>US +1</option>
+          <option>UK +44</option>
+          <option>Australia +61</option>
+        </select>
+        <div className="relative">
           <input
-            aria-label="Lead traveller OTP"
-            className="h-10 min-w-0 flex-1 rounded-[6px] border border-border bg-background px-3 text-[13px] font-semibold tracking-[0.2em] text-secondary outline-none focus:border-primary focus:ring-3 focus:ring-primary/15"
-            inputMode="numeric"
-            maxLength={9}
-            onChange={(event) => onOtpChange(event.target.value.replace(/\D/g, ""))}
-            placeholder="Enter OTP"
-            value={otp}
+            aria-label="Lead traveller mobile number"
+            className={cn(
+              "h-11 w-full rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15",
+              isVerified && "border-primary/45 pr-10"
+            )}
+            value={mobileNumber}
+            onChange={(event) => onMobileNumberChange(event.target.value)}
+            placeholder="Mobile Number *"
+            type="tel"
           />
-          <button
+          {isVerified ? (
+            <span
+              aria-label="Mobile number verified"
+              className="absolute right-2.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full bg-primary text-white"
+              title="Mobile number verified"
+            >
+              <Check className="size-3.5" strokeWidth={2.4} />
+            </span>
+          ) : null}
+        </div>
+        <form onSubmit={onRequestOtp} className="contents">
+          <Button
             type="submit"
-            disabled={isSubmitting || !otp}
-            className="inline-flex h-10 items-center justify-center rounded-[6px] border border-primary bg-white px-4 text-[13px] font-bold text-primary transition-colors hover:bg-primary hover:text-white disabled:pointer-events-none disabled:opacity-55"
+            disabled={
+              isBusy ||
+              isVerified ||
+              isCompletingProfile ||
+              cooldownSeconds > 0 ||
+              !phoneNumber
+            }
+            className="h-11 justify-center px-4 text-[11px] font-normal disabled:pointer-events-none disabled:opacity-55"
           >
-            {isSubmitting ? "Verifying..." : "Verify OTP"}
-          </button>
+            {requestOtpButtonLabel}
+          </Button>
         </form>
+
+        {hasOtpBeenRequested && !isCompletingProfile ? (
+          <form onSubmit={onVerifyOtp} className="contents">
+            <input
+              aria-label="Lead traveller OTP"
+              className="h-11 min-w-0 rounded-[6px] border border-border bg-background px-3 text-[13px] font-semibold tracking-[0.2em] text-secondary outline-none focus:border-primary focus:ring-3 focus:ring-primary/15"
+              inputMode="numeric"
+              maxLength={9}
+              onChange={(event) =>
+                onOtpChange(event.target.value.replace(/\D/g, ""))
+              }
+              placeholder="Enter OTP"
+              value={otp}
+            />
+            <Button
+              type="submit"
+              disabled={isBusy || !otp}
+              variant="outline"
+              className="h-11 justify-center px-4 text-[13px] font-normal disabled:pointer-events-none disabled:opacity-55"
+            >
+              {isVerifyingOtp ? "Verifying..." : "Verify OTP"}
+            </Button>
+          </form>
+        ) : null}
+
+        {isCompletingProfile ? (
+          <form onSubmit={onVerifyOtp} className="contents">
+            <span className="hidden lg:block" aria-hidden="true" />
+            <Button
+              type="submit"
+              disabled={isBusy || !canCompleteProfile}
+              variant="outline"
+              className="h-11 justify-center px-4 text-[13px] font-normal disabled:pointer-events-none disabled:opacity-55"
+            >
+              {isVerifyingOtp ? "Saving..." : "Complete Profile"}
+            </Button>
+          </form>
+        ) : null}
+      </div>
+
+      {isCompletingProfile ? (
+        <p className="mt-2 text-[12px] font-medium text-secondary/65">
+          Fill first name, last name and email below to finish verification.
+        </p>
       ) : null}
 
       {message ? (
@@ -3784,7 +3991,7 @@ function BookingStep({
   title: string;
 }) {
   return (
-    <section className="rounded-[8px] border border-border bg-background p-4 text-[14px] shadow-[0_10px_24px_rgba(67,43,27,0.04)]">
+    <section className="rounded-[8px] border border-border bg-background p-4 text-[14px] ">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="grid size-7 shrink-0 place-items-center rounded-[5px] bg-primary font-sans text-[14px] font-bold leading-none text-white">
@@ -4042,7 +4249,7 @@ function TravellerCounter({
 function SectionTitle({ title }: { title: string }) {
   return (
     <div>
-      <h2 className="font-heading text-[22px] font-bold leading-tight text-secondary">
+      <h2 className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
         {title}
       </h2>
       <span className="mt-2 block h-0.5 w-8 bg-primary" />
@@ -4216,7 +4423,7 @@ function PriceCard({
 
   return (
     <>
-    <article className="overflow-hidden rounded-[8px] border border-primary/15 bg-card shadow-[0_12px_28px_rgba(67,43,27,0.08)]">
+    <article className="overflow-hidden rounded-[8px] border border-primary/15 bg-card ">
       <div className="border-b border-border bg-[#fff8f1] px-3 py-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 font-sans">
@@ -4296,7 +4503,7 @@ function EnquiryModal({
 
       <form
         onSubmit={handleSubmit}
-        className="relative max-h-[calc(100dvh-2rem)] w-full max-w-[860px] overflow-y-auto rounded-[10px] border border-primary/20 bg-card shadow-[0_28px_80px_rgba(35,24,16,0.34)]"
+        className="relative max-h-[calc(100dvh-2rem)] w-full max-w-[860px] overflow-y-auto rounded-[10px] border border-primary/20 bg-card "
       >
         <div className="flex items-start justify-between gap-4 border-b border-border bg-[#fff8f1] px-4 py-3">
           <div>
@@ -4368,8 +4575,12 @@ function EnquiryModal({
             </p>
           ) : null}
 
-          <Button type="submit" className="mt-4 h-10 px-7 text-[15px] font-semibold">
+          <Button
+            type="submit"
+            className="mt-4 min-w-[190px] justify-between gap-4 px-5 font-normal"
+          >
             Send Question
+            <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
           </Button>
         </div>
       </form>
@@ -4498,7 +4709,7 @@ function SeatBookingActionCard({
           ? "Complete Payment..."
             : "Book Now";
   const buttonClassName =
-    "inline-flex h-11 w-full items-center justify-center rounded-full font-sans text-[14px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20";
+    "w-full justify-between gap-3 px-4 font-normal focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20";
 
   return (
     <>
@@ -4574,30 +4785,27 @@ function SeatBookingActionCard({
       ) : null}
 
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <button
+        <Button
           type="button"
           disabled={!isEnabled}
           onClick={onBook}
           className={cn(
             buttonClassName,
-            "text-white",
-            isEnabled
-              ? "bg-primary hover:bg-accent"
-              : "cursor-not-allowed bg-primary/40"
+            !isEnabled && "cursor-not-allowed bg-primary/40 hover:bg-primary/40"
           )}
         >
           {buttonLabel}
-        </button>
-        <button
+          <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+        </Button>
+        <Button
           type="button"
           onClick={() => setIsEnquiryOpen(true)}
-          className={cn(
-            buttonClassName,
-            "border border-primary bg-white text-primary hover:bg-primary hover:text-white"
-          )}
+          variant="outline"
+          className={buttonClassName}
         >
           Enquire Now
-        </button>
+          <ButtonArrow className="h-2.5 w-5 group-hover/button:brightness-0 group-hover/button:invert" />
+        </Button>
       </div>
 
       {!canBook ? (
@@ -4687,10 +4895,10 @@ function ExpertPanel({ expert }: { expert: PublicExpert }) {
           nativeButton={false}
           render={<Link href="/experts" />}
           variant="outline"
-          className="mt-5 justify-between px-5 text-[16px] font-normal"
+          className="mt-5 justify-between px-5 font-normal"
         >
           View Profile
-          <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />
+          <ButtonArrow className="h-2.5 w-5 group-hover/button:brightness-0 group-hover/button:invert" />
         </Button>
       </div>
     </div>

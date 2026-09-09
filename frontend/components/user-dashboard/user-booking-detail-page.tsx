@@ -146,6 +146,221 @@ function formatCurrency(amount?: number, currency = "INR") {
   }).format(Math.max(0, Math.round(amount || 0)));
 }
 
+function formatPdfCurrency(amount?: number, currency = "INR") {
+  return `${currency} ${new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: 0,
+  }).format(Math.max(0, Math.round(amount || 0)))}`;
+}
+
+function escapePdfText(value: string) {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)")
+    .replace(/[^\x20-\x7E]/g, " ");
+}
+
+function wrapPdfLine(value: string, maxLength = 88) {
+  const words = value.replace(/\s+/g, " ").trim().split(" ");
+  const lines: string[] = [];
+  let currentLine = "";
+
+  words.forEach((word) => {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word;
+
+    if (nextLine.length > maxLength && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+      return;
+    }
+
+    currentLine = nextLine;
+  });
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines.length > 0 ? lines : [""];
+}
+
+function buildSimplePdf(lines: string[]) {
+  const encoder = new TextEncoder();
+  const pageHeight = 842;
+  const pageWidth = 595;
+  const marginX = 48;
+  const startY = 792;
+  const lineHeight = 18;
+  const linesPerPage = Math.floor((startY - 56) / lineHeight);
+  const pages: string[][] = [];
+
+  lines
+    .flatMap((line) => wrapPdfLine(line))
+    .forEach((line) => {
+      const currentPage = pages[pages.length - 1];
+
+      if (!currentPage || currentPage.length >= linesPerPage) {
+        pages.push([line]);
+        return;
+      }
+
+      currentPage.push(line);
+    });
+
+  if (pages.length === 0) {
+    pages.push(["Booking Invoice"]);
+  }
+
+  const objects: string[] = [];
+  const addObject = (body: string) => {
+    objects.push(body);
+    return objects.length;
+  };
+  const fontObjectId = addObject(
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+  );
+  const pageObjectIds: number[] = [];
+
+  pages.forEach((pageLines) => {
+    const streamLines = [
+      "q",
+      "1 1 1 rg",
+      `0 0 ${pageWidth} ${pageHeight} re f`,
+      "Q",
+      "BT",
+      "0 0 0 rg",
+      "/F1 11 Tf",
+      `${lineHeight} TL`,
+      `${marginX} ${startY} Td`,
+      ...pageLines.flatMap((line, index) => [
+        index === 0 ? "" : "T*",
+        `(${escapePdfText(line)}) Tj`,
+      ]),
+      "ET",
+    ].join("\n");
+    const contentObjectId = addObject(
+      `<< /Length ${encoder.encode(streamLines).length} >>\nstream\n${streamLines}\nendstream`
+    );
+    const pageObjectId = addObject(
+      `<< /Type /Page /Parent 0 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /ProcSet [/PDF /Text] /Font << /F1 ${fontObjectId} 0 R >> >> /Contents ${contentObjectId} 0 R >>`
+    );
+
+    pageObjectIds.push(pageObjectId);
+  });
+
+  const pagesObjectId = addObject(
+    `<< /Type /Pages /Kids ${pageObjectIds
+      .map((id) => `${id} 0 R`)
+      .join(" ")} /Count ${pageObjectIds.length} >>`
+  );
+  const catalogObjectId = addObject(`<< /Type /Catalog /Pages ${pagesObjectId} 0 R >>`);
+  const resolvedObjects = objects.map((object) =>
+    object.replace("/Parent 0 0 R", `/Parent ${pagesObjectId} 0 R`)
+  );
+  const chunks = ["%PDF-1.4\n"];
+  const offsets: number[] = [];
+  let byteOffset = encoder.encode(chunks[0]).length;
+
+  resolvedObjects.forEach((object, index) => {
+    const objectChunk = `${index + 1} 0 obj\n${object}\nendobj\n`;
+
+    offsets.push(byteOffset);
+    chunks.push(objectChunk);
+    byteOffset += encoder.encode(objectChunk).length;
+  });
+
+  const xrefOffset = byteOffset;
+  chunks.push(`xref\n0 ${resolvedObjects.length + 1}\n0000000000 65535 f \n`);
+  offsets.forEach((offset) => {
+    chunks.push(`${String(offset).padStart(10, "0")} 00000 n \n`);
+  });
+  chunks.push(
+    `trailer\n<< /Size ${resolvedObjects.length + 1} /Root ${catalogObjectId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+  );
+
+  return new Blob([encoder.encode(chunks.join(""))], { type: "application/pdf" });
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+function downloadBookingInvoicePdf(booking: UserBooking) {
+  const currency = booking.booking.paymentCurrency || "INR";
+  const reference = getUserBookingReference(booking);
+  const leadGuest = booking.booking.guestDetails[0];
+  const travellers =
+    booking.booking.travellers.length > 0
+      ? booking.booking.travellers
+      : booking.booking.guestDetails.map((guest, index) => ({
+          ...guest,
+          id: `guest-${index + 1}`,
+          type:
+            index < booking.booking.adultCount
+              ? ("adult" as const)
+              : ("child" as const),
+        }));
+  const roomLines =
+    booking.booking.pricingSnapshot?.accommodation?.rooms?.flatMap((room) => [
+      `${room.title} - ${room.bedSummary || "Selected room"}`,
+      ...(room.allocations || []).map(
+        (allocation) =>
+          `  ${allocation.label}: ${formatPdfCurrency(allocation.price, currency)}`
+      ),
+    ]) || ["Accommodation details will be shared by the Ancient Trails team."];
+  const lines = [
+    "Ancient Trails",
+    "Booking Invoice",
+    "",
+    `Invoice: ${reference}`,
+    `Issued: ${formatDate(booking.booking.createdAt)}`,
+    `Booking ID: ${booking.booking.id}`,
+    "",
+    "Traveller",
+    `Name: ${getGuestName(leadGuest) || "Traveller"}`,
+    `Email: ${leadGuest?.email || "-"}`,
+    `Mobile: ${[leadGuest?.countryCode, leadGuest?.mobileNumber].filter(Boolean).join(" ") || "-"}`,
+    "",
+    "Tour",
+    `Tour: ${getUserBookingTitle(booking)}`,
+    `Destination: ${getUserBookingLocation(booking)}`,
+    `Departure: ${formatDate(booking.departure?.departureDate || booking.booking.pricingSnapshot?.departureDate)}`,
+    `Return: ${formatDate(booking.departure?.returnDate || booking.booking.pricingSnapshot?.returnDate)}`,
+    `Duration: ${getUserBookingDuration(booking)}`,
+    `Travellers: ${getUserBookingTravellerLabel(booking)}`,
+    "",
+    "Payment Summary",
+    `Subtotal: ${formatPdfCurrency(booking.booking.subtotal, currency)}`,
+    `GST (${booking.booking.gstPercentage || 0}%): ${formatPdfCurrency(booking.booking.gstAmount, currency)}`,
+    `Total Booking Amount: ${formatPdfCurrency(getTotalAmount(booking), currency)}`,
+    `Amount Paid: ${formatPdfCurrency(getPaidAmount(booking), currency)}`,
+    `Balance Amount: ${formatPdfCurrency(getBalanceAmount(booking), currency)}`,
+    `Payment Status: ${booking.booking.paymentStatus || "pending"}`,
+    `Payment Reference: ${booking.booking.paymentId || booking.booking.paymentOrderId || "-"}`,
+    "",
+    "Accommodation",
+    ...roomLines,
+    "",
+    "Traveller Details",
+    ...travellers.map(
+      (traveller, index) =>
+        `${index + 1}. ${getGuestName(traveller) || `Traveller ${index + 1}`} - ${traveller.type}`
+    ),
+    "",
+    "This invoice is generated from your Ancient Trails booking dashboard.",
+  ];
+
+  downloadBlob(buildSimplePdf(lines), `${reference.toLowerCase()}-invoice.pdf`);
+}
+
 function loadRazorpayCheckoutScript() {
   if (typeof window === "undefined") {
     return Promise.reject(new Error("Razorpay checkout is available in browser only"));
@@ -401,7 +616,7 @@ function PaymentSummaryCard({
           type="button"
           disabled={!hasBalance || isBusy}
           onClick={onPayBalance}
-          className="mt-3 h-11 w-full rounded-[7px] text-[13px] font-bold"
+          className="mt-3 w-full px-5 font-normal"
         >
           {buttonLabel}
         </Button>
@@ -673,8 +888,8 @@ function BookingDocuments({ booking }: { booking: UserBooking }) {
           <Button
             type="button"
             variant="outline"
-            disabled
-            className="mt-4 h-9 w-full gap-2 rounded-[6px] text-[11px] font-bold"
+            onClick={() => downloadBookingInvoicePdf(booking)}
+            className="mt-4 w-full gap-2 px-5 font-normal"
           >
             <Eye className="size-3.5" strokeWidth={1.8} />
             View / Download Invoice
@@ -693,7 +908,7 @@ function BookingDocuments({ booking }: { booking: UserBooking }) {
             type="button"
             variant="outline"
             disabled
-            className="mt-4 h-9 w-full gap-2 rounded-[6px] text-[11px] font-bold"
+            className="mt-4 w-full gap-2 px-5 font-normal"
           >
             <Download className="size-3.5" strokeWidth={1.8} />
             Download Receipt
@@ -744,12 +959,13 @@ function TourSummary({ booking }: { booking: UserBooking }) {
               value={getUserBookingTravellerLabel(booking)}
             />
           </div>
-          <Link
-            href={getTourDetailHref(booking)}
-            className="mt-6 inline-flex h-10 items-center justify-center rounded-[7px] bg-primary px-5 font-sans text-[12px] font-bold text-white transition-colors hover:bg-accent"
+          <Button
+            nativeButton={false}
+            render={<Link href={getTourDetailHref(booking)} />}
+            className="mt-6 px-5 font-normal"
           >
             View Tour Details
-          </Link>
+          </Button>
         </div>
       </div>
     </section>
@@ -777,12 +993,13 @@ function ErrorState({ message }: { message: string }) {
       <p className="mx-auto mt-2 max-w-[520px] font-sans text-[13px] font-semibold leading-[1.6] text-secondary/62">
         {message}
       </p>
-      <Link
-        href="/me/bookings"
-        className="mt-5 inline-flex h-10 items-center justify-center rounded-full bg-primary px-5 font-sans text-[13px] font-bold text-white transition-colors hover:bg-accent"
+      <Button
+        nativeButton={false}
+        render={<Link href="/me/bookings" />}
+        className="mt-5 px-5 font-normal"
       >
         Back to My Bookings
-      </Link>
+      </Button>
     </section>
   );
 }

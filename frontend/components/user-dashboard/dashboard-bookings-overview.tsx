@@ -121,19 +121,19 @@ function UpcomingBookingCard({ booking }: { booking: UserBooking }) {
         />
       </div>
       <div className="min-w-0 py-1">
-        <h3 className="font-heading text-[16px] font-bold leading-tight text-secondary">
+        <h3 className="font-heading text-[18px] font-bold leading-tight text-secondary">
           {getUserBookingTitle(booking)}
         </h3>
         <div className="mt-3 grid gap-2">
-          <span className="inline-flex min-w-0 items-center gap-2 font-sans text-[11px] font-medium text-secondary/72">
+          <span className="inline-flex min-w-0 items-center gap-2 font-sans text-[12px] font-medium text-secondary/72">
             <CalendarDays className="size-4 shrink-0 text-secondary/68" strokeWidth={1.8} />
             <span className="truncate">{getUserBookingDateRange(booking)}</span>
           </span>
-          <span className="inline-flex min-w-0 items-center gap-2 font-sans text-[11px] font-medium text-secondary/72">
+          <span className="inline-flex min-w-0 items-center gap-2 font-sans text-[12px] font-medium text-secondary/72">
             <MapPin className="size-4 shrink-0 text-secondary/68" strokeWidth={1.8} />
             <span className="truncate">{getUserBookingLocation(booking)}</span>
           </span>
-          <span className="inline-flex min-w-0 items-center gap-2 font-sans text-[11px] font-medium text-secondary/72">
+          <span className="inline-flex min-w-0 items-center gap-2 font-sans text-[12px] font-medium text-secondary/72">
             <UsersRound className="size-4 shrink-0 text-secondary/68" strokeWidth={1.8} />
             <span className="truncate">{getUserBookingTravellerLabel(booking)}</span>
           </span>
@@ -142,11 +142,11 @@ function UpcomingBookingCard({ booking }: { booking: UserBooking }) {
           href={getUserBookingDetailHref(booking)}
           className={buttonVariants({
             variant: "link",
-            className: "mt-3 h-auto gap-2 p-0 text-[12px] font-semibold",
+            className: "mt-3 h-auto gap-2 p-0 text-[14px] font-semibold",
           })}
         >
           View Booking
-          <ButtonArrow className="h-2.5 w-5 group-hover/button:translate-x-0.5" />
+       
         </Link>
       </div>
     </article>
@@ -289,7 +289,7 @@ export function DashboardBookingsOverview() {
             })}
           >
             View All Bookings
-            <ButtonArrow className="h-2.5 w-5 group-hover/button:translate-x-0.5" />
+          
           </Link>
         </div>
 
