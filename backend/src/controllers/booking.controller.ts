@@ -730,16 +730,55 @@ function getPaymentAmountRupees(
   return Math.round(amount);
 }
 
+function toPaymentAmount(value: number | null | undefined) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round(Number(value)));
+}
+
+function getBookingDraftTotalAmount(bookingDraft: BookingDraft) {
+  return toPaymentAmount(
+    bookingDraft.grandTotal ||
+      bookingDraft.pricingSnapshot?.grandTotal ||
+      bookingDraft.subtotal ||
+      0
+  );
+}
+
 function getAdminOfflineAmountPaid(bookingDraft: BookingDraft) {
+  const totalAmount = getBookingDraftTotalAmount(bookingDraft);
+
+  if (bookingDraft.paymentOption === "full" && totalAmount > 0) {
+    return totalAmount;
+  }
+
   if (typeof bookingDraft.amountPaid === "number" && bookingDraft.amountPaid > 0) {
-    return Math.round(bookingDraft.amountPaid);
+    const amountPaid = toPaymentAmount(bookingDraft.amountPaid);
+
+    return totalAmount > 0 ? Math.min(amountPaid, totalAmount) : amountPaid;
   }
 
-  if (bookingDraft.paymentOption === "full" && bookingDraft.grandTotal) {
-    return Math.round(bookingDraft.grandTotal);
-  }
+  return toPaymentAmount(bookingDraft.depositAmount || totalAmount);
+}
 
-  return Math.round(bookingDraft.depositAmount || bookingDraft.grandTotal || 0);
+function applyAdminOfflinePaymentToDraft(
+  bookingDraft: BookingDraft
+): BookingDraft {
+  const totalAmount = getBookingDraftTotalAmount(bookingDraft);
+  const amountPaid = getAdminOfflineAmountPaid(bookingDraft);
+  const balanceAmount =
+    totalAmount > 0
+      ? Math.max(0, totalAmount - amountPaid)
+      : toPaymentAmount(bookingDraft.balanceAmount);
+
+  return {
+    ...bookingDraft,
+    amountPaid,
+    balanceAmount,
+    balanceDueDate: balanceAmount > 0 ? bookingDraft.balanceDueDate : null,
+  };
 }
 
 function createReceipt() {
@@ -1400,12 +1439,17 @@ function getBookingConfirmationUrl(booking: BookingDocument) {
 function getBookingEmailAmounts(booking: BookingDocument) {
   const snapshot = booking.pricingSnapshot;
   const totalAmount =
-    booking.grandTotal || snapshot?.grandTotal || booking.subtotal || 0;
-  const amountPaid = booking.amountPaid || 0;
+    toPaymentAmount(booking.grandTotal || snapshot?.grandTotal || booking.subtotal || 0);
+  const amountPaid =
+    booking.paymentOption === "full" && totalAmount > 0
+      ? totalAmount
+      : toPaymentAmount(booking.amountPaid || 0);
+  const calculatedBalanceAmount =
+    totalAmount > 0 ? Math.max(0, totalAmount - amountPaid) : 0;
   const balanceAmount =
-    booking.balanceAmount ??
-    snapshot?.balanceAmount ??
-    Math.max(0, totalAmount - amountPaid);
+    totalAmount > 0
+      ? calculatedBalanceAmount
+      : toPaymentAmount(booking.balanceAmount ?? snapshot?.balanceAmount ?? 0);
 
   return {
     amountPaid,
@@ -2418,12 +2462,13 @@ export async function createBooking(
           );
         }
 
-        const bookingDraft = createBookingDraft(payload, snapshotPayload);
+        const bookingDraft = applyAdminOfflinePaymentToDraft(
+          createBookingDraft(payload, snapshotPayload)
+        );
         const createdBookings = await Booking.create(
           [
             {
               ...bookingDraft,
-              amountPaid: getAdminOfflineAmountPaid(bookingDraft),
               paymentCapturedAt: new Date(),
               paymentCurrency: PAYMENT_CURRENCY,
               paymentMethod: payload.paymentMethod,
@@ -2476,11 +2521,20 @@ export async function updateBooking(
   try {
     await assertTourExists(payload.tourId);
     const snapshotPayload = await createSnapshotPayload(payload);
-    const updatePayload = createBookingDraft(payload, snapshotPayload);
+    const updatePayload = applyAdminOfflinePaymentToDraft(
+      createBookingDraft(payload, snapshotPayload)
+    );
+    const isPaid = (updatePayload.amountPaid || 0) > 0;
 
     const booking = await Booking.findByIdAndUpdate(
       request.params.id,
-      updatePayload,
+      {
+        ...updatePayload,
+        paymentCapturedAt: isPaid ? new Date() : null,
+        paymentCurrency: PAYMENT_CURRENCY,
+        paymentMethod: payload.paymentMethod,
+        paymentStatus: isPaid ? "paid" : "pending",
+      },
       {
         new: true,
         runValidators: true,
