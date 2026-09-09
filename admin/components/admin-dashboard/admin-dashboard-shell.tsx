@@ -96,6 +96,18 @@ function getInitials(name: string) {
   return name.slice(0, 2).toUpperCase() || "SA";
 }
 
+function getMobilePageTitle(activeLabel: string) {
+  if (activeLabel === "Report") {
+    return "Reports";
+  }
+
+  if (activeLabel === "Testimonial") {
+    return "Testimonials";
+  }
+
+  return activeLabel;
+}
+
 /* =========================================================
    SIDEBAR TOGGLE
 ========================================================= */
@@ -490,6 +502,14 @@ export function AdminDashboardShell({
                 isNotificationLoading
               }
             />
+
+            {activeLabel ? (
+              <div className="mb-4 lg:hidden">
+                <h1 className="font-sans text-[18px] font-semibold tracking-normal ">
+                  {getMobilePageTitle(activeLabel)}
+                </h1>
+              </div>
+            ) : null}
 
             {/* ============================================= */}
             {/* PAGE CONTENT */}

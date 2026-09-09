@@ -83,19 +83,28 @@ export type AdminBooking = {
   travellers?: BookingTravellerDetails[];
   accommodationDetails: BookingAccommodationDetails;
   pricingSnapshot?: {
+    departureDate?: string | null;
+    returnDate?: string | null;
     accommodation?: {
       optionTitle?: string;
       rooms?: BookingAccommodationOption["rooms"];
     };
   };
   subtotal?: number;
+  gstPercentage?: number;
+  gstAmount?: number;
   grandTotal?: number;
   depositAmount?: number;
   balanceAmount?: number;
+  balanceDueDate?: string | null;
   paymentStatus?: "pending" | "paid" | "failed" | "refunded";
-  paymentMethod?: BookingPaymentMethod | "";
+  paymentMethod?: BookingPaymentMethod | "razorpay" | "";
+  paymentProvider?: "razorpay" | "";
+  paymentOrderId?: string;
+  paymentId?: string;
   paymentCurrency?: string;
   amountPaid?: number;
+  paymentCapturedAt?: string | null;
   archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;

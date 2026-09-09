@@ -238,7 +238,16 @@ export default function EnquiriesPage() {
       <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-5">
         <EnquiriesHeader onAdd={openAddForm} />
 
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-3">
+          <Button
+            type="button"
+            onClick={openAddForm}
+            className="h-11 rounded-sm px-4 text-xs font-bold"
+          >
+            <Plus className="size-4" data-icon="inline-start" />
+            Add Enquiries
+          </Button>
+
           <Button
             type="button"
             onClick={exportEnquiries}

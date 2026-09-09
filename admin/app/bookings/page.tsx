@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Eye,
+  FileText,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -169,6 +170,16 @@ function getBookingTotalAmount(
 function getBookingPaidAmount(
   booking: AdminBooking
 ): number {
+  const totalAmount =
+    getBookingTotalAmount(booking);
+
+  if (
+    booking.paymentOption === "full" &&
+    totalAmount > 0
+  ) {
+    return totalAmount;
+  }
+
   const amountPaid = toMoney(
     booking.amountPaid
   );
@@ -195,6 +206,36 @@ function getBookingPaidAmount(
 function getBookingDueAmount(
   booking: AdminBooking
 ): number {
+  const totalAmount =
+    getBookingTotalAmount(booking);
+
+  const paidAmount =
+    getBookingPaidAmount(booking);
+
+  if (
+    booking.paymentOption === "full" &&
+    totalAmount > 0
+  ) {
+    return 0;
+  }
+
+  if (
+    totalAmount > 0 &&
+    paidAmount >= totalAmount
+  ) {
+    return 0;
+  }
+
+  if (
+    totalAmount > 0 &&
+    paidAmount > 0
+  ) {
+    return Math.max(
+      0,
+      totalAmount - paidAmount
+    );
+  }
+
   if (
     Number.isFinite(booking.balanceAmount)
   ) {
@@ -203,8 +244,7 @@ function getBookingDueAmount(
 
   return Math.max(
     0,
-    getBookingTotalAmount(booking) -
-      getBookingPaidAmount(booking)
+    totalAmount - paidAmount
   );
 }
 
@@ -530,6 +570,16 @@ export default function BookingsPage() {
     );
   }
 
+  function openInvoicePage(
+    booking: AdminBooking
+  ) {
+    router.push(
+      `/bookings/invoice?bookingId=${encodeURIComponent(
+        booking.id
+      )}`
+    );
+  }
+
   /* =======================================================
      ARCHIVE
   ======================================================= */
@@ -668,6 +718,9 @@ export default function BookingsPage() {
             }
             onEdit={
               openEditBookingPage
+            }
+            onInvoice={
+              openInvoicePage
             }
             onView={
               openViewBookingPage
@@ -810,6 +863,7 @@ function BookingTable({
   isLoading,
   onArchive,
   onEdit,
+  onInvoice,
   onView,
   totalCount,
   tourNameById,
@@ -823,6 +877,9 @@ function BookingTable({
     booking: AdminBooking
   ) => void;
   onEdit: (
+    booking: AdminBooking
+  ) => void;
+  onInvoice: (
     booking: AdminBooking
   ) => void;
   onView: (
@@ -1042,6 +1099,7 @@ function BookingTable({
                   }
                   onArchive={onArchive}
                   onEdit={onEdit}
+                  onInvoice={onInvoice}
                   onView={onView}
                 />
               </td>
@@ -1108,6 +1166,7 @@ function BookingActionsMenu({
   isArchiving,
   onArchive,
   onEdit,
+  onInvoice,
   onView,
 }: {
   booking: AdminBooking;
@@ -1118,12 +1177,18 @@ function BookingActionsMenu({
   onEdit: (
     booking: AdminBooking
   ) => void;
+  onInvoice: (
+    booking: AdminBooking
+  ) => void;
   onView: (
     booking: AdminBooking
   ) => void;
 }) {
   const primaryGuest =
     booking.guestDetails[0];
+  const canViewInvoice =
+    getPaymentStatus(booking).label === "Paid" &&
+    getBookingDueAmount(booking) <= 0;
 
   return (
     <div className="flex justify-end">
@@ -1170,6 +1235,20 @@ function BookingActionsMenu({
             <Eye className="size-4 text-foreground/60" />
 
             View
+          </DropdownMenuItem>
+
+          {/* Edit */}
+
+          <DropdownMenuItem
+            onClick={() =>
+              onInvoice(booking)
+            }
+            disabled={!canViewInvoice}
+            className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"
+          >
+            <FileText className="size-4 text-primary" />
+
+            View Invoice
           </DropdownMenuItem>
 
           {/* Edit */}

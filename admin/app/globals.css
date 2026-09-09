@@ -260,6 +260,170 @@
   padding: 1.25rem;
 }
 
+.admin-invoice-sheet table th,
+.admin-invoice-sheet table td {
+  padding: 0.75rem 1rem;
+}
+
+.admin-invoice-sheet {
+  box-sizing: border-box;
+  min-height: 297mm;
+}
+
+.admin-invoice-sheet.admin-invoice-exporting {
+  width: 210mm !important;
+  min-height: 297mm !important;
+  max-width: none !important;
+  background: #ffffff !important;
+  padding: 6mm 2mm !important;
+  box-shadow: none !important;
+}
+
+.admin-invoice-sheet.admin-invoice-exporting,
+.admin-invoice-sheet.admin-invoice-exporting * {
+  border-color: #e8ded6 !important;
+  color: #18314f !important;
+  outline-color: transparent !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.admin-invoice-sheet.admin-invoice-exporting .text-primary,
+.admin-invoice-sheet.admin-invoice-exporting [class*="text-primary"] {
+  color: #d47220 !important;
+}
+
+.admin-invoice-sheet.admin-invoice-exporting .text-slate-950,
+.admin-invoice-sheet.admin-invoice-exporting [class*="text-slate-950"],
+.admin-invoice-sheet.admin-invoice-exporting .text-slate-900,
+.admin-invoice-sheet.admin-invoice-exporting [class*="text-slate-900"] {
+  color: #0f172a !important;
+}
+
+.admin-invoice-sheet.admin-invoice-exporting .text-slate-700,
+.admin-invoice-sheet.admin-invoice-exporting [class*="text-slate-700"] {
+  color: #334155 !important;
+}
+
+.admin-invoice-sheet.admin-invoice-exporting .text-emerald-800,
+.admin-invoice-sheet.admin-invoice-exporting [class*="text-emerald-800"] {
+  color: #166534 !important;
+}
+
+.admin-invoice-sheet.admin-invoice-exporting .bg-white,
+.admin-invoice-sheet.admin-invoice-exporting [class*="bg-white"] {
+  background-color: #ffffff !important;
+}
+
+.admin-invoice-sheet.admin-invoice-exporting [class*="bg-primary/5"] {
+  background-color: #fdf5ed !important;
+}
+
+.admin-invoice-sheet.admin-invoice-exporting [class*="bg-primary/8"],
+.admin-invoice-sheet.admin-invoice-exporting [class*="bg-primary/10"] {
+  background-color: #fbeee2 !important;
+}
+
+.admin-invoice-sheet.admin-invoice-exporting .bg-emerald-100,
+.admin-invoice-sheet.admin-invoice-exporting [class*="bg-emerald-100"] {
+  background-color: transparent !important;
+}
+
+.admin-invoice-items-table {
+  table-layout: fixed;
+}
+
+.admin-invoice-items-table th {
+  height: 3.8rem;
+  vertical-align: middle;
+}
+
+.admin-invoice-items-table td {
+  height: 4.25rem;
+  vertical-align: middle;
+}
+
+.admin-invoice-sheet table tbody tr:hover {
+  background: transparent;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    height: auto !important;
+  }
+
+  .admin-dashboard-shell {
+    background: #ffffff !important;
+  }
+
+  .admin-dashboard-shell > aside,
+  .admin-dashboard-shell > button,
+  .admin-invoice-screen-actions,
+  .admin-dashboard-main > header,
+  .admin-dashboard-main > div > header,
+  .admin-dashboard-main > div > .lg\:hidden {
+    display: none !important;
+  }
+
+  .admin-dashboard-main {
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .admin-invoice-page {
+    max-width: none !important;
+    gap: 0 !important;
+    width: 210mm !important;
+  }
+
+  .admin-invoice-sheet {
+    width: 210mm !important;
+    min-height: 297mm !important;
+    padding: 7mm 8mm !important;
+    box-shadow: none !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .admin-invoice-sheet,
+  .admin-invoice-sheet * {
+    break-inside: avoid;
+  }
+
+  .admin-invoice-sheet table {
+    display: table !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+  }
+
+  .admin-invoice-sheet thead {
+    display: table-header-group !important;
+  }
+
+  .admin-invoice-sheet tbody {
+    display: table-row-group !important;
+    padding: 0 !important;
+  }
+
+  .admin-invoice-sheet tr {
+    display: table-row !important;
+    box-shadow: none !important;
+  }
+
+  .admin-invoice-sheet th,
+  .admin-invoice-sheet td {
+    display: table-cell !important;
+  }
+}
+
 @media (max-width: 767px) {
   [data-slot="sheet-overlay"] {
     background: rgb(0 0 0 / 0.68);
@@ -588,5 +752,48 @@
     overflow: visible;
     -webkit-line-clamp: unset;
     -webkit-box-orient: unset;
+  }
+
+  .admin-invoice-page {
+    max-width: 100%;
+  }
+
+  .admin-invoice-sheet {
+    min-height: 0;
+    padding: 1.25rem;
+  }
+
+  .admin-invoice-sheet table {
+    display: table;
+    min-width: 36rem !important;
+    table-layout: fixed;
+  }
+
+  .admin-invoice-sheet thead {
+    display: table-header-group;
+  }
+
+  .admin-invoice-sheet tbody {
+    display: table-row-group;
+    gap: 0;
+    padding: 0;
+  }
+
+  .admin-invoice-sheet tr {
+    display: table-row;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .admin-invoice-sheet th,
+  .admin-invoice-sheet td {
+    display: table-cell;
+    width: auto;
+    border-right: 1px solid var(--border);
+    padding: 0.75rem;
+  }
+
+  .admin-invoice-sheet tr > :last-child {
+    border-right: 0;
   }
 }

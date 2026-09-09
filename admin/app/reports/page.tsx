@@ -269,8 +269,8 @@ export default function ReportsPage() {
             title="Bookings Overview"
             action={
               <div className="flex items-center gap-4">
-                <ChartLegend color="bg-primary" label="Bookings" />
-                <ChartLegend color="bg-stone-300" label="Revenue (Rs)" />
+                <ChartLegend color="bg-[#8cc5ff]" label="Bookings" />
+                <ChartLegend color="bg-[#2f7bff]" label="Revenue (Rs)" />
                 <SmallSelectButton label="Daily" />
               </div>
             }
@@ -466,7 +466,7 @@ function ReportPanel({
 function ChartLegend({ color, label }: { color: string; label: string }) {
   return (
     <span className="hidden items-center gap-2 text-[11px] font-semibold text-foreground/60 sm:flex">
-      <span className={cn("size-2.5 rounded-full", color)} />
+      <span className={cn("size-2.5 rounded-sm", color)} />
       {label}
     </span>
   );
@@ -493,24 +493,35 @@ function BookingsTrendChart({
   bookingPoints: number[];
   revenuePoints: number[];
 }) {
-  const maxBooking = Math.max(...bookingTrendPoints, 1);
-  const maxRevenue = Math.max(...revenueTrendPoints, 1);
-  const bookingPoints = bookingTrendPoints.map((value, index) => {
-    const x = 44 + (index / Math.max(bookingTrendPoints.length - 1, 1)) * 492;
+  const bookingValues = bookingTrendPoints.length > 0 ? bookingTrendPoints : [0];
+  const revenueValues = revenueTrendPoints.length > 0 ? revenueTrendPoints : [0];
+  const maxBooking = Math.max(...bookingValues, 1);
+  const maxRevenue = Math.max(...revenueValues, 1);
+  const bookingPoints = bookingValues.map((value, index) => {
+    const x = 44 + (index / Math.max(bookingValues.length - 1, 1)) * 492;
     const y = 204 - (value / maxBooking) * 152;
     return { x, y };
   });
-  const revenuePoints = revenueTrendPoints.map((value, index) => {
-    const x = 44 + (index / Math.max(revenueTrendPoints.length - 1, 1)) * 492;
+  const revenuePoints = revenueValues.map((value, index) => {
+    const x = 44 + (index / Math.max(revenueValues.length - 1, 1)) * 492;
     const y = 204 - (value / maxRevenue) * 152;
     return { x, y };
   });
   const bookingPath = bookingPoints
-    .map((point, index) => `${index === 0 ? "M" : "L"}${point.x},${point.y}`)
-    .join(" ");
+    .reduce((path, point, index) => {
+      if (index === 0) return `M${point.x},${point.y}`;
+      const previous = bookingPoints[index - 1];
+      const controlOffset = (point.x - previous.x) / 2;
+      return `${path} C${previous.x + controlOffset},${previous.y} ${point.x - controlOffset},${point.y} ${point.x},${point.y}`;
+    }, "");
   const revenuePath = revenuePoints
-    .map((point, index) => `${index === 0 ? "M" : "L"}${point.x},${point.y}`)
-    .join(" ");
+    .reduce((path, point, index) => {
+      if (index === 0) return `M${point.x},${point.y}`;
+      const previous = revenuePoints[index - 1];
+      const controlOffset = (point.x - previous.x) / 2;
+      return `${path} C${previous.x + controlOffset},${previous.y} ${point.x - controlOffset},${point.y} ${point.x},${point.y}`;
+    }, "");
+  const bookingAreaPath = `${bookingPath} L536,204 L44,204 Z`;
 
   return (
     <div className="h-[228px] w-full">
@@ -522,8 +533,8 @@ function BookingsTrendChart({
       >
         <defs>
           <linearGradient id="report-booking-fill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#e77717" stopOpacity="0.24" />
-            <stop offset="100%" stopColor="#e77717" stopOpacity="0.03" />
+            <stop offset="0%" stopColor="#8cc5ff" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#8cc5ff" stopOpacity="0.08" />
           </linearGradient>
         </defs>
 
@@ -534,75 +545,31 @@ function BookingsTrendChart({
             x2="536"
             y1={y}
             y2={y}
-            stroke="#eee4dc"
-            strokeDasharray="4 5"
+            stroke="#eef2f7"
             strokeWidth="1"
           />
         ))}
-        {[0, 10, 20, 30, 40].map((label, index) => (
-          <text
-            key={label}
-            x="12"
-            y={208 - index * 38}
-            fill="#8f8178"
-            fontSize="11"
-          >
-            {label}
-          </text>
-        ))}
-        {[0, 50, 100, 150, 200].map((label, index) => (
-          <text
-            key={label}
-            x="544"
-            y={208 - index * 38}
-            fill="#8f8178"
-            fontSize="11"
-          >
-            {label}K
-          </text>
-        ))}
 
         <path
-          d={`${bookingPath} L536,204 L44,204 Z`}
+          d={bookingAreaPath}
           fill="url(#report-booking-fill)"
         />
         <path
           d={revenuePath}
           fill="none"
-          stroke="#d9cabe"
+          stroke="#2f7bff"
+          strokeLinecap="round"
           strokeLinejoin="round"
-          strokeWidth="3"
+          strokeWidth="2"
         />
         <path
           d={bookingPath}
           fill="none"
-          stroke="#e77717"
+          stroke="#7ebeff"
+          strokeLinecap="round"
           strokeLinejoin="round"
-          strokeWidth="3"
+          strokeWidth="2"
         />
-
-        {bookingPoints.map((point, index) => (
-          <circle
-            key={`booking-${index}`}
-            cx={point.x}
-            cy={point.y}
-            fill="#e77717"
-            r="3.5"
-            stroke="#ffffff"
-            strokeWidth="2"
-          />
-        ))}
-        {revenuePoints.map((point, index) => (
-          <circle
-            key={`revenue-${index}`}
-            cx={point.x}
-            cy={point.y}
-            fill="#d9cabe"
-            r="3"
-            stroke="#ffffff"
-            strokeWidth="2"
-          />
-        ))}
 
         {["01 Jul", "06 Jul", "11 Jul", "16 Jul", "21 Jul", "26 Jul", "31 Jul"].map(
           (label, index) => (
@@ -610,7 +577,7 @@ function BookingsTrendChart({
               key={label}
               x={44 + index * 82}
               y="228"
-              fill="#8f8178"
+              fill="#4b5563"
               fontSize="11"
               textAnchor={index === 0 ? "start" : "middle"}
             >
@@ -618,12 +585,6 @@ function BookingsTrendChart({
             </text>
           )
         )}
-        <text x="8" y="34" fill="#76675e" fontSize="11">
-          Bookings
-        </text>
-        <text x="514" y="34" fill="#76675e" fontSize="11">
-          Revenue
-        </text>
       </svg>
     </div>
   );

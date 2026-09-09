@@ -50,6 +50,7 @@ import {
   type ExpertPayload,
 } from "@/lib/experts";
 import { shouldOpenTableRow } from "@/lib/table-row-click";
+import { listAdminTours, type AdminTour } from "@/lib/tours";
 import { cn } from "@/lib/utils";
 
 type ExpertMetric = {
@@ -276,6 +277,7 @@ function ExpertsPageContent() {
     [pathname, searchParamString]
   );
   const [experts, setExperts] = useState<AdminExpert[]>([]);
+  const [tours, setTours] = useState<AdminTour[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoadingExperts, setIsLoadingExperts] = useState(true);
   const [expertSheetMode, setExpertSheetMode] =
@@ -339,6 +341,28 @@ function ExpertsPageContent() {
     };
   }, [routeState, toast]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadTours() {
+      try {
+        const response = await listAdminTours();
+
+        if (isMounted) {
+          setTours(response.data.tours);
+        }
+      } catch (error) {
+        toast.error("Unable to load attached tours", getErrorMessage(error));
+      }
+    }
+
+    loadTours();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [toast]);
+
   const filteredExperts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
@@ -363,6 +387,13 @@ function ExpertsPageContent() {
   }, [experts, searchQuery]);
 
   const expertMetrics = useMemo(() => createExpertMetrics(experts), [experts]);
+  const selectedExpertTours = useMemo(
+    () =>
+      selectedExpert
+        ? tours.filter((tour) => tour.expertId === selectedExpert.expertId)
+        : [],
+    [selectedExpert, tours]
+  );
   const isExpertFormBusy = isSavingExpert || isUploadingExpertImage;
   const isExpertSheetOpen = expertSheetMode !== null;
 
@@ -522,6 +553,7 @@ function ExpertsPageContent() {
 
           {expertSheetMode ? (
             <ExpertFormDialog
+              attachedTours={selectedExpertTours}
               form={expertForm}
               mode={expertSheetMode}
               isBusy={isExpertFormBusy}
@@ -600,6 +632,7 @@ function ExpertsPageContent() {
       </div>
 
       <ExpertFormDialog
+        attachedTours={selectedExpertTours}
         form={expertForm}
         mode={expertSheetMode}
         isBusy={isExpertFormBusy}
@@ -1001,6 +1034,7 @@ function ExpertActionsMenu({
 }
 
 function ExpertFormDialog({
+  attachedTours,
   form,
   isBusy,
   mode,
@@ -1012,6 +1046,7 @@ function ExpertFormDialog({
   onSubmit,
   onUpdate,
 }: {
+  attachedTours: AdminTour[];
   form: ExpertFormState;
   isBusy: boolean;
   mode: ExpertSheetMode | null;
@@ -1049,6 +1084,98 @@ function ExpertFormDialog({
 
   if (!isOpen) {
     return null;
+  }
+
+  if (isReadOnly) {
+    return (
+      <section className="overflow-hidden rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
+        <form
+          onSubmit={onSubmit}
+          className="flex min-h-0 flex-col bg-white"
+        >
+          <div className="border-b border-border px-7 py-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="font-sans text-xl font-bold tracking-normal text-foreground">
+                  {panelTitle}
+                </h2>
+                <p className="mt-1 text-xs text-foreground/55">
+                  {panelDescription}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isBusy}
+                className="grid size-8 shrink-0 place-items-center rounded-sm border border-emerald-600 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:pointer-events-none disabled:opacity-50"
+                aria-label="Close expert form"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid min-h-0 flex-1 gap-5 px-7 py-6 sm:grid-cols-2">
+            <ViewField label="Expert ID" value={form.expertId} />
+            <ViewField label="Full Name" value={form.fullName} />
+
+            <FormField className="sm:col-span-2" label="Expert Image">
+              <div className="grid gap-3 sm:grid-cols-[132px_minmax(0,1fr)]">
+                <div
+                  role="img"
+                  aria-label={form.fullName || "Expert image preview"}
+                  className={cn(
+                    "grid aspect-square place-items-center overflow-hidden rounded-sm border border-border bg-white bg-cover bg-center text-foreground/35",
+                    !form.image.trim() && "bg-muted/45"
+                  )}
+                  style={
+                    form.image.trim()
+                      ? {
+                          backgroundImage: `url("${getExpertMediaUrl(form.image)}")`,
+                        }
+                      : undefined
+                  }
+                >
+                  {!form.image.trim() ? <ImageIcon className="size-8" /> : null}
+                </div>
+                <ViewText value={form.image} />
+              </div>
+            </FormField>
+
+            <ViewField
+              className="sm:col-span-2"
+              label="Full Biography"
+              multiline
+              value={form.fullBiography}
+            />
+            <ViewField
+              className="sm:col-span-2"
+              label="Expertise Tags"
+              multiline
+              value={form.expertiseTags}
+            />
+            <ViewField
+              className="sm:col-span-2"
+              label="Qualifications"
+              multiline
+              value={form.qualifications}
+            />
+            <ViewField
+              className="sm:col-span-2"
+              label="Languages"
+              multiline
+              value={form.languages}
+            />
+            <FormField className="sm:col-span-2" label="Tours Attached">
+              <ViewText
+                multiline
+                value={attachedTours.map((tour) => tour.tourName).join("\n")}
+              />
+            </FormField>
+          </div>
+        </form>
+      </section>
+    );
   }
 
   return (
@@ -1227,6 +1354,45 @@ function FormField({
       </span>
       {children}
     </label>
+  );
+}
+
+function ViewField({
+  className,
+  label,
+  multiline = false,
+  value,
+}: {
+  className?: string;
+  label: string;
+  multiline?: boolean;
+  value: string;
+}) {
+  return (
+    <FormField className={className} label={label}>
+      <ViewText multiline={multiline} value={value} />
+    </FormField>
+  );
+}
+
+function ViewText({
+  multiline = false,
+  value,
+}: {
+  multiline?: boolean;
+  value: string;
+}) {
+  const displayValue = value.trim() || "-";
+
+  return (
+    <p
+      className={cn(
+        "text-sm font-medium leading-6 text-foreground",
+        multiline && "whitespace-pre-line"
+      )}
+    >
+      {displayValue}
+    </p>
   );
 }
 

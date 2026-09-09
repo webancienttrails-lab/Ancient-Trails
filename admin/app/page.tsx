@@ -547,11 +547,11 @@ function BookingsOverview({
     >
       <div className="mb-3 flex items-center gap-5 text-xs text-foreground/55">
         <span className="flex items-center gap-2">
-          <span className="size-2.5 rounded-full bg-primary" />
+          <span className="size-2.5 rounded-sm bg-[#8cc5ff]" />
           This Month
         </span>
         <span className="flex items-center gap-2">
-          <span className="size-2.5 rounded-full bg-zinc-300" />
+          <span className="size-2.5 rounded-sm bg-[#2f7bff]" />
           Last Month
         </span>
       </div>
@@ -588,70 +588,88 @@ function BookingLineChart({
     : 0;
   const getY = (value: number) =>
     chartBottom - (value / maxValue) * chartHeight;
-  const createPoints = (key: "current" | "previous") =>
+  const createChartPoints = (key: "current" | "previous") =>
     visibleBuckets
       .map((bucket, index) => {
         const x = chartLeft + index * step;
         const y = getY(bucket[key]);
 
-        return `${x},${y}`;
-      })
-      .join(" ");
-  const guideValues = [0, 0.25, 0.5, 0.75, 1].map((ratio) =>
-    Math.round(maxValue * ratio)
-  );
+        return { x, y };
+      });
+  const createSmoothPath = (points: Array<{ x: number; y: number }>) => {
+    if (points.length === 1) {
+      return `M${points[0].x},${points[0].y}`;
+    }
+
+    return points.reduce((path, point, index) => {
+      if (index === 0) {
+        return `M${point.x},${point.y}`;
+      }
+
+      const previous = points[index - 1];
+      const controlOffset = (point.x - previous.x) / 2;
+
+      return `${path} C${previous.x + controlOffset},${previous.y} ${point.x - controlOffset},${point.y} ${point.x},${point.y}`;
+    }, "");
+  };
+  const currentPoints = createChartPoints("current");
+  const previousPoints = createChartPoints("previous");
+  const currentPath = createSmoothPath(currentPoints);
+  const previousPath = createSmoothPath(previousPoints);
+  const currentAreaPath = `${currentPath} L${chartRight},${chartBottom} L${chartLeft},${chartBottom} Z`;
 
   return (
-    <div className="h-[220px] w-full">
+    <div className="h-[230px] w-full">
       <svg
         className="h-full w-full"
         viewBox="0 0 560 240"
         role="img"
         aria-label="Bookings overview line chart"
       >
-        {guideValues.map((value, index) => {
+        <defs>
+          <linearGradient id="admin-bookings-area" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#8cc5ff" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#8cc5ff" stopOpacity="0.08" />
+          </linearGradient>
+        </defs>
+        {[0, 1, 2, 3, 4].map((index) => {
           const y = chartBottom - index * (chartHeight / 4);
 
           return (
-            <g key={`${value}-${index}`}>
-              <line
-                x1="45"
-                x2="535"
-                y1={y}
-                y2={y}
-                stroke="#ece2da"
-                strokeWidth="1"
-              />
-              <text x="18" y={y + 4} fill="#8f8178" fontSize="12">
-                {value}
-              </text>
-            </g>
+            <line
+              key={index}
+              x1="0"
+              x2="560"
+              y1={y}
+              y2={y}
+              stroke="#eef2f7"
+              strokeWidth="1"
+            />
           );
         })}
-        <polyline
+        <path d={currentAreaPath} fill="url(#admin-bookings-area)" />
+        <path
+          d={currentPath}
           fill="none"
-          points={createPoints("current")}
-          stroke="#e6650a"
+          stroke="#7ebeff"
           strokeLinecap="round"
           strokeLinejoin="round"
-          strokeWidth="4"
+          strokeWidth="2"
         />
-        <polyline
+        <path
+          d={previousPath}
           fill="none"
-          points={createPoints("previous")}
-          stroke="#cfd3d6"
+          stroke="#2f7bff"
           strokeLinecap="round"
           strokeLinejoin="round"
-          strokeWidth="4"
+          strokeWidth="2"
         />
         {visibleBuckets.map((bucket, index) => {
           const x = chartLeft + index * step;
 
           return (
             <g key={`${bucket.label}-${index}`}>
-              <circle cx={x} cy={getY(bucket.current)} r="5" fill="#e6650a" />
-              <circle cx={x} cy={getY(bucket.previous)} r="5" fill="#cfd3d6" />
-              <text x={x - 10} y="230" fill="#8f8178" fontSize="12">
+              <text x={x} y="224" fill="#4b5563" fontSize="12" textAnchor="middle">
                 {bucket.label}
               </text>
             </g>

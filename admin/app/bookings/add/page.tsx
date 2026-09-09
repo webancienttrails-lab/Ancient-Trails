@@ -92,6 +92,9 @@ type BookingFormState = Omit<
   | "childDetails"
   | "guestDetails"
   | "accommodationDetails"
+  | "paymentOption"
+  | "paymentMethod"
+  | "amountPaid"
 > & {
   departureId: string;
   selectedAccommodationOptionId: string;
@@ -1695,7 +1698,9 @@ function BookingInnerPageContent() {
         );
 
         router.push(
-          `/bookings/${response.data.booking.id}`
+          `/bookings/view?bookingId=${encodeURIComponent(
+            response.data.booking.id
+          )}`
         );
 
         router.refresh();
@@ -1718,7 +1723,9 @@ function BookingInnerPageContent() {
       );
 
       router.push(
-        `/bookings/${response.data.booking.id}`
+        `/bookings/view?bookingId=${encodeURIComponent(
+          response.data.booking.id
+        )}`
       );
 
       router.refresh();
@@ -2684,7 +2691,7 @@ function BookingInnerPageContent() {
                       )
                     }
                     className={cn(
-                      "h-11 rounded-sm border px-3 text-sm font-bold transition-colors disabled:cursor-not-allowed",
+                      "inline-flex h-11 items-center justify-center gap-1.5 rounded-sm border px-3 text-sm font-bold transition-colors disabled:cursor-not-allowed",
                       bookingForm.paymentOption ===
                         "advance"
                         ? "border-primary bg-primary/10 text-primary"
@@ -2714,7 +2721,7 @@ function BookingInnerPageContent() {
                       )
                     }
                     className={cn(
-                      "h-11 rounded-sm border px-3 text-sm font-bold transition-colors disabled:cursor-not-allowed",
+                      "inline-flex h-11 items-center justify-center gap-1.5 rounded-sm border px-3 text-sm font-bold transition-colors disabled:cursor-not-allowed",
                       bookingForm.paymentOption ===
                         "full"
                         ? "border-primary bg-primary/10 text-primary"
