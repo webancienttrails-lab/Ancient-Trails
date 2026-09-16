@@ -32,19 +32,27 @@ export function HomePage({
     <main className="min-h-screen bg-background text-foreground">
       <section className="relative h-[100svh] min-h-[560px] overflow-hidden lg:h-[80vh] lg:min-h-0">
         <Image
-          src="/home assets/Heritage Banner.webp"
+          src="/home assets/Briddeshwara temple_banner.webp"
           alt="Amber fort over a heritage landscape"
           fill
           priority
-          sizes="100vw"
-          className="scale-[1.08] object-cover object-center sm:scale-[1.1] lg:scale-[1.12]"
+          sizes="(min-width: 768px) 100vw, 0px"
+          className="hidden scale-[1.08] object-cover object-center sm:scale-[1.1] md:block lg:scale-[1.12]"
+        />
+        <Image
+          src="/home assets/Mobile_banner.webp"
+          alt="Amber fort over a heritage landscape"
+          fill
+          priority
+          sizes="(max-width: 767px) 100vw, 0px"
+          className="object-cover object-center md:hidden"
         />
 
       
         <div className="relative z-[2147483647] mx-auto flex h-full w-full max-w-[1300px] flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0">
           <Header />
 
-          <div className="flex min-h-0 flex-1 items-center px-0 py-[clamp(0.5rem,3vh,4rem)] sm:px-6 lg:px-10">
+          <div className="flex min-h-0 flex-1 items-start px-0 py-[clamp(0.5rem,3vh,4rem)] pt-[clamp(1.5rem,8vh,4rem)] sm:items-center sm:px-6 sm:pt-[clamp(0.5rem,3vh,4rem)] lg:px-10">
             <div className="max-w-[430px] text-accent">
               <TextReveal trigger="load" delay={120}>
                 <p className="mb-[clamp(0.5rem,1.5vh,0.75rem)] text-eyebrow font-medium uppercase tracking-normal text-primary">

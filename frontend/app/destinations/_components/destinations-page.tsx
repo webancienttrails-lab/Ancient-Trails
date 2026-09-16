@@ -45,6 +45,15 @@ const fallbackImages = [
   "/home assets/destination/Hoysalas.webp",
 ];
 
+const destinationMasonryCardClasses = [
+  "row-span-[11]",
+  "row-span-[14]",
+  "row-span-[10]",
+  "row-span-[13]",
+  "row-span-[12]",
+  "row-span-[15]",
+];
+
 const categoryTabs: Array<{ id: CategoryFilter; label: string }> = [
   { id: "india", label: "India" },
   { id: "international", label: "International" },
@@ -1277,11 +1286,16 @@ function DestinationGrid({
 }) {
   if (isLoading) {
     return (
-      <div className="mt-8 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-8 grid auto-rows-[8px] grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
         {Array.from({ length: pageSize }).map((_item, index) => (
           <div
             key={index}
-            className="aspect-[0.95/1] min-h-[230px] animate-pulse rounded-[4px] bg-[#e7ddd5]"
+            className={cn(
+              "animate-pulse rounded-[4px] bg-[#e7ddd5]",
+              destinationMasonryCardClasses[
+                index % destinationMasonryCardClasses.length
+              ]
+            )}
           />
         ))}
       </div>
@@ -1293,7 +1307,7 @@ function DestinationGrid({
   }
 
   return (
-    <div className="mt-8 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="mt-8 grid auto-rows-[8px] grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
       {destinations.map((destination, index) => (
         <DestinationCard
           key={destination.id || destination.destinationId}
@@ -1304,6 +1318,7 @@ function DestinationGrid({
           }
           destination={destination}
           image={getDestinationImage(destination, index)}
+          index={index}
         />
       ))}
     </div>
@@ -1314,20 +1329,24 @@ function DestinationCard({
   categoryPills,
   destination,
   image,
+  index,
 }: {
   categoryPills: string[];
   destination: PublicDestination;
   image: string;
+  index: number;
 }) {
   const title = destination.destinationName;
+  const masonryClassName =
+    destinationMasonryCardClasses[index % destinationMasonryCardClasses.length];
 
   return (
     <Link
       href={getDestinationHref(destination)}
       aria-label={`Customize journey to ${title}`}
-      className="group block"
+      className={cn("group block", masonryClassName)}
     >
-      <article className="relative aspect-[0.95/1] min-h-[230px] overflow-hidden rounded-[10px] bg-secondary ">
+      <article className="relative h-full overflow-hidden rounded-[10px] bg-secondary">
         <Image
           src={image}
           alt={title}

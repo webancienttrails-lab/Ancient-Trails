@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import {
   type CSSProperties,
+  type FormEvent,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -18,7 +19,9 @@ import {
   Plus,
   Users,
   type LucideIcon,
+  X,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
 import {
@@ -81,6 +84,7 @@ type PlannerSuggestion = {
 const planTripButtonClassName =
   "group h-12 min-w-[210px] justify-between gap-5 px-5 font-semibold shadow-none text-[17px]";
 const panelPadding = 12;
+const maxPlannerGuests = 6;
 
 function PlanTripButtonContent({
   arrowClassName = "group-hover/button:brightness-0 group-hover/button:invert",
@@ -334,7 +338,7 @@ function createSuggestions({
     });
   });
 
-  return suggestions.slice(0, 8);
+  return suggestions;
 }
 
 function getMatchingPlannerDestinationId(
@@ -366,6 +370,7 @@ export function PlanTripLauncher() {
   const [buttonStartRect, setButtonStartRect] = useState<ButtonRect | null>(null);
   const [isCtaFlying, setIsCtaFlying] = useState(false);
   const [isCtaSettled, setIsCtaSettled] = useState(false);
+  const [isEnquiryOpen, setIsEnquiryOpen] = useState(false);
   const [destinationQuery, setDestinationQuery] = useState("");
   const [selectedDestinationId, setSelectedDestinationId] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("");
@@ -468,7 +473,7 @@ export function PlanTripLauncher() {
     }
 
     const buttonRect = launcher.getBoundingClientRect();
-    const viewportPadding = window.innerWidth < 768 ? 20 : 48;
+    const viewportPadding = window.innerWidth < 768 ? 24 : 48;
     const maxPanelWidth = 1120;
     const panelChromeHeight = panelPadding * 2;
     const panelVisualHeight = buttonRect.height + panelChromeHeight;
@@ -559,6 +564,12 @@ export function PlanTripLauncher() {
       return;
     }
 
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyOverscrollBehavior = document.body.style.overscrollBehavior;
+
+    document.body.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "contain";
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (activeField) {
@@ -575,6 +586,8 @@ export function PlanTripLauncher() {
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.overscrollBehavior = previousBodyOverscrollBehavior;
       window.removeEventListener("resize", updatePanelPosition);
       window.removeEventListener("scroll", updatePanelPosition, true);
       window.removeEventListener("keydown", handleKeyDown);
@@ -649,12 +662,39 @@ export function PlanTripLauncher() {
     setActiveField("month");
   };
 
+  const closeGuestPickerOnMobile = () => {
+    if (window.innerWidth < 768) {
+      setActiveField(null);
+    }
+  };
+
+  const openGroupEnquiry = () => {
+    setActiveField(null);
+    setIsEnquiryOpen(true);
+  };
+
   const updateAdultCount = (value: number) => {
-    setAdultCount(Math.min(12, Math.max(1, value)));
+    const nextAdultCount = Math.max(1, value);
+
+    if (nextAdultCount + childCount > maxPlannerGuests) {
+      openGroupEnquiry();
+      return;
+    }
+
+    setAdultCount(nextAdultCount);
+    closeGuestPickerOnMobile();
   };
 
   const updateChildCount = (value: number) => {
-    setChildCount(Math.min(12, Math.max(0, value)));
+    const nextChildCount = Math.max(0, value);
+
+    if (adultCount + nextChildCount > maxPlannerGuests) {
+      openGroupEnquiry();
+      return;
+    }
+
+    setChildCount(nextChildCount);
+    closeGuestPickerOnMobile();
   };
 
   const ctaMotion =
@@ -681,7 +721,19 @@ export function PlanTripLauncher() {
         }`}
       />
 
-      <div ref={launcherRef} className="relative z-30 mt-[clamp(1.5rem,7vh,4rem)] inline-flex">
+      <PlannerEnquiryDialog
+        open={isEnquiryOpen}
+        onOpenChange={(nextOpen) => {
+          setIsEnquiryOpen(nextOpen);
+
+          if (!nextOpen) {
+            closePlanner();
+          }
+        }}
+        placeToPlan={destinationQuery.trim()}
+      />
+
+      <div ref={launcherRef} className="relative z-30 mt-[clamp(1.2rem,6vh,3rem)] inline-flex">
         <Button
           type="button"
           variant="outline"
@@ -700,7 +752,7 @@ export function PlanTripLauncher() {
 
       {isOpen && ctaMotion ? (
         <div
-          className="fixed z-50 transition-transform duration-[1100ms] ease-[cubic-bezier(0.16,1,0.3,1)]"
+          className="fixed z-50 hidden transition-transform duration-[1100ms] ease-[cubic-bezier(0.16,1,0.3,1)] md:block"
           style={{
             left: ctaMotion.left,
             top: ctaMotion.top,
@@ -744,13 +796,13 @@ export function PlanTripLauncher() {
               } as CSSProperties)
             : undefined
         }
-        className={`fixed z-40 max-w-[calc(100vw-2.5rem)] origin-left transition-all duration-[850ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        className={`fixed z-40 max-w-[calc(100vw-3rem)] origin-left transition-all duration-[850ms] ease-[cubic-bezier(0.16,1,0.3,1)] md:max-w-[calc(100vw-2.5rem)] ${
           isOpen
             ? "translate-y-0 scale-x-100 scale-y-100 opacity-100"
             : "pointer-events-none translate-y-0 scale-x-[var(--launcher-closed-scale-x)] scale-y-[var(--launcher-closed-scale-y)] opacity-0"
         }`}
       >
-        <div className="flex flex-col items-center justify-center overflow-visible rounded-[34px] border border-accent/30 bg-white/90 p-3 backdrop-blur-md md:min-h-[50px] md:flex-row md:items-stretch">
+        <div className="flex flex-col items-center justify-center overflow-visible rounded-[24px] border border-accent/30 bg-white/95 p-4 shadow-[0_18px_55px_rgba(50,50,50,0.16)] backdrop-blur-md md:min-h-[50px] md:flex-row md:items-stretch md:rounded-[34px] md:bg-white/90 md:p-3 md:shadow-none">
           <div
             className={`grid flex-1 divide-y divide-accent/25 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] md:h-full md:grid-cols-3 md:items-center md:divide-x md:divide-y-0 ${
               isOpen ? "translate-x-0 opacity-100" : "-translate-x-2 opacity-0"
@@ -795,13 +847,28 @@ export function PlanTripLauncher() {
             />
           </div>
 
-          <div className="relative z-10 p-0 md:flex md:h-full md:min-w-[210px] md:items-center">
+          <div
+            className={`relative z-10 flex w-full justify-center md:flex md:h-full md:w-auto md:min-w-[210px] md:items-center md:pt-0 ${
+              activeField ? "hidden md:flex" : "pt-3 md:pt-0"
+            }`}
+          >
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!hasDestinationQuery}
+              onClick={handleSearchTours}
+              className={`${planTripButtonClassName} h-10 w-full max-w-[390px] !min-w-0 !gap-3 px-4 !bg-white !text-primary hover:!bg-white hover:!text-primary [&_svg]:!text-primary md:hidden ${
+                hasDestinationQuery ? "" : "cursor-not-allowed opacity-60"
+              }`}
+            >
+              <PlanTripButtonContent arrowClassName="group-hover/button:brightness-100 group-hover/button:invert-0" />
+            </Button>
             <Button
               type="button"
               variant="outline"
               aria-hidden="true"
               tabIndex={-1}
-              className={`${planTripButtonClassName} pointer-events-none opacity-0`}
+              className={`${planTripButtonClassName} pointer-events-none hidden opacity-0 md:inline-flex`}
             >
               <PlanTripButtonContent />
             </Button>
@@ -830,11 +897,15 @@ export function PlanTripInline({
   const [destinationQuery, setDestinationQuery] = useState(initialSearchQuery);
   const [selectedDestinationId, setSelectedDestinationId] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(initialMonthValue);
+  const [isEnquiryOpen, setIsEnquiryOpen] = useState(false);
   const [adultCount, setAdultCount] = useState(
-    Math.min(12, Math.max(1, initialAdultCount))
+    Math.min(maxPlannerGuests, Math.max(1, initialAdultCount))
   );
   const [childCount, setChildCount] = useState(
-    Math.min(12, Math.max(0, initialChildCount))
+    Math.min(
+      Math.max(0, maxPlannerGuests - Math.max(1, initialAdultCount)),
+      Math.max(0, initialChildCount)
+    )
   );
   const [tours, setTours] = useState<PlannerTour[]>(() => createFallbackTours());
   const [destinations, setDestinations] = useState<PlannerDestination[]>([]);
@@ -977,80 +1048,252 @@ export function PlanTripInline({
     );
   };
 
+  const closeGuestPickerOnMobile = () => {
+    if (window.innerWidth < 768) {
+      setActiveField(null);
+    }
+  };
+
+  const openGroupEnquiry = () => {
+    setActiveField(null);
+    setIsEnquiryOpen(true);
+  };
+
   const updateAdultCount = (value: number) => {
-    setAdultCount(Math.min(12, Math.max(1, value)));
+    const nextAdultCount = Math.max(1, value);
+
+    if (nextAdultCount + childCount > maxPlannerGuests) {
+      openGroupEnquiry();
+      return;
+    }
+
+    setAdultCount(nextAdultCount);
+    closeGuestPickerOnMobile();
   };
 
   const updateChildCount = (value: number) => {
-    setChildCount(Math.min(12, Math.max(0, value)));
+    const nextChildCount = Math.max(0, value);
+
+    if (adultCount + nextChildCount > maxPlannerGuests) {
+      openGroupEnquiry();
+      return;
+    }
+
+    setChildCount(nextChildCount);
+    closeGuestPickerOnMobile();
   };
 
   return (
-    <div
-      ref={plannerRef}
-      className={cn(
-        "relative z-30 grid w-full overflow-visible rounded-[34px] border border-accent/30 bg-white/90 p-3 backdrop-blur-md md:min-h-[60px] md:grid-cols-[minmax(0,1fr)_210px] md:items-stretch",
-        className
-      )}
-    >
-      <div className="grid min-w-0 flex-1 divide-y divide-accent/25 md:grid-cols-3 md:items-center md:divide-x md:divide-y-0">
-        <DestinationField
-          active={activeField === "destination"}
-          query={destinationQuery}
-          suggestions={suggestions}
-          onFocus={() => setActiveField("destination")}
-          onQueryChange={(value) => {
-            setDestinationQuery(value);
-            setSelectedDestinationId("");
-            setActiveField("destination");
-          }}
-          onSearch={handleSearchTours}
-          onSuggestionSelect={(suggestion) => {
-            setDestinationQuery(suggestion.searchValue);
-            setSelectedDestinationId(suggestion.destinationId);
-            setActiveField("month");
-          }}
-        />
+    <>
+      <PlannerEnquiryDialog
+        open={isEnquiryOpen}
+        onOpenChange={(nextOpen) => {
+          setIsEnquiryOpen(nextOpen);
 
-        <MonthField
-          active={activeField === "month"}
-          options={monthOptions}
-          value={effectiveSelectedMonth}
-          onToggle={() =>
-            setActiveField((current) => (current === "month" ? null : "month"))
-          }
-          onChange={(value) => {
-            setSelectedMonth(value);
+          if (!nextOpen) {
             setActiveField(null);
-          }}
-        />
-
-        <GuestsField
-          active={activeField === "guests"}
-          adultCount={adultCount}
-          childCount={childCount}
-          onAdultCountChange={updateAdultCount}
-          onChildCountChange={updateChildCount}
-          onToggle={() =>
-            setActiveField((current) => (current === "guests" ? null : "guests"))
           }
-        />
-      </div>
+        }}
+        placeToPlan={destinationQuery.trim()}
+      />
+      <div
+        ref={plannerRef}
+        className={cn(
+          "relative z-30 grid w-full overflow-visible rounded-[34px] border border-accent/30 bg-white/90 p-3 backdrop-blur-md md:min-h-[60px] md:grid-cols-[minmax(0,1fr)_210px] md:items-stretch",
+          className
+        )}
+      >
+        <div className="grid min-w-0 flex-1 divide-y divide-accent/25 md:grid-cols-3 md:items-center md:divide-x md:divide-y-0">
+          <DestinationField
+            active={activeField === "destination"}
+            query={destinationQuery}
+            suggestions={suggestions}
+            onFocus={() => setActiveField("destination")}
+            onQueryChange={(value) => {
+              setDestinationQuery(value);
+              setSelectedDestinationId("");
+              setActiveField("destination");
+            }}
+            onSearch={handleSearchTours}
+            onSuggestionSelect={(suggestion) => {
+              setDestinationQuery(suggestion.searchValue);
+              setSelectedDestinationId(suggestion.destinationId);
+              setActiveField("month");
+            }}
+          />
 
-      <div className="pt-3 md:flex md:h-full md:items-center md:justify-end md:pt-0">
-        <Button
-          type="button"
-          variant="outline"
-          disabled={!hasDestinationQuery}
-          onClick={handleSearchTours}
-          className={`${planTripButtonClassName} h-11 w-full min-w-0 !bg-white !text-primary hover:!bg-white hover:!text-primary [&_svg]:!text-primary md:w-[210px] ${
-            hasDestinationQuery ? "" : "cursor-not-allowed opacity-60"
-          }`}
-        >
-          <PlanTripButtonContent arrowClassName="group-hover/button:brightness-100 group-hover/button:invert-0" />
-        </Button>
+          <MonthField
+            active={activeField === "month"}
+            options={monthOptions}
+            value={effectiveSelectedMonth}
+            onToggle={() =>
+              setActiveField((current) => (current === "month" ? null : "month"))
+            }
+            onChange={(value) => {
+              setSelectedMonth(value);
+              setActiveField(null);
+            }}
+          />
+
+          <GuestsField
+            active={activeField === "guests"}
+            adultCount={adultCount}
+            childCount={childCount}
+            onAdultCountChange={updateAdultCount}
+            onChildCountChange={updateChildCount}
+            onToggle={() =>
+              setActiveField((current) => (current === "guests" ? null : "guests"))
+            }
+          />
+        </div>
+
+        <div className="pt-3 md:flex md:h-full md:items-center md:justify-end md:pt-0">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!hasDestinationQuery}
+            onClick={handleSearchTours}
+            className={`${planTripButtonClassName} h-11 w-full min-w-0 !bg-white !text-primary hover:!bg-white hover:!text-primary [&_svg]:!text-primary md:w-[210px] ${
+              hasDestinationQuery ? "" : "cursor-not-allowed opacity-60"
+            }`}
+          >
+            <PlanTripButtonContent arrowClassName="group-hover/button:brightness-100 group-hover/button:invert-0" />
+          </Button>
+        </div>
       </div>
-    </div>
+    </>
+  );
+}
+
+function PlannerEnquiryDialog({
+  onOpenChange,
+  open,
+  placeToPlan,
+}: {
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  placeToPlan?: string;
+}) {
+  const [isSubmitted, setIsSubmitted] = useState(false);
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSubmitted(true);
+  };
+
+  const closeDialog = () => {
+    onOpenChange(false);
+    setIsSubmitted(false);
+  };
+
+  if (!open || typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[2147483647] grid place-items-center bg-secondary/25 px-4 py-6 backdrop-blur-[6px]">
+      <button
+        type="button"
+        aria-label="Close group enquiry"
+        className="absolute inset-0 cursor-default"
+        onClick={closeDialog}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="planner-enquiry-title"
+        className="relative z-10 max-h-[calc(100dvh-2rem)] w-full max-w-[720px] overflow-hidden rounded-[18px] border border-accent/25 bg-white shadow-[0_24px_80px_rgba(50,50,50,0.28)]"
+      >
+        <button
+          type="button"
+          aria-label="Close group enquiry"
+          onClick={closeDialog}
+          className="absolute right-5 top-5 grid size-9 place-items-center rounded-full border border-accent/25 bg-white text-secondary transition-colors hover:border-primary hover:text-primary"
+        >
+          <X className="size-4" strokeWidth={1.8} />
+        </button>
+
+        <div className="max-h-[calc(100dvh-2rem)] overflow-y-auto px-5 pb-5 pt-5 sm:px-6 sm:pb-6">
+          <div className="pr-10">
+            <h2
+              id="planner-enquiry-title"
+              className="font-heading text-[28px] font-bold leading-tight text-secondary"
+            >
+              Group Enquiry
+            </h2>
+            <p className="mt-2 max-w-[560px] font-sans text-[14px] leading-relaxed text-secondary/68">
+              For more than 6 guests, please share your details and our travel team
+              will help you plan the right itinerary.
+            </p>
+          </div>
+
+          {isSubmitted ? (
+            <div className="mt-5 rounded-[12px] border border-primary/20 bg-[#fff7ef] p-4 font-sans text-[14px] font-semibold text-secondary">
+              Thank you. Your enquiry has been captured and our team will get back
+              to you shortly.
+            </div>
+          ) : (
+            <form className="mt-5 grid grid-cols-2 gap-3 sm:gap-4" onSubmit={handleSubmit}>
+              <PlannerEnquiryField label="Your Name *" name="name" />
+              <PlannerEnquiryField label="Email Address *" name="email" type="email" />
+              <PlannerEnquiryField label="Phone Number *" name="phone" type="tel" />
+              <PlannerEnquiryField
+                defaultValue={placeToPlan}
+                label="Place to plan trip *"
+                name="place"
+              />
+              <PlannerEnquiryField
+                label="Total Guests *"
+                min={maxPlannerGuests + 1}
+                name="guests"
+                type="number"
+              />
+              <label className="col-span-2 block font-sans text-[12px] font-bold uppercase text-secondary/58">
+                Message
+                <textarea
+                  name="message"
+                  rows={3}
+                  placeholder="Tell us your preferred destination, dates, or group needs."
+                  className="mt-1.5 w-full resize-none rounded-[10px] border border-accent/20 bg-white px-3 py-2 font-sans text-[13px] font-medium normal-case text-secondary outline-none transition-colors placeholder:text-secondary/38 focus:border-primary focus:ring-3 focus:ring-primary/15"
+                />
+              </label>
+              <Button type="submit" className="col-span-2 h-11 w-full">
+                Submit Enquiry
+              </Button>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function PlannerEnquiryField({
+  defaultValue,
+  label,
+  name,
+  type = "text",
+  min,
+}: {
+  defaultValue?: string;
+  label: string;
+  name: string;
+  type?: string;
+  min?: number;
+}) {
+  return (
+    <label className="block font-sans text-[12px] font-bold uppercase text-secondary/58">
+      {label}
+      <input
+        required
+        defaultValue={defaultValue}
+        min={min}
+        name={name}
+        type={type}
+        className="mt-1.5 h-10 w-full rounded-[10px] border border-accent/20 bg-white px-3 font-sans text-[13px] font-medium normal-case text-secondary outline-none transition-colors placeholder:text-secondary/38 focus:border-primary focus:ring-3 focus:ring-primary/15"
+      />
+    </label>
   );
 }
 
@@ -1072,11 +1315,11 @@ function DestinationField({
   onSuggestionSelect: (suggestion: PlannerSuggestion) => void;
 }) {
   return (
-    <div data-plan-trip-field className="relative min-w-0 text-left">
+    <div data-plan-trip-field className="relative min-w-0 py-1 text-left md:py-0">
       <label className="sr-only" htmlFor="plan-trip-destination-search">
         Search destination
       </label>
-      <MapPin className="pointer-events-none absolute left-5 top-1/2 size-6 -translate-y-1/2 text-accent md:left-8" strokeWidth={1.9} />
+      <MapPin className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-accent md:left-8 md:size-6" strokeWidth={1.9} />
       <input
         id="plan-trip-destination-search"
         type="search"
@@ -1091,19 +1334,19 @@ function DestinationField({
           }
         }}
         placeholder="Where to?"
-        className="h-12 w-full bg-transparent py-3 pl-16 pr-4 font-sans text-description font-medium text-secondary outline-none placeholder:text-secondary md:h-full md:pl-[76px]"
+        className="h-9 w-full bg-transparent py-2 pl-11 pr-3 font-sans text-description font-medium text-secondary outline-none placeholder:text-secondary md:h-full md:py-3 md:pl-[76px] md:pr-4"
       />
 
       {active ? (
-        <div className="absolute left-0 top-[calc(100%+12px)] z-[80] w-full min-w-[280px] overflow-hidden rounded-[18px] border border-border bg-white shadow-[0_18px_42px_rgba(15,23,42,0.16)]">
+        <div className="absolute left-0 top-[calc(100%+12px)] z-[80] w-full min-w-[280px] overflow-hidden rounded-[18px] border border-border bg-white shadow-[0_18px_42px_rgba(15,23,42,0.16)] md:w-full">
           {suggestions.length > 0 ? (
-            <div className="max-h-[320px] overflow-auto p-2">
+            <div className="max-h-[30dvh] touch-pan-y overflow-y-auto overscroll-contain px-2 pb-8 pt-2 [-webkit-overflow-scrolling:touch] md:max-h-[min(360px,calc(100dvh-13rem))]">
               {suggestions.map((suggestion) => (
                 <button
                   key={suggestion.id}
                   type="button"
                   onClick={() => onSuggestionSelect(suggestion)}
-                  className="flex w-full items-center justify-between gap-3 rounded-[10px] px-3 py-3 text-left font-sans transition-colors hover:bg-primary/8 hover:text-primary"
+                  className="flex w-full items-center justify-between gap-3 rounded-[10px] px-3 py-2 text-left font-sans transition-colors hover:bg-primary/8 hover:text-primary"
                 >
                   <span className="min-w-0">
                     <strong className="block truncate text-[14px] font-bold text-secondary">
@@ -1144,7 +1387,7 @@ function MonthField({
   onToggle: () => void;
 }) {
   return (
-    <div data-plan-trip-field className="relative min-w-0">
+    <div data-plan-trip-field className="relative min-w-0 py-1 md:py-0">
       <PlannerFieldButton
         active={active}
         icon={CalendarDays}
@@ -1153,8 +1396,8 @@ function MonthField({
       />
 
       {active ? (
-        <div className="absolute left-1/2 top-[calc(100%+12px)] z-[80] w-[min(290px,calc(100vw-1rem))] -translate-x-1/2 overflow-hidden rounded-[18px] border border-border bg-white shadow-[0_18px_42px_rgba(15,23,42,0.16)]">
-          <div className="max-h-[320px] overflow-auto p-2">
+        <div className="absolute left-1/2 top-[calc(100%+12px)] z-[80] w-[min(290px,calc(100vw-1rem))] -translate-x-1/2 overflow-hidden rounded-[18px] border border-border bg-white shadow-[0_18px_42px_rgba(15,23,42,0.16)] md:w-full">
+          <div className="max-h-[30dvh] touch-pan-y overflow-y-auto overscroll-contain px-2 pb-8 pt-2 [-webkit-overflow-scrolling:touch] md:max-h-[min(360px,calc(100dvh-13rem))]">
             <MonthOptionButton
               active={!value}
               label="Any Month"
@@ -1195,11 +1438,23 @@ function MonthOptionButton({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "flex h-10 w-full items-center rounded-[10px] px-3 text-left font-sans text-[13px] font-bold text-secondary transition-colors hover:bg-primary/8 hover:text-primary",
-        active && "bg-primary text-white hover:bg-primary hover:text-white"
+        "flex w-full items-center justify-between gap-3 rounded-[10px] px-3 py-2 text-left font-sans transition-colors hover:bg-primary/8 hover:text-primary",
+        active && "bg-primary/8 text-primary"
       )}
     >
-      {label}
+      <span className="min-w-0">
+        <strong
+          className={cn(
+            "block truncate text-[14px] font-bold text-secondary",
+            active && "text-primary"
+          )}
+        >
+          {label}
+        </strong>
+      </span>
+      <span className="shrink-0 rounded-full bg-[#fff1e5] px-2 py-1 text-[10px] font-bold uppercase text-primary">
+        Month
+      </span>
     </button>
   );
 }
@@ -1226,7 +1481,7 @@ function GuestsField({
       : `${adultCount} ${adultCount === 1 ? "Adult" : "Adults"}`;
 
   return (
-    <div data-plan-trip-field className="relative min-w-0">
+    <div data-plan-trip-field className="relative min-w-0 py-1 md:py-0">
       <PlannerFieldButton
         active={active}
         icon={Users}
@@ -1235,8 +1490,8 @@ function GuestsField({
       />
 
       {active ? (
-        <div className="absolute right-0 top-[calc(100%+12px)] z-[80] w-[min(360px,calc(100vw-1rem))] overflow-hidden rounded-[14px] border border-border bg-white shadow-[0_18px_42px_rgba(15,23,42,0.16)]">
-          <div className="px-4 pb-4 pt-6 sm:px-5">
+        <div className="absolute left-1/2 top-[calc(100%+8px)] z-[80] w-[min(360px,calc(100vw-1.25rem))] -translate-x-1/2 overflow-hidden rounded-[14px] border border-border bg-white shadow-[0_18px_42px_rgba(15,23,42,0.16)] md:left-auto md:right-0 md:top-[calc(100%+12px)] md:w-[min(360px,calc(100vw-2.5rem))] md:translate-x-0">
+          <div className="px-3 pb-3 pt-4 sm:px-5 sm:pb-4 sm:pt-6">
             <TravellerStepper
               label="Adults"
               note="Above 12"
@@ -1244,7 +1499,7 @@ function GuestsField({
               value={adultCount}
               onChange={onAdultCountChange}
             />
-            <div className="my-3 h-px bg-border" />
+            <div className="my-2 h-px bg-border sm:my-3" />
             <TravellerStepper
               label="Children"
               note="Above 6 to 12"
@@ -1252,7 +1507,7 @@ function GuestsField({
               value={childCount}
               onChange={onChildCountChange}
             />
-            <p className="mt-3 font-sans text-[13px] font-normal text-secondary/62">
+            <p className="mt-2 font-sans text-[12px] font-normal text-secondary/62 sm:mt-3 sm:text-[13px]">
               Total guests: <strong className="font-semibold text-secondary">{totalGuests}</strong>
             </p>
           </div>
@@ -1278,9 +1533,9 @@ function PlannerFieldButton({
       type="button"
       aria-expanded={active}
       onClick={onClick}
-      className="flex h-12 w-full items-center gap-5 p-3 text-left font-sans text-description font-medium text-secondary transition-colors hover:text-primary focus-visible:ring-3 focus-visible:ring-primary/15 md:h-full md:px-8"
+      className="flex h-9 w-full items-center gap-4 px-3 py-1.5 text-left font-sans text-description font-medium text-secondary transition-colors hover:text-primary focus-visible:ring-3 focus-visible:ring-primary/15 md:h-full md:gap-5 md:px-8 md:py-3"
     >
-      <Icon className="size-6 shrink-0 text-accent" strokeWidth={1.9} />
+      <Icon className="size-5 shrink-0 text-accent md:size-6" strokeWidth={1.9} />
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <ChevronDown className="size-4 shrink-0 text-primary" />
     </button>
@@ -1303,31 +1558,31 @@ function TravellerStepper({
   return (
     <div className="flex items-center justify-between gap-4">
       <span className="font-sans">
-        <strong className="block text-[16px] font-semibold leading-tight text-secondary">
+        <strong className="block text-[15px] font-semibold leading-tight text-secondary sm:text-[16px]">
           {label}
         </strong>
-        <span className="mt-0.5 block text-[13px] font-normal leading-tight text-secondary/58">
+        <span className="mt-0.5 block text-[12px] font-normal leading-tight text-secondary/58 sm:text-[13px]">
           {note}
         </span>
       </span>
-      <span className="inline-flex items-center gap-4">
+      <span className="inline-flex items-center gap-3 sm:gap-4">
         <button
           type="button"
           aria-label={`Decrease ${label}`}
           disabled={value <= minimum}
           onClick={() => onChange(value - 1)}
-          className="grid size-9 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:bg-primary hover:text-white disabled:pointer-events-none disabled:text-secondary/28"
+          className="grid size-8 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:bg-primary hover:text-white disabled:pointer-events-none disabled:text-secondary/28 sm:size-9"
         >
           <Minus className="size-3.5" strokeWidth={1.8} />
         </button>
-        <strong className="w-5 text-center font-sans text-[16px] font-medium text-secondary">
+        <strong className="w-5 text-center font-sans text-[15px] font-medium text-secondary sm:text-[16px]">
           {value}
         </strong>
         <button
           type="button"
           aria-label={`Increase ${label}`}
           onClick={() => onChange(value + 1)}
-          className="grid size-9 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+          className="grid size-8 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:bg-primary hover:text-white sm:size-9"
         >
           <Plus className="size-3.5" strokeWidth={1.8} />
         </button>

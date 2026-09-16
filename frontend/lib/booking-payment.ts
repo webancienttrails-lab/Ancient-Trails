@@ -8,6 +8,8 @@ export type BookingGuestDetailsPayload = {
   countryCode: string;
   mobileNumber: string;
   email: string;
+  emergencyContactName?: string;
+  emergencyContactMobileNumber?: string;
   dateOfBirth: string;
   gender: string;
   address: string;
@@ -23,6 +25,8 @@ export type BookingTravellerPayload = {
   countryCode?: string;
   mobileNumber?: string;
   email?: string;
+  emergencyContactName?: string;
+  emergencyContactMobileNumber?: string;
   dateOfBirth?: string;
   gender?: string;
   address?: string;

@@ -16,6 +16,12 @@ export type PublicTour = {
   description: string;
   inclusions: string[];
   exclusions: string[];
+  flightDetails?: string[];
+  accommodationDetails?: string[];
+  reportingAndDropping?: string[];
+  paymentPolicy?: TourPaymentPolicyRow[];
+  cancellationPolicy?: TourCancellationPolicyRow[];
+  needToKnow?: TourNeedToKnowGroup[];
   expertId: string;
   notes: string;
   thumbnailImage?: string;
@@ -24,6 +30,21 @@ export type PublicTour = {
   video: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type TourPaymentPolicyRow = {
+  condition: string;
+  payment: string;
+};
+
+export type TourCancellationPolicyRow = {
+  days: string;
+  charge: string;
+};
+
+export type TourNeedToKnowGroup = {
+  heading: string;
+  items: string[];
 };
 
 export type PublicTourDeparture = {
@@ -68,7 +89,7 @@ export type PublicTourItineraryDay = {
   title: string;
   summary: string;
   placesVisited: string[];
-  transport: string;
+  hotels: string;
   walkingDifficulty: string;
   meals: string;
 };

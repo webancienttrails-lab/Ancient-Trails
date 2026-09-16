@@ -139,7 +139,7 @@ export function TourShowcaseCard({
 
         <span className="mt-3 block h-px w-full bg-primary/65" />
 
-        <div className="mt-2 grid gap-2 font-sans lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 font-sans">
           <div className="min-w-0">
             <time className="mt-1.5 block truncate text-[16px] font-medium leading-none text-primary">
               {nextDepartureLabel}

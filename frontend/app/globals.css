@@ -2,6 +2,21 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+@keyframes gallery-slide {
+  from {
+    transform: translateX(3%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+.tour-icon-primary {
+  filter: brightness(0) saturate(100%) invert(52%) sepia(92%) saturate(1170%)
+    hue-rotate(351deg) brightness(91%) contrast(91%);
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

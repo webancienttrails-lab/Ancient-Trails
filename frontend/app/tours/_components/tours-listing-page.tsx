@@ -2,25 +2,23 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowRight,
-  BadgeCheck,
   BedDouble,
   Bus,
   CalendarDays,
   Camera,
-  ChevronDown,
   Clock3,
   Grid2X2,
   Heart,
-  Landmark,
   List as ListIcon,
-  MapPin,
-  ShieldCheck,
+  PenLine,
   SlidersHorizontal,
   Sparkles,
   UserRoundCheck,
+  X,
   type LucideIcon,
 } from "lucide-react";
 
@@ -30,6 +28,13 @@ import {
   TourShowcaseCard,
 } from "@/components/tours/tour-showcase-card";
 import { ButtonArrow, buttonVariants } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
 import { listenForTravellerSessionChanges } from "@/lib/auth";
 import {
@@ -108,26 +113,11 @@ const fallbackImages = [
   "/home assets/Vietnam.webp",
 ];
 
-const sortOptions: Array<{ label: string; value: SortMode }> = [
-  { label: "Recommended", value: "recommended" },
-  { label: "Earliest Departure", value: "earliest" },
-  { label: "Price Low to High", value: "price-low" },
-  { label: "Price High to Low", value: "price-high" },
-  { label: "Duration", value: "duration" },
-];
-
 const durationOptions: Array<{ label: string; value: DurationFilter }> = [
   { label: "Any Duration", value: "all" },
   { label: "1 - 3 Days", value: "short" },
   { label: "4 - 7 Days", value: "medium" },
   { label: "8+ Days", value: "long" },
-];
-
-const availabilityOptions: Array<{ label: string; value: AvailabilityFilter }> = [
-  { label: "Any Status", value: "all" },
-  { label: "Available", value: "available" },
-  { label: "Coming Soon", value: "coming-soon" },
-  { label: "Sold Out", value: "sold-out" },
 ];
 
 const tourTypeFilterLabels = ["Long Trails", "Short Trails"];
@@ -459,36 +449,6 @@ function matchesDuration(item: TourListItem, durationFilter: DurationFilter) {
   }
 
   return item.durationDays >= 8;
-}
-
-function createCountOptions(
-  items: TourListItem[],
-  getValues: (item: TourListItem) => string[]
-) {
-  const counts = new Map<string, CountOption>();
-
-  items.forEach((item) => {
-    getValues(item).forEach((rawValue) => {
-      const label = normalizeValue(rawValue);
-
-      if (!label) {
-        return;
-      }
-
-      const value = normalizeKey(label);
-      const current = counts.get(value);
-
-      counts.set(value, {
-        count: (current?.count || 0) + 1,
-        label: current?.label || label,
-        value,
-      });
-    });
-  });
-
-  return Array.from(counts.values()).sort((left, right) =>
-    left.label.localeCompare(right.label)
-  );
 }
 
 function createMonthOptions(items: TourListItem[]) {
@@ -836,11 +796,13 @@ export function ToursListingPage({
     useState<AvailabilityFilter>("all");
   const [adultCount, setAdultCount] = useState(initialAdultCount);
   const [childCount, setChildCount] = useState(initialChildCount);
-  const [sortMode, setSortMode] = useState<SortMode>("earliest");
+  const sortMode: SortMode = "earliest";
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [currentPage, setCurrentPage] = useState(1);
   const [priceLimit, setPriceLimit] = useState(0);
   const [isFilterCollapsed, setIsFilterCollapsed] = useState(false);
+  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
+  const [isQuoteOpen, setIsQuoteOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [wishlistTourIds, setWishlistTourIds] = useState<string[]>([]);
@@ -930,16 +892,6 @@ export function ToursListingPage({
 
   const typeOptions = useMemo(
     () => createTourTypeFilterOptions(allItems),
-    [allItems]
-  );
-
-  const destinationOptions = useMemo(
-    () =>
-      createCountOptions(allItems, (item) => [
-        item.destination?.destinationName ||
-          item.destination?.city ||
-          getPrimaryDestinationId(item.tour),
-      ]),
     [allItems]
   );
 
@@ -1079,7 +1031,7 @@ export function ToursListingPage({
       <section
         id="tour-results"
         className={cn(
-          "mx-auto grid w-full max-w-[1300px] items-start gap-6 px-5 pb-14 pt-8 transition-[grid-template-columns] duration-300 sm:px-8 lg:px-0",
+          "mx-auto grid w-full max-w-[1300px] items-start gap-6 px-5 pb-28 pt-8 transition-[grid-template-columns] duration-300 sm:px-8 lg:px-0 lg:pb-14",
           isFilterCollapsed
             ? "lg:grid-cols-[76px_minmax(0,1fr)] xl:grid-cols-[84px_minmax(0,1fr)]"
             : "lg:grid-cols-[282px_minmax(0,1fr)]"
@@ -1087,25 +1039,13 @@ export function ToursListingPage({
       >
         <TourSidebar
           activeFilterCount={activeFilterCount}
-          availabilityFilter={availabilityFilter}
-          destinationOptions={destinationOptions}
           durationFilter={durationFilter}
           isCollapsed={isFilterCollapsed}
-          maxPrice={maxPrice}
-          priceLimit={priceLimit}
-          selectedDestinationValues={selectedDestinationValues}
           selectedTypeValues={selectedTypeValues}
           typeOptions={typeOptions}
-          onAvailabilityChange={setAvailabilityFilter}
           onClearFilters={clearFilters}
           onCollapsedChange={setIsFilterCollapsed}
-          onDestinationToggle={(value) =>
-            setSelectedDestinationValues((current) =>
-              toggleSelection(current, value)
-            )
-          }
           onDurationChange={setDurationFilter}
-          onPriceLimitChange={setPriceLimit}
           onTypeToggle={(value) =>
             setSelectedTypeValues((current) => toggleSelection(current, value))
           }
@@ -1117,9 +1057,7 @@ export function ToursListingPage({
             currentPage={activePage}
             isLoading={isLoading}
             loadError={loadError}
-            sortMode={sortMode}
             viewMode={viewMode}
-            onSortModeChange={setSortMode}
             onViewModeChange={setViewMode}
           />
 
@@ -1149,13 +1087,28 @@ export function ToursListingPage({
           ) : null}
         </section>
       </section>
+
+      <MobileTourActions
+        durationFilter={durationFilter}
+        isFilterOpen={isMobileFilterOpen}
+        isQuoteOpen={isQuoteOpen}
+        selectedTypeValues={selectedTypeValues}
+        typeOptions={typeOptions}
+        onClearFilters={clearFilters}
+        onDurationChange={setDurationFilter}
+        onFilterOpenChange={setIsMobileFilterOpen}
+        onQuoteOpenChange={setIsQuoteOpen}
+        onTypeToggle={(value) =>
+          setSelectedTypeValues((current) => toggleSelection(current, value))
+        }
+      />
     </main>
   );
 }
 
 function HeaderBand() {
   return (
-    <section className="relative h-[200px] overflow-hidden bg-secondary">
+    <section className="relative h-[100px] overflow-hidden bg-secondary lg:h-[200px]">
       <Image
         src="/home assets/Heritage Banner.webp"
         alt="Ancient Trails heritage landscape"
@@ -1174,46 +1127,28 @@ function HeaderBand() {
 
 function TourSidebar({
   activeFilterCount,
-  availabilityFilter,
-  destinationOptions,
   durationFilter,
   isCollapsed,
-  maxPrice,
-  onAvailabilityChange,
   onClearFilters,
   onCollapsedChange,
-  onDestinationToggle,
   onDurationChange,
-  onPriceLimitChange,
   onTypeToggle,
-  priceLimit,
-  selectedDestinationValues,
   selectedTypeValues,
   typeOptions,
 }: {
   activeFilterCount: number;
-  availabilityFilter: AvailabilityFilter;
-  destinationOptions: CountOption[];
   durationFilter: DurationFilter;
   isCollapsed: boolean;
-  maxPrice: number;
-  priceLimit: number;
-  selectedDestinationValues: string[];
   selectedTypeValues: string[];
   typeOptions: CountOption[];
-  onAvailabilityChange: (value: AvailabilityFilter) => void;
   onClearFilters: () => void;
   onCollapsedChange: (value: boolean) => void;
-  onDestinationToggle: (value: string) => void;
   onDurationChange: (value: DurationFilter) => void;
-  onPriceLimitChange: (value: number) => void;
   onTypeToggle: (value: string) => void;
 }) {
-  const isPriceFiltered = priceLimit > 0 && maxPrice > 0 && priceLimit < maxPrice;
-
   if (isCollapsed) {
     return (
-      <aside className="lg:sticky lg:top-5 lg:z-20 lg:self-start">
+      <aside className="hidden lg:sticky lg:top-5 lg:z-20 lg:block lg:self-start">
         <div className="flex items-center justify-center gap-2 rounded-[8px] border border-[#ead8c5] bg-white p-2 shadow-[0_12px_32px_rgba(67,43,27,0.07)] lg:flex-col">
           <button
             type="button"
@@ -1235,31 +1170,13 @@ function TourSidebar({
             label="Open duration filters"
             onClick={() => onCollapsedChange(false)}
           />
-          <CollapsedFilterButton
-            active={isPriceFiltered}
-            icon={Landmark}
-            label="Open price filters"
-            onClick={() => onCollapsedChange(false)}
-          />
-          <CollapsedFilterButton
-            active={selectedDestinationValues.length > 0}
-            icon={MapPin}
-            label="Open destination filters"
-            onClick={() => onCollapsedChange(false)}
-          />
-          <CollapsedFilterButton
-            active={availabilityFilter !== "all"}
-            icon={BadgeCheck}
-            label="Open status filters"
-            onClick={() => onCollapsedChange(false)}
-          />
         </div>
       </aside>
     );
   }
 
   return (
-    <aside className="space-y-4 lg:sticky lg:top-5 lg:self-start">
+    <aside className="hidden space-y-4 lg:sticky lg:top-5 lg:block lg:self-start">
       <div className="flex items-center justify-between gap-3 px-1">
         <h2 className="flex items-center gap-2 font-sans text-[14px] font-bold text-secondary/80">
           <SlidersHorizontal className="size-4 text-secondary/75" />
@@ -1299,6 +1216,253 @@ function TourSidebar({
         </div>
       </div>
     </aside>
+  );
+}
+
+function MobileTourActions({
+  durationFilter,
+  isFilterOpen,
+  isQuoteOpen,
+  onClearFilters,
+  onDurationChange,
+  onFilterOpenChange,
+  onQuoteOpenChange,
+  onTypeToggle,
+  selectedTypeValues,
+  typeOptions,
+}: {
+  durationFilter: DurationFilter;
+  isFilterOpen: boolean;
+  isQuoteOpen: boolean;
+  selectedTypeValues: string[];
+  typeOptions: CountOption[];
+  onClearFilters: () => void;
+  onDurationChange: (value: DurationFilter) => void;
+  onFilterOpenChange: (open: boolean) => void;
+  onQuoteOpenChange: (open: boolean) => void;
+  onTypeToggle: (value: string) => void;
+}) {
+  const mobileFilterCount =
+    selectedTypeValues.length + (durationFilter !== "all" ? 1 : 0);
+
+  return (
+    <>
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[#ead8c5] bg-white/96 px-2 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-12px_30px_rgba(18,32,44,0.13)] backdrop-blur lg:hidden">
+        <div className="mx-auto grid max-w-[520px] grid-cols-2 divide-x divide-[#ead8c5] overflow-hidden rounded-t-[10px]">
+          <MobileActionButton
+            badge={mobileFilterCount}
+            icon={SlidersHorizontal}
+            label="Filter Tours"
+            onClick={() => onFilterOpenChange(true)}
+          />
+          <MobileActionButton
+            icon={PenLine}
+            label="Get Quote"
+            onClick={() => onQuoteOpenChange(true)}
+          />
+        </div>
+      </div>
+
+      <Sheet open={isFilterOpen} onOpenChange={onFilterOpenChange}>
+        <SheetContent
+          side="bottom"
+          className="max-h-[86dvh] rounded-t-[18px] border-[#ead8c5] bg-white p-0 lg:hidden"
+        >
+          <SheetHeader className="border-b border-[#ead8c5] px-5 py-4">
+            <SheetTitle className="flex items-center gap-2 font-heading text-[22px] font-bold text-secondary">
+              Filters
+              {mobileFilterCount > 0 ? (
+                <span className="rounded-full bg-primary px-2 py-0.5 font-sans text-[12px] font-bold text-white">
+                  {mobileFilterCount}
+                </span>
+              ) : null}
+            </SheetTitle>
+          </SheetHeader>
+          <div className="max-h-[calc(86dvh-142px)] space-y-6 overflow-y-auto px-5 py-4">
+            <CheckboxGroup
+              icon={Sparkles}
+              options={typeOptions}
+              selectedValues={selectedTypeValues}
+              title="Tour Format"
+              onToggle={onTypeToggle}
+            />
+            <RadioGroup
+              icon={Clock3}
+              options={durationOptions}
+              title="Duration"
+              value={durationFilter}
+              onChange={(value) => onDurationChange(value as DurationFilter)}
+            />
+          </div>
+          <SheetFooter className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.65fr)] items-center gap-4 border-t border-[#ead8c5] bg-white px-5 py-5">
+            <button
+              type="button"
+              disabled={mobileFilterCount === 0}
+              className="justify-self-center font-sans text-[15px] font-medium text-secondary underline underline-offset-2 transition-colors hover:text-primary disabled:pointer-events-none disabled:opacity-45"
+              onClick={onClearFilters}
+            >
+              Reset Filters
+            </button>
+            <button
+              type="button"
+              className="h-[40px] rounded-[6px] bg-primary px-4 font-sans text-[17px] font-normal text-white shadow-[0_12px_24px_rgba(244,192,7,0.24)] transition-transform active:translate-y-px"
+              onClick={() => onFilterOpenChange(false)}
+            >
+              Apply ({mobileFilterCount}) Filters
+            </button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {isQuoteOpen ? (
+        <MobileQuoteModal onClose={() => onQuoteOpenChange(false)} />
+      ) : null}
+    </>
+  );
+}
+
+function MobileActionButton({
+  badge,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  badge?: number;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="relative flex min-h-[56px] items-center justify-center gap-2 bg-white px-2 font-sans text-[16px] font-medium text-secondary transition-colors active:bg-[#fff8f1]"
+      onClick={onClick}
+    >
+      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-white">
+        <Icon className="size-4" strokeWidth={2.2} />
+      </span>
+      <span className="truncate">{label}</span>
+      
+    </button>
+  );
+}
+
+function MobileQuoteModal({ onClose }: { onClose: () => void }) {
+  const [isSubmitted, setIsSubmitted] = useState(false);
+
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSubmitted(true);
+  }
+
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(
+    <div
+      aria-modal="true"
+      className="fixed inset-0 z-[2147483647] flex items-end justify-center bg-secondary/52 px-3 pb-3 pt-8 backdrop-blur-sm lg:hidden"
+      role="dialog"
+    >
+      <button
+        type="button"
+        aria-label="Close quote form"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+      />
+      <form
+        className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-[520px] overflow-y-auto rounded-[14px] border border-[#ead8c5] bg-white shadow-[0_24px_70px_rgba(18,32,44,0.28)]"
+        onSubmit={handleSubmit}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-[#ead8c5] bg-[#fff8f1] px-4 py-4">
+          <div>
+            <h2 className="font-heading text-[24px] font-bold leading-tight text-secondary">
+              Get Quote
+            </h2>
+            <p className="mt-1 font-sans text-[13px] font-semibold leading-relaxed text-secondary/66">
+              Share your travel details and our team will help you plan it.
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Close quote form"
+            className="grid size-8 shrink-0 place-items-center rounded-full border border-primary/20 bg-white text-secondary transition-colors hover:border-primary hover:text-primary"
+            onClick={onClose}
+          >
+            <X className="size-4" strokeWidth={2} />
+          </button>
+        </div>
+
+        <div className="grid gap-3 px-4 py-4">
+          <TourQuoteField label="Your Name *">
+            <input required type="text" placeholder="Your Name" />
+          </TourQuoteField>
+          <TourQuoteField label="Phone Number *">
+            <input required type="tel" placeholder="Phone Number" />
+          </TourQuoteField>
+          <TourQuoteField label="Email Address *">
+            <input required type="email" placeholder="Email Address" />
+          </TourQuoteField>
+          <TourQuoteField label="Destination">
+            <input type="text" placeholder="Where would you like to go?" />
+          </TourQuoteField>
+          <TourQuoteField label="Message">
+            <textarea rows={3} placeholder="Dates, guests, or any preference." />
+          </TourQuoteField>
+
+          {isSubmitted ? (
+            <p className="rounded-[8px] border border-primary/20 bg-primary/8 px-3 py-2 font-sans text-[14px] font-bold text-primary">
+              Thank you. Your quote request has been captured.
+            </p>
+          ) : null}
+
+          <button
+            type="submit"
+            className="mt-1 h-11 rounded-[8px] bg-primary font-sans text-[15px] font-bold text-secondary shadow-[0_12px_24px_rgba(244,192,7,0.24)] transition-transform active:translate-y-px"
+          >
+            Submit
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body
+  );
+}
+
+function TourQuoteField({
+  children,
+  label,
+}: {
+  children: ReactNode;
+  label: string;
+}) {
+  return (
+    <label className="block font-sans">
+      <span className="mb-1 block text-[12px] font-bold uppercase text-secondary/58">
+        {label}
+      </span>
+      <span className="block [&>input]:h-10 [&>input]:w-full [&>input]:rounded-[8px] [&>input]:border [&>input]:border-[#ead8c5] [&>input]:bg-background [&>input]:px-3 [&>input]:text-[14px] [&>input]:font-semibold [&>input]:text-secondary [&>input]:outline-none [&>input]:transition-colors [&>input]:placeholder:text-secondary/38 focus-within:[&>input]:border-primary focus-within:[&>input]:ring-3 focus-within:[&>input]:ring-primary/15 [&>textarea]:w-full [&>textarea]:resize-none [&>textarea]:rounded-[8px] [&>textarea]:border [&>textarea]:border-[#ead8c5] [&>textarea]:bg-background [&>textarea]:px-3 [&>textarea]:py-2.5 [&>textarea]:text-[14px] [&>textarea]:font-semibold [&>textarea]:text-secondary [&>textarea]:outline-none [&>textarea]:transition-colors [&>textarea]:placeholder:text-secondary/38 focus-within:[&>textarea]:border-primary focus-within:[&>textarea]:ring-3 focus-within:[&>textarea]:ring-primary/15">
+        {children}
+      </span>
+    </label>
   );
 }
 
@@ -1417,18 +1581,14 @@ function ResultsHeader({
   currentPage,
   isLoading,
   loadError,
-  onSortModeChange,
   onViewModeChange,
-  sortMode,
   viewMode,
 }: {
   count: number;
   currentPage: number;
   isLoading: boolean;
   loadError: string;
-  sortMode: SortMode;
   viewMode: ViewMode;
-  onSortModeChange: (value: SortMode) => void;
   onViewModeChange: (value: ViewMode) => void;
 }) {
   return (
@@ -1447,7 +1607,7 @@ function ResultsHeader({
 
       <div className="flex flex-wrap items-center gap-3">
 
-        <div className="flex overflow-hidden rounded-[7px] border border-[#ead8c5] bg-white shadow-[0_8px_20px_rgba(67,43,27,0.05)]">
+        <div className="hidden overflow-hidden rounded-[7px] border border-[#ead8c5] bg-white shadow-[0_8px_20px_rgba(67,43,27,0.05)] sm:flex">
           <ViewButton
             active={viewMode === "grid"}
             label="Grid view"
@@ -1527,18 +1687,32 @@ function TourResults({
 
   if (viewMode === "list") {
     return (
-      <div className="mt-5 grid gap-3">
-        {items.map((item) => (
-          <TourListRow
-            key={item.tour.id || item.tour.tourId}
-            isWishlisted={favoriteTourIds.has(
-              normalizeWishlistTourId(item.tour.tourId)
-            )}
-            item={item}
-            onWishlistToggle={onWishlistToggle}
-          />
-        ))}
-      </div>
+      <>
+        <div className="mt-5 grid justify-items-center gap-5 sm:hidden">
+          {items.map((item) => (
+            <TourCard
+              key={item.tour.id || item.tour.tourId}
+              isWishlisted={favoriteTourIds.has(
+                normalizeWishlistTourId(item.tour.tourId)
+              )}
+              item={item}
+              onWishlistToggle={onWishlistToggle}
+            />
+          ))}
+        </div>
+        <div className="mt-5 hidden gap-3 sm:grid">
+          {items.map((item) => (
+            <TourListRow
+              key={item.tour.id || item.tour.tourId}
+              isWishlisted={favoriteTourIds.has(
+                normalizeWishlistTourId(item.tour.tourId)
+              )}
+              item={item}
+              onWishlistToggle={onWishlistToggle}
+            />
+          ))}
+        </div>
+      </>
     );
   }
 
@@ -1687,17 +1861,11 @@ function TourListRow({
             </Link>
           </h3>
 
-          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
             <time className="block font-sans text-[16px] font-medium leading-none text-primary">
               {formatOrdinalDate(item.nextDeparture?.departureDate || null)}
             </time>
 
-            <div className="w-full max-w-[220px] sm:ml-auto">
-              <TourSeatProgress seats={seats} />
-            </div>
-          </div>
-
-          <div className="mt-2.5">
             <Link
               href={getTourCalendarHref({
                 destination: item.destination,
@@ -1710,7 +1878,11 @@ function TourListRow({
             </Link>
           </div>
 
-          <div className="mt-2 border-t border-[#d6d1cb] pt-2.5">
+          <div className="mt-3 w-full max-w-none">
+            <TourSeatProgress seats={seats} />
+          </div>
+
+          <div className="mt-4 border-t border-[#d6d1cb] pt-2.5">
             <div className="flex items-center justify-between gap-3">
               <span className="font-sans text-[12px] font-medium leading-none text-secondary/62">
                 Tour Includes
@@ -1746,15 +1918,13 @@ function TourListRow({
             </div>
           </div>
 
-          <div>
-            <span className="block text-[12px] font-medium leading-none text-secondary/62">
-              Starting from
-            </span>
-            <strong className="mt-1.5 block truncate text-[22px] font-semibold leading-none text-secondary">
-              {formatTourCardPrice(item.lowestPrice)}
-            </strong>
-           
-          </div>
+          <Link
+            href={`${getTourHref(item.tour)}#itinerary`}
+            aria-label={`View itinerary for ${item.tour.tourName}`}
+            className="justify-self-end font-sans text-[14px] font-semibold text-secondary underline-offset-4 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
+          >
+            View Itinerary
+          </Link>
 
           <Link
             href={getTourHref(item.tour)}

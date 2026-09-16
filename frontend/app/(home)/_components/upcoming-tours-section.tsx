@@ -3,11 +3,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Clock3 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
 import {
-  fallbackUpcomingTours,
   getHomeUpcomingTours,
   type HomeTourCard,
 } from "@/lib/home-travel";
@@ -19,24 +18,6 @@ type TourCardProps = {
   sizes: string;
   tour: HomeTourCard;
 };
-
-function mergeWithFallbackTours(tours: HomeTourCard[]) {
-  const merged = [...tours];
-  const usedKeys = new Set(
-    merged.map((tour) => `${tour.tourId}-${tour.date}`)
-  );
-
-  fallbackUpcomingTours.forEach((tour) => {
-    const key = `${tour.tourId}-${tour.date}`;
-
-    if (merged.length < 6 && !usedKeys.has(key)) {
-      merged.push(tour);
-      usedKeys.add(key);
-    }
-  });
-
-  return merged.slice(0, 6);
-}
 
 function compactDurationLabel(duration: string) {
   const source = duration.trim();
@@ -106,6 +87,8 @@ function formatDepartureDate(value: string) {
 }
 
 function TourCard({ tour, className, sizes }: TourCardProps) {
+  const formattedDate = formatDepartureDate(tour.date);
+
   return (
     <Link
       href={getTourHref(tour)}
@@ -121,18 +104,24 @@ function TourCard({ tour, className, sizes }: TourCardProps) {
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.04)_0%,rgba(18,12,8,0.14)_46%,rgba(18,12,8,0.82)_100%)]" />
       <div className="absolute inset-x-0 top-0 h-16 bg-[linear-gradient(180deg,rgba(0,0,0,0.72)_0%,rgba(0,0,0,0)_100%)]" />
       {tour.isBestseller ? (
-        <span className="absolute left-3 top-3 rounded-[6px] bg-primary px-2 py-1 font-sans text-[11px] font-bold leading-none text-white shadow-[0_10px_20px_rgba(0,0,0,0.18)]">
+        <span className="absolute left-2 top-2 rounded-[6px] bg-primary px-2 py-1 font-sans text-[10px] font-bold leading-none text-white shadow-[0_10px_20px_rgba(0,0,0,0.18)] lg:left-3 lg:top-3 lg:text-[11px]">
           BESTSELLER
         </span>
       ) : null}
-      <time className="absolute right-3 top-3 font-sans text-[14px] font-semibold leading-none text-white">
-        {formatDepartureDate(tour.date)}
+      <time
+        className={`absolute max-w-[calc(100%-1rem)] rounded-full bg-black/28 px-2 py-1 text-right font-sans text-[11px] font-semibold leading-none text-white backdrop-blur-[2px] lg:right-3 lg:top-3 lg:max-w-none lg:bg-transparent lg:px-0 lg:py-0 lg:text-[14px] lg:backdrop-blur-0 ${
+          tour.isBestseller
+            ? "left-2 top-8 lg:left-auto lg:top-3"
+            : "right-2 top-2"
+        }`}
+      >
+        {formattedDate}
       </time>
-      <div className="absolute inset-x-0 bottom-3 px-3 text-white">
-        <h3 className="line-clamp-1 font-sans text-[18px] font-semibold leading-none ">
+      <div className="absolute inset-x-0 bottom-2 px-2.5 text-white lg:bottom-3 lg:px-3">
+        <h3 className="line-clamp-2 font-sans text-[15px] font-semibold leading-[1.08] sm:text-[17px] lg:line-clamp-1 lg:text-[18px] lg:leading-none">
           {tour.title}
         </h3>
-        <span className="mt-2 inline-flex h-6 items-center gap-1.5 rounded-full bg-black/68 px-2.5 font-sans text-[12px] font-normal leading-none text-white shadow-[0_8px_18px_rgba(0,0,0,0.24)] backdrop-blur-[2px]">
+        <span className="mt-1.5 inline-flex h-6 items-center gap-1.5 rounded-full bg-black/68 px-2 font-sans text-[11px] font-normal leading-none text-white shadow-[0_8px_18px_rgba(0,0,0,0.24)] backdrop-blur-[2px] lg:mt-2 lg:px-2.5 lg:text-[12px]">
           <span className="grid size-4 shrink-0 place-items-center rounded-full bg-white text-secondary">
             <Clock3 className="size-2.5" strokeWidth={2.2} />
           </span>
@@ -170,7 +159,11 @@ export function UpcomingToursSection() {
     };
   }, []);
 
-  const tours = useMemo(() => mergeWithFallbackTours(adminTours), [adminTours]);
+  const tours = adminTours.slice(0, 6);
+
+  if (tours.length === 0) {
+    return null;
+  }
 
   return (
     <section id="upcoming-tours" className="bg-background py-6 sm:py-8 lg:flex lg:min-h-screen lg:items-center lg:py-7">
@@ -188,55 +181,87 @@ export function UpcomingToursSection() {
               </div>
             </TextReveal>
 
-            <div className="mt-5 lg:mt-6">
-              <TourCard
-                tour={tours[0]}
-                className="h-[140px] sm:h-[210px] lg:h-auto lg:aspect-[2.24/1]"
-                sizes="(min-width: 1300px) 650px, (min-width: 1024px) 44vw, 100vw"
-              />
+            <div className="mt-5 grid grid-cols-2 gap-3 lg:hidden">
+              {tours.map((tour, index) => (
+                <TourCard
+                  key={`${tour.tourId}-${tour.date}-${index}`}
+                  tour={tour}
+                  className={
+                    index % 3 === 0
+                      ? "col-span-2 h-[190px]"
+                      : "h-[180px] sm:h-[200px]"
+                  }
+                  sizes={index % 3 === 0 ? "100vw" : "50vw"}
+                />
+              ))}
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-3 sm:mt-4 sm:gap-4">
-              <TourCard
-                tour={tours[3]}
-                className="h-[102px] sm:h-[160px] lg:h-auto lg:aspect-[1.5/1]"
-                sizes="(min-width: 1300px) 325px, (min-width: 1024px) 27vw, (min-width: 640px) 40vw, 100vw"
-              />
-              <TourCard
-                tour={tours[4]}
-                className="h-[102px] sm:h-[160px] lg:h-auto lg:aspect-[1.5/1]"
-                sizes="(min-width: 1300px) 325px, (min-width: 1024px) 27vw, (min-width: 640px) 40vw, 100vw"
-              />
+            <div className="mt-4 flex justify-start lg:hidden">
+              <Button
+                nativeButton={false}
+                render={<Link href="/tour-calendar" />}
+                className="h-10 w-auto min-w-[220px] justify-between gap-4 px-4 text-[12px] sm:w-auto sm:gap-6 sm:px-5 sm:text-button"
+              >
+                View Tour Calendar
+                <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+              </Button>
+            </div>
+
+            <div className="hidden lg:mt-6 lg:block">
+              {tours[0] ? (
+                <TourCard
+                  tour={tours[0]}
+                  className="h-[140px] sm:h-[210px] lg:h-auto lg:aspect-[2.24/1]"
+                  sizes="(min-width: 1300px) 650px, (min-width: 1024px) 44vw, 100vw"
+                />
+              ) : null}
+            </div>
+
+            <div className="hidden lg:mt-4 lg:grid lg:grid-cols-2 lg:gap-4">
+              {tours[3] ? (
+                <TourCard
+                  tour={tours[3]}
+                  className="h-[102px] sm:h-[160px] lg:h-auto lg:aspect-[1.5/1]"
+                  sizes="(min-width: 1300px) 325px, (min-width: 1024px) 27vw, (min-width: 640px) 40vw, 100vw"
+                />
+              ) : null}
+              {tours[4] ? (
+                <TourCard
+                  tour={tours[4]}
+                  className="h-[102px] sm:h-[160px] lg:h-auto lg:aspect-[1.5/1]"
+                  sizes="(min-width: 1300px) 325px, (min-width: 1024px) 27vw, (min-width: 640px) 40vw, 100vw"
+                />
+              ) : null}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:h-full lg:gap-x-4">
+          <div className="hidden grid-cols-2 gap-3 sm:gap-4 lg:grid lg:h-full lg:gap-x-4">
             <div className="flex h-full flex-col lg:pt-5">
-              <TourCard
-                tour={tours[1]}
-                className="h-[156px] sm:h-[220px] lg:h-full lg:flex-1 lg:aspect-auto"
-                sizes="(min-width: 1300px) 410px, (min-width: 1024px) 32vw, 100vw"
-              />
-
-              <TextReveal delay={120}>
-                <p className="mt-3 max-w-[260px] font-sans text-[13px] font-medium leading-[1.25] text-accent sm:mt-4 sm:text-[15px] lg:mt-5">
-                  Find upcoming tours &amp; explore destinations beyond borders
-                </p>
-              </TextReveal>
+              {tours[1] ? (
+                <TourCard
+                  tour={tours[1]}
+                  className="h-[156px] sm:h-[220px] lg:h-full lg:flex-1 lg:aspect-auto"
+                  sizes="(min-width: 1300px) 410px, (min-width: 1024px) 32vw, 100vw"
+                />
+              ) : null}
             </div>
 
             <div className="flex h-full flex-col lg:pt-5">
-              <TourCard
-                tour={tours[2]}
-                className="h-[102px] sm:h-[160px] lg:h-full lg:flex-1 lg:aspect-auto"
-                sizes="(min-width: 1300px) 500px, (min-width: 1024px) 39vw, 100vw"
-              />
+              {tours[2] ? (
+                <TourCard
+                  tour={tours[2]}
+                  className="h-[102px] sm:h-[160px] lg:h-full lg:flex-1 lg:aspect-auto"
+                  sizes="(min-width: 1300px) 500px, (min-width: 1024px) 39vw, 100vw"
+                />
+              ) : null}
 
-              <TourCard
-                tour={tours[5]}
-                className="mt-3 h-[102px] sm:mt-4 sm:h-[160px] lg:h-full lg:flex-1 lg:aspect-auto"
-                sizes="(min-width: 1300px) 500px, (min-width: 1024px) 39vw, 100vw"
-              />
+              {tours[5] ? (
+                <TourCard
+                  tour={tours[5]}
+                  className="mt-3 h-[102px] sm:mt-4 sm:h-[160px] lg:h-full lg:flex-1 lg:aspect-auto"
+                  sizes="(min-width: 1300px) 500px, (min-width: 1024px) 39vw, 100vw"
+                />
+              ) : null}
 
               <div className="mt-4 flex justify-start lg:mt-6 lg:justify-end">
                 <Button

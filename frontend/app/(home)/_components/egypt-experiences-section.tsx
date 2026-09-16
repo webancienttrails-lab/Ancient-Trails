@@ -981,39 +981,6 @@ export function EgyptExperiencesSection({
               ))}
             </div>
           </div>
-
-          <div className="mt-5 grid grid-cols-2 items-center gap-3 sm:grid-cols-4 lg:grid-cols-[repeat(4,minmax(0,1fr))_176px] [@media(min-width:1320px)]:grid-cols-[repeat(4,150px)_176px]">
-            {thumbnails.map((thumbnail, index) => (
-              <button
-                type="button"
-                key={`${thumbnail}-${index}`}
-                onClick={() => openGallery?.(index)}
-                className="relative h-[92px] overflow-hidden rounded-[7px] border-0 p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                aria-label={`Open traveller photo ${index + 1}`}
-              >
-                <Image
-                  src={thumbnail}
-                  alt="Traveller memory"
-                  fill
-                  sizes="(min-width: 1280px) 150px, (min-width: 1024px) 12vw, (min-width: 640px) 25vw, 50vw"
-                  className="object-cover"
-                />
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => openGallery?.(0)}
-              className="col-span-2 flex h-[92px] items-center justify-center gap-4 rounded-[7px] border-0 bg-white px-0 text-primary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]  cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:col-span-4 lg:col-span-1"
-            >
-              <span className="grid size-8 shrink-0 place-items-center rounded-full border-[2px] border-primary">
-                <ImageIcon className="size-4" strokeWidth={1.9} />
-              </span>
-              <span className="text-left font-sans text-[14px] font-medium leading-[1.12]">
-                VIEW ALL PHOTOS
-              </span>
-             
-            </button>
-          </div>
         </div>
 
         <aside className="flex h-full flex-col items-center justify-between text-center lg:w-full lg:max-w-[356px] lg:justify-self-end">

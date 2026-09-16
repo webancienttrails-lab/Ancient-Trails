@@ -97,7 +97,7 @@ export function AboutSection() {
 
   return (
     <section id="about" className="relative bg-background pb-16 pt-4 lg:pb-20">
-      <div className="relative h-[320px] overflow-hidden sm:h-[380px]">
+      <div className="relative h-[320px] overflow-hidden sm:h-[460px]">
         <video
           className="h-full w-full object-cover"
           src={aboutVideoSrc}
@@ -108,7 +108,7 @@ export function AboutSection() {
         />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(47,20,5,0.68),rgba(47,20,5,0.72))]" />
 
-        <button
+        {/* <button
           type="button"
           aria-label="Play Ancient Trails video"
           onClick={openVideo}
@@ -134,12 +134,12 @@ export function AboutSection() {
           <span className="grid size-[58px] place-items-center rounded-full bg-white text-secondary shadow-[0_12px_30px_rgba(0,0,0,0.25)] transition-transform duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-105">
             <Play className="ml-1 size-7 fill-current" strokeWidth={0} />
           </span>
-        </button>
+        </button> */}
       </div>
 
-      <div className="relative z-10 mx-auto -mt-[100px] w-full max-w-[1300px] px-5 sm:px-0">
+      <div className="relative z-10 mx-auto -mt-[120px] w-full max-w-[1300px] px-5 sm:px-0">
         <div className="relative overflow-hidden rounded-[12px] border border-primary/15 bg-white p-4 ">
-          <div className="relative min-h-[200px] overflow-hidden rounded-[8px]">
+          <div className="relative min-h-[250px] overflow-hidden rounded-[8px]">
             <Image
               src="/home assets/About_trails.webp"
               alt="Ancient Trails leisure heritage"

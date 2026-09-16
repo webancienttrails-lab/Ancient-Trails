@@ -1202,7 +1202,7 @@ export function TourCalendarPage({
     <main className="min-h-screen bg-background text-secondary">
       <HeaderBand />
 
-      <section className="mx-auto grid w-full max-w-[1300px] items-start gap-5 px-4 pb-6 pt-8 sm:px-6 lg:grid-cols-[430px_minmax(0,1fr)] lg:px-0">
+      <section className="mx-auto grid w-full max-w-[1300px] items-start gap-5 px-3 pb-6 pt-6 sm:px-6 sm:pt-8 lg:grid-cols-[430px_minmax(0,1fr)] lg:px-0">
         <CalendarPanel
           calendarDays={calendarDays}
           calendarYearOptions={calendarYearOptions}
@@ -1294,7 +1294,7 @@ function CalendarPanel({
 
   return (
     <aside className="lg:sticky lg:top-[118px] lg:self-start">
-      <article className="rounded-[9px] border border-[#ead8c5] bg-white/94 p-6 transition-all duration-300">
+      <article className="rounded-[9px] border border-[#ead8c5] bg-white/94 p-3 transition-all duration-300 sm:p-6">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-heading text-[22px] font-bold leading-none text-secondary">
             Filter by Date
@@ -1310,7 +1310,7 @@ function CalendarPanel({
             </button>
           ) : null}
         </div>
-        <div className="mt-6 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
+        <div className="mt-5 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1.5 sm:mt-6 sm:gap-3">
           <button
             type="button"
             onClick={() => {
@@ -1323,7 +1323,7 @@ function CalendarPanel({
           >
             <ChevronLeft className="size-5" />
           </button>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid min-w-0 grid-cols-2 gap-1.5 sm:gap-2">
             <Select
               value={String(visibleMonth.getMonth())}
               onValueChange={(value) => {
@@ -1334,7 +1334,7 @@ function CalendarPanel({
             >
               <SelectTrigger
                 aria-label="Select month"
-                className="h-10 rounded-full border-[#e8cbaa] bg-[#fffaf4] text-[13px] font-bold"
+                className="h-9 rounded-full border-[#e8cbaa] bg-[#fffaf4] px-2 text-[12px] font-bold sm:h-10 sm:text-[13px]"
               >
                 <SelectValue>
                   {monthOptions.find(
@@ -1360,7 +1360,7 @@ function CalendarPanel({
             >
               <SelectTrigger
                 aria-label="Select year"
-                className="h-10 rounded-full border-[#e8cbaa] bg-[#fffaf4] text-[13px] font-bold"
+                className="h-9 rounded-full border-[#e8cbaa] bg-[#fffaf4] px-2 text-[12px] font-bold sm:h-10 sm:text-[13px]"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -1387,7 +1387,7 @@ function CalendarPanel({
           </button>
         </div>
 
-        <div className="mt-6 grid grid-cols-7 gap-y-2">
+        <div className="mt-5 grid grid-cols-7 gap-y-1.5 sm:mt-6 sm:gap-y-2">
           {weekdayLabels.map((day) => (
             <span
               key={day}
@@ -1414,7 +1414,7 @@ function CalendarPanel({
                 onClick={() => onSelectDate(key)}
                 aria-pressed={isSelected}
                 className={cn(
-                  "relative mx-auto grid size-10 place-items-center rounded-full border border-transparent font-sans text-[13px] font-semibold leading-none transition-all disabled:cursor-default focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary",
+                  "relative mx-auto grid size-8 place-items-center rounded-full border border-transparent font-sans text-[12px] font-semibold leading-none transition-all disabled:cursor-default focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary sm:size-10 sm:text-[13px]",
                   day.isCurrentMonth ? "text-secondary" : "text-secondary/32",
                   hasDepartures &&
                   "bg-primary text-secondary text-white",
@@ -1432,7 +1432,7 @@ function CalendarPanel({
           })}
         </div>
 
-        <div className=" flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-[#f1ebe6] pt-4 font-sans text-[11px] font-semibold text-secondary/62">
+        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-[#f1ebe6] pt-4 font-sans text-[11px] font-semibold text-secondary/62 sm:gap-x-5">
           <CalendarLegendDot
             className={currentDateDotClassName}
             label="Current date"
@@ -1485,7 +1485,7 @@ function FestivalDatesList({
               type="button"
               onClick={() => onSelectDate(dateKey)}
               className={cn(
-                "flex items-start justify-between gap-3 rounded-[7px] border px-3 py-2 text-left transition-colors",
+                "flex flex-col items-start gap-2 rounded-[7px] border px-3 py-2 text-left transition-colors min-[420px]:flex-row min-[420px]:justify-between min-[420px]:gap-3",
                 isSelected
                   ? "border-accent bg-accent/10 text-accent"
                   : "border-[#ead8c5] bg-[#fffaf4] text-secondary hover:border-accent/45"
@@ -1501,7 +1501,7 @@ function FestivalDatesList({
                   </span>
                 ) : null}
               </span>
-              <span className="shrink-0 text-[12px] font-bold text-primary">
+              <span className="shrink-0 text-[12px] font-bold text-primary min-[420px]:text-right">
                 {formatOrdinalDate(festival.date)}
               </span>
             </button>
@@ -1631,7 +1631,7 @@ function UpcomingDeparturesPanel({
         </div>
       </div>
 
-      <div className="mt-5 space-y-5">
+      <div className="mt-4 space-y-4 sm:mt-5 sm:space-y-5">
         {departures.length > 0 ? (
           departures.map((item, index) => (
             <DepartureCard
@@ -1671,7 +1671,7 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
   return (
     <article className="overflow-visible rounded-[12px] border border-[#e8cbaa] bg-white p-2 transition-all hover:-translate-y-0.5 hover:border-primary/55 sm:p-2.5">
       <div className="grid gap-2.5 xl:grid-cols-[245px_minmax(0,1fr)_210px] xl:items-stretch">
-        <div className="relative h-[140px] overflow-hidden rounded-[8px] bg-muted sm:h-[165px] xl:h-auto">
+        <div className="relative h-[150px] overflow-hidden rounded-[8px] bg-muted sm:h-[165px] xl:h-auto">
           <Link
             href={getTourHref(item.tour)}
             aria-label={`View ${item.tour.tourName}`}
@@ -1705,8 +1705,8 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
           ) : null}
         </div>
 
-        <div className="flex min-w-0 flex-col px-0.5">
-          <h3 className="font-heading text-[20px] font-bold leading-[1.04] tracking-normal text-secondary sm:text-[23px]">
+        <div className="flex min-w-0 flex-col px-1 sm:px-0.5">
+          <h3 className="font-heading text-[19px] font-bold leading-[1.08] tracking-normal text-secondary sm:text-[23px]">
             <Link
               href={getTourHref(item.tour)}
               className="line-clamp-2 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
@@ -1715,7 +1715,7 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
             </Link>
           </h3>
 
-          <time className="mt-2 block font-sans text-[16px] font-medium leading-none text-primary">
+          <time className="mt-2 block font-sans text-[15px] font-medium leading-none text-primary sm:text-[16px]">
             {formatOrdinalDate(item.departure.departureDate)}
           </time>
 
@@ -1744,12 +1744,12 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
           </div>
         </div>
 
-        <div className="grid gap-2.5 border-t border-[#d6d1cb] pt-3 text-right font-sans xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0">
-          <div className="min-w-0 justify-self-end">
-            <span className="block text-right text-[12px] font-medium leading-none text-secondary/62">
+        <div className="grid gap-2.5 border-t border-[#d6d1cb] pt-3 text-left font-sans xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0 xl:text-right">
+          <div className="min-w-0 justify-self-start xl:justify-self-end">
+            <span className="block text-left text-[12px] font-medium leading-none text-secondary/62 xl:text-right">
               Tour Expert
             </span>
-            <div className="mt-0 flex min-w-0 items-center justify-end gap-2">
+            <div className="mt-1 flex min-w-0 items-center justify-start gap-2 xl:mt-0 xl:justify-end">
               <ExpertAvatar expert={item.expert} index={index} size="compact" />
               <TourExpertHoverPopup
                 image={getExpertImage(item.expert, index)}
@@ -1761,7 +1761,7 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
                   item.tour.tourType ||
                   "Long Trails"
                 }
-                triggerClassName="text-right text-[14px] font-semibold leading-tight sm:text-[15px]"
+                triggerClassName="text-left text-[14px] font-semibold leading-tight sm:text-[15px] xl:text-right"
               />
             </div>
           </div>
@@ -1770,7 +1770,7 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
             <span className="block text-[12px] font-medium leading-none text-secondary/62">
               Starting from
             </span>
-            <strong className="mt-1.5 block truncate text-[22px] font-semibold leading-none text-secondary">
+            <strong className="mt-1.5 block truncate text-[21px] font-semibold leading-none text-secondary sm:text-[22px]">
               {formatPrice(item.departure.priceAdult)}
             </strong>
           </div>
@@ -1780,7 +1780,7 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
             aria-label={`Book Now ${item.tour.tourName}`}
             className={buttonVariants({
               className:
-                "mt-auto h-9 w-full justify-between gap-3 px-4 text-[13px] font-normal hover:border-primary hover:bg-white hover:text-primary hover:shadow-none",
+                "mt-auto h-9 w-full justify-center gap-3 px-4 text-[13px] font-normal hover:border-primary hover:bg-white hover:text-primary hover:shadow-none xl:justify-between",
             })}
           >
             Book Now
