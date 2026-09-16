@@ -191,6 +191,24 @@ const mediaListSchema = z
   .array(z.string().trim().min(1).max(500))
   .default([])
   .transform((values) => Array.from(new Set(values)));
+const paymentPolicySchema = z.array(
+  z.object({
+    condition: textField(300),
+    payment: textField(300),
+  })
+).max(50).default([]);
+const cancellationPolicySchema = z.array(
+  z.object({
+    days: textField(120),
+    charge: textField(120),
+  })
+).max(50).default([]);
+const needToKnowSchema = z.array(
+  z.object({
+    heading: textField(140),
+    items: stringListSchema,
+  })
+).max(50).default([]);
 const destinationIdsSchema = z
   .preprocess((value) => {
     if (Array.isArray(value)) {
@@ -227,6 +245,12 @@ const tourPayloadSchema = z
     description: textField(3000),
     inclusions: stringListSchema,
     exclusions: stringListSchema,
+    flightDetails: stringListSchema,
+    accommodationDetails: stringListSchema,
+    reportingAndDropping: stringListSchema,
+    paymentPolicy: paymentPolicySchema,
+    cancellationPolicy: cancellationPolicySchema,
+    needToKnow: needToKnowSchema,
     expertId: optionalCodeField("Expert ID", 40),
     notes: textField(1000),
     thumbnailImage: textField(500),
@@ -353,7 +377,7 @@ const tourItineraryDayPayloadSchema = z.object({
   title: requiredTextField("Day title", 140),
   summary: textField(1000),
   placesVisited: stringListSchema,
-  transport: textField(240),
+  hotels: textField(240),
   walkingDifficulty: textField(240),
   meals: textField(400),
 });
@@ -436,6 +460,12 @@ function formatTour(tour: TourDocument) {
     description: tour.description,
     inclusions: tour.inclusions,
     exclusions: tour.exclusions,
+    flightDetails: tour.flightDetails || [],
+    accommodationDetails: tour.accommodationDetails || [],
+    reportingAndDropping: tour.reportingAndDropping || [],
+    paymentPolicy: tour.paymentPolicy || [],
+    cancellationPolicy: tour.cancellationPolicy || [],
+    needToKnow: tour.needToKnow || [],
     expertId: tour.expertId,
     notes: tour.notes,
     thumbnailImage: tour.thumbnailImage || "",
@@ -664,7 +694,7 @@ function formatTourItinerary(itinerary: TourItineraryDocument) {
       title: day.title,
       summary: day.summary,
       placesVisited: day.placesVisited,
-      transport: day.transport,
+      hotels: day.hotels,
       walkingDifficulty: day.walkingDifficulty,
       meals: day.meals,
     })),
@@ -995,7 +1025,7 @@ export async function listTourItineraries(
       { "days.title": new RegExp(search, "i") },
       { "days.summary": new RegExp(search, "i") },
       { "days.placesVisited": new RegExp(search, "i") },
-      { "days.transport": new RegExp(search, "i") },
+      { "days.hotels": new RegExp(search, "i") },
       { "days.walkingDifficulty": new RegExp(search, "i") },
       { "days.meals": new RegExp(search, "i") },
     ];

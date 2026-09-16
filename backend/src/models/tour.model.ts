@@ -21,6 +21,12 @@ export interface ITour {
   description: string;
   inclusions: string[];
   exclusions: string[];
+  flightDetails: string[];
+  accommodationDetails: string[];
+  reportingAndDropping: string[];
+  paymentPolicy: TourPaymentPolicyRow[];
+  cancellationPolicy: TourCancellationPolicyRow[];
+  needToKnow: TourNeedToKnowGroup[];
   expertId: string;
   notes: string;
   thumbnailImage: string;
@@ -30,6 +36,21 @@ export interface ITour {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export type TourPaymentPolicyRow = {
+  condition: string;
+  payment: string;
+};
+
+export type TourCancellationPolicyRow = {
+  days: string;
+  charge: string;
+};
+
+export type TourNeedToKnowGroup = {
+  heading: string;
+  items: string[];
+};
 
 export type TourDocument = HydratedDocument<ITour>;
 
@@ -64,6 +85,28 @@ const codeStringList = {
       )
     ),
 };
+
+const paymentPolicyRowSchema = new Schema<TourPaymentPolicyRow>(
+  {
+    condition: { type: String, trim: true, default: "", maxlength: 300 },
+    payment: { type: String, trim: true, default: "", maxlength: 300 },
+  },
+  { _id: false }
+);
+const cancellationPolicyRowSchema = new Schema<TourCancellationPolicyRow>(
+  {
+    days: { type: String, trim: true, default: "", maxlength: 120 },
+    charge: { type: String, trim: true, default: "", maxlength: 120 },
+  },
+  { _id: false }
+);
+const needToKnowGroupSchema = new Schema<TourNeedToKnowGroup>(
+  {
+    heading: { type: String, trim: true, default: "", maxlength: 140 },
+    items: { type: [String], default: [] },
+  },
+  { _id: false }
+);
 
 const tourSchema = new Schema<ITour>(
   {
@@ -116,6 +159,12 @@ const tourSchema = new Schema<ITour>(
     },
     inclusions: trimmedStringList,
     exclusions: trimmedStringList,
+    flightDetails: trimmedStringList,
+    accommodationDetails: trimmedStringList,
+    reportingAndDropping: trimmedStringList,
+    paymentPolicy: { type: [paymentPolicyRowSchema], default: [] },
+    cancellationPolicy: { type: [cancellationPolicyRowSchema], default: [] },
+    needToKnow: { type: [needToKnowGroupSchema], default: [] },
     expertId: {
       ...trimmedString,
       uppercase: true,

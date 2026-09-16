@@ -11,7 +11,7 @@ export interface ITourItineraryDay {
   title: string;
   summary: string;
   placesVisited: string[];
-  transport: string;
+  hotels: string;
   walkingDifficulty: string;
   meals: string;
 }
@@ -62,7 +62,7 @@ const tourItineraryDaySchema = new Schema<ITourItineraryDay>(
       maxlength: 1000,
     },
     placesVisited: trimmedStringList,
-    transport: {
+    hotels: {
       ...trimmedString,
       maxlength: 240,
     },
@@ -112,6 +112,7 @@ tourItinerarySchema.index({
   "days.title": "text",
   "days.summary": "text",
   "days.placesVisited": "text",
+  "days.hotels": "text",
 });
 
 tourItinerarySchema.virtual("tour", {

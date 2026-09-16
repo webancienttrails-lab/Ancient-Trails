@@ -15,6 +15,8 @@ export interface IBookingGuestDetails {
   countryCode: string;
   mobileNumber: string;
   email: string;
+  emergencyContactName?: string;
+  emergencyContactMobileNumber?: string;
   dateOfBirth: Date;
   gender: string;
   address: string;
@@ -42,6 +44,8 @@ export interface IBookingTraveller {
   countryCode?: string;
   mobileNumber?: string;
   email?: string;
+  emergencyContactName?: string;
+  emergencyContactMobileNumber?: string;
   dateOfBirth?: Date;
   gender?: string;
   address?: string;
@@ -151,6 +155,14 @@ const guestDetailsSchema = new Schema<IBookingGuestDetails>(
       lowercase: true,
       maxlength: 160,
     },
+    emergencyContactName: {
+      ...trimmedString,
+      maxlength: 120,
+    },
+    emergencyContactMobileNumber: {
+      ...trimmedString,
+      maxlength: 20,
+    },
     dateOfBirth: {
       type: Date,
       required: true,
@@ -222,6 +234,14 @@ const travellerSchema = new Schema<IBookingTraveller>(
       ...trimmedString,
       lowercase: true,
       maxlength: 160,
+    },
+    emergencyContactName: {
+      ...trimmedString,
+      maxlength: 120,
+    },
+    emergencyContactMobileNumber: {
+      ...trimmedString,
+      maxlength: 20,
     },
     dateOfBirth: {
       type: Date,
