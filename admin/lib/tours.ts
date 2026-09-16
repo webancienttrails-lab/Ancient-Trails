@@ -22,6 +22,12 @@ export type AdminTour = {
   description: string;
   inclusions: string[];
   exclusions: string[];
+  flightDetails: string[];
+  accommodationDetails: string[];
+  reportingAndDropping: string[];
+  paymentPolicy: TourPaymentPolicyRow[];
+  cancellationPolicy: TourCancellationPolicyRow[];
+  needToKnow: TourNeedToKnowGroup[];
   expertId: string;
   notes: string;
   thumbnailImage: string;
@@ -30,6 +36,21 @@ export type AdminTour = {
   video: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type TourPaymentPolicyRow = {
+  condition: string;
+  payment: string;
+};
+
+export type TourCancellationPolicyRow = {
+  days: string;
+  charge: string;
+};
+
+export type TourNeedToKnowGroup = {
+  heading: string;
+  items: string[];
 };
 
 export type TourPayload = {
@@ -47,6 +68,12 @@ export type TourPayload = {
   description: string;
   inclusions: string[];
   exclusions: string[];
+  flightDetails: string[];
+  accommodationDetails: string[];
+  reportingAndDropping: string[];
+  paymentPolicy: TourPaymentPolicyRow[];
+  cancellationPolicy: TourCancellationPolicyRow[];
+  needToKnow: TourNeedToKnowGroup[];
   expertId: string;
   notes: string;
   thumbnailImage: string;
@@ -74,7 +101,7 @@ export type AdminTourItineraryDay = {
   title: string;
   summary: string;
   placesVisited: string[];
-  transport: string;
+  hotels: string;
   walkingDifficulty: string;
   meals: string;
 };

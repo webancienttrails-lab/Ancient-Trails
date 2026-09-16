@@ -79,6 +79,9 @@ import {
   type AdminTourItinerary,
   type TourDeparturePayload,
   type TourItineraryPayload,
+  type TourCancellationPolicyRow,
+  type TourNeedToKnowGroup,
+  type TourPaymentPolicyRow,
   type TourPayload,
 } from "@/lib/tours";
 import { cn } from "@/lib/utils";
@@ -108,11 +111,26 @@ type TourMetric = {
 
 type TourFormState = Omit<
   TourPayload,
-  "destinationIds" | "inclusions" | "exclusions" | "galleryImages"
+  | "destinationIds"
+  | "inclusions"
+  | "exclusions"
+  | "flightDetails"
+  | "accommodationDetails"
+  | "reportingAndDropping"
+  | "paymentPolicy"
+  | "cancellationPolicy"
+  | "needToKnow"
+  | "galleryImages"
 > & {
   destinationIds: string[];
   inclusions: string;
   exclusions: string;
+  flightDetails: string;
+  accommodationDetails: string;
+  reportingAndDropping: string;
+  paymentPolicy: TourPaymentPolicyRow[];
+  cancellationPolicy: TourCancellationPolicyRow[];
+  needToKnow: TourNeedToKnowGroup[];
   galleryImages: string;
 };
 
@@ -164,7 +182,7 @@ type ItineraryDayFormState = {
   title: string;
   summary: string;
   placesVisited: string;
-  transport: string;
+  hotels: string;
   walkingDifficulty: string;
   meals: string;
 };
@@ -188,6 +206,12 @@ const emptyTourForm: TourFormState = {
   description: "",
   inclusions: "",
   exclusions: "",
+  flightDetails: "",
+  accommodationDetails: "",
+  reportingAndDropping: "",
+  paymentPolicy: [],
+  cancellationPolicy: [],
+  needToKnow: [],
   expertId: "",
   notes: "",
   thumbnailImage: "",
@@ -232,7 +256,7 @@ function createEmptyItineraryDay(dayNumber: number): ItineraryDayFormState {
     title: "",
     summary: "",
     placesVisited: "",
-    transport: "",
+    hotels: "",
     walkingDifficulty: "",
     meals: "",
   };
@@ -314,6 +338,12 @@ function createTourPayload(form: TourFormState): TourPayload {
     description: form.description.trim(),
     inclusions: parseTextList(form.inclusions),
     exclusions: parseTextList(form.exclusions),
+    flightDetails: parseTextList(form.flightDetails),
+    accommodationDetails: parseTextList(form.accommodationDetails),
+    reportingAndDropping: parseTextList(form.reportingAndDropping),
+    paymentPolicy: form.paymentPolicy,
+    cancellationPolicy: form.cancellationPolicy,
+    needToKnow: form.needToKnow,
     expertId: form.expertId.trim(),
     notes: form.notes.trim(),
     thumbnailImage: form.thumbnailImage.trim(),
@@ -374,7 +404,7 @@ function createItineraryPayload(
       title: day.title.trim(),
       summary: day.summary.trim(),
       placesVisited: parseTextList(day.placesVisited),
-      transport: day.transport.trim(),
+      hotels: day.hotels.trim(),
       walkingDifficulty: day.walkingDifficulty.trim(),
       meals: day.meals.trim(),
     })),
@@ -399,6 +429,12 @@ function tourToForm(tour: AdminTour): TourFormState {
     description: tour.description,
     inclusions: tour.inclusions.join("\n"),
     exclusions: tour.exclusions.join("\n"),
+    flightDetails: (tour.flightDetails || []).join("\n"),
+    accommodationDetails: (tour.accommodationDetails || []).join("\n"),
+    reportingAndDropping: (tour.reportingAndDropping || []).join("\n"),
+    paymentPolicy: tour.paymentPolicy || [],
+    cancellationPolicy: tour.cancellationPolicy || [],
+    needToKnow: tour.needToKnow || [],
     expertId: tour.expertId,
     notes: tour.notes,
     thumbnailImage: tour.thumbnailImage || "",
@@ -458,7 +494,7 @@ function itineraryToForm(itinerary: AdminTourItinerary): ItineraryFormState {
             title: day.title,
             summary: day.summary,
             placesVisited: day.placesVisited.join("\n"),
-            transport: day.transport,
+            hotels: day.hotels,
             walkingDifficulty: day.walkingDifficulty,
             meals: day.meals,
           }))
@@ -2641,6 +2677,62 @@ function TourFormDialog({
               />
             </FormField>
 
+            <FormField label="Flight Details">
+              <textarea
+                readOnly={isReadOnly}
+                value={form.flightDetails}
+                onChange={(event) => onUpdate("flightDetails", event.target.value)}
+                className={textareaClassName}
+                placeholder="Departure and arrival details, one item per line"
+              />
+            </FormField>
+
+            <FormField label="Accommodation Details">
+              <textarea
+                readOnly={isReadOnly}
+                value={form.accommodationDetails}
+                onChange={(event) => onUpdate("accommodationDetails", event.target.value)}
+                className={textareaClassName}
+                placeholder="Hotel and room details, one item per line"
+              />
+            </FormField>
+
+            <FormField label="Reporting and Dropping">
+              <textarea
+                readOnly={isReadOnly}
+                value={form.reportingAndDropping}
+                onChange={(event) => onUpdate("reportingAndDropping", event.target.value)}
+                className={textareaClassName}
+                placeholder="Reporting and dropping instructions, one item per line"
+              />
+            </FormField>
+
+            <FormField label="Payment Policy">
+              <PolicyRowsEditor
+                disabled={isReadOnly}
+                rows={form.paymentPolicy}
+                onChange={(rows) => onUpdate("paymentPolicy", rows)}
+                firstLabel="Package cost / payment condition"
+                secondLabel="Payment amount or timing"
+              />
+            </FormField>
+
+            <FormField label="Cancellation Policy">
+              <CancellationRowsEditor
+                disabled={isReadOnly}
+                rows={form.cancellationPolicy}
+                onChange={(rows) => onUpdate("cancellationPolicy", rows)}
+              />
+            </FormField>
+
+            <FormField className="sm:col-span-2" label="Need to Know">
+              <NeedToKnowEditor
+                disabled={isReadOnly}
+                groups={form.needToKnow}
+                onChange={(groups) => onUpdate("needToKnow", groups)}
+              />
+            </FormField>
+
             <FormField className="sm:col-span-2" label="Notes">
               <textarea
                 readOnly={isReadOnly}
@@ -2704,17 +2796,16 @@ function TourFormDialog({
               />
             </FormField>
 
-            <FormField className="sm:col-span-2" label="Video">
-              {!isReadOnly ? (
-                <UploadField
-                  accept="video/mp4,video/quicktime,video/webm"
-                  disabled={isBusy}
-                  isUploading={isUploadingVideo}
-                  label="Upload video"
-                  onFilesSelected={onVideoUpload}
-                />
-              ) : null}
-              <VideoPreview
+            <FormField className="sm:col-span-2" label="Tour Expert YouTube Link">
+              <input
+                readOnly={isReadOnly}
+                value={form.video}
+                onChange={(event) => onUpdate("video", event.target.value)}
+                className={inputClassName}
+                placeholder="https://www.youtube.com/watch?v=..."
+                type="url"
+              />
+              <YoutubeLinkPreview
                 source={form.video}
                 onRemove={!isReadOnly ? onRemoveVideo : undefined}
               />
@@ -2734,6 +2825,109 @@ function TourFormDialog({
           ) : null}
         </form>
     </section>
+  );
+}
+
+function PolicyRowsEditor({
+  disabled,
+  firstLabel,
+  onChange,
+  rows,
+  secondLabel,
+}: {
+  disabled: boolean;
+  firstLabel: string;
+  onChange: (rows: TourPaymentPolicyRow[]) => void;
+  rows: TourPaymentPolicyRow[];
+  secondLabel: string;
+}) {
+  function updateRow(index: number, field: keyof TourPaymentPolicyRow, value: string) {
+    onChange(rows.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
+  }
+
+  return (
+    <div className="grid gap-2">
+      {rows.map((row, index) => (
+        <div key={index} className="grid gap-2 sm:grid-cols-2">
+          <input
+            disabled={disabled}
+            value={row.condition}
+            onChange={(event) => updateRow(index, "condition", event.target.value)}
+            className="h-10 rounded-sm border border-border px-3 text-xs outline-none focus:border-primary"
+            placeholder={firstLabel}
+          />
+          <div className="flex gap-2">
+            <input
+              disabled={disabled}
+              value={row.payment}
+              onChange={(event) => updateRow(index, "payment", event.target.value)}
+              className="h-10 min-w-0 flex-1 rounded-sm border border-border px-3 text-xs outline-none focus:border-primary"
+              placeholder={secondLabel}
+            />
+            {!disabled ? (
+              <button type="button" onClick={() => onChange(rows.filter((_row, rowIndex) => rowIndex !== index))} className="px-2 text-xs font-bold text-red-600">Remove</button>
+            ) : null}
+          </div>
+        </div>
+      ))}
+      {!disabled ? (
+        <button type="button" onClick={() => onChange([...rows, { condition: "", payment: "" }])} className="justify-self-start text-xs font-bold text-primary">+ Add payment row</button>
+      ) : null}
+    </div>
+  );
+}
+
+function CancellationRowsEditor({
+  disabled,
+  onChange,
+  rows,
+}: {
+  disabled: boolean;
+  onChange: (rows: TourCancellationPolicyRow[]) => void;
+  rows: TourCancellationPolicyRow[];
+}) {
+  return (
+    <div className="grid gap-2">
+      {rows.map((row, index) => (
+        <div key={index} className="grid gap-2 sm:grid-cols-2">
+          <input disabled={disabled} value={row.days} onChange={(event) => onChange(rows.map((item, rowIndex) => rowIndex === index ? { ...item, days: event.target.value } : item))} className="h-10 rounded-sm border border-border px-3 text-xs outline-none focus:border-primary" placeholder="Days before departure" />
+          <div className="flex gap-2">
+            <input disabled={disabled} value={row.charge} onChange={(event) => onChange(rows.map((item, rowIndex) => rowIndex === index ? { ...item, charge: event.target.value } : item))} className="h-10 min-w-0 flex-1 rounded-sm border border-border px-3 text-xs outline-none focus:border-primary" placeholder="Cancellation charge" />
+            {!disabled ? <button type="button" onClick={() => onChange(rows.filter((_item, rowIndex) => rowIndex !== index))} className="px-2 text-xs font-bold text-red-600">Remove</button> : null}
+          </div>
+        </div>
+      ))}
+      {!disabled ? <button type="button" onClick={() => onChange([...rows, { days: "", charge: "" }])} className="justify-self-start text-xs font-bold text-primary">+ Add cancellation row</button> : null}
+    </div>
+  );
+}
+
+function NeedToKnowEditor({
+  disabled,
+  groups,
+  onChange,
+}: {
+  disabled: boolean;
+  groups: TourNeedToKnowGroup[];
+  onChange: (groups: TourNeedToKnowGroup[]) => void;
+}) {
+  function updateGroup(index: number, group: TourNeedToKnowGroup) {
+    onChange(groups.map((item, groupIndex) => groupIndex === index ? group : item));
+  }
+
+  return (
+    <div className="grid gap-3">
+      {groups.map((group, index) => (
+        <div key={index} className="grid gap-2 rounded-sm border border-border p-3">
+          <div className="flex gap-2">
+            <input disabled={disabled} value={group.heading} onChange={(event) => updateGroup(index, { ...group, heading: event.target.value })} className="h-10 min-w-0 flex-1 rounded-sm border border-border px-3 text-xs outline-none focus:border-primary" placeholder="Section heading, e.g. Weather" />
+            {!disabled ? <button type="button" onClick={() => onChange(groups.filter((_item, groupIndex) => groupIndex !== index))} className="px-2 text-xs font-bold text-red-600">Remove</button> : null}
+          </div>
+          <textarea disabled={disabled} value={group.items.join("\n")} onChange={(event) => updateGroup(index, { ...group, items: parseTextList(event.target.value) })} className="min-h-20 rounded-sm border border-border px-3 py-2 text-xs outline-none focus:border-primary" placeholder="One bullet item per line" />
+        </div>
+      ))}
+      {!disabled ? <button type="button" onClick={() => onChange([...groups, { heading: "", items: [] }])} className="justify-self-start text-xs font-bold text-primary">+ Add Need to Know section</button> : null}
+    </div>
   );
 }
 
@@ -3545,15 +3739,15 @@ function ItineraryFormDialog({
                   />
                 </FormField>
 
-                <FormField label="Transport">
+                <FormField label="Hotels">
                   <input
                     readOnly={isReadOnly}
-                    value={day.transport}
+                    value={day.hotels}
                     onChange={(event) =>
-                      onUpdateDay(index, "transport", event.target.value)
+                      onUpdateDay(index, "hotels", event.target.value)
                     }
                     className={inputClassName}
-                    placeholder="Coach, train, walk"
+                    placeholder="Hotel name or stay details"
                   />
                 </FormField>
 
@@ -3729,7 +3923,7 @@ function ImagePreviewGrid({
   );
 }
 
-function VideoPreview({
+function YoutubeLinkPreview({
   onRemove,
   source,
 }: {
@@ -3743,7 +3937,7 @@ function VideoPreview({
       <div className="grid h-28 place-items-center rounded-sm border border-dashed border-border bg-muted/35 text-xs font-medium text-foreground/45">
         <span className="inline-flex items-center gap-2">
           <Play className="size-4" />
-          Preview will appear here
+          YouTube link preview will appear here
         </span>
       </div>
     );
@@ -3756,19 +3950,14 @@ function VideoPreview({
           type="button"
           onClick={onRemove}
           className="absolute right-1.5 top-1.5 z-10 grid size-6 place-items-center rounded-sm border border-white/70 bg-white/95 text-foreground shadow-sm transition-colors hover:border-primary hover:text-primary"
-          aria-label="Remove tour video"
+          aria-label="Remove tour expert YouTube link"
         >
           <X className="size-3.5" />
         </button>
       ) : null}
-      <video
-        className="aspect-video w-full bg-black object-cover"
-        controls
-        preload="metadata"
-        src={getTourMediaUrl(trimmedSource)}
-      >
-        Your browser does not support the video tag.
-      </video>
+      <div className="break-all bg-white p-3 text-xs font-semibold text-foreground/70">
+        {trimmedSource}
+      </div>
     </div>
   );
 }
