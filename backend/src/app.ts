@@ -16,7 +16,7 @@ import { adminBlogRoutes, publicBlogRoutes } from "./routes/blog.routes";
 import bookingRoutes, { publicBookingRoutes } from "./routes/booking.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import destinationRoutes from "./routes/destination.routes";
-import enquiryRoutes from "./routes/enquiry.routes";
+import enquiryRoutes, { publicEnquiryRoutes } from "./routes/enquiry.routes";
 import experienceRoutes from "./routes/experience.routes";
 import expertRoutes, { publicExpertRoutes } from "./routes/expert.routes";
 import {
@@ -195,6 +195,7 @@ app.use("/api/tours", publicTourRoutes);
 app.use("/api/experiences", publicExperienceRoutes);
 app.use("/api/experts", publicExpertRoutes);
 app.use("/api/bookings", publicBookingRoutes);
+app.use("/api/enquiries", publicEnquiryRoutes);
 app.use("/api/admin/dashboard", dashboardRoutes);
 app.use("/api/admin/bookings", bookingRoutes);
 app.use("/api/admin/enquiries", enquiryRoutes);

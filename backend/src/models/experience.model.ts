@@ -13,7 +13,7 @@ export enum ExperienceStatus {
 
 export interface IExperience {
   experienceId: string;
-  destinationId: string;
+  tourId: string;
   travellerName: string;
   travellerEmail: string;
   title: string;
@@ -117,7 +117,7 @@ const experienceSchema = new Schema<IExperience>(
       uppercase: true,
       maxlength: 40,
     },
-    destinationId: {
+    tourId: {
       ...requiredTrimmedString,
       uppercase: true,
       maxlength: 40,
@@ -171,10 +171,10 @@ const experienceSchema = new Schema<IExperience>(
 );
 
 experienceSchema.index({ experienceId: 1 }, { unique: true });
-experienceSchema.index({ destinationId: 1 });
+experienceSchema.index({ tourId: 1 });
 experienceSchema.index({ status: 1 });
 experienceSchema.index({
-  destinationId: "text",
+  tourId: "text",
   travellerName: "text",
   writtenReview: "text",
   travellerVideoTitles: "text",
@@ -185,10 +185,10 @@ experienceSchema.pre("validate", function syncOverallRating() {
   this.overallRating = calculateExperienceOverallRating(this);
 });
 
-experienceSchema.virtual("destination", {
-  ref: "Destination",
-  localField: "destinationId",
-  foreignField: "destinationId",
+experienceSchema.virtual("tour", {
+  ref: "Tour",
+  localField: "tourId",
+  foreignField: "tourId",
   justOne: true,
 });
 

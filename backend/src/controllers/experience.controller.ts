@@ -6,13 +6,13 @@ import type { Request, Response } from "express";
 import multer from "multer";
 import { z } from "zod";
 
-import { Destination } from "../models/destination.model";
 import {
   calculateExperienceOverallRating,
   Experience,
   ExperienceStatus,
   type ExperienceDocument,
 } from "../models/experience.model";
+import { Tour } from "../models/tour.model";
 import { HttpError } from "../utils/httpError";
 
 const textField = (max: number) => z.string().trim().max(max).default("");
@@ -170,7 +170,7 @@ const attractionPhotoListSchema = z
 
 const experiencePayloadSchema = z.object({
   experienceId: optionalCodeField("Experience ID", 40),
-  destinationId: requiredCodeField("Destination ID", 40),
+  tourId: requiredCodeField("Tour ID", 40),
   travellerName: textField(120),
   travellerEmail: z
     .string()
@@ -233,38 +233,38 @@ function isCastError(error: unknown): boolean {
   );
 }
 
-async function assertDestinationExists(destinationId: string): Promise<void> {
-  const destination = await Destination.findOne({ destinationId })
-    .select({ destinationId: 1 })
+async function assertTourExists(tourId: string): Promise<void> {
+  const tour = await Tour.findOne({ tourId })
+    .select({ tourId: 1 })
     .lean();
 
-  if (!destination) {
-    throw new HttpError(400, `Destination ID ${destinationId} does not exist`);
+  if (!tour) {
+    throw new HttpError(400, `Tour ID ${tourId} does not exist`);
   }
 }
 
-async function createDestinationNameMap(destinationIds: string[]) {
-  if (destinationIds.length === 0) {
+async function createTourNameMap(tourIds: string[]) {
+  if (tourIds.length === 0) {
     return new Map<string, string>();
   }
 
-  const destinations = await Destination.find({
-    destinationId: { $in: Array.from(new Set(destinationIds)) },
+  const tours = await Tour.find({
+    tourId: { $in: Array.from(new Set(tourIds)) },
   })
-    .select({ destinationId: 1, destinationName: 1 })
+    .select({ tourId: 1, tourName: 1 })
     .lean();
 
   return new Map(
-    destinations.map((destination) => [
-      destination.destinationId,
-      destination.destinationName,
+    tours.map((tour) => [
+      tour.tourId,
+      tour.tourName,
     ])
   );
 }
 
-function createGeneratedExperienceId(destinationId: string): string {
+function createGeneratedExperienceId(tourId: string): string {
   const prefix =
-    destinationId
+    tourId
       .replace(/[^A-Z0-9_-]+/g, "")
       .replace(/^-+|-+$/g, "")
       .slice(0, 24) || "EXP";
@@ -282,18 +282,18 @@ function createGeneratedExperienceTitle(
     return `${travellerName} traveller experience`;
   }
 
-  return `${payload.destinationId} traveller experience`;
+  return `${payload.tourId} traveller experience`;
 }
 
 function formatExperience(
   experience: ExperienceDocument,
-  destinationNameById = new Map<string, string>()
+  tourNameById = new Map<string, string>()
 ) {
   return {
     id: experience._id.toString(),
     experienceId: experience.experienceId,
-    destinationId: experience.destinationId,
-    destinationName: destinationNameById.get(experience.destinationId) || "",
+    tourId: experience.tourId,
+    tourName: tourNameById.get(experience.tourId) || "",
     travellerName: experience.travellerName,
     travellerEmail: experience.travellerEmail,
     title: experience.title,
@@ -319,7 +319,7 @@ function createExperiencePayload(
   mode: "create" | "update"
 ) {
   const experiencePayload = {
-    destinationId: payload.destinationId,
+    tourId: payload.tourId,
     travellerName: payload.travellerName,
     travellerEmail: payload.travellerEmail,
     writtenReview: payload.writtenReview,
@@ -341,7 +341,7 @@ function createExperiencePayload(
     ...(payload.experienceId
       ? { experienceId: payload.experienceId }
       : mode === "create"
-        ? { experienceId: createGeneratedExperienceId(payload.destinationId) }
+        ? { experienceId: createGeneratedExperienceId(payload.tourId) }
         : {}),
     ...(payload.title
       ? { title: payload.title }
@@ -357,9 +357,9 @@ export async function listExperiences(
 ): Promise<void> {
   const search =
     typeof request.query.search === "string" ? request.query.search.trim() : "";
-  const destinationId =
-    typeof request.query.destinationId === "string"
-      ? request.query.destinationId.trim().toUpperCase()
+  const tourId =
+    typeof request.query.tourId === "string"
+      ? request.query.tourId.trim().toUpperCase()
       : "";
   const status =
     typeof request.query.status === "string" ? request.query.status : "";
@@ -368,7 +368,7 @@ export async function listExperiences(
   if (search) {
     filterClauses.push({
       $or: [
-        { destinationId: new RegExp(search, "i") },
+        { tourId: new RegExp(search, "i") },
         { travellerName: new RegExp(search, "i") },
         { travellerEmail: new RegExp(search, "i") },
         { writtenReview: new RegExp(search, "i") },
@@ -379,8 +379,8 @@ export async function listExperiences(
     });
   }
 
-  if (destinationId) {
-    filterClauses.push({ destinationId });
+  if (tourId) {
+    filterClauses.push({ tourId });
   }
 
   if (status === ExperienceStatus.DRAFT || status === ExperienceStatus.PUBLISHED) {
@@ -391,8 +391,8 @@ export async function listExperiences(
   const experiences = await Experience.find(filters)
     .sort({ updatedAt: -1, createdAt: -1 })
     .limit(300);
-  const destinationNameById = await createDestinationNameMap(
-    experiences.map((experience) => experience.destinationId)
+  const tourNameById = await createTourNameMap(
+    experiences.map((experience) => experience.tourId)
   );
 
   response.status(200).json({
@@ -400,7 +400,7 @@ export async function listExperiences(
     message: "Experiences fetched successfully",
     data: {
       experiences: experiences.map((experience) =>
-        formatExperience(experience, destinationNameById)
+        formatExperience(experience, tourNameById)
       ),
     },
   });
@@ -410,23 +410,23 @@ export async function listPublishedExperiences(
   request: Request,
   response: Response
 ): Promise<void> {
-  const destinationId =
-    typeof request.query.destinationId === "string"
-      ? request.query.destinationId.trim().toUpperCase()
+  const tourId =
+    typeof request.query.tourId === "string"
+      ? request.query.tourId.trim().toUpperCase()
       : "";
   const filters: Record<string, unknown> = {
     status: ExperienceStatus.PUBLISHED,
   };
 
-  if (destinationId) {
-    filters.destinationId = destinationId;
+  if (tourId) {
+    filters.tourId = tourId;
   }
 
   const experiences = await Experience.find(filters)
     .sort({ updatedAt: -1, createdAt: -1 })
     .limit(120);
-  const destinationNameById = await createDestinationNameMap(
-    experiences.map((experience) => experience.destinationId)
+  const tourNameById = await createTourNameMap(
+    experiences.map((experience) => experience.tourId)
   );
 
   response.status(200).json({
@@ -434,7 +434,7 @@ export async function listPublishedExperiences(
     message: "Experiences fetched successfully",
     data: {
       experiences: experiences.map((experience) =>
-        formatExperience(experience, destinationNameById)
+        formatExperience(experience, tourNameById)
       ),
     },
   });
@@ -451,15 +451,15 @@ export async function getExperience(
       throw new HttpError(404, "Experience not found");
     }
 
-    const destinationNameById = await createDestinationNameMap([
-      experience.destinationId,
+    const tourNameById = await createTourNameMap([
+      experience.tourId,
     ]);
 
     response.status(200).json({
       success: true,
       message: "Experience fetched successfully",
       data: {
-        experience: formatExperience(experience, destinationNameById),
+        experience: formatExperience(experience, tourNameById),
       },
     });
   } catch (error) {
@@ -478,20 +478,20 @@ export async function createExperience(
   const payload = parseRequestBody(experiencePayloadSchema, request.body);
 
   try {
-    await assertDestinationExists(payload.destinationId);
+    await assertTourExists(payload.tourId);
 
     const experience = await Experience.create(
       createExperiencePayload(payload, "create")
     );
-    const destinationNameById = await createDestinationNameMap([
-      experience.destinationId,
+    const tourNameById = await createTourNameMap([
+      experience.tourId,
     ]);
 
     response.status(201).json({
       success: true,
       message: "Experience created successfully",
       data: {
-        experience: formatExperience(experience, destinationNameById),
+        experience: formatExperience(experience, tourNameById),
       },
     });
   } catch (error) {
@@ -510,7 +510,7 @@ export async function updateExperience(
   const payload = parseRequestBody(experiencePayloadSchema, request.body);
 
   try {
-    await assertDestinationExists(payload.destinationId);
+    await assertTourExists(payload.tourId);
 
     const experience = await Experience.findByIdAndUpdate(
       request.params.id,
@@ -525,15 +525,15 @@ export async function updateExperience(
       throw new HttpError(404, "Experience not found");
     }
 
-    const destinationNameById = await createDestinationNameMap([
-      experience.destinationId,
+    const tourNameById = await createTourNameMap([
+      experience.tourId,
     ]);
 
     response.status(200).json({
       success: true,
       message: "Experience updated successfully",
       data: {
-        experience: formatExperience(experience, destinationNameById),
+        experience: formatExperience(experience, tourNameById),
       },
     });
   } catch (error) {
@@ -560,15 +560,15 @@ export async function deleteExperience(
       throw new HttpError(404, "Experience not found");
     }
 
-    const destinationNameById = await createDestinationNameMap([
-      experience.destinationId,
+    const tourNameById = await createTourNameMap([
+      experience.tourId,
     ]);
 
     response.status(200).json({
       success: true,
       message: "Experience deleted successfully",
       data: {
-        experience: formatExperience(experience, destinationNameById),
+        experience: formatExperience(experience, tourNameById),
       },
     });
   } catch (error) {

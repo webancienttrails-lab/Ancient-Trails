@@ -7,6 +7,7 @@ import {
   EnquiryStatus,
   type EnquiryDocument,
 } from "../models/enquiry.model";
+import { sendTourEnquiryAlertEmail } from "../services/booking-confirmation-email.service";
 import { HttpError } from "../utils/httpError";
 
 const enquirySchema = z.object({
@@ -19,8 +20,37 @@ const enquirySchema = z.object({
   status: z.nativeEnum(EnquiryStatus),
 });
 
+const publicTourEnquirySchema = z.object({
+  city: z.string().trim().max(120).default(""),
+  email: z.string().trim().email().max(254),
+  guests: z.string().trim().max(80).default(""),
+  message: z.string().trim().min(1).max(3000),
+  name: z.string().trim().min(1).max(160),
+  phone: z.string().trim().min(1).max(24),
+  tourId: z.string().trim().max(80).default(""),
+  tourName: z.string().trim().min(1).max(160),
+  travelDate: z.string().trim().max(60).default(""),
+});
+
 function parsePayload(body: unknown) {
   const result = enquirySchema.safeParse(body);
+
+  if (!result.success) {
+    throw new HttpError(
+      400,
+      "Validation failed",
+      result.error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        message: issue.message,
+      }))
+    );
+  }
+
+  return result.data;
+}
+
+function parsePublicTourEnquiryPayload(body: unknown) {
+  const result = publicTourEnquirySchema.safeParse(body);
 
   if (!result.success) {
     throw new HttpError(
@@ -82,6 +112,55 @@ export async function createEnquiry(
   response: Response
 ): Promise<void> {
   const enquiry = await Enquiry.create(parsePayload(request.body));
+
+  response.status(201).json({
+    success: true,
+    message: "Enquiry created successfully",
+    data: { enquiry: formatEnquiry(enquiry) },
+  });
+}
+
+export async function createPublicTourEnquiry(
+  request: Request,
+  response: Response
+): Promise<void> {
+  const payload = parsePublicTourEnquiryPayload(request.body);
+  const detailLines = [
+    payload.message,
+    "",
+    `Tour: ${payload.tourName}`,
+    payload.tourId ? `Tour ID: ${payload.tourId}` : "",
+    payload.city ? `Current City: ${payload.city}` : "",
+    payload.guests ? `Guests: ${payload.guests}` : "",
+    payload.travelDate ? `Travel Date: ${payload.travelDate}` : "",
+  ].filter(Boolean);
+  const enquiry = await Enquiry.create({
+    name: payload.name,
+    email: payload.email,
+    phone: payload.phone,
+    subject: `Tour enquiry - ${payload.tourName}`,
+    message: detailLines.join("\n"),
+    source: EnquirySource.WEBSITE,
+    status: EnquiryStatus.NEW,
+  });
+
+  void sendTourEnquiryAlertEmail({
+    city: payload.city,
+    email: payload.email,
+    guests: payload.guests,
+    message: payload.message,
+    name: payload.name,
+    phone: payload.phone,
+    submittedAt: enquiry.createdAt,
+    tourId: payload.tourId,
+    tourName: payload.tourName,
+    travelDate: payload.travelDate,
+  }).catch((error: unknown) => {
+    console.error(
+      `[enquiry-email] Failed to send tour enquiry alert for ${enquiry._id.toString()}:`,
+      error
+    );
+  });
 
   response.status(201).json({
     success: true,

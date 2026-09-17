@@ -32,6 +32,19 @@ export type BookingAlertEmailPayload = BookingConfirmationEmailPayload & {
   travellerPhone?: string;
 };
 
+export type TourEnquiryAlertEmailPayload = {
+  city?: string;
+  email: string;
+  guests?: string;
+  message: string;
+  name: string;
+  phone: string;
+  submittedAt?: Date | string | null;
+  tourId?: string;
+  tourName: string;
+  travelDate?: Date | string | null;
+};
+
 type SmtpConfig = {
   from: string;
   host: string;
@@ -538,6 +551,93 @@ function getBookingAlertRecipients() {
   );
 }
 
+function getEnquiryAlertRecipients() {
+  const configuredRecipients =
+    process.env.ENQUIRY_ALERT_EMAILS?.trim() ||
+    process.env.ENQUIRY_ALERT_EMAIL?.trim() ||
+    process.env.BOOKING_ALERT_EMAILS?.trim() ||
+    process.env.BOOKING_ALERT_EMAIL?.trim() ||
+    "web.ancienttrails@gmail.com";
+
+  return Array.from(
+    new Set(
+      configuredRecipients
+        .split(",")
+        .map((recipient) => recipient.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+}
+
+function buildTourEnquiryAlertEmailContent(
+  payload: TourEnquiryAlertEmailPayload
+): {
+  html: string;
+  text: string;
+} {
+  const submittedAt = formatDate(payload.submittedAt, formatDate(new Date()));
+  const travelDate = formatDate(payload.travelDate, "Not specified");
+  const rows = [
+    { label: "Tour", value: payload.tourName },
+    { label: "Tour ID", value: payload.tourId || "-" },
+    { label: "Name", value: payload.name },
+    { label: "Email", value: payload.email },
+    { label: "Phone", value: payload.phone },
+    { label: "Current City", value: payload.city || "-" },
+    { label: "Guests", value: payload.guests || "-" },
+    { label: "Travel Date", value: travelDate },
+    { label: "Submitted On", value: submittedAt },
+  ];
+  const rowHtml = rows
+    .map(
+      (row) => `
+        <tr>
+          <td style="border-bottom:1px solid ${colors.border};color:${colors.foreground};font-family:Arial,sans-serif;font-size:13px;font-weight:700;padding:10px 12px;width:160px;">${escapeHtml(
+            row.label
+          )}</td>
+          <td style="border-bottom:1px solid ${colors.border};color:${colors.foreground};font-family:Arial,sans-serif;font-size:13px;padding:10px 12px;">${escapeHtml(
+            row.value
+          )}</td>
+        </tr>`
+    )
+    .join("");
+  const html = `<!doctype html>
+    <html>
+      <body style="background:${colors.background};margin:0;padding:0;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+          <tr>
+            <td align="center" style="padding:16px 8px;">
+              <table role="presentation" width="640" cellspacing="0" cellpadding="0" border="0" style="background:${colors.white};border-collapse:separate;border-radius:8px;box-shadow:0 12px 32px rgba(50,50,50,0.08);overflow:hidden;width:640px;">
+                <tr>
+                  <td style="padding:30px 34px 28px;">
+                    <h1 style="color:${colors.accent};font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:700;line-height:34px;margin:0;">New Tour Enquiry</h1>
+                    <p style="color:${colors.foreground};font-family:Arial,sans-serif;font-size:14px;line-height:22px;margin:12px 0 22px;">A traveller has submitted an enquiry from the ${brandName} tour page.</p>
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid ${colors.border};border-bottom:0;border-collapse:collapse;">
+                      ${rowHtml}
+                    </table>
+                    <h2 style="color:${colors.foreground};font-family:Arial,sans-serif;font-size:14px;margin:22px 0 8px;">Query</h2>
+                    <p style="background:${colors.muted};border-radius:6px;color:${colors.foreground};font-family:Arial,sans-serif;font-size:14px;line-height:22px;margin:0;padding:14px 16px;">${escapeHtml(
+                      payload.message
+                    )}</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>`;
+  const text = [
+    "New Tour Enquiry",
+    ...rows.map((row) => `${row.label}: ${row.value}`),
+    "",
+    "Query:",
+    payload.message,
+  ].join("\n");
+
+  return { html, text };
+}
+
 function buildBookingAlertEmailContent(payload: BookingAlertEmailPayload): {
   html: string;
   text: string;
@@ -701,6 +801,38 @@ export async function sendBookingAlertEmail(
     from,
     html,
     subject: `New booking alert - ${payload.bookingReference}`,
+    text,
+    to: recipients.join(","),
+  });
+
+  return {
+    messageId: info.messageId || "",
+    recipients,
+  };
+}
+
+export async function sendTourEnquiryAlertEmail(
+  payload: TourEnquiryAlertEmailPayload
+): Promise<{
+  messageId: string;
+  recipients: string[];
+}> {
+  const recipients = getEnquiryAlertRecipients();
+
+  if (recipients.length === 0) {
+    return {
+      messageId: "",
+      recipients,
+    };
+  }
+
+  const { html, text } = buildTourEnquiryAlertEmailContent(payload);
+  const { from, transporter } = getTransporter();
+  const info = await transporter.sendMail({
+    from,
+    html,
+    replyTo: payload.email,
+    subject: `New tour enquiry - ${payload.tourName}`,
     text,
     to: recipients.join(","),
   });
