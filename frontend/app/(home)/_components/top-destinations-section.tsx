@@ -401,22 +401,22 @@ export function TopDestinationsSection({
   }
 
   return (
-    <section className="bg-background py-10">
+    <section className="overflow-hidden bg-background py-10 lg:overflow-visible">
       <div className="mx-auto w-full max-w-[1300px] px-5 sm:px-0">
-        <div className="grid items-start gap-8 lg:grid-cols-[330px_1px_minmax(0,1fr)_270px] lg:items-end">
+        <div className="grid items-start gap-5 lg:grid-cols-[330px_1px_minmax(0,1fr)_270px] lg:items-end lg:gap-8">
           <div>
             <TextReveal>
               <div>
-                <div className="mb-3 flex items-center gap-3 text-primary">
+                <div className="mb-3 hidden items-center gap-3 text-primary lg:flex">
                   <p className="text-description font-medium uppercase">
                     Explore India
                   </p>
                 </div>
-                <h2 className="font-heading text-title font-bold leading-none text-secondary">
+                <h2 className="font-heading text-[44px] font-bold leading-[0.94] text-secondary sm:text-title">
                   <span className="block">Top Trending</span>
                   <span className="block text-primary">Destinations</span>
                 </h2>
-                <div className="relative mt-2 h-[22px] w-[154px]">
+                <div className="relative mt-2 hidden h-[22px] w-[154px] lg:block">
                   <Image
                     src="/home assets/destination/Destination_bottom.webp"
                     alt=""
@@ -432,7 +432,7 @@ export function TopDestinationsSection({
           <div className="hidden h-[82px] w-px bg-secondary/40 lg:block" />
 
           <TextReveal delay={160}>
-            <p className="max-w-[300px] font-sans text-description italic text-secondary">
+            <p className="max-w-[300px] font-sans text-[20px] italic leading-[1.24] text-secondary/72 sm:text-description lg:max-w-[300px] lg:text-description">
               Pick a place to visit in the cradle of diverse culture.
             </p>
           </TextReveal>
@@ -440,7 +440,7 @@ export function TopDestinationsSection({
           <Button
             nativeButton={false}
             render={<Link href="/destinations" />}
-            className="h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:min-w-[230px]"
+            className="h-12 w-fit min-w-0 justify-between gap-4 rounded-full px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:h-11 lg:min-w-[230px]"
           >
             View All Destinations
             <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
@@ -450,15 +450,24 @@ export function TopDestinationsSection({
         <TourCategorySlider categories={tourCategories} />
 
         <div className="mt-6 grid items-start gap-6 lg:grid-cols-[250px_minmax(0,1fr)_300px]">
-          <aside className="pt-4">
-            <div className="mb-5 flex items-center gap-3">
-              <h3 className="font-sans text-description font-bold text-secondary">
+          <aside className="order-2 pt-0 lg:order-none lg:pt-4">
+            <div className="mb-4 flex items-center justify-between gap-3 lg:mb-5 lg:justify-start">
+              <div className="flex items-center gap-3">
+              <h3 className="font-heading text-[26px] font-bold leading-none text-secondary lg:font-sans lg:text-description">
                 Popular Destinations
               </h3>
               <span className="h-px w-5 bg-primary" />
+              </div>
+              <Link
+                href="/destinations"
+                className="inline-flex items-center gap-2 font-sans text-[15px] font-semibold text-primary lg:hidden"
+              >
+                See All
+                <ButtonArrow className="h-2.5 w-5" />
+              </Link>
             </div>
 
-            <div className="grid gap-2">
+            <div className="flex gap-3 overflow-x-auto pb-2 lg:grid lg:gap-2 lg:overflow-visible lg:pb-0">
               {displayedDestinations.map((destination, index) => {
                 const isActive =
                   destination.destinationId === activeDestination.destinationId;
@@ -473,11 +482,13 @@ export function TopDestinationsSection({
                       selectDestination(destination.destinationId)
                     }
                     className={cn(
-                      "flex w-full items-center gap-3 border-b border-border/80 pb-2 text-left transition-[border-color,opacity,transform] duration-300 last:border-b-0 hover:-translate-y-0.5 hover:border-primary/45",
-                      isActive ? "opacity-100" : "opacity-[0.78]"
+                      "flex w-[132px] shrink-0 flex-col items-center gap-2 rounded-[8px] border border-border bg-white p-2 text-center shadow-[0_8px_20px_rgba(50,50,50,0.06)] transition-[border-color,opacity,transform] duration-300 hover:-translate-y-0.5 hover:border-primary/45 lg:w-full lg:flex-row lg:items-center lg:gap-3 lg:rounded-none lg:border-x-0 lg:border-t-0 lg:bg-transparent lg:p-0 lg:pb-2 lg:text-left lg:shadow-none lg:last:border-b-0",
+                      isActive
+                        ? "border-primary/45 opacity-100 shadow-[0_8px_22px_rgba(212,114,32,0.16)] lg:shadow-none"
+                        : "opacity-[0.78]"
                     )}
                   >
-                    <div className="relative h-[44px] w-[82px] shrink-0 overflow-hidden rounded-[5px] bg-muted">
+                    <div className="relative h-[58px] w-full shrink-0 overflow-hidden rounded-[6px] bg-muted lg:h-[44px] lg:w-[82px]">
                       <Image
                         src={destination.image}
                         alt={destination.name}
@@ -489,13 +500,13 @@ export function TopDestinationsSection({
                     <span className="min-w-0">
                       <span
                         className={cn(
-                          "block truncate font-sans text-description font-bold leading-none transition-colors",
+                          "block max-w-full truncate font-sans text-[15px] font-bold leading-none transition-colors lg:text-description",
                           isActive ? "text-primary" : "text-secondary"
                         )}
                       >
                         {destination.name}
                       </span>
-                      <span className="mt-1 block truncate font-sans text-[13px] leading-none text-secondary/70">
+                      <span className="mt-1 block max-w-full truncate font-sans text-[13px] leading-none text-secondary/70">
                         {destination.state}
                       </span>
                     </span>
@@ -505,7 +516,7 @@ export function TopDestinationsSection({
             </div>
           </aside>
 
-          <div className="relative mx-auto h-[330px] w-full max-w-[700px] sm:h-[430px] lg:h-[535px]">
+          <div className="relative order-1 mx-auto h-[330px] w-full max-w-[700px] overflow-hidden rounded-[18px] border border-primary/15 bg-white shadow-[0_14px_34px_rgba(50,50,50,0.04)] sm:h-[430px] lg:order-none lg:h-[535px] lg:overflow-visible lg:rounded-none lg:border-0 lg:bg-transparent lg:shadow-none">
             <Image
               src="/home assets/Map.webp"
               alt="Top destinations map of India"
@@ -585,9 +596,9 @@ export function TopDestinationsSection({
             })}
           </div>
 
-          <aside className="h-[550px] sm:h-[496px] lg:h-[500px]">
-            <div className="relative flex h-full flex-col overflow-hidden rounded-[10px] border border-primary/15 bg-white p-3 ">
-              <div className="relative h-[128px] shrink-0 overflow-hidden rounded-[6px]">
+          <aside className="order-3 h-auto lg:order-none lg:h-[500px]">
+            <div className="relative flex h-full flex-col overflow-hidden rounded-[18px] border border-primary/15 bg-white p-4 lg:rounded-[10px] lg:p-3">
+              <div className="relative h-[210px] shrink-0 overflow-hidden rounded-[10px] lg:h-[128px] lg:rounded-[6px]">
                 <Image
                   src={activeDestination.tourImage || activeDestination.image}
                   alt={`${activeDestination.name} tour`}
@@ -597,15 +608,23 @@ export function TopDestinationsSection({
                 />
               </div>
 
-              <div className="flex min-h-0 flex-1 flex-col px-1 pb-2 pt-4">
-                <h3 className="line-clamp-2 min-h-[30px] break-words font-heading text-[24px] font-bold leading-tight text-secondary">
+              <div className="flex min-h-0 flex-1 flex-col px-1 pb-1 pt-4 lg:pb-2">
+                <h3 className="line-clamp-2 min-h-0 break-words font-heading text-[30px] font-bold leading-tight text-secondary lg:min-h-[30px] lg:text-[24px]">
                   {activeDestination.name}
                 </h3>
-                <p className="mt-1 min-h-[27px] break-words font-sans text-description font-medium text-primary border-b border-primary/20 pb-1">
+                <p className="mt-1 min-h-0 break-words border-b border-primary/20 pb-2 font-sans text-[20px] font-medium text-primary lg:min-h-[27px] lg:pb-1 lg:text-description">
                   {activeDestination.state}
                 </p>
                 {activeTourCategoryLabels.length > 0 ? (
-                  <>
+                  <div className="mt-3 inline-flex self-start rounded-full bg-primary/10 px-4 py-2 text-primary lg:hidden">
+                    <Landmark className="mr-2 size-4" />
+                    <span className="font-sans text-[13px] font-semibold">
+                      {activeTourCategoryLabels[0] || "World Heritage Site"}
+                    </span>
+                  </div>
+                ) : null}
+                {activeTourCategoryLabels.length > 0 ? (
+                  <div className="hidden lg:block">
                     <span className="font-sans text-[13px] font-medium leading-none text-secondary mt-2 ">
                       Known for
                     </span>
@@ -620,20 +639,20 @@ export function TopDestinationsSection({
                         )}
                       </span>
                     </span>
-                  </>
+                  </div>
                 ) : null}
 
-                <p className="mt-3 min-h-[60px] line-clamp-3 font-sans text-[13px] leading-[1.45] text-secondary">
+                <p className="mt-4 min-h-0 font-sans text-[15px] leading-[1.45] text-secondary lg:mt-3 lg:min-h-[60px] lg:line-clamp-3 lg:text-[13px]">
                   {activeDestination.description}
                 </p>
 
-                <div className="mt-3 mb-5 grid min-h-[70px] grid-cols-2 gap-x-3 gap-y-1">
+                <div className="mt-5 mb-5 grid min-h-0 grid-cols-2 gap-x-4 gap-y-3 lg:mt-3 lg:min-h-[70px] lg:gap-x-3 lg:gap-y-1">
                   {activeHighlights.map(({ icon: Icon, label }) => (
                     <div
                       key={label}
-                      className="flex min-w-0 items-center gap-2 font-sans text-[13px] font-medium text-secondary"
+                      className="flex min-w-0 items-center gap-2 font-sans text-[14px] font-medium text-secondary lg:text-[13px]"
                     >
-                      <Icon className="size-3.5 shrink-0 text-primary" />
+                      <Icon className="size-4 shrink-0 text-primary lg:size-3.5" />
                       <span className="truncate">{label}</span>
                     </div>
                   ))}
@@ -642,7 +661,7 @@ export function TopDestinationsSection({
                 <Button
                   nativeButton={false}
                   render={<Link href={getDestinationHref(activeDestination)} />}
-                  className="mt-auto h-10 w-full justify-between px-5 text-[13px] font-normal"
+                  className="mt-auto h-12 w-full justify-between rounded-full px-5 text-[17px] font-normal lg:h-10 lg:text-[13px]"
                 >
                   Explore {activeDestination.name}
                   <ButtonArrow className="h-3 w-6 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />

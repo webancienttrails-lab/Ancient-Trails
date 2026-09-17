@@ -379,9 +379,9 @@ function buildCityMenuItems(
 
 function getExperienceHref(experience: PublicExperience) {
   const routeValue =
-    slugifyRoute(experience.destinationName) ||
+    slugifyRoute(experience.tourName) ||
     slugifyRoute(experience.title || "") ||
-    experience.destinationId ||
+    experience.tourId ||
     experience.experienceId;
 
   return `/experiences/${encodeURIComponent(routeValue)}`;
@@ -467,10 +467,10 @@ function getExperienceSearchItem(
   experience: PublicExperience
 ): HeaderSearchItem {
   return {
-    title: experience.title || experience.destinationName || "Traveller Experience",
+    title: experience.title || experience.tourName || "Traveller Experience",
     description:
       experience.writtenReview ||
-      `Traveller experience in ${experience.destinationName}`,
+      `Traveller experience on ${experience.tourName}`,
     href: getExperienceHref(experience),
     image: getHomeMediaUrl(
       experience.travellerPhotoGallery[0] ||
@@ -479,8 +479,8 @@ function getExperienceSearchItem(
     ),
     keywords: [
       experience.experienceId,
-      experience.destinationId,
-      experience.destinationName,
+      experience.tourId,
+      experience.tourName,
       experience.travellerName,
       experience.title,
       experience.writtenReview,

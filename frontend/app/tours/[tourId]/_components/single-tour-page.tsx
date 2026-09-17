@@ -90,6 +90,7 @@ import {
   type TravellerSession,
   type TravellerUser,
 } from "@/lib/auth";
+import { createTourEnquiry } from "@/lib/enquiries";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/layout/header";
 import { Button, ButtonArrow } from "@/components/ui/button";
@@ -1461,6 +1462,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
   const [checkoutStatus, setCheckoutStatus] =
     useState<CheckoutStatus>("idle");
   const [paymentFeedback, setPaymentFeedback] = useState("");
+  const [isTourEnquiryOpen, setIsTourEnquiryOpen] = useState(false);
   const paymentOrderRef = useRef<BookingPaymentOrder | null>(null);
   const pendingPaymentCancellationRef = useRef<Promise<void> | null>(null);
 
@@ -1902,7 +1904,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
   }
 
   return (
-    <main className="min-h-screen bg-background pb-32 text-secondary lg:pb-0">
+    <main className="min-h-screen bg-background pb-2 sm:pb-32 text-secondary lg:pb-0">
       <Header />
       <PaymentProceedingOverlay checkoutStatus={checkoutStatus} />
 
@@ -1935,30 +1937,39 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
           <div className="mt-4 lg:hidden">
             <TourHighlightCard
               action={
-                <DownloadItineraryButton
-                  accommodationOptions={accommodationOptions}
-                  balanceAmount={bookingBalanceAmount}
-                  balanceDueDate={bookingBalanceDueDate}
-                  canBook={canBookSeat}
-                  depositAmount={
-                    bookingBalanceAmount > 0
-                      ? bookingSubtotal + bookingGstAmount - bookingBalanceAmount
-                      : 0
-                  }
-                  departures={detail.departures}
-                  destinations={detail.destinations}
-                  expert={detail.expert}
-                  gstAmount={bookingGstAmount}
-                  gstPercentage={GST_PERCENTAGE}
-                  itineraryDays={itineraryDays}
-                  paymentOption={selectedPaymentOption}
-                  price={price}
-                  selectedAccommodationOption={selectedAccommodationOption}
-                  selectedDeparture={selectedDeparture || bestDeparture}
-                  subtotal={bookingSubtotal}
-                  tour={detail.tour}
-                  travellerCounts={travellerCounts}
-                />
+                <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                  <DownloadItineraryButton
+                    accommodationOptions={accommodationOptions}
+                    balanceAmount={bookingBalanceAmount}
+                    balanceDueDate={bookingBalanceDueDate}
+                    canBook={canBookSeat}
+                    depositAmount={
+                      bookingBalanceAmount > 0
+                        ? bookingSubtotal + bookingGstAmount - bookingBalanceAmount
+                        : 0
+                    }
+                    departures={detail.departures}
+                    destinations={detail.destinations}
+                    expert={detail.expert}
+                    gstAmount={bookingGstAmount}
+                    gstPercentage={GST_PERCENTAGE}
+                    itineraryDays={itineraryDays}
+                    paymentOption={selectedPaymentOption}
+                    price={price}
+                    selectedAccommodationOption={selectedAccommodationOption}
+                    selectedDeparture={selectedDeparture || bestDeparture}
+                    subtotal={bookingSubtotal}
+                    tour={detail.tour}
+                    travellerCounts={travellerCounts}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsTourEnquiryOpen(true)}
+                    className="mt-2 inline-flex items-center gap-2 font-sans text-[14px] font-semibold text-primary underline-offset-4 transition-colors hover:text-accent hover:underline"
+                  >
+                    Enquire Now
+                  </button>
+                </div>
               }
               departure={selectedDeparture || bestDeparture}
               departures={detail.departures}
@@ -1993,7 +2004,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
           <TourAdditionalDetails tour={detail.tour} />
         </div>
 
-        <aside className="space-y-2.5 lg:sticky lg:top-[112px] lg:self-start">
+        <aside className="space-y-2.5 lg:sticky lg:top-[90px] lg:self-start">
           <div className="hidden lg:block">
             <PriceCard
               accommodationOptions={accommodationOptions}
@@ -2014,6 +2025,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
               subtotal={bookingSubtotal}
               tour={detail.tour}
               travellerCounts={travellerCounts}
+              onEnquireNow={() => setIsTourEnquiryOpen(true)}
             />
           </div>
           <div className="hidden lg:block">
@@ -2055,6 +2067,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
             isBookingFlowOpen={isBookingFlowOpen}
             onBook={handleBookSeat}
             onBookNow={openBookingFlow}
+            onEnquireNow={() => setIsTourEnquiryOpen(true)}
           />
           <HelpCard />
         </aside>
@@ -2064,6 +2077,14 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
         onBookNow={openBookingFlow}
         price={price}
       />
+      {isTourEnquiryOpen ? (
+        <EnquiryModal
+          bestDeparture={selectedDeparture || bestDeparture}
+          tourId={detail.tour.tourId}
+          tourName={detail.tour.tourName}
+          onClose={() => setIsTourEnquiryOpen(false)}
+        />
+      ) : null}
     </main>
   );
 }
@@ -2573,21 +2594,23 @@ function TourAdditionalDetails({ tour }: { tour: PublicTour }) {
   return (
     <section className="mt-5 space-y-5">
       <div className="overflow-hidden rounded-[8px] border border-border bg-card">
-        <div className="grid border-b border-border bg-muted/45 sm:grid-cols-3">
+        <div className="grid grid-cols-3 gap-1 border-b-2 border-primary bg-transparent sm:gap-0 sm:border-b sm:border-border sm:bg-muted/45">
           {tabItems.map(({ icon: Icon, label, value }) => (
             <button
               key={value}
               type="button"
               onClick={() => setActiveTab(value)}
               className={cn(
-                "flex min-h-12 items-center justify-center gap-2 border-b-2 px-3 py-3 font-sans text-[13px] font-semibold transition-colors sm:text-[14px]",
+                "flex min-h-16 min-w-0 items-center justify-center gap-2 rounded-t-[8px] border-b-0 px-2 py-2 text-center font-sans text-[12px] font-semibold leading-[1.3] transition-colors sm:min-h-12 sm:rounded-none sm:border-b-2 sm:px-3 sm:py-3 sm:text-[14px]",
                 activeTab === value
-                  ? "border-primary bg-primary text-white"
-                  : "border-transparent text-secondary/62 hover:bg-primary/8 hover:text-primary"
+                  ? "bg-primary text-white sm:border-primary sm:bg-primary"
+                  : "bg-primary/10 text-secondary/60 hover:bg-primary/15 hover:text-primary sm:border-transparent sm:bg-transparent sm:hover:bg-primary/8"
               )}
             >
-              <Icon className="size-4 shrink-0" strokeWidth={1.8} />
-              <span>{label}</span>
+              <Icon className="hidden size-4 shrink-0 sm:block" strokeWidth={1.8} />
+              <span className="whitespace-normal break-words text-[12px] font-semibold leading-[1.3] sm:text-[14px]">
+                {label}
+              </span>
             </button>
           ))}
         </div>
@@ -4088,6 +4111,7 @@ function PricingPanel({
       {isGroupEnquiryOpen ? (
         <EnquiryModal
           bestDeparture={selectedDeparture}
+          tourId={tour.tourId}
           tourName={tour.tourName}
           onClose={() => setIsGroupEnquiryOpen(false)}
         />
@@ -4674,7 +4698,7 @@ function DailyItinerary({
                   ) : null}
                 </div>
 
-                <div className="mt-5 grid gap-4 border-t border-border pt-4 sm:grid-cols-2 sm:gap-0 lg:grid-cols-4">
+                <div className="mt-5 grid gap-4 border-t border-border pt-4 sm:grid-cols-2 sm:gap-0 lg:grid-cols-3">
                   {day.meals ? (
                     <DayMetaFact
                       iconSrc="/Tour-assets/meal.png"
@@ -4691,18 +4715,10 @@ function DailyItinerary({
                       className="lg:border-r lg:border-border"
                     />
                   ) : null}
-                  {walkingDetails.difficulty ? (
-                    <DayMetaFact
-                      iconSrc="/Tour-assets/tour-guide.png"
-                      label="Difficulty"
-                      value={walkingDetails.difficulty}
-                      className="lg:border-r lg:border-border"
-                    />
-                  ) : null}
                   {day.hotels ? (
                     <DayMetaFact
                       iconSrc="/Tour-assets/hotel (1).png"
-                      label="Stay"
+                      label="Hotel"
                       value={day.hotels}
                     />
                   ) : null}
@@ -4854,6 +4870,7 @@ function PriceCard({
   subtotal,
   tour,
   travellerCounts,
+  onEnquireNow,
 }: {
   accommodationOptions: AccommodationOption[];
   balanceAmount: number;
@@ -4873,6 +4890,7 @@ function PriceCard({
   subtotal: number;
   tour: PublicTour;
   travellerCounts: TravellerCounts;
+  onEnquireNow: () => void;
 }) {
   return (
     <article className="overflow-hidden rounded-[8px] border border-primary/15 bg-card ">
@@ -4881,36 +4899,45 @@ function PriceCard({
           <div className="min-w-0 font-sans">
             <strong className="mt-1 flex flex-wrap items-end gap-x-2 gap-y-1 text-[27px] font-bold leading-none text-secondary">
               {formatCurrency(price)}
-              <span className="pb-0.5 text-[15px] font-bold leading-none text-secondary/62">
-                per person
+              <span className="pb-0.5 text-[15px] font-semibold leading-none text-secondary/72">
+                per person on twin sharing
               </span>
             </strong>
           </div>
 
        
         </div>
-        <DownloadItineraryButton
-          accommodationOptions={accommodationOptions}
-          balanceAmount={balanceAmount}
-          balanceDueDate={balanceDueDate}
-          canBook={canBook}
-          depositAmount={
-            balanceAmount > 0 ? subtotal + gstAmount - balanceAmount : 0
-          }
-          departures={departures}
-          destinations={destinations}
-          expert={expert}
-          gstAmount={gstAmount}
-          gstPercentage={gstPercentage}
-          itineraryDays={itineraryDays}
-          paymentOption={paymentOption}
-          price={price}
-          selectedAccommodationOption={selectedAccommodationOption}
-          selectedDeparture={selectedDeparture || bestDeparture}
-          subtotal={subtotal}
-          tour={tour}
-          travellerCounts={travellerCounts}
-        />
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <DownloadItineraryButton
+            accommodationOptions={accommodationOptions}
+            balanceAmount={balanceAmount}
+            balanceDueDate={balanceDueDate}
+            canBook={canBook}
+            depositAmount={
+              balanceAmount > 0 ? subtotal + gstAmount - balanceAmount : 0
+            }
+            departures={departures}
+            destinations={destinations}
+            expert={expert}
+            gstAmount={gstAmount}
+            gstPercentage={gstPercentage}
+            itineraryDays={itineraryDays}
+            paymentOption={paymentOption}
+            price={price}
+            selectedAccommodationOption={selectedAccommodationOption}
+            selectedDeparture={selectedDeparture || bestDeparture}
+            subtotal={subtotal}
+            tour={tour}
+            travellerCounts={travellerCounts}
+          />
+          <button
+            type="button"
+            onClick={onEnquireNow}
+            className="mt-2 hidden items-center gap-2 font-sans text-[14px] font-semibold text-primary underline-offset-4 transition-colors hover:text-accent hover:underline"
+          >
+            Enquire Now
+          </button>
+        </div>
       </div>
 
       
@@ -4934,14 +4961,14 @@ function MobileBookingBar({
               {formatCurrency(price)}
             </strong>
            
-            <span className="mt-0.5 block text-[12px] font-medium leading-tight text-secondary/62">
+            <span className="mt-0.5 block text-[12px] font-semibold leading-tight text-secondary/72">
               per person on twin sharing
             </span>
           </div>
           <Button
             type="button"
             onClick={onBookNow}
-            className="h-11 shrink-0 rounded-full border border-primary bg-primary px-7 text-[15px] font-bold text-white transition-colors hover:bg-white hover:text-primary"
+            className="h-11 shrink-0 rounded-full border border-primary bg-primary px-7 text-[15px] font-normal text-white transition-colors hover:bg-white hover:text-primary"
           >
             Book Now
           </Button>
@@ -4976,13 +5003,18 @@ function getTourExclusions(tour: PublicTour) {
 function EnquiryModal({
   bestDeparture,
   onClose,
+  tourId,
   tourName,
 }: {
   bestDeparture?: PublicTourDeparture;
   onClose: () => void;
+  tourId: string;
   tourName: string;
 }) {
+  const toast = useToast();
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
@@ -5001,9 +5033,40 @@ function EnquiryModal({
     };
   }, [onClose]);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setIsSubmitted(true);
+    if (isSubmitting) return;
+
+    const formElement = event.currentTarget;
+    const formData = new FormData(formElement);
+    setIsSubmitting(true);
+    setSubmitError("");
+
+    try {
+      await createTourEnquiry({
+        city: String(formData.get("city") || ""),
+        email: String(formData.get("email") || ""),
+        guests: String(formData.get("guests") || ""),
+        message: String(formData.get("message") || ""),
+        name: String(formData.get("name") || ""),
+        phone: String(formData.get("phone") || ""),
+        tourId,
+        tourName,
+        travelDate: String(formData.get("travelDate") || ""),
+      });
+      setIsSubmitted(true);
+      toast.success("Enquiry sent", "Our tour team will get back to you shortly.");
+      formElement.reset();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to send enquiry. Please try again.";
+      setSubmitError(message);
+      toast.error("Unable to send enquiry", message);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   const modal = (
@@ -5050,19 +5113,19 @@ function EnquiryModal({
 
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <EnquiryField label="Your Name *">
-              <input required type="text" placeholder="Your Name" />
+              <input required name="name" type="text" placeholder="Your Name" />
             </EnquiryField>
             <EnquiryField label="Email address *">
-              <input required type="email" placeholder="Email address" />
+              <input required name="email" type="email" placeholder="Email address" />
             </EnquiryField>
             <EnquiryField label="Phone Number *">
-              <input required type="tel" placeholder="Phone Number" />
+              <input required name="phone" type="tel" placeholder="Phone Number" />
             </EnquiryField>
             <EnquiryField label="Current City *">
-              <input required type="text" placeholder="Current City" />
+              <input required name="city" type="text" placeholder="Current City" />
             </EnquiryField>
             <EnquiryField label="Total No. of Guests *">
-              <select required defaultValue="2 Adults">
+              <select required name="guests" defaultValue="2 Adults">
                 <option>1 Adult</option>
                 <option>2 Adults</option>
                 <option>2 Adults, 1 Child</option>
@@ -5073,6 +5136,7 @@ function EnquiryModal({
             <EnquiryField label="Date Of Travel *">
               <input
                 required
+                name="travelDate"
                 type="date"
                 defaultValue={bestDeparture?.departureDate?.slice(0, 10) || ""}
               />
@@ -5082,6 +5146,7 @@ function EnquiryModal({
           <EnquiryField className="mt-3" label="Please write Your Queries. *">
             <textarea
               required
+              name="message"
               rows={3}
               placeholder="Tell us what you would like to know."
             />
@@ -5092,12 +5157,18 @@ function EnquiryModal({
               Thank you. Your enquiry has been captured for this tour.
             </p>
           ) : null}
+          {submitError ? (
+            <p className="mt-3 rounded-[8px] border border-destructive/20 bg-destructive/5 px-3 py-2 font-sans text-[15px] font-bold text-destructive">
+              {submitError}
+            </p>
+          ) : null}
 
           <Button
             type="submit"
+            disabled={isSubmitting}
             className="mt-4 min-w-[190px] justify-between gap-4 px-5 font-normal"
           >
-            Send Question
+            {isSubmitting ? "Sending..." : "Send Question"}
             <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
           </Button>
         </div>
@@ -5250,7 +5321,7 @@ function BookingTermsCard({
   onAcceptedChange: (accepted: boolean) => void;
 }) {
   return (
-    <article className="rounded-[8px] border border-border bg-card p-3 shadow-[0_10px_24px_rgba(67,43,27,0.05)]">
+    <article className="hidden rounded-[8px] border border-border bg-card p-3 shadow-[0_10px_24px_rgba(67,43,27,0.05)] lg:block">
       <h2 className="font-heading text-[17px] font-bold text-secondary">
         Terms & Conditions
       </h2>
@@ -5292,15 +5363,17 @@ function SidebarTourActions({
   isBookingFlowOpen,
   onBook,
   onBookNow,
+  onEnquireNow,
 }: {
   canPay: boolean;
   checkoutStatus: CheckoutStatus;
   isBookingFlowOpen: boolean;
   onBook: (paymentOption: BookingPaymentOption) => void;
   onBookNow: () => void;
+  onEnquireNow: () => void;
 }) {
   const buttonClassName =
-    "w-full justify-center gap-3 px-4 text-center font-bold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20";
+    "w-full justify-center gap-2 px-3 text-center font-normal focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20";
   const isBusy = checkoutStatus !== "idle";
 
   function handlePrimaryClick() {
@@ -5314,7 +5387,7 @@ function SidebarTourActions({
 
   return (
     <article className="rounded-[8px] border border-border bg-card p-3 shadow-[0_10px_24px_rgba(67,43,27,0.05)]">
-      <div className="grid gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <Button
           type="button"
           onClick={handlePrimaryClick}
@@ -5327,6 +5400,13 @@ function SidebarTourActions({
             ) : null}
             {isBookingFlowOpen ? "Pay" : "Book Now"}
           </span>
+        </Button>
+        <Button
+          type="button"
+          onClick={onEnquireNow}
+          className={buttonClassName}
+        >
+          Enquire Now
         </Button>
       </div>
     </article>

@@ -24,12 +24,10 @@ import { Header } from "@/components/layout/header";
 import { ButtonArrow, buttonVariants } from "@/components/ui/button";
 import {
   getHomeMediaUrl,
-  listPublicDestinations,
   listPublicExperiences,
-  listPublicMegaMenu,
-  type PublicDestination,
+  listPublicTours,
+  type PublicTour,
   type PublicExperience,
-  type PublicMegaMenuContent,
 } from "@/lib/home-travel";
 import {
   getTourCalendarHref,
@@ -45,8 +43,8 @@ type ExperienceCategory =
   | "popular-cities"
   | "unesco-sites";
 
-type DestinationExperienceGroup = {
-  destination: PublicDestination;
+type TourExperienceGroup = {
+  tour: PublicTour;
   experiences: PublicExperience[];
   image: string;
   rating: number;
@@ -54,7 +52,7 @@ type DestinationExperienceGroup = {
 };
 
 type ExperienceDetailState = {
-  destination: PublicDestination | null;
+  tour: PublicTour | null;
   experiences: PublicExperience[];
 };
 
@@ -110,51 +108,34 @@ function getErrorMessage(error: unknown) {
   return "Unable to load traveller experiences.";
 }
 
-function normalizeKey(value: string) {
+function normalizeKey(value = "") {
   return value.trim().toLowerCase();
 }
 
-function normalizeId(value: string) {
+function normalizeId(value = "") {
   return value.trim().toUpperCase();
 }
 
-function uniqueValues(values: string[]) {
+function uniqueValues(values: Array<string | undefined | null>) {
   return Array.from(
-    new Set(values.map((value) => value.trim()).filter(Boolean))
+    new Set(values.map((value) => (value || "").trim()).filter(Boolean))
   );
 }
 
-function isIndiaDestination(destination: PublicDestination) {
-  return (
-    destination.destinationType === "Domestic" ||
-    normalizeKey(destination.countryRegion).includes("india")
-  );
+function isIndiaDestination(destination: PublicTour) {
+  return normalizeKey(destination.tourType).includes("domestic") ||
+    normalizeKey(destination.category).includes("india");
 }
 
-function getRegionLabel(destination: PublicDestination) {
-  return destination.region || destination.state || destination.countryRegion;
-}
-
-function getExperienceHref(destination: PublicDestination) {
+function getExperienceHref(destination: PublicTour) {
   return `/experiences/${encodeURIComponent(
-    slugifyRoute(destination.destinationName) || destination.destinationId
+    slugifyRoute(destination.tourName) || destination.tourId
   )}`;
 }
 
-function getTopCityDestinationIds(content: PublicMegaMenuContent | null) {
-  return Array.from(
-    new Set(
-      (content?.destinationMenu.topCities || [])
-        .map((item) => normalizeId(item.destinationId || item.referenceId))
-        .filter(Boolean)
-    )
-  );
-}
-
 function matchesCategory(
-  destination: PublicDestination,
-  category: ExperienceCategory,
-  topCityDestinationIds: Set<string>
+  destination: PublicTour,
+  category: ExperienceCategory
 ) {
   switch (category) {
     case "all":
@@ -164,49 +145,44 @@ function matchesCategory(
     case "international":
       return !isIndiaDestination(destination);
     case "popular-cities":
-      return topCityDestinationIds.size > 0
-        ? topCityDestinationIds.has(normalizeId(destination.destinationId))
-        : Boolean(destination.city.trim());
+      return destination.isBestseller || normalizeKey(destination.category).includes("popular");
     case "unesco-sites":
-      return destination.unescoSite;
+      return normalizeKey(destination.category).includes("unesco") ||
+        normalizeKey(destination.tourName).includes("unesco");
   }
 }
 
 function getDestinationSearchText(
-  destination: PublicDestination,
+  destination: PublicTour,
   experiences: PublicExperience[]
 ) {
   return [
-    destination.destinationId,
-    destination.destinationName,
-    destination.destinationType,
-    destination.countryRegion,
-    destination.region,
-    destination.state,
-    destination.city,
-    destination.primaryHeritageFocus,
-    destination.shortDescription,
-    destination.keyLandmarks.join(" "),
-    experiences.map((experience) => experience.travellerName).join(" "),
+    destination.tourId,
+    destination.tourName,
+    destination.tourType,
+    destination.tourFormat,
+    destination.category,
+    destination.description,
+    (destination.inclusions || []).join(" "),
+    experiences.map((experience) => experience.travellerName || "").join(" "),
     experiences.map((experience) => experience.title || "").join(" "),
-    experiences.map((experience) => experience.writtenReview).join(" "),
+    experiences.map((experience) => experience.writtenReview || "").join(" "),
   ]
     .join(" ")
     .toLowerCase();
 }
 
 function getDestinationImages(
-  destination: PublicDestination,
+  destination: PublicTour,
   experiences: PublicExperience[]
 ) {
   const images = uniqueValues([
     destination.bannerImage,
     destination.thumbnailImage || "",
-    ...destination.galleryImages,
-    ...(destination.keyLandmarkImages || []),
-    ...experiences.flatMap((experience) => experience.travellerPhotoGallery),
+    ...(destination.galleryImages || []),
+    ...experiences.flatMap((experience) => experience.travellerPhotoGallery || []),
     ...experiences.flatMap((experience) =>
-      experience.attractionPhotoGallery.map((photo) => photo.image)
+      (experience.attractionPhotoGallery || []).map((photo) => photo.image)
     ),
   ])
     .map(getHomeMediaUrl)
@@ -216,7 +192,7 @@ function getDestinationImages(
 }
 
 function getDestinationImage(
-  destination: PublicDestination,
+  destination: PublicTour,
   experiences: PublicExperience[],
   index: number
 ) {
@@ -224,8 +200,8 @@ function getDestinationImage(
     getHomeMediaUrl(
       destination.thumbnailImage ||
         destination.bannerImage ||
-        destination.galleryImages[0] ||
-        experiences[0]?.travellerPhotoGallery[0] ||
+        destination.galleryImages?.[0] ||
+        experiences[0]?.travellerPhotoGallery?.[0] ||
         fallbackImages[index % fallbackImages.length] ||
         fallbackImages[0]
     ) || fallbackImages[index % fallbackImages.length]
@@ -277,20 +253,27 @@ function getExperiencePhotoGallery(experience?: PublicExperience) {
 
 function getExperienceVideo(experience?: PublicExperience) {
   return getHomeMediaUrl(
-    experience?.travellerVideos.find((video) => video.trim()) || ""
+    (experience?.travellerVideos || []).find((video) => (video || "").trim()) || ""
   );
 }
 
 function getAttractionName(
-  destination: PublicDestination,
+  destination: PublicTour,
   experience: PublicExperience | undefined,
   index: number
 ) {
   return (
-    experience?.attractionPhotoGallery[index]?.name ||
-    destination.keyLandmarks[index] ||
-    destination.destinationName
+    experience?.attractionPhotoGallery?.[index]?.name ||
+    destination.tourName
   );
+}
+
+function getTourMetaLabel(tour: PublicTour) {
+  return [tour.tourType, tour.tourFormat, tour.category]
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(" / ");
 }
 
 function getReviewMonthLabel(value: string) {
@@ -320,8 +303,8 @@ function getTravellerReviewCount(
   experiences: PublicExperience[]
 ) {
   const travellerKey =
-    experience.travellerEmail.trim().toLowerCase() ||
-    experience.travellerName.trim().toLowerCase();
+    (experience.travellerEmail || "").trim().toLowerCase() ||
+    (experience.travellerName || "").trim().toLowerCase();
 
   if (!travellerKey) {
     return 1;
@@ -330,8 +313,8 @@ function getTravellerReviewCount(
   return Math.max(
     experiences.filter((item) => {
       const itemKey =
-        item.travellerEmail.trim().toLowerCase() ||
-        item.travellerName.trim().toLowerCase();
+        (item.travellerEmail || "").trim().toLowerCase() ||
+        (item.travellerName || "").trim().toLowerCase();
 
       return itemKey === travellerKey;
     }).length,
@@ -340,34 +323,35 @@ function getTravellerReviewCount(
 }
 
 function buildDestinationGroups(
-  destinations: PublicDestination[],
+  tours: PublicTour[],
   experiences: PublicExperience[]
 ) {
-  const experiencesByDestinationId = new Map<string, PublicExperience[]>();
+  const experiencesByTourId = new Map<string, PublicExperience[]>();
 
   experiences.forEach((experience) => {
-    const key = normalizeId(experience.destinationId);
-    const current = experiencesByDestinationId.get(key) || [];
+    const key = normalizeId(experience.tourId);
 
-    experiencesByDestinationId.set(key, [...current, experience]);
+    if (!key) {
+      return;
+    }
+
+    const current = experiencesByTourId.get(key) || [];
+
+    experiencesByTourId.set(key, [...current, experience]);
   });
 
-  return destinations
-    .map<DestinationExperienceGroup>((destination, index) => {
-      const destinationExperiences =
-        experiencesByDestinationId.get(normalizeId(destination.destinationId)) ||
-        experiences.filter(
-          (experience) =>
-            normalizeKey(experience.destinationName) ===
-            normalizeKey(destination.destinationName)
-        );
+  return tours
+    .map<TourExperienceGroup>((tour, index) => {
+      const tourExperiences =
+        experiencesByTourId.get(normalizeId(tour.tourId)) ||
+        [];
 
       return {
-        destination,
-        experiences: destinationExperiences,
-        image: getDestinationImage(destination, destinationExperiences, index),
-        rating: getAverageRating(destinationExperiences),
-        reviewCount: destinationExperiences.length,
+        tour,
+        experiences: tourExperiences,
+        image: getDestinationImage(tour, tourExperiences, index),
+        rating: getAverageRating(tourExperiences),
+        reviewCount: tourExperiences.length,
       };
     })
     .sort((left, right) => {
@@ -375,8 +359,8 @@ function buildDestinationGroups(
         return right.reviewCount - left.reviewCount;
       }
 
-      return left.destination.destinationName.localeCompare(
-        right.destination.destinationName
+      return left.tour.tourName.localeCompare(
+        right.tour.tourName
       );
     });
 }
@@ -555,11 +539,8 @@ function CountUpStatValue({
 // }
 
 export function ExperiencesPage() {
-  const [destinations, setDestinations] = useState<PublicDestination[]>([]);
+  const [destinations, setDestinations] = useState<PublicTour[]>([]);
   const [experiences, setExperiences] = useState<PublicExperience[]>([]);
-  const [topCityDestinationIds, setTopCityDestinationIds] = useState<string[]>(
-    []
-  );
   const [activeCategory, setActiveCategory] =
     useState<ExperienceCategory>("india");
   const [searchQuery, setSearchQuery] = useState("");
@@ -574,22 +555,18 @@ export function ExperiencesPage() {
       setLoadError("");
 
       try {
-        const [destinationsResponse, experiencesResponse, megaMenuResponse] =
+        const [destinationsResponse, experiencesResponse] =
           await Promise.all([
-            listPublicDestinations(),
+            listPublicTours(),
             listPublicExperiences().catch(() => ({ data: { experiences: [] } })),
-            listPublicMegaMenu().catch(() => null),
           ]);
 
         if (!isMounted) {
           return;
         }
 
-        setDestinations(destinationsResponse.data.destinations);
+        setDestinations(destinationsResponse.data.tours);
         setExperiences(experiencesResponse.data.experiences);
-        setTopCityDestinationIds(
-          getTopCityDestinationIds(megaMenuResponse?.data.megaMenu || null)
-        );
       } catch (error) {
         if (isMounted) {
           setLoadError(getErrorMessage(error));
@@ -612,31 +589,27 @@ export function ExperiencesPage() {
     () => buildDestinationGroups(destinations, experiences),
     [destinations, experiences]
   );
-  const topCityDestinationIdSet = useMemo(
-    () => new Set(topCityDestinationIds),
-    [topCityDestinationIds]
-  );
   const visibleGroups = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
     return groups.filter((group) => {
       const matchesSearch =
         !query ||
-        getDestinationSearchText(group.destination, group.experiences).includes(
+        getDestinationSearchText(group.tour, group.experiences).includes(
           query
         );
 
       return (
-        matchesCategory(group.destination, activeCategory, topCityDestinationIdSet) &&
+        matchesCategory(group.tour, activeCategory) &&
         matchesSearch
       );
     });
-  }, [activeCategory, groups, searchQuery, topCityDestinationIdSet]);
+  }, [activeCategory, groups, searchQuery]);
 
   return (
     <main className="min-h-screen bg-background text-secondary">
       <HeaderBand
-        description="Real stories, moments and memories from travellers who explored these destinations with Ancient Trails."
+        description="Real stories, moments and memories from travellers who joined these tours with Ancient Trails."
         stats={experienceHeaderStats}
         title="Experiences"
       />
@@ -668,8 +641,8 @@ export function ExperiencesPage() {
         <p className="max-w-[520px] font-sans text-description font-medium leading-[1.25] text-secondary/72">
           <span className="block text-secondary/68">Planning a trip with us?</span>
           <span className="block">
-            Choose a destination and get to know more about the travel
-            experiences of people visiting all these locations
+            Choose a tour and get to know more about the travel experiences of
+            people joining these journeys
           </span>
         </p>
       </section>
@@ -686,7 +659,7 @@ export function ExperiencesPage() {
         {!isLoading && !loadError && visibleGroups.length === 0 ? (
           <EmptyState
             title="No traveller experiences found"
-            message="Try changing the destination search or category."
+            message="Try changing the tour search or category."
           />
         ) : null}
       </section>
@@ -737,12 +710,12 @@ function ExperienceTopBar({
         </div>
 
         <label className="relative w-full md:w-[235px]">
-          <span className="sr-only">Search Destination</span>
+          <span className="sr-only">Search Tour</span>
           <input
             type="search"
             value={searchQuery}
             onChange={(event) => onSearchQueryChange(event.target.value)}
-            placeholder="Search Destination"
+            placeholder="Search Tour"
             className="h-9 w-full rounded-full border border-primary/55 bg-white px-5 pr-10 font-sans text-[13px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/50 focus:border-primary focus:ring-3 focus:ring-primary/15"
           />
           <Search className="pointer-events-none absolute right-4 top-1/2 size-3.5 -translate-y-1/2 text-primary" />
@@ -756,7 +729,7 @@ function ExperienceGrid({
   groups,
   isLoading,
 }: {
-  groups: DestinationExperienceGroup[];
+  groups: TourExperienceGroup[];
   isLoading: boolean;
 }) {
   if (isLoading) {
@@ -780,7 +753,7 @@ function ExperienceGrid({
     <div className="grid gap-x-6 gap-y-6 md:grid-cols-2 xl:grid-cols-3">
       {groups.map((group) => (
         <ExperienceDestinationCard
-          key={group.destination.id || group.destination.destinationId}
+          key={group.tour.id || group.tour.tourId}
           group={group}
         />
       ))}
@@ -791,21 +764,21 @@ function ExperienceGrid({
 function ExperienceDestinationCard({
   group,
 }: {
-  group: DestinationExperienceGroup;
+  group: TourExperienceGroup;
 }) {
-  const { destination, image, rating, reviewCount } = group;
+  const { tour: destination, image, rating, reviewCount } = group;
 
   return (
     <Link
       href={getExperienceHref(destination)}
-      aria-label={`Read traveller experiences for ${destination.destinationName}`}
+      aria-label={`Read traveller experiences for ${destination.tourName}`}
       className="group block"
     >
       <article className="grid h-[102px] grid-cols-[128px_minmax(0,1fr)_50px] items-stretch overflow-hidden rounded-[9px] border border-[#eee9e4] bg-white transition-transform duration-300 hover:-translate-y-0.5 hover:border-primary">
         <div className="relative m-0 overflow-hidden rounded-[8px] bg-muted">
           <Image
             src={image}
-            alt={destination.destinationName}
+            alt={destination.tourName}
             fill
             unoptimized
             sizes="128px"
@@ -815,7 +788,7 @@ function ExperienceDestinationCard({
 
         <div className="min-w-0 px-3.5 py-3">
           <h2 className="line-clamp-2 min-h-[36px] font-sans text-[18px] font-bold leading-[1.02] tracking-normal text-secondary">
-            {destination.destinationName}
+            {destination.tourName}
           </h2>
           <div className="mt-3 flex min-w-0 items-center gap-2">
             <span className="shrink-0 font-sans text-[14px] font-medium leading-none text-secondary/28">
@@ -845,7 +818,7 @@ export function SingleExperiencePage({
   experienceId: string;
 }) {
   const [detail, setDetail] = useState<ExperienceDetailState>({
-    destination: null,
+    tour: null,
     experiences: [],
   });
   const [isLoading, setIsLoading] = useState(true);
@@ -861,68 +834,59 @@ export function SingleExperiencePage({
       setLoadError("");
 
       try {
-        const [destinationsResponse, experiencesResponse] = await Promise.all([
-          listPublicDestinations(),
+        const [toursResponse, experiencesResponse] = await Promise.all([
+          listPublicTours(),
           listPublicExperiences().catch(() => ({ data: { experiences: [] } })),
         ]);
-        const destinations = destinationsResponse.data.destinations;
+        const tours = toursResponse.data.tours;
         const allExperiences = experiencesResponse.data.experiences;
-        const matchedDestination =
-          destinations.find((destination) =>
+        const matchedTour =
+          tours.find((tour) =>
             matchesRouteValue(
               requestedId,
-              destination.destinationId,
-              destination.destinationName
+              tour.tourId,
+              tour.tourName
             )
           ) || null;
-        const matchedExperience = matchedDestination
+        const matchedExperience = matchedTour
           ? null
           : allExperiences.find((experience) =>
               matchesRouteValue(
                 requestedId,
                 experience.experienceId,
-                experience.title || experience.destinationName
+                experience.title || experience.tourName
               )
             ) || null;
-        const destination =
-          matchedDestination ||
+        const tour =
+          matchedTour ||
           (matchedExperience
-            ? destinations.find(
-                (item) =>
-                  normalizeId(item.destinationId) ===
-                    normalizeId(matchedExperience.destinationId) ||
-                  normalizeKey(item.destinationName) ===
-                    normalizeKey(matchedExperience.destinationName)
+            ? tours.find(
+                (item) => normalizeId(item.tourId) === normalizeId(matchedExperience.tourId)
               ) || null
             : null);
-
-        if (!destination) {
+        if (!tour) {
           if (isMounted) {
-            setDetail({ destination: null, experiences: [] });
-            setLoadError("Experience destination not found.");
+            setDetail({ tour: null, experiences: [] });
+            setLoadError("Experience tour not found.");
           }
 
           return;
         }
 
-        const destinationExperiencesResponse = await listPublicExperiences(
-          destination.destinationId
+        const tourExperiencesResponse = await listPublicExperiences(
+          tour.tourId
         ).catch(() => ({
           data: {
             experiences: allExperiences.filter(
-              (experience) =>
-                normalizeId(experience.destinationId) ===
-                  normalizeId(destination.destinationId) ||
-                normalizeKey(experience.destinationName) ===
-                  normalizeKey(destination.destinationName)
+              (experience) => normalizeId(experience.tourId) === normalizeId(tour.tourId)
             ),
           },
         }));
 
         if (isMounted) {
           setDetail({
-            destination,
-            experiences: destinationExperiencesResponse.data.experiences,
+            tour,
+            experiences: tourExperiencesResponse.data.experiences,
           });
         }
       } catch (error) {
@@ -955,7 +919,7 @@ export function SingleExperiencePage({
     );
   }
 
-  if (!detail.destination || loadError) {
+  if (!detail.tour || loadError) {
     return (
       <main className="min-h-screen bg-background text-secondary">
         <HeaderBand />
@@ -981,28 +945,28 @@ export function SingleExperiencePage({
     );
   }
 
-  const images = getDestinationImages(detail.destination, detail.experiences);
+  const images = getDestinationImages(detail.tour, detail.experiences);
   const averageRating = getAverageRating(detail.experiences);
 
   return (
     <main className="min-h-screen bg-background text-secondary">
       <HeaderBand
-        description="Real stories, moments and memories from travellers who explored this destination with Ancient Trails."
+        description="Real stories, moments and memories from travellers who explored this tour with Ancient Trails."
         stats={experienceHeaderStats}
-        subtitle={getRegionLabel(detail.destination)}
-        title={detail.destination.destinationName}
+        subtitle={getTourMetaLabel(detail.tour)}
+        title={detail.tour.tourName}
       />
 
       <section className={`${detailContainerClassName} pb-20 pt-8`}>
         <ExperienceDetailHero
           averageRating={averageRating}
-          destination={detail.destination}
+          destination={detail.tour}
           experiences={detail.experiences}
           images={images}
           onGalleryOpen={setLightboxIndex}
         />
         <ExploringWithUsSection
-          destination={detail.destination}
+          destination={detail.tour}
           experiences={detail.experiences}
           images={images}
         />
@@ -1010,9 +974,9 @@ export function SingleExperiencePage({
           averageRating={averageRating}
           experiences={detail.experiences}
         />
-         <ExperiencePlanTripCta destination={detail.destination} images={images} />
+         <ExperiencePlanTripCta destination={detail.tour} images={images} />
         <TravellerMomentsSection
-          destination={detail.destination}
+          destination={detail.tour}
           experiences={detail.experiences}
           images={images}
         />
@@ -1023,7 +987,7 @@ export function SingleExperiencePage({
         <ExperiencePhotoLightbox
           activeIndex={lightboxIndex}
           images={images}
-          title={`${detail.destination.destinationName} photos`}
+          title={`${detail.tour.tourName} photos`}
           onClose={() => setLightboxIndex(null)}
           onIndexChange={setLightboxIndex}
         />
@@ -1040,7 +1004,7 @@ function ExperienceDetailHero({
   onGalleryOpen,
 }: {
   averageRating: number;
-  destination: PublicDestination;
+  destination: PublicTour;
   experiences: PublicExperience[];
   images: string[];
   onGalleryOpen: (index: number) => void;
@@ -1055,7 +1019,7 @@ function ExperienceDetailHero({
       index === 0
         ? getAttractionName(destination, featuredExperience, 0)
         : getAttractionName(destination, featuredExperience, index) ||
-          `${destination.destinationName} album`,
+          `${destination.tourName} album`,
   }));
   const thumbnailImages = heroImages.slice(5, 9);
   const reviewCount = experiences.length;
@@ -1078,10 +1042,10 @@ function ExperienceDetailHero({
         <div className="min-w-0">
           <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
             <h1 className="font-heading text-title font-bold italic leading-none text-secondary">
-              {destination.destinationName}
+              {destination.tourName}
             </h1>
             <p className="pb-1 font-sans text-button font-medium leading-none text-secondary">
-              {getRegionLabel(destination)}
+              {getTourMetaLabel(destination)}
             </p>
           </div>
           <p className="mt-2 max-w-[520px] font-sans text-description text-secondary/60">
@@ -1115,7 +1079,7 @@ function ExperienceDetailHero({
                 >
                   <Image
                     src={image}
-                    alt={`${destination.destinationName} album thumbnail ${index + 1}`}
+                    alt={`${destination.tourName} album thumbnail ${index + 1}`}
                     fill
                     unoptimized
                     sizes="(min-width: 1280px) 145px, (min-width: 1024px) 11vw, (min-width: 640px) 20vw, 50vw"
@@ -1365,7 +1329,7 @@ function ExploringWithUsSection({
   experiences,
   images,
 }: {
-  destination: PublicDestination;
+  destination: PublicTour;
   experiences: PublicExperience[];
   images: string[];
 }) {
@@ -1385,7 +1349,7 @@ function ExploringWithUsSection({
             What Travellers Say On -
           </p>
           <h2 className="mt-2 font-heading text-title font-bold leading-none text-secondary border-b border-secondary/28 pb-4">
-            Exploring {destination.destinationName} with Us
+            Exploring {destination.tourName} with Us
           </h2>
           <p className="mt-5 max-w-[320px] font-sans text-description font-medium leading-[1.35] text-primary">
             Every Journey we organise is built on trust, safety and unforgettable
@@ -1395,7 +1359,7 @@ function ExploringWithUsSection({
           <article className="relative mt-4 min-h-[180px] flex-1 overflow-hidden rounded-[8px] bg-muted shadow-[0_14px_32px_rgba(50,50,50,0.1)]">
             <Image
               src={fallbackMediaImage}
-              alt={`${destination.destinationName} traveller memory`}
+              alt={`${destination.tourName} traveller memory`}
               fill
               unoptimized
               sizes="(min-width: 1280px) 320px, (min-width: 1024px) 25vw, 100vw"
@@ -1419,7 +1383,7 @@ function ExploringWithUsSection({
           ) : (
             <Image
               src={tallImage}
-              alt={`${destination.destinationName} memory`}
+              alt={`${destination.tourName} memory`}
               fill
               unoptimized
               sizes="(min-width: 1280px) 350px, (min-width: 1024px) 28vw, 100vw"
@@ -1435,7 +1399,7 @@ function ExploringWithUsSection({
             ) : (
               <p className="mt-10 max-w-[320px] font-sans text-description leading-[1.5] text-secondary/62">
                 Traveller voices will appear here once experiences are published for
-                this destination.
+                this tour.
               </p>
             )}
             
@@ -1649,7 +1613,7 @@ function TravellerMomentsSection({
   experiences,
   images,
 }: {
-  destination: PublicDestination;
+  destination: PublicTour;
   experiences: PublicExperience[];
   images: string[];
 }) {
@@ -1677,7 +1641,7 @@ function TravellerMomentsSection({
       title:
         experience?.travellerVideoTitles[0] ||
         experience?.title ||
-        `${destination.destinationName} moment`,
+        `${destination.tourName} moment`,
       video:
         availableVideos[index % availableVideos.length] ||
         getExperienceVideo(experience),
@@ -1830,7 +1794,7 @@ function ExperiencePlanTripCta({
   destination,
   images,
 }: {
-  destination: PublicDestination;
+  destination: PublicTour;
   images: string[];
 }) {
   const ctaImage =
@@ -1844,7 +1808,7 @@ function ExperiencePlanTripCta({
     <section className="relative mt-12 overflow-hidden rounded-[10px] bg-secondary px-5 py-8 text-white shadow-[0_18px_44px_rgba(50,50,50,0.12)] sm:px-8 lg:px-10">
       <Image
         src={getHomeMediaUrl(ctaImage)}
-        alt={`${destination.destinationName} plan trip`}
+        alt={`${destination.tourName} plan trip`}
         fill
         unoptimized
         sizes="1300px"
@@ -1856,10 +1820,10 @@ function ExperiencePlanTripCta({
           Make It Your Journey
         </p>
         <h2 className="mt-3 font-heading text-title font-bold leading-none tracking-normal">
-          Plan your {destination.destinationName} trip with Ancient Trails
+          Plan your {destination.tourName} trip with Ancient Trails
         </h2>
         <Link
-          href={getTourCalendarHref({ destination })}
+          href={getTourCalendarHref({ tour: destination })}
           className={buttonVariants({
             className: "mt-6 min-w-[190px] justify-between gap-8",
           })}
@@ -1890,7 +1854,7 @@ function ReviewsGrid({
     return (
       <EmptyState
         title="No reviews yet"
-        message="Published traveller reviews for this destination will appear here."
+        message="Published traveller reviews for this tour will appear here."
       />
     );
   }

@@ -238,9 +238,9 @@ function ExperienceCard({
   );
 }
 
-function getUniqueValues(values: string[]) {
+function getUniqueValues(values: Array<string | undefined | null>) {
   return Array.from(
-    new Set(values.map((value) => value.trim()).filter(Boolean))
+    new Set(values.map((value) => (value || "").trim()).filter(Boolean))
   );
 }
 

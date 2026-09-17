@@ -103,6 +103,8 @@ const TOUR_ICON_PATHS = {
   hotel: "/Tour-assets/hotel (1).png",
   meal: "/Tour-assets/meal.png",
   tourGuide: "/Tour-assets/tour-guide.png",
+  state: "/Tour-assets/india.png",
+  places: "/Tour-assets/places.png",
 };
 
 export function DownloadItineraryButton(props: DownloadItineraryButtonProps) {
@@ -780,9 +782,11 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
     expert: "",
     hotel: "",
     meals: "",
+    places: "",
     pin: "",
     route: "",
     sightseeing: "",
+    state: "",
     transport: "",
     walk: "",
   };
@@ -812,10 +816,10 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
     drawPdfIcon(pdfIcons.calendar, x, y, 14);
 
   const drawFactIconPin = (x: number, y: number) =>
-    drawPdfIcon(pdfIcons.pin, x, y, 14);
+    drawPdfIcon(pdfIcons.places || pdfIcons.pin, x, y, 14);
 
   const drawFactIconState = (x: number, y: number) =>
-    drawPdfIcon(pdfIcons.route, x, y, 14);
+    drawPdfIcon(pdfIcons.state || pdfIcons.route, x, y, 14);
 
   const drawHotelIcon = (x: number, y: number) =>
     drawPdfIcon(pdfIcons.hotel, x, y, 28);
@@ -993,6 +997,8 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
     sightseeingIcon,
     bedIcon,
     walkIcon,
+    stateIcon,
+    placesIcon,
     checkIcon,
     crossIcon,
   ] = await Promise.all([
@@ -1034,6 +1040,16 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
       maxWidth: 256,
       preserveTransparency: true,
     }),
+    getImageDataUrl(TOUR_ICON_PATHS.state, {
+      maxHeight: 256,
+      maxWidth: 256,
+      preserveTransparency: true,
+    }),
+    getImageDataUrl(TOUR_ICON_PATHS.places, {
+      maxHeight: 256,
+      maxWidth: 256,
+      preserveTransparency: true,
+    }),
     renderLucideIconDataUrl(Check, { color: colors.primary, strokeWidth: 2.2 }),
     renderLucideIconDataUrl(X, { color: colors.accent, strokeWidth: 2.1 }),
   ]);
@@ -1046,9 +1062,11 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
     expert: expertIcon,
     hotel: hotelIcon,
     meals: mealsIcon,
+    places: placesIcon,
     pin: pinIcon,
     route: routeIcon,
     sightseeing: sightseeingIcon,
+    state: stateIcon,
     transport: transportIcon,
     walk: walkIcon,
   });

@@ -152,8 +152,8 @@ export type PublicExperienceAttractionPhoto = {
 export type PublicExperience = {
   id: string;
   experienceId: string;
-  destinationId: string;
-  destinationName: string;
+  tourId: string;
+  tourName: string;
   travellerName: string;
   travellerEmail: string;
   title?: string;
@@ -558,7 +558,7 @@ const keywordMarkerPositions: Array<{
   { keywords: ["tamil nadu"], markerX: 55.2, markerY: 84.5 },
 ];
 
-export function getHomeMediaUrl(source: string): string {
+export function getHomeMediaUrl(source = ""): string {
   const trimmedSource = source.trim();
 
   if (!trimmedSource) {
@@ -677,9 +677,12 @@ function getExperienceImage(
   experience: PublicExperience,
   fallbackImage: string
 ) {
+  const travellerPhotoGallery = experience.travellerPhotoGallery || [];
+  const attractionPhotoGallery = experience.attractionPhotoGallery || [];
+
   return getHomeMediaUrl(
-    experience.travellerPhotoGallery.find((image) => image.trim()) ||
-      experience.attractionPhotoGallery.find((photo) => photo.image.trim())
+    travellerPhotoGallery.find((image) => (image || "").trim()) ||
+      attractionPhotoGallery.find((photo) => (photo.image || "").trim())
         ?.image ||
       fallbackImage
   );
@@ -688,16 +691,18 @@ function getExperienceImage(
 function getExperienceTitle(experience: PublicExperience, fallbackTitle: string) {
   return (
     experience.title?.trim() ||
-    experience.attractionPhotoGallery.find((photo) => photo.name.trim())?.name ||
-    experience.destinationName ||
+    (experience.attractionPhotoGallery || []).find((photo) =>
+      (photo.name || "").trim()
+    )?.name ||
+    experience.tourName ||
     fallbackTitle
   );
 }
 
 function getExperienceReview(experience: PublicExperience, fallbackReview: string) {
   const review =
-    experience.writtenReview.trim() ||
-    experience.thingsToKnow.find((item) => item.trim()) ||
+    (experience.writtenReview || "").trim() ||
+    (experience.thingsToKnow || []).find((item) => (item || "").trim()) ||
     fallbackReview;
 
   return review.length > 190 ? `${review.slice(0, 187).trim()}...` : review;
@@ -708,7 +713,7 @@ function getUniqueHomeMedia(values: string[] = []) {
     new Set(
       values
         .map((value) => getHomeMediaUrl(value))
-        .map((value) => value.trim())
+        .map((value) => (value || "").trim())
         .filter(Boolean)
     )
   );
@@ -722,7 +727,7 @@ function getExperienceAttractionPhotos(
   return photos
     .map((photo) => ({
       image: getHomeMediaUrl(photo.image),
-      name: photo.name.trim(),
+      name: (photo.name || "").trim(),
     }))
     .filter((photo) => {
       if (!photo.image || seenImages.has(photo.image)) {
@@ -920,9 +925,9 @@ export async function listPublicDestinations() {
   return apiRequest<{ destinations: PublicDestination[] }>("/api/destinations");
 }
 
-export async function listPublicExperiences(destinationId = "") {
-  const query = destinationId.trim()
-    ? `?destinationId=${encodeURIComponent(destinationId.trim())}`
+export async function listPublicExperiences(tourId = "") {
+  const query = tourId.trim()
+    ? `?tourId=${encodeURIComponent(tourId.trim())}`
     : "";
 
   return apiRequest<{ experiences: PublicExperience[] }>(
@@ -1233,8 +1238,8 @@ export function buildHomeExperienceCards(
       attractionPhotoGallery: getExperienceAttractionPhotos(
         experience.attractionPhotoGallery
       ),
-      destinationId: experience.destinationId,
-      destinationName: experience.destinationName,
+      destinationId: experience.tourId,
+      destinationName: experience.tourName,
       id: experience.id,
       experienceId: experience.experienceId,
       featured: index === 0,
@@ -1249,7 +1254,7 @@ export function buildHomeExperienceCards(
           experience.travellerVideoTitles[videoIndex]?.trim() || ""
       ),
       travelledMonth: formatTravelMonth(experience.createdAt),
-      travellerName: experience.travellerName.trim() || "Traveller",
+      travellerName: (experience.travellerName || "").trim() || "Traveller",
       type: experience.travellerVideos.length > 0 ? "Video" : "Album",
     };
   });
