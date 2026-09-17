@@ -9,7 +9,15 @@ import { cn } from "@/lib/utils";
 function Select<Value, Multiple extends boolean | undefined = false>(
   props: SelectPrimitive.Root.Props<Value, Multiple>
 ) {
-  return <SelectPrimitive.Root data-slot="select" {...props} />;
+  const normalizedProps: SelectPrimitive.Root.Props<Value, Multiple> =
+    "value" in props && props.value === undefined
+      ? ({
+          ...props,
+          value: props.multiple ? [] : null,
+        } as SelectPrimitive.Root.Props<Value, Multiple>)
+      : props;
+
+  return <SelectPrimitive.Root data-slot="select" {...normalizedProps} />;
 }
 
 function SelectTrigger({

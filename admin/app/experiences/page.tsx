@@ -53,10 +53,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
-import {
-  listAdminDestinations,
-  type AdminDestination,
-} from "@/lib/destinations";
+import { listAdminTours, type AdminTour } from "@/lib/tours";
 import {
   createAdminExperience,
   deleteAdminExperience,
@@ -110,7 +107,7 @@ type ExperienceFormState = Omit<
 
 const emptyExperienceForm: ExperienceFormState = {
   experienceId: "",
-  destinationId: "",
+  tourId: "",
   travellerName: "",
   travellerEmail: "",
   title: "",
@@ -225,7 +222,7 @@ function calculateOverallRating(form: Pick<
 function experienceToForm(experience: AdminExperience): ExperienceFormState {
   return {
     experienceId: experience.experienceId,
-    destinationId: experience.destinationId,
+    tourId: experience.tourId,
     travellerName: experience.travellerName || "",
     travellerEmail: experience.travellerEmail || "",
     title: experience.title,
@@ -255,7 +252,7 @@ function createExperiencePayload(form: ExperienceFormState): ExperiencePayload {
 
   return {
     experienceId: (form.experienceId || "").trim(),
-    destinationId: form.destinationId.trim(),
+    tourId: form.tourId.trim(),
     travellerName: form.travellerName.trim(),
     travellerEmail: form.travellerEmail.trim(),
     title: (form.title || "").trim(),
@@ -290,31 +287,31 @@ function formatDate(value: string): string {
   return `${day}-${month}-${year}`;
 }
 
-function createDestinationNameById(destinations: AdminDestination[]) {
+function createTourNameById(tours: AdminTour[]) {
   return new Map(
-    destinations.map((destination) => [
-      destination.destinationId,
-      destination.destinationName,
+    tours.map((tour) => [
+      tour.tourId,
+      tour.tourName,
     ])
   );
 }
 
-function getDestinationName(
-  experience: Pick<AdminExperience, "destinationId" | "destinationName">,
-  destinationNameById: Map<string, string>
+function getTourName(
+  experience: Pick<AdminExperience, "tourId" | "tourName">,
+  tourNameById: Map<string, string>
 ) {
   return (
-    experience.destinationName ||
-    destinationNameById.get(experience.destinationId) ||
-    experience.destinationId
+    experience.tourName ||
+    tourNameById.get(experience.tourId) ||
+    experience.tourId
   );
 }
 
 function getExperienceDisplayName(experience: AdminExperience): string {
   return (
     experience.travellerName.trim() ||
-    experience.destinationName ||
-    experience.destinationId ||
+    experience.tourName ||
+    experience.tourId ||
     "Traveller experience"
   );
 }
@@ -395,11 +392,11 @@ function createExperienceMetrics(
 export default function ExperiencesPage() {
   const toast = useToast();
   const [experiences, setExperiences] = useState<AdminExperience[]>([]);
-  const [destinations, setDestinations] = useState<AdminDestination[]>([]);
+  const [tours, setTours] = useState<AdminTour[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] =
     useState<(typeof statusOptions)[number]>("All Status");
-  const [destinationFilter, setDestinationFilter] = useState("All Destinations");
+  const [tourFilter, setTourFilter] = useState("All Tours");
   const [isLoading, setIsLoading] = useState(true);
   const [experienceSheetMode, setExperienceSheetMode] =
     useState<ExperienceSheetMode | null>(null);
@@ -420,14 +417,14 @@ export default function ExperiencesPage() {
 
     async function loadExperienceData() {
       try {
-        const [experiencesResponse, destinationsResponse] = await Promise.all([
+        const [experiencesResponse, toursResponse] = await Promise.all([
           listAdminExperiences(),
-          listAdminDestinations(),
+          listAdminTours(),
         ]);
 
         if (isMounted) {
           setExperiences(experiencesResponse.data.experiences);
-          setDestinations(destinationsResponse.data.destinations);
+          setTours(toursResponse.data.tours);
         }
       } catch (error) {
         toast.error("Unable to load experiences", getErrorMessage(error));
@@ -445,9 +442,9 @@ export default function ExperiencesPage() {
     };
   }, [toast]);
 
-  const destinationNameById = useMemo(
-    () => createDestinationNameById(destinations),
-    [destinations]
+  const tourNameById = useMemo(
+    () => createTourNameById(tours),
+    [tours]
   );
   const experienceMetrics = useMemo(
     () => createExperienceMetrics(experiences),
@@ -467,12 +464,12 @@ export default function ExperiencesPage() {
     const query = searchQuery.trim().toLowerCase();
 
     return experiences.filter((experience) => {
-      const destinationName = getDestinationName(experience, destinationNameById);
+      const tourName = getTourName(experience, tourNameById);
       const matchesQuery =
         !query ||
         [
-          experience.destinationId,
-          destinationName,
+          experience.tourId,
+          tourName,
           experience.travellerName,
           experience.travellerEmail,
           experience.writtenReview,
@@ -488,15 +485,14 @@ export default function ExperiencesPage() {
           .includes(query);
       const matchesStatus =
         statusFilter === "All Status" || experience.status === statusFilter;
-      const matchesDestination =
-        destinationFilter === "All Destinations" ||
-        experience.destinationId === destinationFilter;
+      const matchesTour =
+        tourFilter === "All Tours" || experience.tourId === tourFilter;
 
-      return matchesQuery && matchesStatus && matchesDestination;
+      return matchesQuery && matchesStatus && matchesTour;
     });
   }, [
-    destinationFilter,
-    destinationNameById,
+    tourFilter,
+    tourNameById,
     experiences,
     searchQuery,
     statusFilter,
@@ -802,9 +798,9 @@ export default function ExperiencesPage() {
 
         <section className="overflow-hidden rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
           <ExperiencesToolbar
-            destinationFilter={destinationFilter}
-            destinations={destinations}
-            onDestinationFilterChange={setDestinationFilter}
+            tourFilter={tourFilter}
+            tours={tours}
+            onTourFilterChange={setTourFilter}
             onSearchChange={setSearchQuery}
             onStatusFilterChange={setStatusFilter}
             searchQuery={searchQuery}
@@ -812,7 +808,7 @@ export default function ExperiencesPage() {
           />
           <ExperiencesTable
             deletingExperienceId={deletingExperienceId}
-            destinationNameById={destinationNameById}
+            tourNameById={tourNameById}
             experiences={filteredExperiences}
             isLoading={isLoading}
             onDelete={handleDeleteExperience}
@@ -822,7 +818,7 @@ export default function ExperiencesPage() {
         </section>
 
         <ExperienceSheet
-          destinations={destinations}
+          tours={tours}
           form={experienceForm}
           isBusy={isExperienceFormBusy}
           isOpen={experienceSheetMode !== null}
@@ -931,17 +927,17 @@ function MetricCard({ metric }: { metric: ExperienceMetric }) {
 }
 
 function ExperiencesToolbar({
-  destinationFilter,
-  destinations,
-  onDestinationFilterChange,
+  tourFilter,
+  tours,
+  onTourFilterChange,
   onSearchChange,
   onStatusFilterChange,
   searchQuery,
   statusFilter,
 }: {
-  destinationFilter: string;
-  destinations: AdminDestination[];
-  onDestinationFilterChange: (value: string) => void;
+  tourFilter: string;
+  tours: AdminTour[];
+  onTourFilterChange: (value: string) => void;
   onSearchChange: (value: string) => void;
   onStatusFilterChange: (value: (typeof statusOptions)[number]) => void;
   searchQuery: string;
@@ -953,7 +949,7 @@ function ExperiencesToolbar({
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground/40" />
         <input
           className="h-10 w-full rounded-sm border border-border bg-white pl-9 pr-3 text-xs font-medium outline-none transition-colors placeholder:text-foreground/40 focus:border-primary focus:ring-3 focus:ring-primary/15"
-          placeholder="Search experiences, traveller, destination..."
+          placeholder="Search experiences, traveller, tour..."
           type="search"
           value={searchQuery}
           onChange={(event) => onSearchChange(event.target.value)}
@@ -976,22 +972,20 @@ function ExperiencesToolbar({
       />
 
       <ToolbarSelect
-        label="Destination"
-        onChange={onDestinationFilterChange}
+        label="Tour"
+        onChange={onTourFilterChange}
         options={[
-          "All Destinations",
-          ...destinations.map((destination) => destination.destinationId),
+          "All Tours",
+          ...tours.map((tour) => tour.tourId),
         ]}
         renderOption={(option) =>
-          option === "All Destinations"
+          option === "All Tours"
             ? option
             : `${option} - ${
-                destinations.find(
-                  (destination) => destination.destinationId === option
-                )?.destinationName || "Destination"
+                tours.find((tour) => tour.tourId === option)?.tourName || "Tour"
               }`
         }
-        value={destinationFilter}
+        value={tourFilter}
       />
     </div>
   );
@@ -1033,7 +1027,7 @@ function ToolbarSelect({
 
 function ExperiencesTable({
   deletingExperienceId,
-  destinationNameById,
+  tourNameById,
   experiences,
   isLoading,
   onDelete,
@@ -1041,7 +1035,7 @@ function ExperiencesTable({
   totalCount,
 }: {
   deletingExperienceId: string | null;
-  destinationNameById: Map<string, string>;
+  tourNameById: Map<string, string>;
   experiences: AdminExperience[];
   isLoading: boolean;
   onDelete: (experience: AdminExperience) => void;
@@ -1065,7 +1059,7 @@ function ExperiencesTable({
           <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
             <tr>
               <th className="px-4 py-3 font-bold">Experience</th>
-              <th className="px-4 py-3 font-bold">Destination</th>
+              <th className="px-4 py-3 font-bold">Tour</th>
               <th className="px-4 py-3 font-bold">Traveller</th>
               <th className="px-4 py-3 font-bold">Media</th>
               <th className="px-4 py-3 font-bold">Overall Rating</th>
@@ -1122,12 +1116,12 @@ function ExperiencesTable({
                         </p>
                       </div>
                     </td>
-                    <td data-label="Destination" className="px-4 py-4">
+                    <td data-label="Tour" className="px-4 py-4">
                       <p className="truncate text-xs font-bold text-foreground">
-                        {getDestinationName(experience, destinationNameById)}
+                        {getTourName(experience, tourNameById)}
                       </p>
                       <p className="mt-1 truncate text-[10px] font-semibold text-foreground/55">
-                        {experience.destinationId}
+                        {experience.tourId}
                       </p>
                     </td>
                     <td data-label="Traveller" className="px-4 py-4">
@@ -1350,7 +1344,7 @@ function PaginationButton({
 }
 
 function ExperienceSheet({
-  destinations,
+  tours,
   form,
   isBusy,
   isOpen,
@@ -1371,7 +1365,7 @@ function ExperienceSheet({
   onVideoUpload,
   overallRating,
 }: {
-  destinations: AdminDestination[];
+  tours: AdminTour[];
   form: ExperienceFormState;
   isBusy: boolean;
   isOpen: boolean;
@@ -1404,10 +1398,10 @@ function ExperienceSheet({
         : "Add Experience";
   const sheetDescription =
     mode === "edit"
-      ? "Update destination-linked traveller experience details."
+      ? "Update tour-linked traveller experience details."
       : mode === "view"
         ? "Review the stored traveller experience details."
-        : "Create a destination-linked traveller experience.";
+        : "Create a tour-linked traveller experience.";
   const submitButtonLabel = mode === "edit" ? "Update Experience" : "Save Experience";
   const inputClassName =
     "h-11 rounded-sm border border-border bg-white px-3 text-sm outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15 read-only:cursor-default read-only:bg-muted/35 disabled:cursor-default disabled:bg-muted/35 disabled:text-foreground/60";
@@ -1455,43 +1449,41 @@ function ExperienceSheet({
           </SheetHeader>
 
           <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto px-7 py-6 sm:grid-cols-2">
-            <FormField label="Destination ID" required>
+            <FormField label="Tour ID" required>
               <Select
-                disabled={isReadOnly || destinations.length === 0}
-                value={form.destinationId}
+                disabled={isReadOnly || tours.length === 0}
+                value={form.tourId}
                 onValueChange={(value) =>
-                  onUpdate("destinationId", String(value || ""))
+                  onUpdate("tourId", String(value || ""))
                 }
               >
                 <SelectTrigger className={inputClassName}>
                   <SelectValue
                     placeholder={
-                      destinations.length
-                        ? "Select destination"
-                        : "No destinations available"
+                      tours.length ? "Select tour" : "No tours available"
                     }
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  {destinations.length > 0 ? (
-                    destinations.map((destination) => (
+                  {tours.length > 0 ? (
+                    tours.map((tour) => (
                       <SelectItem
-                        key={destination.id}
-                        value={destination.destinationId}
+                        key={tour.id}
+                        value={tour.tourId}
                       >
                         <span className="flex min-w-max flex-col gap-0.5">
                           <span className="whitespace-nowrap">
-                            {destination.destinationId}
+                            {tour.tourId}
                           </span>
                           <span className="whitespace-nowrap text-xs font-medium text-foreground/55">
-                            {destination.destinationName}
+                            {tour.tourName}
                           </span>
                         </span>
                       </SelectItem>
                     ))
                   ) : (
-                    <SelectItem disabled value="empty-destinations">
-                      No destinations available
+                    <SelectItem disabled value="empty-tours">
+                      No tours available
                     </SelectItem>
                   )}
                 </SelectContent>

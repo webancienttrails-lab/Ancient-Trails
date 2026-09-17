@@ -16,8 +16,8 @@ export type ExperienceAttractionPhoto = {
 export type AdminExperience = {
   id: string;
   experienceId: string;
-  destinationId: string;
-  destinationName: string;
+  tourId: string;
+  tourName: string;
   travellerName: string;
   travellerEmail: string;
   title: string;
@@ -39,7 +39,7 @@ export type AdminExperience = {
 
 export type ExperiencePayload = {
   experienceId?: string;
-  destinationId: string;
+  tourId: string;
   travellerName: string;
   travellerEmail: string;
   title?: string;

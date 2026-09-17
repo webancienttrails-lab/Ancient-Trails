@@ -34,10 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import {
-  listAdminDestinations,
-  type AdminDestination,
-} from "@/lib/destinations";
+import { listAdminTours, type AdminTour } from "@/lib/tours";
 import {
   createAdminExperience,
   getAdminExperience,
@@ -84,7 +81,7 @@ type ExperienceFormEntry = {
 };
 
 const emptyExperienceForm: ExperienceFormState = {
-  destinationId: "",
+  tourId: "",
   travellerName: "",
   travellerEmail: "",
   writtenReview: "",
@@ -252,7 +249,7 @@ function calculateOverallRating(form: Pick<
 
 function experienceToForm(experience: AdminExperience): ExperienceFormState {
   return {
-    destinationId: experience.destinationId,
+    tourId: experience.tourId,
     travellerName: experience.travellerName || "",
     travellerEmail: experience.travellerEmail || "",
     writtenReview: experience.writtenReview || "",
@@ -276,7 +273,7 @@ function experienceToForm(experience: AdminExperience): ExperienceFormState {
 
 function createExperiencePayload(form: ExperienceFormState): ExperiencePayload {
   return {
-    destinationId: form.destinationId.trim(),
+    tourId: form.tourId.trim(),
     travellerName: form.travellerName.trim(),
     travellerEmail: form.travellerEmail.trim(),
     writtenReview: form.writtenReview.trim(),
@@ -298,29 +295,29 @@ function createExperiencePayload(form: ExperienceFormState): ExperiencePayload {
   };
 }
 
-function createDestinationNameById(destinations: AdminDestination[]) {
+function createTourNameById(tours: AdminTour[]) {
   return new Map(
-    destinations.map((destination) => [
-      destination.destinationId,
-      destination.destinationName,
+    tours.map((tour) => [
+      tour.tourId,
+      tour.tourName,
     ])
   );
 }
 
-function getDestinationName(
-  destinationId: string,
-  destinationNameById: Map<string, string>
+function getTourName(
+  tourId: string,
+  tourNameById: Map<string, string>
 ) {
-  return destinationNameById.get(destinationId) || destinationId || "No destination";
+  return tourNameById.get(tourId) || tourId || "No tour";
 }
 
 function getBatchValidationError(entries: ExperienceFormEntry[]): string {
-  const missingDestinationIndex = entries.findIndex(
-    (entry) => !entry.form.destinationId.trim()
+  const missingTourIndex = entries.findIndex(
+    (entry) => !entry.form.tourId.trim()
   );
 
-  if (missingDestinationIndex !== -1) {
-    return `Select destination for Experience ${missingDestinationIndex + 1}.`;
+  if (missingTourIndex !== -1) {
+    return `Select tour for Experience ${missingTourIndex + 1}.`;
   }
 
   return "";
@@ -328,7 +325,7 @@ function getBatchValidationError(entries: ExperienceFormEntry[]): string {
 
 function getInheritedFormDefaults(form: ExperienceFormState) {
   return {
-    destinationId: form.destinationId,
+    tourId: form.tourId,
     ratingAccommodation: form.ratingAccommodation,
     ratingItinerary: form.ratingItinerary,
     ratingLocalTransport: form.ratingLocalTransport,
@@ -349,7 +346,7 @@ export function ExperienceEditorPage({
   const [entries, setEntries] = useState<ExperienceFormEntry[]>(() => [
     createExperienceEntry(),
   ]);
-  const [destinations, setDestinations] = useState<AdminDestination[]>([]);
+  const [tours, setTours] = useState<AdminTour[]>([]);
   const [selectedExperience, setSelectedExperience] =
     useState<AdminExperience | null>(null);
   const [isLoading, setIsLoading] = useState(
@@ -357,9 +354,9 @@ export function ExperienceEditorPage({
   );
   const [loadError, setLoadError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const destinationNameById = useMemo(
-    () => createDestinationNameById(destinations),
-    [destinations]
+  const tourNameById = useMemo(
+    () => createTourNameById(tours),
+    [tours]
   );
   const isUploading = entries.some(
     (entry) =>
@@ -371,8 +368,8 @@ export function ExperienceEditorPage({
   const pageTitle = mode === "edit" ? "Edit Experience" : "Add Experiences";
   const pageDescription =
     mode === "edit"
-      ? "Update destination-linked traveller experience details."
-      : "Create one or more destination-linked traveller experiences.";
+      ? "Update tour-linked traveller experience details."
+      : "Create one or more tour-linked traveller experiences.";
   const submitButtonLabel = isSaving
     ? "Saving..."
     : isUploading
@@ -401,13 +398,13 @@ export function ExperienceEditorPage({
 
       try {
         if (mode === "edit" && experienceId) {
-          const [destinationsResponse, experienceResponse] = await Promise.all([
-            listAdminDestinations(),
+          const [toursResponse, experienceResponse] = await Promise.all([
+            listAdminTours(),
             getAdminExperience(experienceId),
           ]);
 
           if (isMounted) {
-            setDestinations(destinationsResponse.data.destinations);
+            setTours(toursResponse.data.tours);
             setSelectedExperience(experienceResponse.data.experience);
             setEntries([
               createExperienceEntry(
@@ -419,10 +416,10 @@ export function ExperienceEditorPage({
           return;
         }
 
-        const destinationsResponse = await listAdminDestinations();
+        const toursResponse = await listAdminTours();
 
         if (isMounted) {
-          setDestinations(destinationsResponse.data.destinations);
+          setTours(toursResponse.data.tours);
         }
       } catch (error) {
         const message = getErrorMessage(error);
@@ -919,8 +916,8 @@ export function ExperienceEditorPage({
                   <ExperienceEntryCard
                     key={entry.localId}
                     canRemove={entries.length > 1 && (mode === "add" || index > 0)}
-                    destinationNameById={destinationNameById}
-                    destinations={destinations}
+                    tourNameById={tourNameById}
+                    tours={tours}
                     entry={entry}
                     index={index}
                     isBusy={isBusy}
@@ -940,7 +937,7 @@ export function ExperienceEditorPage({
               </div>
 
               <ExperienceSummary
-                destinationNameById={destinationNameById}
+                tourNameById={tourNameById}
                 entries={entries}
                 mode={mode}
               />
@@ -1010,8 +1007,8 @@ function ExperienceEditorHeader({ current }: { current: string }) {
 
 function ExperienceEntryCard({
   canRemove,
-  destinationNameById,
-  destinations,
+  tourNameById,
+  tours,
   entry,
   index,
   isBusy,
@@ -1028,8 +1025,8 @@ function ExperienceEntryCard({
   onVideoUpload,
 }: {
   canRemove: boolean;
-  destinationNameById: Map<string, string>;
-  destinations: AdminDestination[];
+  tourNameById: Map<string, string>;
+  tours: AdminTour[];
   entry: ExperienceFormEntry;
   index: number;
   isBusy: boolean;
@@ -1055,9 +1052,9 @@ function ExperienceEntryCard({
 }) {
   const overallRating = calculateOverallRating(entry.form);
   const title = entry.form.travellerName.trim() || `Experience ${index + 1}`;
-  const destinationName = getDestinationName(
-    entry.form.destinationId,
-    destinationNameById
+  const tourName = getTourName(
+    entry.form.tourId,
+    tourNameById
   );
 
   return (
@@ -1070,7 +1067,7 @@ function ExperienceEntryCard({
           <div className="min-w-0">
             <p className="truncate text-sm font-bold text-foreground">{title}</p>
             <p className="mt-1 truncate text-xs text-foreground/55">
-              Traveller Experience {index + 1} / {destinationName}
+              Traveller Experience {index + 1} / {tourName}
             </p>
           </div>
         </div>
@@ -1089,40 +1086,38 @@ function ExperienceEntryCard({
       </div>
 
       <div className="grid gap-5 p-5 sm:grid-cols-2">
-        <FormField label="Destination ID" required>
+        <FormField label="Tour ID" required>
           <Select
-            disabled={destinations.length === 0}
-            value={entry.form.destinationId}
+            disabled={tours.length === 0}
+            value={entry.form.tourId}
             onValueChange={(value) =>
-              onUpdate(entry.localId, "destinationId", String(value || ""))
+              onUpdate(entry.localId, "tourId", String(value || ""))
             }
           >
             <SelectTrigger className={inputClassName}>
               <SelectValue
                 placeholder={
-                  destinations.length
-                    ? "Select destination"
-                    : "No destinations available"
+                  tours.length ? "Select tour" : "No tours available"
                 }
               />
             </SelectTrigger>
             <SelectContent>
-              {destinations.length > 0 ? (
-                destinations.map((destination) => (
-                  <SelectItem key={destination.id} value={destination.destinationId}>
+              {tours.length > 0 ? (
+                tours.map((tour) => (
+                  <SelectItem key={tour.id} value={tour.tourId}>
                     <span className="flex min-w-max flex-col gap-0.5">
                       <span className="whitespace-nowrap">
-                        {destination.destinationId}
+                        {tour.tourId}
                       </span>
                       <span className="whitespace-nowrap text-xs font-medium text-foreground/55">
-                        {destination.destinationName}
+                        {tour.tourName}
                       </span>
                     </span>
                   </SelectItem>
                 ))
               ) : (
-                <SelectItem disabled value="empty-destinations">
-                  No destinations available
+                <SelectItem disabled value="empty-tours">
+                  No tours available
                 </SelectItem>
               )}
             </SelectContent>
@@ -1298,11 +1293,11 @@ function ExperienceEntryCard({
 }
 
 function ExperienceSummary({
-  destinationNameById,
+  tourNameById,
   entries,
   mode,
 }: {
-  destinationNameById: Map<string, string>;
+  tourNameById: Map<string, string>;
   entries: ExperienceFormEntry[];
   mode: ExperienceEditorMode;
 }) {
@@ -1340,9 +1335,9 @@ function ExperienceSummary({
       <div className="mt-5 grid gap-2">
         {entries.map((entry, index) => {
           const title = entry.form.travellerName.trim() || `Experience ${index + 1}`;
-          const destinationName = getDestinationName(
-            entry.form.destinationId,
-            destinationNameById
+          const tourName = getTourName(
+            entry.form.tourId,
+            tourNameById
           );
           const overallRating = calculateOverallRating(entry.form);
 
@@ -1355,7 +1350,7 @@ function ExperienceSummary({
                 {title}
               </p>
               <p className="mt-1 truncate text-[11px] text-foreground/55">
-                {destinationName}
+                {tourName}
               </p>
               <div className="mt-2 flex items-center justify-between gap-3">
                 <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-foreground/60">

@@ -1055,8 +1055,8 @@ function getHomeExperienceDisplayName(
   return (
     experience?.title?.trim() ||
     experience?.travellerName.trim() ||
-    experience?.destinationName ||
-    experience?.destinationId ||
+    experience?.tourName ||
+    experience?.tourId ||
     fallbackId ||
     "Traveller experience"
   );
@@ -1093,7 +1093,7 @@ function HomeExperienceEditor({
   );
   const experienceMeta = selectedExperience
     ? [
-        selectedExperience.destinationName || selectedExperience.destinationId,
+        selectedExperience.tourName || selectedExperience.tourId,
         selectedExperience.travellerName || "Traveller",
         `${selectedExperience.overallRating.toFixed(1)} rating`,
       ]

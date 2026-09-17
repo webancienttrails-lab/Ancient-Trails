@@ -2707,7 +2707,7 @@ function TourFormDialog({
               />
             </FormField>
 
-            <FormField label="Payment Policy">
+            <FormField label="Payment Policy" renderAsDiv>
               <PolicyRowsEditor
                 disabled={isReadOnly}
                 rows={form.paymentPolicy}
@@ -2717,7 +2717,7 @@ function TourFormDialog({
               />
             </FormField>
 
-            <FormField label="Cancellation Policy">
+            <FormField label="Cancellation Policy" renderAsDiv>
               <CancellationRowsEditor
                 disabled={isReadOnly}
                 rows={form.cancellationPolicy}
@@ -2725,7 +2725,7 @@ function TourFormDialog({
               />
             </FormField>
 
-            <FormField className="sm:col-span-2" label="Need to Know">
+            <FormField className="sm:col-span-2" label="Need to Know" renderAsDiv>
               <NeedToKnowEditor
                 disabled={isReadOnly}
                 groups={form.needToKnow}
@@ -2841,6 +2841,9 @@ function PolicyRowsEditor({
   rows: TourPaymentPolicyRow[];
   secondLabel: string;
 }) {
+  const addButtonClassName =
+    "inline-flex h-9 items-center justify-center justify-self-start rounded-sm border border-primary/30 bg-primary/5 px-3 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary/10";
+
   function updateRow(index: number, field: keyof TourPaymentPolicyRow, value: string) {
     onChange(rows.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
   }
@@ -2871,7 +2874,10 @@ function PolicyRowsEditor({
         </div>
       ))}
       {!disabled ? (
-        <button type="button" onClick={() => onChange([...rows, { condition: "", payment: "" }])} className="justify-self-start text-xs font-bold text-primary">+ Add payment row</button>
+        <button type="button" onClick={() => onChange([...rows, { condition: "", payment: "" }])} className={addButtonClassName}>
+          <Plus className="size-4" data-icon="inline-start" />
+          Add payment row
+        </button>
       ) : null}
     </div>
   );
@@ -2886,6 +2892,9 @@ function CancellationRowsEditor({
   onChange: (rows: TourCancellationPolicyRow[]) => void;
   rows: TourCancellationPolicyRow[];
 }) {
+  const addButtonClassName =
+    "inline-flex h-9 items-center justify-center justify-self-start rounded-sm border border-primary/30 bg-primary/5 px-3 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary/10";
+
   return (
     <div className="grid gap-2">
       {rows.map((row, index) => (
@@ -2897,7 +2906,12 @@ function CancellationRowsEditor({
           </div>
         </div>
       ))}
-      {!disabled ? <button type="button" onClick={() => onChange([...rows, { days: "", charge: "" }])} className="justify-self-start text-xs font-bold text-primary">+ Add cancellation row</button> : null}
+      {!disabled ? (
+        <button type="button" onClick={() => onChange([...rows, { days: "", charge: "" }])} className={addButtonClassName}>
+          <Plus className="size-4" data-icon="inline-start" />
+          Add cancellation row
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -2911,6 +2925,9 @@ function NeedToKnowEditor({
   groups: TourNeedToKnowGroup[];
   onChange: (groups: TourNeedToKnowGroup[]) => void;
 }) {
+  const addButtonClassName =
+    "inline-flex h-9 items-center justify-center justify-self-start rounded-sm border border-primary/30 bg-primary/5 px-3 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary/10";
+
   function updateGroup(index: number, group: TourNeedToKnowGroup) {
     onChange(groups.map((item, groupIndex) => groupIndex === index ? group : item));
   }
@@ -2926,7 +2943,12 @@ function NeedToKnowEditor({
           <textarea disabled={disabled} value={group.items.join("\n")} onChange={(event) => updateGroup(index, { ...group, items: parseTextList(event.target.value) })} className="min-h-20 rounded-sm border border-border px-3 py-2 text-xs outline-none focus:border-primary" placeholder="One bullet item per line" />
         </div>
       ))}
-      {!disabled ? <button type="button" onClick={() => onChange([...groups, { heading: "", items: [] }])} className="justify-self-start text-xs font-bold text-primary">+ Add Need to Know section</button> : null}
+      {!disabled ? (
+        <button type="button" onClick={() => onChange([...groups, { heading: "", items: [] }])} className={addButtonClassName}>
+          <Plus className="size-4" data-icon="inline-start" />
+          Add Need to Know section
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -4005,20 +4027,32 @@ function FormField({
   children,
   className,
   label,
+  renderAsDiv = false,
   required = false,
 }: {
   children: ReactNode;
   className?: string;
   label: string;
+  renderAsDiv?: boolean;
   required?: boolean;
 }) {
-  return (
-    <label className={cn("flex min-w-0 flex-col gap-2", className)}>
+  const content = (
+    <>
       <span className="text-xs font-bold uppercase tracking-normal text-foreground/55">
         {label}
         {required ? <span className="text-primary"> *</span> : null}
       </span>
       {children}
+    </>
+  );
+
+  if (renderAsDiv) {
+    return <div className={cn("flex min-w-0 flex-col gap-2", className)}>{content}</div>;
+  }
+
+  return (
+    <label className={cn("flex min-w-0 flex-col gap-2", className)}>
+      {content}
     </label>
   );
 }
