@@ -26,6 +26,11 @@ export interface IDestination {
   keyLandmarkImages: string[];
   recommendedDurationDays: number;
   shortDescription: string;
+  fact: string;
+  weather: string;
+  elevation: string;
+  temperature: string;
+  season: string;
   dressCode: string;
   footwear: string;
   permits: string;
@@ -131,6 +136,26 @@ const destinationSchema = new Schema<IDestination>(
     shortDescription: {
       ...trimmedString,
       maxlength: 800,
+    },
+    fact: {
+      ...trimmedString,
+      maxlength: 500,
+    },
+    weather: {
+      ...trimmedString,
+      maxlength: 120,
+    },
+    elevation: {
+      ...trimmedString,
+      maxlength: 120,
+    },
+    temperature: {
+      ...trimmedString,
+      maxlength: 120,
+    },
+    season: {
+      ...trimmedString,
+      maxlength: 120,
     },
     dressCode: {
       ...trimmedString,
