@@ -116,6 +116,11 @@ const emptyDestinationForm: DestinationFormState = {
   keyLandmarkImages: "",
   recommendedDurationDays: "1",
   shortDescription: "",
+  fact: "",
+  weather: "",
+  elevation: "",
+  temperature: "",
+  season: "",
   dressCode: "",
   footwear: "",
   permits: "",
@@ -277,6 +282,11 @@ function destinationToForm(destination: AdminDestination): DestinationFormState 
     keyLandmarkImages: (destination.keyLandmarkImages || []).join("\n"),
     recommendedDurationDays: destination.recommendedDurationDays.toString(),
     shortDescription: destination.shortDescription,
+    fact: destination.fact || "",
+    weather: destination.weather || "",
+    elevation: destination.elevation || "",
+    temperature: destination.temperature || "",
+    season: destination.season || "",
     dressCode: destination.dressCode,
     footwear: destination.footwear,
     permits: destination.permits,
@@ -306,6 +316,11 @@ function createDestinationPayload(
     recommendedDurationDays:
       Number(destinationForm.recommendedDurationDays) || 1,
     shortDescription: destinationForm.shortDescription.trim(),
+    fact: destinationForm.fact.trim(),
+    weather: destinationForm.weather.trim(),
+    elevation: destinationForm.elevation.trim(),
+    temperature: destinationForm.temperature.trim(),
+    season: destinationForm.season.trim(),
     dressCode: destinationForm.dressCode.trim(),
     footwear: destinationForm.footwear.trim(),
     permits: destinationForm.permits.trim(),
@@ -1825,57 +1840,53 @@ function DestinationFormDialog({
             />
           </FormField>
 
-          <FormField label="Dress Code">
-            <input
-              readOnly={isReadOnly}
-              value={form.dressCode}
-              onChange={(event) => onUpdate("dressCode", event.target.value)}
-                className={inputClassName}
-              placeholder="Modest clothing for temples"
-            />
-          </FormField>
-
-          <FormField label="Footwear">
-            <input
-              readOnly={isReadOnly}
-              value={form.footwear}
-              onChange={(event) => onUpdate("footwear", event.target.value)}
-                className={inputClassName}
-              placeholder="Comfortable walking shoes"
-            />
-          </FormField>
-
-          <FormField label="Permits">
-            <input
-              readOnly={isReadOnly}
-              value={form.permits}
-              onChange={(event) => onUpdate("permits", event.target.value)}
-                className={inputClassName}
-              placeholder="Entry passes where required"
-            />
-          </FormField>
-
-          <FormField label="ID Requirement">
-            <input
-              readOnly={isReadOnly}
-              value={form.idRequirement}
-              onChange={(event) =>
-                onUpdate("idRequirement", event.target.value)
-              }
-                className={inputClassName}
-              placeholder="Government ID required"
-            />
-          </FormField>
-
-            <FormField className="sm:col-span-2" label="Restrictions">
+            <FormField className="sm:col-span-2" label="Quote / Fact">
             <textarea
               readOnly={isReadOnly}
-              value={form.restrictions}
-              onChange={(event) =>
-                onUpdate("restrictions", event.target.value)
-              }
+              value={form.fact}
+              onChange={(event) => onUpdate("fact", event.target.value)}
                 className={textareaClassName}
-                placeholder="Photography restrictions, access limits, timings"
+                placeholder="A short quote or destination fact for the public page."
+            />
+          </FormField>
+
+          <FormField label="Weather">
+            <input
+              readOnly={isReadOnly}
+              value={form.weather}
+              onChange={(event) => onUpdate("weather", event.target.value)}
+                className={inputClassName}
+              placeholder="Dry and sunny"
+            />
+          </FormField>
+
+          <FormField label="Elevation">
+            <input
+              readOnly={isReadOnly}
+              value={form.elevation}
+              onChange={(event) => onUpdate("elevation", event.target.value)}
+                className={inputClassName}
+              placeholder="467 m"
+            />
+          </FormField>
+
+          <FormField label="Temperature">
+            <input
+              readOnly={isReadOnly}
+              value={form.temperature}
+              onChange={(event) => onUpdate("temperature", event.target.value)}
+                className={inputClassName}
+              placeholder="Min 10 C / Max 32 C"
+            />
+          </FormField>
+
+          <FormField label="Season">
+            <input
+              readOnly={isReadOnly}
+              value={form.season}
+              onChange={(event) => onUpdate("season", event.target.value)}
+                className={inputClassName}
+              placeholder="Oct - Mar"
             />
           </FormField>
 

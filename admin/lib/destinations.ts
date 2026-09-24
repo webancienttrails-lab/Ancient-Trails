@@ -24,6 +24,11 @@ export type AdminDestination = {
   keyLandmarkImages: string[];
   recommendedDurationDays: number;
   shortDescription: string;
+  fact: string;
+  weather: string;
+  elevation: string;
+  temperature: string;
+  season: string;
   dressCode: string;
   footwear: string;
   permits: string;
@@ -51,6 +56,11 @@ export type DestinationPayload = {
   keyLandmarkImages: string[];
   recommendedDurationDays: number;
   shortDescription: string;
+  fact: string;
+  weather: string;
+  elevation: string;
+  temperature: string;
+  season: string;
   dressCode: string;
   footwear: string;
   permits: string;
