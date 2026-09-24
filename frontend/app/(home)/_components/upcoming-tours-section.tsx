@@ -166,8 +166,8 @@ export function UpcomingToursSection() {
   }
 
   return (
-    <section id="upcoming-tours" className="bg-background py-6 sm:py-8 lg:flex lg:min-h-screen lg:items-center lg:py-7">
-      <div className="mx-auto w-full max-w-[1300px] px-5 sm:px-8 2xl:px-0">
+    <section id="upcoming-tours" className="bg-background py-6 sm:py-8 lg:py-7">
+      <div className="home-wide-frame mx-auto w-full px-5 sm:px-8 [@media(min-width:1300px)]:px-12">
         <div className="grid gap-y-5 lg:grid-cols-2 lg:items-stretch lg:gap-x-5 xl:gap-x-6">
           <div>
             <TextReveal>
@@ -175,7 +175,7 @@ export function UpcomingToursSection() {
                 <p className="text-eyebrow font-medium uppercase tracking-normal text-primary">
                   Explore Upcoming Tours
                 </p>
-                <h2 className="mt-1 font-sans text-[34px] font-bold leading-none tracking-normal text-title sm:text-[38px] lg:text-[40px]">
+                <h2 className="mt-1 font-sans text-title font-bold leading-none tracking-normal sm:text-[38px] lg:text-[40px]">
                   Trails Leaving Soon
                 </h2>
               </div>

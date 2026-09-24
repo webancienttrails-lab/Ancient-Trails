@@ -2,24 +2,20 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { type MouseEvent, useEffect, useMemo, useState } from "react";
 import {
   ArrowDown,
   ArrowRight,
-  Camera,
   ChevronLeft,
   ChevronRight,
   Expand,
-  Footprints,
+  MapPin,
   Play,
+  Quote,
   Share2,
-  ShieldCheck,
-  Shirt,
   Star,
-  Ticket,
   X,
   ZoomIn,
-  type LucideIcon,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 
@@ -99,6 +95,8 @@ const shortDateFormatter = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
 });
 const destinationToursSectionId = "destination-tours";
+const visibleAttractionCount = 4;
+const attractionSlideDurationMs = 900;
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
@@ -308,6 +306,38 @@ function getHeritageIntro(destination: PublicDestination) {
   ).toLowerCase()}, local stories and carefully paced heritage exploration.`;
 }
 
+function getDestinationFact(destination: PublicDestination) {
+  if (destination.fact?.trim()) {
+    return destination.fact.trim();
+  }
+
+  return `${destination.destinationName} is best experienced slowly, where every carved wall, street corner and landscape view adds one more layer to the story.`;
+}
+
+function getDestinationStats(
+  destination: PublicDestination,
+  tours: PublicTour[]
+) {
+  return [
+    {
+      label: "Weather",
+      value: destination.weather?.trim() || "Dry and sunny",
+    },
+    {
+      label: "Elevation",
+      value: destination.elevation?.trim() || "467 m",
+    },
+    {
+      label: "Temperature",
+      value: destination.temperature?.trim() || "Min 10 C / Max 32 C",
+    },
+    {
+      label: "Season",
+      value: destination.season?.trim() || getBestSeason(destination, tours),
+    },
+  ];
+}
+
 function getLandmarkRows(destination: PublicDestination, images: string[]) {
   const labels =
     destination.keyLandmarks.length > 0
@@ -390,18 +420,6 @@ function getFeaturedLandmarkRows(
   );
 
   return [...featuredLandmarks, ...remainingLandmarks];
-}
-
-function getPlanningItems(destination: PublicDestination) {
-  const items = [
-    destination.dressCode || "No dress code.",
-    destination.footwear || "Comfortable walking shoes or floaters",
-    destination.restrictions || "Photography allowed without tripods.",
-    destination.idRequirement || "Not Required",
-    destination.permits || "Standard entry ticket only",
-  ];
-
-  return uniqueValues(items).slice(0, 5);
 }
 
 function getAverageExperienceRating(experiences: PublicExperience[]) {
@@ -789,9 +807,16 @@ export function SingleDestinationPage({
     <main className="min-h-screen overflow-x-hidden bg-background text-secondary">
       <TopBackdrop />
 
-      <div className="mx-auto mt-8 w-[calc(100%-2.5rem)] max-w-[1300px] pb-16">
+      <div className="home-wide-frame mx-auto mt-8 w-[calc(100%-2.5rem)] pb-16">
         <DestinationOverview
           destination={destination}
+          images={images}
+          tours={relatedTours}
+        />
+
+        <ExploreAndPlan
+          destination={destination}
+          galleryImages={destinationGalleryImages}
           images={images}
           onGalleryOpen={(index) =>
             openLightbox(
@@ -800,12 +825,6 @@ export function SingleDestinationPage({
               index
             )
           }
-          tours={relatedTours}
-        />
-
-        <ExploreAndPlan
-          destination={destination}
-          images={images}
         />
 
         <TravellerExperienceSection
@@ -856,7 +875,7 @@ function LoadingDestination() {
   return (
     <>
       <TopBackdrop />
-      <section className="mx-auto mt-8 w-[calc(100%-2.5rem)] max-w-[1300px] pb-16">
+      <section className="home-wide-frame mx-auto mt-8 w-[calc(100%-2.5rem)] pb-16">
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(380px,0.95fr)]">
           <div className="h-[320px] animate-pulse rounded-[8px] bg-muted xl:h-[360px]" />
           <div className="h-[320px] animate-pulse rounded-[8px] bg-muted xl:h-[360px]" />
@@ -882,7 +901,7 @@ function TopBackdrop() {
         className="object-cover object-center"
       />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(35,18,9,0.34)_100%)]" />
-      <div className="relative z-10 mx-auto w-full max-w-[1300px] px-5 sm:px-8 lg:px-0">
+      <div className="home-wide-frame relative z-10 mx-auto w-full px-5 sm:px-8 lg:px-0">
         <Header />
       </div>
     </section>
@@ -892,167 +911,139 @@ function TopBackdrop() {
 function DestinationOverview({
   destination,
   images,
-  onGalleryOpen,
   tours,
 }: {
   destination: PublicDestination;
   images: string[];
-  onGalleryOpen: (index: number) => void;
   tours: PublicTour[];
 }) {
-  const galleryImages = Array.from({ length: 5 }, (_item, index) =>
-    images[index + 1] || images[index] || fallbackImages[index % fallbackImages.length]
-  );
+  const stats = getDestinationStats(destination, tours);
+
+  function scrollToToursSection(event: MouseEvent<HTMLAnchorElement>) {
+    const toursSection = document.getElementById(destinationToursSectionId);
+
+    if (!toursSection) {
+      return;
+    }
+
+    event.preventDefault();
+    toursSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.history.replaceState(null, "", `#${destinationToursSectionId}`);
+  }
 
   return (
-    <section className="grid items-stretch gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(380px,0.95fr)]">
-      <article className="relative h-[420px] overflow-hidden rounded-[8px] bg-secondary shadow-[0_14px_30px_rgba(34,25,18,0.15)] sm:h-[440px] lg:h-full lg:min-h-[440px] xl:min-h-[470px]">
-        <Image
-          src={images[0] || fallbackImages[0]}
-          alt={destination.destinationName}
-          fill
-          priority
-          sizes="(min-width: 1280px) 780px, (min-width: 1024px) 58vw, 100vw"
-          className="object-cover"
-        />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.62)_0%,rgba(0,0,0,0.38)_22%,rgba(20,13,8,0.04)_48%,rgba(20,13,8,0.78)_100%)]" />
+    <section>
+      <div className="grid items-stretch gap-5 lg:grid-cols-[minmax(0,1.42fr)_minmax(340px,0.72fr)]">
+        <article className="relative min-h-[360px] overflow-hidden rounded-[22px] bg-secondary shadow-[0_14px_30px_rgba(34,25,18,0.15)] sm:min-h-[430px] lg:min-h-[450px] lg:rounded-[8px]">
+          <Image
+            src={images[0] || fallbackImages[0]}
+            alt={destination.destinationName}
+            fill
+            priority
+            sizes="(min-width: 1280px) 680px, (min-width: 1024px) 52vw, 100vw"
+            className="object-cover"
+          />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.62)_0%,rgba(0,0,0,0.18)_46%,rgba(20,13,8,0.82)_100%)]" />
 
-        <div className="absolute left-5 top-4 max-w-[calc(100%-12rem)] text-white sm:max-w-[70%]">
-          <h1 className="break-words font-heading text-title font-bold italic leading-none tracking-normal drop-shadow-sm">
-            {destination.destinationName}
-          </h1>
-          <p className="mt-1 font-sans text-description font-medium text-white/86">
-            {getRegionLabel(destination)}
-          </p>
-        </div>
+          <div className="absolute left-7 top-7 max-w-[calc(100%-10rem)] text-white lg:left-5 lg:top-5 sm:left-7 sm:top-7">
+            <h1 className="break-words font-heading text-[27px] font-bold italic leading-none tracking-normal drop-shadow-sm sm:text-[30px] lg:text-title">
+              <span className="lg:hidden">{destination.destinationName}</span>
+              <span className="hidden lg:inline">{destination.destinationName}</span>
+            </h1>
+            <p className="mt-2 font-sans text-[13px] font-medium text-white/88 sm:text-[14px] lg:flex lg:items-center lg:gap-2 lg:text-description">
+              <MapPin className="hidden size-4 shrink-0 lg:block" />
+              {getRegionLabel(destination)}
+            </p>
+          </div>
 
-        {destination.unescoSite ? (
-          <span
-            aria-label="UNESCO Site"
-            className="absolute right-4 top-4 inline-flex items-center gap-2 font-sans text-[14px] font-bold text-white"
-          >
-            <span>UNESCO Site</span>
-            <span className="grid size-12 place-items-center rounded-full bg-primary">
-              <Image
-                src="/unesco.svg"
-                alt=""
-                width={30}
-                height={30}
-                className="size-7 object-contain"
-              />
+          {destination.unescoSite ? (
+            <span
+              aria-label="UNESCO Site"
+              className="absolute right-5 top-5 inline-flex items-center gap-1.5 font-sans text-[11px] font-bold text-white sm:right-7 sm:top-7 sm:text-[12px] lg:gap-2 lg:text-[13px]"
+            >
+              <span>UNESCO Site</span>
+              <span className="grid size-9 place-items-center rounded-full bg-primary lg:size-11">
+                <Image
+                  src="/unesco.svg"
+                  alt=""
+                  width={28}
+                  height={28}
+                  className="size-5 object-contain lg:size-7"
+                />
+              </span>
             </span>
-          </span>
-        ) : null}
+          ) : null}
 
-        <div className="absolute inset-x-4 bottom-4 flex flex-wrap items-end justify-between gap-3">
-          <div className="grid gap-2">
-            <p className="flex items-center gap-2 font-sans text-[14px] font-bold text-white">
-              Recommended Days: {getRecommendedDayNightLabel(destination)}
-            </p>
-            <p className="flex items-center gap-2 font-sans text-[14px] font-bold text-white">
-              Best Time To Visit - {getBestSeason(destination, tours)}
-            </p>
+          <div className="absolute inset-x-7 bottom-7 flex flex-wrap items-end justify-between gap-3 lg:inset-x-5 lg:bottom-5 sm:inset-x-7 sm:bottom-7">
+            <div className="grid gap-2">
+              <p className="font-sans text-[13px] font-bold text-white sm:text-[14px]">
+                Recommended Days: {getRecommendedDayNightLabel(destination)}
+              </p>
+              {/* <p className="font-sans text-[14px] font-bold text-white lg:hidden">
+                Best Time To Visit - {getBestSeason(destination, tours)}
+              </p> */}
+            </div>
+            <Link
+              href={getTourCalendarHref({ destination })}
+              className="inline-flex w-fit items-center gap-2 rounded-full border border-white/80 bg-black/50 px-4 py-2 font-sans text-[13px] font-medium leading-none text-white backdrop-blur-sm sm:text-[14px]"
+            >
+              Customise my {destination.destinationName} Tour
+              <ArrowRight className="size-3.5 sm:size-4" />
+            </Link>
           </div>
-          <Link
-            href={getTourCalendarHref({ destination })}
-            className="inline-flex w-fit items-center gap-2 rounded-full border border-white bg-black/55 px-4 py-2 font-sans text-[15px] font-normal leading-none text-white"
-          >
-            Customise my {destination.destinationName} Tour
-            <ArrowRight className="size-4" />
-          </Link>
-        </div>
-      </article>
+        </article>
 
-      <aside className="min-w-0 rounded-[8px] bg-background lg:flex lg:h-full lg:flex-col">
-        <div className="grid gap-3">
-          <div className="grid grid-cols-2 gap-3">
-            {galleryImages.slice(0, 2).map((image, index) => (
-              <GalleryThumb
-                key={`${image}-${index}`}
-                alt={`${destination.destinationName} gallery ${index + 1}`}
-                image={image}
-                size="large"
-                isOverlay={index === 1}
-                onOpen={onGalleryOpen}
-              />
-            ))}
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            {galleryImages.slice(2, 5).map((image, index) => (
-              <GalleryThumb
-                key={`${image}-${index + 2}`}
-                alt={`${destination.destinationName} gallery ${index + 3}`}
-                image={image}
-                size="small"
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-[8px] bg-background">
-          <h2 className="font-heading text-title font-bold italic leading-none tracking-normal text-secondary">
-            Heritage
-            <span className="ml-2 font-sans text-description font-medium not-italic text-secondary/70">
-              at {destination.destinationName}
+        <aside className="flex min-w-0 flex-col justify-center rounded-[8px] px-3 py-8 sm:px-2 lg:px-4 lg:py-4">
+       
+          <h2 className="mt-2 font-heading text-title italic font-bold leading-none tracking-normal text-secondary">
+             Heritage
+            <span className="ml-2 font-sans text-description font-medium text-secondary/65">
+              at {getRegionLabel(destination)}
             </span>
           </h2>
-          <p className="mt-4 max-w-[470px] font-sans text-description text-secondary/70">
+          <p className="mt-2 max-w-[560px] font-sans text-description leading-relaxed text-secondary/72">
             {getHeritageIntro(destination)}
           </p>
+
+          <div className="mt-4 border-l-4 border-primary pl-5">
+            <Quote className="mb-1 size-6 text-primary" strokeWidth={1.8} />
+            <p className="font-heading text-[16px] font-normal italic leading-snug tracking-normal text-secondary sm:text-[20px]">
+              {getDestinationFact(destination)}
+            </p>
+          </div>
+
           <Link
             href={`#${destinationToursSectionId}`}
-            className="mt-5 inline-flex w-fit items-center gap-2 font-sans text-description font-medium uppercase text-primary transition-colors "
+            onClick={scrollToToursSection}
+            className="mt-4 inline-flex w-fit items-center gap-2 font-sans text-description font-normal uppercase text-primary transition-colors hover:text-secondary"
           >
             Scroll to view tours in {destination.destinationName}
             <ArrowDown className="size-4" />
           </Link>
-        </div>
-      </aside>
+        </aside>
+      </div>
+
+      <div className="mt-6 sm:mt-12 grid gap-0  bg-[#fff0e1] px-3 py-3 sm:grid-cols-1 lg:grid-cols-4 lg:gap-3 lg:rounded-[8px] lg:px-5 lg:py-5">
+        {stats.map((stat, index) => (
+          <div
+            key={stat.label}
+            className={cn(
+              "min-w-0 px-0 py-3 text-left lg:px-2 lg:py-0 lg:text-center",
+              index === 0 && "pt-0 lg:pt-0",
+              index === stats.length - 1 && "pb-0 lg:pb-0",
+              index > 0 && "border-t border-[#e2cdbb] lg:border-l lg:border-t-0 lg:border-[#efcdb5]"
+            )}
+          >
+            <p className="font-sans text-[15px] font-semibold uppercase leading-none text-secondary/50 lg:text-[11px]">
+              {stat.label}
+            </p>
+            <p className="mt-1 break-words font-sans text-[14px] font-normal leading-tight text-secondary lg:truncate lg:text-[15px]">
+              {stat.value}
+            </p>
+          </div>
+        ))}
+      </div>
     </section>
-  );
-}
-
-function GalleryThumb({
-  alt,
-  image,
-  isOverlay = false,
-  onOpen,
-  size,
-}: {
-  alt: string;
-  image: string;
-  isOverlay?: boolean;
-  onOpen?: (index: number) => void;
-  size: "large" | "small";
-}) {
-  const galleryIndex = isOverlay ? 1 : 0;
-
-  return (
-    <article
-      className={cn(
-        "relative overflow-hidden rounded-[8px] bg-muted shadow-sm",
-        size === "large" ? "h-[150px] xl:h-[168px]" : "h-[100px] xl:h-[116px]"
-      )}
-    >
-      <Image
-        src={image || fallbackImages[0]}
-        alt={alt}
-        fill
-        sizes={size === "large" ? "(min-width: 1280px) 300px, 220px" : "(min-width: 1280px) 190px, 145px"}
-        className="object-cover"
-      />
-      {isOverlay ? (
-        <button
-          type="button"
-          onClick={() => onOpen?.(galleryIndex)}
-          className="absolute inset-0 grid place-items-center bg-black/54 px-3 text-center transition-colors hover:bg-black/62"
-        >
-          <span className="font-sans text-description font-bold leading-tight text-white">
-            View all Photos
-          </span>
-        </button>
-      ) : null}
-    </article>
   );
 }
 
@@ -1263,15 +1254,38 @@ function GalleryLightbox({
 
 function ExploreAndPlan({
   destination,
+  galleryImages,
   images,
+  onGalleryOpen,
 }: {
   destination: PublicDestination;
+  galleryImages: string[];
   images: string[];
+  onGalleryOpen: (index: number) => void;
 }) {
   const landmarks = getFeaturedLandmarkRows(destination, images);
-  const planningItems = getPlanningItems(destination);
   const attractionSummary = getAttractionSummary(destination);
-  const planningIcons = [Shirt, Footprints, Camera, ShieldCheck, Ticket];
+  const destinationGallery = Array.from({ length: 7 }, (_item, index) =>
+    galleryImages[index] ||
+    images[index + 1] ||
+    images[index] ||
+    fallbackImages[index % fallbackImages.length]
+  );
+  const masonryTileClassNames = [
+    "mb-3 h-[235px] break-inside-avoid lg:mb-0 lg:h-auto lg:col-span-2 lg:row-span-4",
+    "mb-3 h-[110px] break-inside-avoid lg:mb-0 lg:h-auto lg:col-span-1 lg:row-span-2",
+    "mb-3 h-[110px] break-inside-avoid lg:mb-0 lg:h-auto lg:col-span-2 lg:row-span-1",
+    "mb-3 h-[235px] break-inside-avoid lg:mb-0 lg:h-auto lg:col-span-1 lg:row-span-2",
+    "mb-3 h-[110px] break-inside-avoid lg:mb-0 lg:h-auto lg:col-span-1 lg:row-span-2",
+    "mb-3 h-[235px] break-inside-avoid lg:mb-0 lg:h-auto lg:col-span-1 lg:row-span-2",
+    "mb-0 h-[110px] break-inside-avoid lg:h-auto lg:col-span-2 lg:row-span-1",
+  ];
+  const experienceCtaBackgroundImage =
+    galleryImages[0] ||
+    galleryImages[1] ||
+    images[1] ||
+    images[2] ||
+    fallbackImages[0];
   const attractionItems =
     landmarks.length > 0
       ? landmarks
@@ -1302,9 +1316,31 @@ function ExploreAndPlan({
     attractionItems,
     attractionSlideIndex
   );
+  const canSlideAttractions = attractionItems.length > 1;
+
+  function queueAttractionSlide(nextIndex: number) {
+    if (!canSlideAttractions || nextAttractionSlideIndex !== null) {
+      return;
+    }
+
+    setNextAttractionSlideIndex(nextIndex);
+  }
+
+  function showPreviousAttraction() {
+    const previousIndex =
+      attractionSlideIndex === 0
+        ? attractionItems.length - 1
+        : attractionSlideIndex - 1;
+
+    queueAttractionSlide(previousIndex);
+  }
+
+  function showNextAttraction() {
+    queueAttractionSlide(nextSlideIndex);
+  }
 
   useEffect(() => {
-    if (attractionItems.length <= 1 || nextAttractionSlideIndex !== null) {
+    if (!canSlideAttractions || nextAttractionSlideIndex !== null) {
       return;
     }
 
@@ -1313,7 +1349,7 @@ function ExploreAndPlan({
     }, 5000);
 
     return () => window.clearInterval(interval);
-  }, [attractionItems.length, nextAttractionSlideIndex, nextSlideIndex]);
+  }, [canSlideAttractions, nextAttractionSlideIndex, nextSlideIndex]);
 
   useEffect(() => {
     if (nextAttractionSlideIndex === null) {
@@ -1323,39 +1359,62 @@ function ExploreAndPlan({
     const timeout = window.setTimeout(() => {
       setAttractionSlideIndex(nextAttractionSlideIndex);
       setNextAttractionSlideIndex(null);
-    }, 1400);
+    }, attractionSlideDurationMs);
 
     return () => window.clearTimeout(timeout);
   }, [nextAttractionSlideIndex]);
 
   return (
-    <section className="mt-10 grid gap-10 py-8 lg:grid-cols-[minmax(0,1.12fr)_minmax(400px,0.88fr)] xl:grid-cols-[minmax(0,750px)_minmax(430px,1fr)] xl:gap-[40px]">
+    <section className="mt-5 py-4 lg:mt-10 lg:py-8">
       <div className="min-w-0">
-        <div className="grid gap-5 sm:grid-cols-[280px_minmax(0,1fr)] sm:items-start">
-          <div className="pt-0.5">
-            <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
-              Explore with us
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="grid gap-5 sm:grid-cols-[280px_minmax(0,1fr)] sm:items-start">
+            <div className="pt-0.5">
+              <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+                Explore with us
+              </p>
+              <h2 className="mt-2 font-heading text-title font-bold leading-none tracking-normal text-secondary">
+                Top Attractions
+              </h2>
+            </div>
+            <p className="max-w-[390px] border-l border-[#a8a8a8] pl-7 font-sans text-description italic text-secondary/80 sm:mt-[31px]">
+              {attractionSummary}
             </p>
-            <h2 className="mt-2 font-heading text-title font-bold leading-none tracking-normal text-secondary">
-              Top Attractions
-            </h2>
           </div>
-          <p className="max-w-[390px] border-l border-[#a8a8a8] pl-7 font-sans text-description italic text-secondary/80 sm:mt-[31px]">
-            {attractionSummary}
-          </p>
+
+          {canSlideAttractions ? (
+            <div className="flex shrink-0 items-center gap-2 lg:pt-8">
+              <button
+                type="button"
+                aria-label="Previous attraction"
+                onClick={showPreviousAttraction}
+                className="grid size-10 place-items-center rounded-full border border-[#efcdb5] bg-white text-primary shadow-[0_10px_20px_rgba(67,43,27,0.08)] transition-colors hover:border-primary hover:bg-primary hover:text-white focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25"
+              >
+                <ChevronLeft className="size-5" strokeWidth={2.2} />
+              </button>
+              <button
+                type="button"
+                aria-label="Next attraction"
+                onClick={showNextAttraction}
+                className="grid size-10 place-items-center rounded-full border border-[#efcdb5] bg-white text-primary shadow-[0_10px_20px_rgba(67,43,27,0.08)] transition-colors hover:border-primary hover:bg-primary hover:text-white focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25"
+              >
+                <ChevronRight className="size-5" strokeWidth={2.2} />
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-7 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="min-w-[700px] overflow-hidden lg:min-w-0">
+          <div className="min-w-[980px] overflow-hidden lg:min-w-0">
             <div
               className={cn(
                 "flex gap-6",
                 isAttractionSliding &&
-                  "transition-transform duration-[1400ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+                  "transition-transform duration-[900ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
               )}
               style={{
                 transform: isAttractionSliding
-                  ? "translateX(calc((100% + 1.5rem) / -3))"
+                  ? `translateX(calc((100% + 1.5rem) / -${visibleAttractionCount}))`
                   : "translateX(0)",
               }}
             >
@@ -1363,7 +1422,11 @@ function ExploreAndPlan({
                 <div
                   key={`${landmark.label}-${attractionSlideIndex}-${index}`}
                   className="shrink-0"
-                  style={{ width: "calc((100% - 3rem) / 3)" }}
+                  style={{
+                    width: `calc((100% - ${
+                      visibleAttractionCount - 1
+                    } * 1.5rem) / ${visibleAttractionCount})`,
+                  }}
                 >
                   <AttractionCard
                     image={landmark.image}
@@ -1376,28 +1439,72 @@ function ExploreAndPlan({
         </div>
       </div>
 
-      <div className="min-w-0 lg:pl-1 xl:pl-0">
-        <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
-          Planning a trip to {destination.destinationName.toUpperCase()}?
-        </p>
-        <h2 className="mt-2 font-heading text-title font-bold leading-none tracking-normal text-secondary">
-          Things to remember
-        </h2>
+      <section
+        className="relative mt-10 ml-[calc(50%-50vw)] w-screen overflow-hidden bg-secondary bg-cover bg-center bg-no-repeat px-6 py-10 bg-fixed sm:px-8 lg:px-10"
+        style={{
+          backgroundImage: `url("${experienceCtaBackgroundImage}")`,
+        }}
+      >
+        <div className="absolute inset-0 bg-black/75" />
+        <div className="home-wide-frame relative z-10 mx-auto flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+              Live the legacy
+            </p>
+            <h2 className="mt-2 font-heading text-title font-bold leading-none tracking-normal text-white">
+              Experiences in {destination.destinationName}
+            </h2>
+          </div>
+          <Link
+            href={getExperiencesHref(destination)}
+            className="inline-flex w-fit items-center gap-2 rounded-full bg-primary px-5 py-3 font-sans text-[14px] font-normal  leading-none text-white  transition-colors hover:bg-secondary"
+          >
+            Explore Experiences
+            <ArrowRight className="size-4" />
+          </Link>
+        </div>
+      </section>
 
-        <div className="mt-7">
-          <ul className="grid gap-5">
-            {planningItems.map((item, index) => (
-              <li
-                key={item}
-                className="flex items-center gap-6 font-sans text-description font-medium leading-snug text-secondary/80"
-              >
-                <PlanningIconBullet
-                  icon={planningIcons[index % planningIcons.length]}
-                />
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
+      <div className="mt-12 min-w-0">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+              In pictures
+            </p>
+            <h2 className="mt-2 font-heading text-title font-bold leading-none tracking-normal text-secondary">
+              Photo Gallery
+            </h2>
+          </div>
+          <p className="max-w-[360px] font-sans text-description italic text-secondary/70">
+            Glimpses of {destination.destinationName}&apos;s timeless beauty.
+          </p>
+        </div>
+
+        <div className="mt-6 columns-2 gap-3 lg:grid lg:auto-rows-[116px] lg:grid-flow-dense lg:grid-cols-5">
+          {destinationGallery.map((image, index) => (
+            <button
+              key={`${image}-${index}`}
+              type="button"
+              onClick={() => onGalleryOpen(index)}
+              className={cn(
+                "group relative block w-full overflow-hidden rounded-[8px] bg-muted text-left shadow-[0_12px_24px_rgba(67,43,27,0.09)] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25",
+                masonryTileClassNames[index]
+              )}
+            >
+              <Image
+                src={image || fallbackImages[index] || fallbackImages[0]}
+                alt={`${destination.destinationName} gallery ${index + 1}`}
+                fill
+                sizes="(min-width: 1280px) 310px, (min-width: 1024px) 24vw, (min-width: 640px) 50vw, 100vw"
+                className="object-cover transition-transform duration-700 group-hover:scale-[1.045]"
+              />
+              {index === destinationGallery.length - 1 ? (
+                <span className="absolute inset-0 grid place-items-center bg-black/78 font-sans text-description font-bold text-white">
+                  View all Photos
+                </span>
+              ) : null}
+            </button>
+          ))}
         </div>
       </div>
     </section>
@@ -1412,7 +1519,7 @@ function getVisibleAttractionTrack(
     return attractions;
   }
 
-  return Array.from({ length: 4 }, (_item, index) => {
+  return Array.from({ length: visibleAttractionCount + 1 }, (_item, index) => {
     const attractionIndex = (startIndex + index) % attractions.length;
 
     return attractions[attractionIndex];
@@ -1422,12 +1529,12 @@ function getVisibleAttractionTrack(
 function AttractionCard({ image, label }: { image: string; label: string }) {
   return (
     <article className="min-w-0">
-      <div className="relative h-[220px] overflow-hidden rounded-[8px] bg-muted shadow-[0_10px_20px_rgba(67,43,27,0.08)] lg:h-[250px] xl:h-[273px]">
+      <div className="relative h-[220px] overflow-hidden rounded-[8px] bg-muted shadow-[0_10px_20px_rgba(67,43,27,0.08)] lg:h-[238px] xl:h-[258px]">
         <Image
           src={image || fallbackImages[0]}
           alt={label}
           fill
-          sizes="(min-width: 1280px) 235px, (min-width: 1024px) 18vw, 230px"
+          sizes="(min-width: 1280px) 300px, (min-width: 1024px) 23vw, 230px"
           className="object-cover transition-transform duration-700 hover:scale-105"
         />
       </div>
@@ -1435,17 +1542,6 @@ function AttractionCard({ image, label }: { image: string; label: string }) {
         {label}
       </h3>
     </article>
-  );
-}
-
-function PlanningIconBullet({ icon: Icon }: { icon: LucideIcon }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="grid size-10 shrink-0 place-items-center rounded-full bg-[#fff4ee] text-primary"
-    >
-      <Icon className="size-[19px]" strokeWidth={1.9} />
-    </span>
   );
 }
 

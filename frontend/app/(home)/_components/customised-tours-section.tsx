@@ -89,7 +89,7 @@ function CustomisedTourCard({
 
   return (
     <div
-      className={`relative min-h-[260px] w-full overflow-hidden rounded-[10px] lg:min-h-0 ${className}`}
+      className={`relative min-h-[170px] w-full overflow-hidden rounded-[18px] sm:min-h-[220px] lg:min-h-0 lg:rounded-[10px] ${className}`}
     >
       {tours.map((tour, index) => (
         <Link
@@ -113,14 +113,14 @@ function CustomisedTourCard({
           />
           <div className="absolute inset-0 bg-gradient-to-b from-secondary/20 via-transparent to-secondary/10" />
           <div className="absolute inset-x-0 top-0 h-16 bg-[linear-gradient(180deg,rgba(0,0,0,0.72)_0%,rgba(0,0,0,0)_100%)]" />
-          <h3 className="absolute left-4 top-4 font-sans text-description font-bold uppercase leading-none text-white">
+          <h3 className="absolute left-5 top-5 font-sans text-[15px] font-bold uppercase leading-none text-white lg:left-4 lg:top-4 lg:text-description">
             {tour.title}
           </h3>
-          <div className="absolute bottom-4 left-4 right-4 flex flex-wrap gap-2 lg:gap-2">
+          <div className="absolute bottom-4 left-5 right-5 flex flex-wrap gap-2 lg:left-4 lg:right-4 lg:gap-2">
             {tour.tags.map((tag, tagIndex) => (
               <span
                 key={`${tag}-${tagIndex}`}
-                className="rounded-full bg-white px-3 py-1 text-[12px] font-medium text-primary"
+                className="rounded-full bg-white px-4 py-2 text-[13px] font-medium text-primary lg:px-3 lg:py-1 lg:text-[12px]"
               >
                 {tag} +
               </span>
@@ -190,10 +190,10 @@ export function CustomisedToursSection({
     <section
       id="customised-tours"
       ref={sectionRef}
-      className="overflow-hidden bg-[#fbf0e8] py-14 lg:py-16"
+      className="overflow-hidden bg-[#fbf0e8] py-10 lg:py-16"
     >
-      <div className="relative mx-auto w-full max-w-[1300px] px-5 sm:px-0">
-        <div className="relative z-10 grid gap-10 md:grid-cols-2 lg:grid-cols-[minmax(250px,330px)_repeat(3,minmax(0,1fr))] lg:items-start lg:gap-x-8 xl:grid-cols-[330px_250px_260px_220px] xl:justify-between xl:gap-x-[44px]">
+      <div className="home-wide-frame relative mx-auto w-full px-5 sm:px-0 [@media(min-width:1300px)]:px-12">
+        <div className="relative z-10 grid gap-8 md:grid-cols-2 lg:grid-cols-[minmax(250px,330px)_repeat(3,minmax(0,1fr))] lg:items-start lg:gap-x-8 xl:grid-cols-[330px_250px_260px_220px] xl:justify-between xl:gap-x-[44px]">
           <div className="lg:pt-1">
             <TextReveal visible={isSectionReady}>
               <p className="text-description font-medium uppercase text-primary">
@@ -206,13 +206,13 @@ export function CustomisedToursSection({
               </h2>
             </TextReveal>
             <TextReveal delay={240} visible={isSectionReady}>
-              <p className="mt-6 max-w-[290px] text-description italic text-secondary/75">
+              <p className="mt-6 max-w-[620px] text-description italic leading-[1.35] text-secondary/75 lg:max-w-[290px]">
                 Have a route in mind, or just an interest you want to follow?
                 Share your destination, dates and budget with us.
               </p>
             </TextReveal>
             <TextReveal delay={340} visible={isSectionReady}>
-              <p className="mt-6 text-description italic text-secondary/75">
+              <p className="mt-6 text-description italic leading-[1.35] text-secondary/75">
                 Let us plan for you!
               </p>
             </TextReveal>
@@ -230,10 +230,10 @@ export function CustomisedToursSection({
               />
             </RevealOnView>
 
-            <div className="mt-7">
+            <div className="mt-4 lg:mt-7">
               <span className="mb-4 block h-px w-[72px] bg-primary" />
               <TextReveal delay={180} visible={isSectionReady}>
-                <p className="max-w-[220px] text-description italic text-secondary/75">
+                <p className="max-w-[420px] text-description italic leading-[1.35] text-secondary/75 lg:max-w-[220px]">
                   Pick your interests &amp; explore suitable destinations
                 </p>
               </TextReveal>
@@ -242,24 +242,24 @@ export function CustomisedToursSection({
             <Button
               nativeButton={false}
               render={<Link href="/destinations" />}
-              className="mt-11 h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:px-6 sm:text-button lg:min-w-[200px]"
+              className="mt-11 hidden h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:px-6 sm:text-button lg:flex lg:min-w-[200px]"
             >
               Customise Your Tour
               <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
             </Button>
           </div>
 
-          <div className="lg:pt-[28px]">
-            <div className="mb-8">
+          <div className="flex flex-col lg:block lg:pt-[28px]">
+            <div className="order-2 mt-4 lg:order-none lg:mb-8 lg:mt-0">
               <span className="mb-4 block h-px w-[76px] bg-primary" />
               <TextReveal delay={220} visible={isSectionReady}>
-                <p className="max-w-[215px] text-description italic text-secondary/75">
+                <p className="max-w-[420px] text-description italic leading-[1.35] text-secondary/75 lg:max-w-[215px]">
                   Share your ideas with us, so that we can plan your tour
                 </p>
               </TextReveal>
             </div>
 
-            <RevealOnView delay={160} visible={isSectionReady}>
+            <RevealOnView className="order-1 lg:order-none" delay={160} visible={isSectionReady}>
               <CustomisedTourCard
                 className={customisedTourLayouts[1].className}
                 initialIndex={0}
@@ -283,16 +283,25 @@ export function CustomisedToursSection({
               />
             </RevealOnView>
 
-            <div className="mt-8">
+            <div className="mt-4 lg:mt-8">
               <span className="mb-4 block h-px w-[76px] bg-primary" />
               <TextReveal delay={360} visible={isSectionReady}>
-                <p className="max-w-[190px] text-description italic text-secondary/75">
+                <p className="max-w-[420px] text-description italic leading-[1.35] text-secondary/75 lg:max-w-[190px]">
                   Need an expert guide? We got you covered!
                 </p>
               </TextReveal>
             </div>
           </div>
         </div>
+
+        <Button
+          nativeButton={false}
+          render={<Link href="/destinations" />}
+          className="mt-9 h-12 w-full min-w-0 justify-between rounded-full px-6 text-[17px] font-normal lg:hidden"
+        >
+          Customise Your Tour
+          <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+        </Button>
       </div>
     </section>
   );

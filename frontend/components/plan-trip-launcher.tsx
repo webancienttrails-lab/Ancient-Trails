@@ -169,7 +169,7 @@ function getTourSearchText(
   destinationById: Map<string, PlannerDestination>
 ) {
   const destinationLabels = getTourDestinationIds(tour).flatMap((destinationId) => {
-    const destination = destinationById.get(destinationId);
+    const destination = destinationById.get(destinationId.trim().toUpperCase());
 
     return destination
       ? [
@@ -246,7 +246,7 @@ function getDepartureSearchText({
   const primaryDestinationId = tour ? getTourDestinationIds(tour)[0] : "";
   const destination =
     destinationById.get(departure.destinationId.trim().toUpperCase()) ||
-    destinationById.get(primaryDestinationId);
+    destinationById.get(primaryDestinationId.trim().toUpperCase());
 
   return [
     tour ? getTourSearchText(tour, destinationById) : departure.tourId,
@@ -359,6 +359,22 @@ function getMatchingPlannerDestinationId(
         destination.city,
       ].some((value) => normalizeText(value || "") === queryKey)
     )?.destinationId || ""
+  );
+}
+
+function getPlannerDestinationById(
+  destinationId: string,
+  destinations: PlannerDestination[]
+) {
+  const destinationKey = destinationId.trim().toUpperCase();
+
+  if (!destinationKey) {
+    return undefined;
+  }
+
+  return destinations.find(
+    (destination) =>
+      destination.destinationId.trim().toUpperCase() === destinationKey
   );
 }
 
@@ -642,8 +658,7 @@ export function PlanTripLauncher() {
       selectedDestinationId ||
       getMatchingPlannerDestinationId(destinationQuery, destinations);
     const destinationValue =
-      destinations.find((destination) => destination.destinationId === destinationId)
-        ?.destinationName || "";
+      getPlannerDestinationById(destinationId, destinations)?.destinationName || "";
 
     router.push(
       getToursHref({
@@ -1034,8 +1049,7 @@ export function PlanTripInline({
       selectedDestinationId ||
       getMatchingPlannerDestinationId(destinationQuery, destinations);
     const destinationValue =
-      destinations.find((destination) => destination.destinationId === destinationId)
-        ?.destinationName || "";
+      getPlannerDestinationById(destinationId, destinations)?.destinationName || "";
 
     router.push(
       getToursHref({

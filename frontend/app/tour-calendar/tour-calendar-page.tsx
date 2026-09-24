@@ -1202,7 +1202,7 @@ export function TourCalendarPage({
     <main className="min-h-screen bg-background text-secondary">
       <HeaderBand />
 
-      <section className="mx-auto grid w-full max-w-[1300px] items-start gap-5 px-3 pb-6 pt-6 sm:px-6 sm:pt-8 lg:grid-cols-[430px_minmax(0,1fr)] lg:px-0">
+      <section className="home-wide-frame mx-auto grid w-full items-start gap-5 px-3 pb-6 pt-6 sm:px-6 sm:pt-8 lg:grid-cols-[430px_minmax(0,1fr)] lg:px-0">
         <CalendarPanel
           calendarDays={calendarDays}
           calendarYearOptions={calendarYearOptions}
@@ -1256,7 +1256,7 @@ function HeaderBand() {
         className="object-cover object-center"
       />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(35,18,9,0.34)_100%)]" />
-      <div className="relative z-10 mx-auto w-full max-w-[1300px] px-5 sm:px-8 lg:px-0">
+      <div className="home-wide-frame relative z-10 mx-auto w-full px-5 sm:px-8 lg:px-0">
         <Header />
       </div>
     </section>
@@ -1876,7 +1876,7 @@ function ExpertCard({ expert, index }: { expert: PublicExpert; index: number }) 
 
 function BenefitsBand() {
   return (
-    <section className="mx-auto w-full max-w-[1300px] px-4 pb-8 pt-3 sm:px-6 lg:px-0">
+    <section className="home-wide-frame mx-auto w-full px-4 pb-8 pt-3 sm:px-6 lg:px-0">
       <div className="relative grid overflow-hidden rounded-[9px] border border-[#ead8c5] bg-white/82 px-5 py-5  sm:grid-cols-2 lg:grid-cols-4">
         {benefits.map(({ description, icon: Icon, title }, index) => (
           <article

@@ -137,7 +137,7 @@ export function AboutSection() {
         </button> */}
       </div>
 
-      <div className="relative z-10 mx-auto -mt-[120px] w-full max-w-[1300px] px-5 sm:px-0">
+      <div className="home-wide-frame relative z-10 mx-auto -mt-[120px] w-full px-5 sm:px-0 [@media(min-width:1300px)]:px-12">
         <div className="relative overflow-hidden rounded-[12px] border border-primary/15 bg-white p-4 ">
           <div className="relative min-h-[250px] overflow-hidden rounded-[8px]">
             <Image

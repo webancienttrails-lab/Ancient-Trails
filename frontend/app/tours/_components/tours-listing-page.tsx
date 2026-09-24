@@ -84,6 +84,7 @@ type TourListItem = {
   availability: AvailabilityFilter;
   departures: PublicTourDeparture[];
   destination: PublicDestination | undefined;
+  destinations: PublicDestination[];
   expert: PublicExpert | undefined;
   durationDays: number;
   expertName: string;
@@ -410,7 +411,15 @@ function getAvailability(departures: PublicTourDeparture[]): AvailabilityFilter 
 }
 
 function getTourSearchText(item: TourListItem) {
-  const { destination, expert, expertName, tour } = item;
+  const { destination, destinations, expert, expertName, tour } = item;
+  const destinationSearchText = destinations.flatMap((destinationItem) => [
+    destinationItem.destinationId,
+    destinationItem.destinationName,
+    destinationItem.city,
+    destinationItem.state,
+    destinationItem.countryRegion,
+    destinationItem.primaryHeritageFocus,
+  ]);
 
   return [
     tour.tourId,
@@ -425,6 +434,7 @@ function getTourSearchText(item: TourListItem) {
     destination?.state,
     destination?.countryRegion,
     destination?.primaryHeritageFocus,
+    ...destinationSearchText,
     expertName,
     expert?.fullName,
     expert?.expertId,
@@ -656,7 +666,10 @@ function buildTourItems(
 ) {
   const departuresByTourId = new Map<string, PublicTourDeparture[]>();
   const destinationById = new Map(
-    destinations.map((destination) => [destination.destinationId, destination])
+    destinations.map((destination) => [
+      normalizeCode(destination.destinationId),
+      destination,
+    ])
   );
 
   departures.forEach((departure) => {
@@ -667,7 +680,10 @@ function buildTourItems(
   return tours.map((tour, index): TourListItem => {
     const tourDepartures = departuresByTourId.get(tour.tourId) || [];
     const primaryDestinationId = getPrimaryDestinationId(tour);
-    const destination = destinationById.get(primaryDestinationId);
+    const destination = destinationById.get(normalizeCode(primaryDestinationId));
+    const linkedDestinations = getTourDestinationIds(tour)
+      .map((destinationId) => destinationById.get(normalizeCode(destinationId)))
+      .filter((destination): destination is PublicDestination => Boolean(destination));
     const nextDeparture = getNextDeparture(tourDepartures);
     const lowestPrice = getLowestPrice(tourDepartures);
     const expert = getTourExpert(tour, experts);
@@ -686,6 +702,7 @@ function buildTourItems(
       availability: getAvailability(tourDepartures),
       departures: tourDepartures,
       destination,
+      destinations: linkedDestinations,
       expert,
       durationDays:
         parseDurationDays(tour.durationDn) ||
@@ -936,6 +953,13 @@ export function ToursListingPage({
               destinationId,
               scopedItem.destination?.destinationName || ""
             )
+          ) ||
+          scopedItem.destinations.some((destination) =>
+            matchesRouteValue(
+              routeDestinationValue,
+              destination.destinationId,
+              destination.destinationName
+            )
           );
         const matchesAvailability =
           availabilityFilter === "all" ||
@@ -1031,7 +1055,7 @@ export function ToursListingPage({
       <section
         id="tour-results"
         className={cn(
-          "mx-auto grid w-full max-w-[1300px] items-start gap-6 px-5 pb-28 pt-8 transition-[grid-template-columns] duration-300 sm:px-8 lg:px-0 lg:pb-14",
+          "home-wide-frame mx-auto grid w-full items-start gap-6 px-5 pb-28 pt-8 transition-[grid-template-columns] duration-300 sm:px-8 lg:px-0 lg:pb-14",
           isFilterCollapsed
             ? "lg:grid-cols-[76px_minmax(0,1fr)] xl:grid-cols-[84px_minmax(0,1fr)]"
             : "lg:grid-cols-[282px_minmax(0,1fr)]"
@@ -1118,7 +1142,7 @@ function HeaderBand() {
         className="object-cover object-center"
       />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(35,18,9,0.34)_100%)]" />
-      <div className="relative z-10 mx-auto w-full max-w-[1300px] px-5 sm:px-0">
+      <div className="home-wide-frame relative z-10 mx-auto w-full px-5 sm:px-0">
         <Header />
       </div>
     </section>

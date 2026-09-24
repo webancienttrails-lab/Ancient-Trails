@@ -49,20 +49,20 @@ export function HomePage({
         />
 
       
-        <div className="relative z-[2147483647] mx-auto flex h-full w-full max-w-[1300px] flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0">
+        <div className="home-wide-frame relative z-[2147483647] mx-auto flex h-full w-full flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0 [@media(min-width:1300px)]:px-12">
           <Header />
 
-          <div className="flex min-h-0 flex-1 items-start px-0 py-[clamp(0.5rem,3vh,4rem)] pt-[clamp(1.5rem,8vh,4rem)] sm:items-center sm:px-6 sm:pt-[clamp(0.5rem,3vh,4rem)] lg:px-10">
+          <div className="flex min-h-0 flex-1 items-start px-0 py-[clamp(0.5rem,3vh,4rem)] pt-[clamp(1.5rem,8vh,4rem)] sm:items-center sm:px-6 sm:pt-[clamp(0.5rem,3vh,4rem)] lg:px-10 [@media(min-width:1300px)]:px-4">
             <div className="max-w-[430px] text-accent">
               <TextReveal trigger="load" delay={120}>
-                <p className="mb-[clamp(0.5rem,1.5vh,0.75rem)] text-eyebrow font-medium uppercase tracking-normal text-primary">
+                <p className="mb-[clamp(0.5rem,1.5vh,0.75rem)] text-eyebrow font-medium uppercase tracking-normal text-primary max-sm:!text-[12px]">
                   Learn. Explore. Remember.
                 </p>
               </TextReveal>
 
               <TextReveal trigger="load" delay={280}>
                 <div className="flex items-end">
-                  <h1 className="font-heading text-title font-bold leading-none tracking-normal text-secondary">
+                  <h1 className="font-heading text-title font-bold leading-none tracking-normal text-secondary max-sm:!text-[28px]">
                     <span className="block">Travel Deeper</span>
                     <span className="flex items-center gap-3">
                       Into Places
@@ -73,7 +73,7 @@ export function HomePage({
               </TextReveal>
 
               <TextReveal trigger="load" delay={460}>
-                <p className="mt-[clamp(0.75rem,3vh,1.75rem)] max-w-[380px] text-description text-accent">
+                <p className="mt-[clamp(0.75rem,3vh,1.75rem)] max-w-[380px] text-description text-accent max-sm:!text-[14px]">
                   Ancient-Trails curates heritage-based travel experiences across
                   India and the world with an expert blend of history, leisure and
                   culture.

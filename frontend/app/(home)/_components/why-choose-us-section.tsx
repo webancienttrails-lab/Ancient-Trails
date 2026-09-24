@@ -68,7 +68,7 @@ export function WhyChooseUsSection() {
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0)_64%,#ffffff_100%),linear-gradient(180deg,#ffffff_0%,rgba(255,255,255,0)_14%,rgba(255,255,255,0)_72%,#ffffff_100%)]" />
       </div>
 
-      <div className="relative z-10 mx-auto w-full max-w-[1300px] px-5 sm:px-0">
+      <div className="home-wide-frame relative z-10 mx-auto w-full px-5 sm:px-0 [@media(min-width:1300px)]:px-12">
         <div className="text-center">
           <span className="mx-auto block h-px w-[120px] bg-primary" />
           <TextReveal delay={80}>

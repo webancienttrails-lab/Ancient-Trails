@@ -1908,7 +1908,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
       <Header />
       <PaymentProceedingOverlay checkoutStatus={checkoutStatus} />
 
-      <section className="mx-auto grid w-full max-w-[1300px] gap-5 px-4 pb-7 pt-7 sm:px-5 sm:pt-12 lg:grid-cols-[minmax(0,1fr)_360px] lg:px-0">
+      <section className="home-wide-frame mx-auto grid w-full gap-5 px-4 pb-7 pt-7 sm:px-5 sm:pt-12 lg:grid-cols-[minmax(0,1fr)_360px] lg:px-0">
         <div className="min-w-0">
           <Breadcrumbs tourName={detail.tour.tourName} />
 

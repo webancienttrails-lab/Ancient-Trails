@@ -936,7 +936,7 @@ export function EgyptExperiencesSection({
 
   return (
     <section className="relative overflow-hidden bg-background py-10 lg:py-14">
-      <div className="mx-auto grid w-full max-w-[1300px] gap-8 px-5 sm:px-0 lg:grid-cols-[minmax(0,1fr)_minmax(300px,356px)] lg:gap-8 [@media(min-width:1320px)]:grid-cols-[848px_356px] [@media(min-width:1320px)]:gap-[96px]">
+      <div className="home-wide-frame mx-auto grid w-full gap-8 px-5 sm:px-0 lg:grid-cols-[minmax(0,848px)_minmax(300px,356px)] lg:justify-between lg:gap-8 [@media(min-width:1300px)]:px-12">
         <div>
           <TextReveal>
             <p className="text-description font-medium uppercase text-primary">
@@ -956,18 +956,28 @@ export function EgyptExperiencesSection({
             </TextReveal>
           </div>
 
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={<Link href={experiencesHref} />}
+            className="mt-4 h-10 w-full min-w-0 justify-between gap-3 px-5 text-[13px] font-normal lg:hidden"
+          >
+            View All Traveller Experiences
+            <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />
+          </Button>
+
           <div className="mt-5 grid items-stretch gap-3 lg:grid-cols-[minmax(280px,356px)_minmax(0,480px)]">
             <RevealOnView className="h-full" motion="scale" replay>
               <ExperienceCard
                 card={featuredCard}
-                className="h-full"
+                className="h-full max-lg:!aspect-[1.85/1]"
                 onOpenGallery={() =>
                   openGallery?.(getGalleryStartIndex(featuredCard.image))
                 }
                 onOpenVideo={() => setActiveVideo(featuredCard)}
               />
             </RevealOnView>
-            <div className="grid gap-3 sm:grid-cols-2 lg:h-full lg:grid-rows-2">
+            <div className="grid grid-cols-2 gap-3 lg:h-full lg:grid-rows-2">
               {gridCards.map((card) => (
                 <ExperienceCard
                   key={card.id}
@@ -988,7 +998,7 @@ export function EgyptExperiencesSection({
             variant="outline"
             nativeButton={false}
             render={<Link href={experiencesHref} />}
-            className="mb-8 h-11 w-full min-w-0 justify-between gap-3 px-5 text-[14px] font-normal sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:mb-14 lg:min-w-[270px]"
+            className="mb-8 hidden h-11 w-full min-w-0 justify-between gap-3 px-5 text-[14px] font-normal sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:mb-14 lg:flex lg:min-w-[270px]"
           >
             View All Traveller Experiences
             <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />

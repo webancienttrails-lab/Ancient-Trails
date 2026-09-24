@@ -272,7 +272,7 @@ function HeroSection() {
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.98)_0%,rgba(255,255,255,0.87)_36%,rgba(255,255,255,0.18)_68%,rgba(255,255,255,0)_100%)]" />
       <div className="absolute inset-x-0 bottom-0 h-32 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,#ffffff_100%)]" />
 
-      <div className="relative z-[2147483647] mx-auto flex h-full w-full max-w-[1300px] flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0">
+      <div className="home-wide-frame relative z-[2147483647] mx-auto flex h-full w-full flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0">
         <Header />
 
         <div className="flex min-h-0 flex-1 items-center px-0 pb-[118px] pt-[clamp(0.5rem,3vh,4rem)] sm:px-6 lg:px-10">
@@ -405,7 +405,7 @@ function StatsSection({
   stats: AboutPageContentType["stats"];
 }) {
   return (
-    <section className="relative z-20 mx-auto -mt-[86px] w-full max-w-[1300px] px-5 sm:px-0">
+    <section className="home-wide-frame relative z-20 mx-auto -mt-[86px] w-full px-5 sm:px-0">
       <div className="grid overflow-hidden rounded-[12px] border border-primary/15 bg-white shadow-[0_20px_58px_rgba(50,36,22,0.10)] backdrop-blur sm:grid-cols-2 lg:grid-cols-5">
         {stats.map((stat, index) => {
           const Icon = statIconMap[stat.icon] || BookOpen;
@@ -439,7 +439,7 @@ function StatsSection({
 function MissionVisionSection() {
   return (
     <section className="relative bg-background px-5 pb-16 pt-12 sm:px-0 lg:pb-20">
-      <div className="relative mx-auto w-full max-w-[1300px] overflow-hidden rounded-[12px] sm:p-7 lg:p-9">
+      <div className="home-wide-frame relative mx-auto w-full overflow-hidden rounded-[12px] sm:p-7 lg:p-9">
         
         <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_1px_1fr] lg:gap-10">
           <StoryPanel
@@ -487,7 +487,7 @@ function ValuesSection() {
   return (
     <section className="relative overflow-hidden bg-background px-5 pb-16 pt-2 sm:px-0 lg:pb-24">
       
-      <div className="relative mx-auto w-full max-w-[1300px]">
+      <div className="home-wide-frame relative mx-auto w-full">
         <div className="text-center">
           <span className="mx-auto block h-px w-[120px] bg-primary" />
           <p className="mt-5 font-sans text-eyebrow font-medium uppercase text-primary">
@@ -538,7 +538,7 @@ function FounderSection({
 
   return (
     <section className="bg-background px-5 pb-12 sm:px-0 lg:pb-16">
-      <div className="relative mx-auto grid w-full max-w-[1300px] gap-4 overflow-hidden rounded-[12px] border border-primary/15 bg-white p-4 shadow-[0_18px_52px_rgba(80,50,25,0.08)] lg:grid-cols-[0.78fr_1.22fr]">
+      <div className="home-wide-frame relative mx-auto grid w-full gap-4 overflow-hidden rounded-[12px] border border-primary/15 bg-white p-4 shadow-[0_18px_52px_rgba(80,50,25,0.08)] lg:grid-cols-[0.78fr_1.22fr]">
         <div className="relative min-h-[250px] overflow-hidden rounded-[8px] bg-muted bg-cover bg-center shadow-[0_16px_36px_rgba(35,24,16,0.14)] sm:min-h-[280px] lg:min-h-[300px]">
           {image ? (
             <div

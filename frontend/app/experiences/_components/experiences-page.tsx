@@ -57,9 +57,9 @@ type ExperienceDetailState = {
 };
 
 const pageContainerClassName =
-  "mx-auto w-full max-w-[1300px] px-5 sm:px-8 lg:px-0";
+  "home-wide-frame mx-auto w-full px-5 sm:px-8 lg:px-0";
 const detailContainerClassName =
-  "mx-auto w-full max-w-[1300px] px-5 sm:px-8 lg:px-0";
+  "home-wide-frame mx-auto w-full px-5 sm:px-8 lg:px-0";
 
 const fallbackImages = [
   "/home assets/destination/Hampi.webp",
@@ -387,7 +387,7 @@ function HeaderBand({
         className="object-cover object-center"
       />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(20,16,12,0.7)_100%)]" />
-      <div className="relative z-10 mx-auto flex h-full w-full max-w-[1300px] flex-col px-5 sm:px-8 lg:px-0">
+      <div className="home-wide-frame relative z-10 mx-auto flex h-full w-full flex-col px-5 sm:px-8 lg:px-0">
         <Header />
         <div className="flex flex-1 items-center justify-center pb-6 md:pb-6">
           <div className="w-full max-w-[760px] text-center text-white">

@@ -787,7 +787,7 @@ export function DestinationsMegaMenu({
       style={headerLayerStyle}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className={`absolute left-0 right-0 top-[calc(100%+12px)] z-[2147483647] mx-auto w-full max-w-[1300px] origin-top transition-[opacity,transform,filter] duration-[650ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`home-wide-frame absolute left-0 right-0 top-[calc(100%+12px)] z-[2147483647] mx-auto w-full origin-top transition-[opacity,transform,filter] duration-[650ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isOpen
           ? "pointer-events-auto translate-y-0 scale-100 opacity-100 blur-0"
           : "pointer-events-none -translate-y-1.5 scale-[0.99] opacity-0 blur-[1px]"
@@ -936,7 +936,7 @@ export function ToursMegaMenu({
       style={headerLayerStyle}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className={`absolute left-0 right-0 top-[calc(100%+12px)] z-[2147483647] mx-auto w-full max-w-[1300px] origin-top transition-[opacity,transform,filter] duration-[650ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`home-wide-frame absolute left-0 right-0 top-[calc(100%+12px)] z-[2147483647] mx-auto w-full origin-top transition-[opacity,transform,filter] duration-[650ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isOpen
           ? "pointer-events-auto translate-y-0 scale-100 opacity-100 blur-0"
           : "pointer-events-none -translate-y-1.5 scale-[0.99] opacity-0 blur-[1px]"
@@ -1790,7 +1790,7 @@ export function Header() {
       style={headerLayerStyle}
       onMouseEnter={keepMegaMenuOpen}
       onMouseLeave={closeMegaMenu}
-      className={`fixed left-1/2 ${headerTopClass} isolate z-[2147483647] flex w-[calc(100%-2.5rem)] max-w-[1300px] -translate-x-1/2 items-center justify-between rounded-[18px] bg-white px-4 py-1.5 shadow-[0_18px_55px_rgba(50,50,50,0.18)] ring-1 ring-white transition-[top,translate,opacity] duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)] sm:py-2 md:px-5 [@media(max-height:600px)]:py-1.5 ${
+      className={`fixed left-1/2 ${headerTopClass} isolate z-[2147483647] flex w-[calc(100%-2.5rem)] max-w-[1300px] -translate-x-1/2 items-center justify-between rounded-[18px] bg-white px-4 py-1.5 shadow-[0_18px_55px_rgba(50,50,50,0.18)] ring-1 ring-white transition-[top,translate,opacity] duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)] sm:py-2 md:px-5 lg:w-full [@media(min-width:1300px)]:max-w-[min(1720px,max(1300px,calc(100vw-200px)))] [@media(max-height:600px)]:py-1.5 ${
         shouldShowHeader
           ? "translate-y-0 opacity-100"
           : "pointer-events-none -translate-y-[calc(100%+3rem)] opacity-0"

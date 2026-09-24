@@ -96,7 +96,7 @@ function HeaderBand() {
         className="object-cover object-center"
       />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(35,18,9,0.34)_100%)]" />
-      <div className="relative z-10 mx-auto w-full max-w-[1300px] px-5 sm:px-0">
+      <div className="home-wide-frame relative z-10 mx-auto w-full px-5 sm:px-0">
         <Header />
       </div>
     </section>
@@ -342,7 +342,7 @@ export function ExpertsPage() {
     <main className="min-h-screen bg-background text-secondary">
       <HeaderBand />
 
-      <section className="mx-auto w-full max-w-[1300px] px-5 pb-14 pt-9 sm:px-8 lg:px-0">
+      <section className="home-wide-frame mx-auto w-full px-5 pb-14 pt-9 sm:px-8 lg:px-0">
         <div className="flex flex-col gap-5 border-b border-border pb-8 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">

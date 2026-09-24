@@ -34,7 +34,7 @@ type CountOption = {
 
 const pageSize = 6;
 const pageContainerClassName =
-  "mx-auto w-full max-w-[1300px] px-5 sm:px-8 lg:px-0";
+  "home-wide-frame mx-auto w-full px-5 sm:px-8 lg:px-0";
 
 const fallbackImages = [
   "/home assets/destination/Hampi.webp",
@@ -58,7 +58,7 @@ const categoryTabs: Array<{ id: CategoryFilter; label: string }> = [
   { id: "india", label: "India" },
   { id: "international", label: "International" },
   { id: "popular-cities", label: "Popular cities" },
-  { id: "unesco-sites", label: "UNESCO sites" },
+  { id: "unesco-sites", label: "Unesco cities" },
 ];
 
 const interestTabs = [
@@ -879,6 +879,7 @@ export function DestinationsPage({
     resetVisibleDestinations();
     setSearchQuery("");
     setActiveCategory("india");
+    setSelectedInterests([]);
     setSelectedRegions([]);
     setSelectedStates([]);
     setSelectedFocuses([]);
@@ -897,9 +898,7 @@ export function DestinationsPage({
       <HeaderBand />
 
       <DestinationTopBar
-        activeCategory={activeCategory}
         searchQuery={searchQuery}
-        onCategoryChange={updateCategory}
         onSearchQueryChange={updateSearchQuery}
       />
 
@@ -915,6 +914,7 @@ export function DestinationsPage({
           activeCategory={activeCategory}
           focusOptions={focusOptions}
           hasActiveFilters={hasActiveFilters}
+          onCategoryChange={updateCategory}
           regionOptions={regionOptions}
           selectedFocuses={activeSelectedFocuses}
           selectedRegions={activeSelectedRegions}
@@ -978,7 +978,7 @@ function HeaderBand() {
         className="object-cover object-center"
       />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(35,18,9,0.34)_100%)]" />
-      <div className="relative z-10 mx-auto w-full max-w-[1300px] px-5 sm:px-0">
+      <div className="home-wide-frame relative z-10 mx-auto w-full px-5 sm:px-0">
         <Header />
       </div>
     </section>
@@ -986,40 +986,16 @@ function HeaderBand() {
 }
 
 function DestinationTopBar({
-  activeCategory,
-  onCategoryChange,
   onSearchQueryChange,
   searchQuery,
 }: {
-  activeCategory: CategoryFilter;
-  onCategoryChange: (category: CategoryFilter) => void;
   onSearchQueryChange: (value: string) => void;
   searchQuery: string;
 }) {
   return (
-    <section className="border-b border-border bg-muted/45">
-      <div className={`${pageContainerClassName} flex flex-col gap-4 py-5 md:flex-row md:items-center md:justify-between`}>
-        <div className="flex flex-wrap items-center gap-4">
-          {categoryTabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              aria-pressed={activeCategory === tab.id}
-              suppressHydrationWarning
-              onClick={() => onCategoryChange(tab.id)}
-              className={cn(
-                "inline-flex h-9 items-center justify-center rounded-full border px-5 font-sans text-[15px] font-semibold leading-none transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
-                activeCategory === tab.id
-                  ? "border-primary bg-primary text-white"
-                  : "border-primary/70 bg-white text-primary hover:bg-primary hover:text-white"
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <label className="relative w-full md:w-[235px]">
+    <section>
+      <div className={`${pageContainerClassName} flex justify-end pt-5`}>
+        {/* <label className="relative w-full md:w-[235px]">
           <span className="sr-only">Search Destination</span>
           <input
             type="search"
@@ -1029,7 +1005,7 @@ function DestinationTopBar({
             className="h-9 w-full rounded-full border border-primary/55 bg-white px-5 pr-10 font-sans text-[13px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/50 focus:border-primary focus:ring-3 focus:ring-primary/15"
           />
           <Search className="pointer-events-none absolute right-4 top-1/2 size-3.5 -translate-y-1/2 text-primary" />
-        </label>
+        </label> */}
       </div>
     </section>
   );
@@ -1039,6 +1015,7 @@ function DestinationSidebar({
   activeCategory,
   focusOptions,
   hasActiveFilters,
+  onCategoryChange,
   onClearAll,
   onFocusToggle,
   onRegionToggle,
@@ -1057,6 +1034,7 @@ function DestinationSidebar({
   selectedRegions: string[];
   selectedStates: string[];
   stateOptions: CountOption[];
+  onCategoryChange: (category: CategoryFilter) => void;
   onClearAll: () => void;
   onFocusToggle: (value: string) => void;
   onRegionToggle: (value: string) => void;
@@ -1106,6 +1084,10 @@ function DestinationSidebar({
       </div>
 
       <div className="rounded-[4px] border border-border bg-white px-5 py-5 ">
+        <CategoryFilterGroup
+          activeCategory={activeCategory}
+          onCategoryChange={onCategoryChange}
+        />
         <FilterOptionGroup
           options={regionOptions}
           selectedValues={selectedRegions}
@@ -1132,6 +1114,39 @@ function DestinationSidebar({
         />
       </div>
     </aside>
+  );
+}
+
+function CategoryFilterGroup({
+  activeCategory,
+  onCategoryChange,
+}: {
+  activeCategory: CategoryFilter;
+  onCategoryChange: (category: CategoryFilter) => void;
+}) {
+  return (
+    <section className="border-b border-[#f1ebe6] pb-4">
+      <h3 className="font-sans text-[14px] font-semibold leading-none text-primary">
+        Destination Type
+      </h3>
+      <div className="mt-3 space-y-2">
+        {categoryTabs.map((tab) => (
+          <label
+            key={tab.id}
+            className="flex cursor-pointer items-center gap-2.5 font-sans text-[14px] font-medium leading-[1.25] text-secondary/68 transition-colors hover:text-primary"
+          >
+            <input
+              checked={activeCategory === tab.id}
+              onChange={() => onCategoryChange(tab.id)}
+              type="radio"
+              name="destination-category"
+              className="size-4 border-[#d9cdc3] accent-primary"
+            />
+            <span className="min-w-0 flex-1 truncate">{tab.label}</span>
+          </label>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -1211,7 +1226,7 @@ function InterestFilter({
   onInterestToggle: (value: string) => void;
 }) {
   return (
-    <div className="space-y-3 border-b border-primary/45 pb-5">
+    <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <p className="font-sans text-description font-medium uppercase leading-none text-secondary">
           Pick your interest

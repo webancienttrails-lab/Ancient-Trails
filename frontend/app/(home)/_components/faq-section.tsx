@@ -47,9 +47,9 @@ export function FaqSection() {
   return (
     <section id="faqs" className="bg-background pb-16">
       <div className="bg-[#fbf0e8]">
-        <div className="mx-auto grid w-full max-w-[1300px] content-center gap-6 px-5 py-8 sm:px-0 lg:grid-cols-[330px_580px] lg:items-start lg:gap-[68px]">
+        <div className="home-wide-frame mx-auto grid w-full content-center gap-6 px-5 py-8 sm:px-0 lg:grid-cols-[330px_580px] lg:items-start lg:gap-[68px] [@media(min-width:1300px)]:px-12">
           <TextReveal>
-            <h2 className="max-w-[700px] font-heading text-[32px] font-bold leading-[0.98] text-secondary sm:text-[36px]">
+            <h2 className="max-w-[700px] font-heading text-title font-bold leading-[0.98] text-secondary sm:text-[36px]">
               Frequently Asked Questions
             </h2>
           </TextReveal>
@@ -63,7 +63,7 @@ export function FaqSection() {
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-[1300px] px-5 pt-9 sm:px-0">
+      <div className="home-wide-frame mx-auto w-full px-5 pt-9 sm:px-0 [@media(min-width:1300px)]:px-12">
         <Accordion
           multiple={false}
           className="grid items-start gap-x-6 gap-y-5 md:grid-cols-2"

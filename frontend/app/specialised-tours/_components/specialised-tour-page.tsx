@@ -330,7 +330,7 @@ function HeroSection() {
 
       <div className="absolute inset-x-0 bottom-0 h-28 bg-[linear-gradient(180deg,rgba(255,255,255,0)_0%,rgba(255,255,255,0.98)_100%)]" />
 
-      <div className="relative z-20 mx-auto flex h-full w-full max-w-[1300px] flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0">
+      <div className="home-wide-frame relative z-20 mx-auto flex h-full w-full flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0">
         <Header />
 
         <div className="flex min-h-0 flex-1 items-center px-0 pb-[100px] pt-[clamp(1rem,4vh,4rem)] sm:px-6 lg:px-10">
@@ -391,7 +391,7 @@ function HeroSection() {
 function HighlightsSection() {
   return (
     <section className="relative z-20 bg-background px-5 sm:px-0">
-      <div className="mx-auto grid w-full max-w-[1300px] overflow-hidden bg-background sm:grid-cols-2 lg:grid-cols-5">
+      <div className="home-wide-frame mx-auto grid w-full overflow-hidden bg-background sm:grid-cols-2 lg:grid-cols-5">
         {highlights.map(({ title, icon: Icon }, index) => (
           <article
             key={title}

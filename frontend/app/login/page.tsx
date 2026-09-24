@@ -50,11 +50,11 @@ export default function LoginPage() {
         
 
 
-        <div className="absolute inset-x-0 top-0 z-[2147483647] mx-auto w-full max-w-[1300px] px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0">
+        <div className="home-wide-frame absolute inset-x-0 top-0 z-[2147483647] mx-auto w-full px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0">
           <Header />
         </div>
 
-        <div className="relative z-10 mx-auto grid min-h-[100dvh] w-full max-w-[1300px] items-start gap-5 px-4 pb-6 pt-[5.75rem] sm:px-8 sm:pb-8 sm:pt-[6.5rem] lg:h-full lg:grid-cols-[1fr_560px] lg:items-center lg:gap-7 lg:px-12 lg:pb-[clamp(0.75rem,2vh,1.5rem)] lg:pt-[clamp(6.25rem,14vh,8rem)]">
+        <div className="home-wide-frame relative z-10 mx-auto grid min-h-[100dvh] w-full items-start gap-5 px-4 pb-6 pt-[5.75rem] sm:px-8 sm:pb-8 sm:pt-[6.5rem] lg:h-full lg:grid-cols-[1fr_560px] lg:items-center lg:gap-7 lg:px-12 lg:pb-[clamp(0.75rem,2vh,1.5rem)] lg:pt-[clamp(6.25rem,14vh,8rem)]">
           <section className="flex min-h-0 flex-col justify-center gap-4 lg:gap-[clamp(1.1rem,3vh,2.25rem)]">
             <div className="max-w-[390px]">
               <h1 className="font-heading text-[2.1rem] font-bold leading-[0.98] text-white sm:text-[2.45rem] lg:text-[clamp(2.35rem,4.5vw,3.8rem)] lg:text-secondary">
