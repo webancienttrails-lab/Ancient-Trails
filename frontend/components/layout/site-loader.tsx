@@ -1,6 +1,6 @@
 "use client";
 
-import gsap from "gsap";
+import type { AnimationItem } from "lottie-web";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -9,115 +9,53 @@ const reducedMotionLoaderDuration = 350;
 const fadeDuration = 520;
 
 function LoaderAnimation() {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const pawPositionRef = useRef<HTMLDivElement>(null);
-  const pawFlipRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!rootRef.current || !pawPositionRef.current || !pawFlipRef.current) {
+    if (!animationRef.current) {
       return;
     }
 
-    const pawPosition = pawPositionRef.current;
-    const pawFlip = pawFlipRef.current;
+    let animation: AnimationItem | null = null;
+    let isMounted = true;
     const reducedMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)"
     ).matches;
 
-    const steps = [
-      { x: -28, y: 90, rotate: -1, flip: true },
-      { x: 28, y: 45, rotate: 1, flip: false },
-      { x: -28, y: 0, rotate: -1, flip: true },
-      { x: 28, y: -45, rotate: 1, flip: false },
-      { x: -28, y: -90, rotate: -1, flip: true },
-    ];
+    import("lottie-web").then(({ default: lottie }) => {
+      if (!isMounted || !animationRef.current) {
+        return;
+      }
 
-    const context = gsap.context(() => {
-      gsap.set([pawPosition, pawFlip], {
-        force3D: true,
-      });
-
-      const timeline = gsap.timeline({
-        repeat: -1,
-        repeatDelay: reducedMotion ? 0.08 : 0.16,
-        defaults: {
-          overwrite: "auto",
+      animation = lottie.loadAnimation({
+        autoplay: !reducedMotion,
+        container: animationRef.current,
+        loop: true,
+        path: "/paw_walk_4steps_2.json",
+        renderer: "svg",
+        rendererSettings: {
+          preserveAspectRatio: "xMidYMid meet",
         },
       });
 
-      steps.forEach((step) => {
-        timeline
-          .set(pawPosition, {
-            autoAlpha: 0,
-            transformOrigin: "50% 65%",
-            x: step.x,
-            y: step.y,
-            rotation: step.rotate,
-            scale: 0.82,
-          })
-          .set(pawFlip, {
-            scaleX: step.flip ? -1 : 1,
-            transformOrigin: "50% 50%",
-          })
-          .to(pawPosition, {
-            autoAlpha: 1,
-            scale: 0.96,
-            duration: reducedMotion ? 0.01 : 0.22,
-            ease: "sine.out",
-          })
-          .to(pawPosition, {
-            scale: 0.86,
-            duration: reducedMotion ? 0.01 : 0.14,
-            ease: "sine.inOut",
-          })
-          .to(pawPosition, {
-            scale: 0.94,
-            duration: reducedMotion ? 0.01 : 0.18,
-            ease: "sine.out",
-          })
-          .to(pawPosition, {
-            scale: 0.93,
-            duration: reducedMotion ? 0.06 : 0.14,
-            ease: "none",
-          })
-          .to(pawPosition, {
-            autoAlpha: 0,
-            scale: 0.88,
-            duration: reducedMotion ? 0.01 : 0.26,
-            ease: "sine.in",
-          })
-          .to({}, { duration: reducedMotion ? 0.1 : 0.1 });
-      });
-    }, rootRef);
+      if (reducedMotion) {
+        animation.goToAndStop(0, true);
+      }
+    });
 
     return () => {
-      context.revert();
+      isMounted = false;
+      animation?.destroy();
     };
   }, []);
 
   return (
     <div className="flex flex-col items-center gap-7 px-6 text-center">
       <div
-        ref={rootRef}
         aria-hidden="true"
         className="relative h-[clamp(170px,42vw,260px)] w-[clamp(120px,32vw,190px)]"
-      >
-        <div className="absolute left-1/2 top-1/2 h-[clamp(50px,13vw,76px)] w-[clamp(50px,13vw,76px)] -translate-x-1/2 -translate-y-1/2">
-          <div
-            ref={pawPositionRef}
-            className="h-full w-full opacity-0 will-change-[transform,opacity]"
-          >
-            <div ref={pawFlipRef} className="h-full w-full">
-              <img
-                src="/paw.png"
-                alt=""
-                className="h-full w-full object-contain"
-                draggable={false}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+        ref={animationRef}
+      />
       <p className="font-sans text-[clamp(0.72rem,2.4vw,0.82rem)] font-semibold uppercase tracking-[0.22em] text-accent">
         FOLLOWING THE TRAIL...
       </p>

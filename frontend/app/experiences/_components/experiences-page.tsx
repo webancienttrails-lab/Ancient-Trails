@@ -276,6 +276,48 @@ function getTourMetaLabel(tour: PublicTour) {
     .join(" / ");
 }
 
+function stripText(value = "") {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function getTextExcerpt(value = "", maxLength = 150) {
+  const text = stripText(value);
+
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  return `${text.slice(0, maxLength).trim().replace(/[,.!?;:]+$/, "")}...`;
+}
+
+function getExperienceHeroSummary(tour: PublicTour, experiences: PublicExperience[]) {
+  return (
+    getTextExcerpt(tour.description, 155) ||
+    getTextExcerpt(experiences[0]?.writtenReview, 155) ||
+    [tour.tourName, tour.tourType, tour.tourFormat, tour.durationDn]
+      .map(stripText)
+      .filter(Boolean)
+      .join(" | ")
+  );
+}
+
+function getExperienceStoryHeading(
+  tour: PublicTour,
+  experiences: PublicExperience[]
+) {
+  return (
+    stripText(experiences[0]?.title) ||
+    stripText(tour.tourName) ||
+    "Traveller Experience"
+  );
+}
+
+function getShortTourName(tour: PublicTour) {
+  const name = stripText(tour.tourName);
+
+  return name.length > 20 ? `${name.slice(0, 20).trim()}...` : name;
+}
+
 function getReviewMonthLabel(value: string) {
   const date = new Date(value);
 
@@ -947,17 +989,51 @@ export function SingleExperiencePage({
 
   const images = getDestinationImages(detail.tour, detail.experiences);
   const averageRating = getAverageRating(detail.experiences);
+  const reviewCount = detail.experiences.length;
+  const detailHeaderStats = [
+    { label: "Average Rating", value: averageRating.toFixed(1) },
+    { label: "Traveller Reviews", value: reviewCount.toString() },
+    {
+      label: detail.tour.durationDn ? "Duration" : "Tour Type",
+      value: detail.tour.durationDn || detail.tour.tourType || detail.tour.category || "Tour",
+    },
+  ];
 
   return (
     <main className="min-h-screen bg-background text-secondary">
-      <HeaderBand
-        description="Real stories, moments and memories from travellers who explored this tour with Ancient Trails."
-        stats={experienceHeaderStats}
-        subtitle={getTourMetaLabel(detail.tour)}
-        title={detail.tour.tourName}
-      />
+      <section className="relative h-[96px] overflow-hidden bg-background md:h-[200px] md:bg-secondary">
+        <Image
+          src="/home assets/Heritage Banner.webp"
+          alt="Ancient Trails heritage landscape"
+          fill
+          priority
+          sizes="100vw"
+          className="hidden object-cover object-center md:block"
+        />
+        <div className="absolute inset-0 hidden bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(20,16,12,0.7)_100%)] md:block" />
+        <div className="home-wide-frame relative z-10 mx-auto flex h-full w-full flex-col px-5 sm:px-8 lg:px-0">
+          <Header />
+          <div className="hidden flex-1 items-center justify-center pb-6 md:flex">
+            <div className="flex flex-wrap items-center justify-center gap-3 text-center">
+              {detailHeaderStats.map((stat) => (
+                <div
+                  key={stat.label}
+                  className="border-r border-white px-4 last:border-none"
+                >
+                  <span className="block font-description text-[20px] font-semibold leading-none text-white">
+                    {stat.value}
+                  </span>
+                  <span className="mt-1 block font-sans text-[16px] tracking-[0.10em] text-white">
+                    {stat.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <section className={`${detailContainerClassName} pb-20 pt-8`}>
+      <section className={`${detailContainerClassName} pb-20 pt-6 md:pt-8`}>
         <ExperienceDetailHero
           averageRating={averageRating}
           destination={detail.tour}
@@ -965,16 +1041,11 @@ export function SingleExperiencePage({
           images={images}
           onGalleryOpen={setLightboxIndex}
         />
-        <ExploringWithUsSection
-          destination={detail.tour}
-          experiences={detail.experiences}
-          images={images}
-        />
         <TravellerRatingSection
           averageRating={averageRating}
           experiences={detail.experiences}
         />
-         <ExperiencePlanTripCta destination={detail.tour} images={images} />
+        <ExperiencePlanTripCta destination={detail.tour} images={images} />
         <TravellerMomentsSection
           destination={detail.tour}
           experiences={detail.experiences}
@@ -1013,7 +1084,7 @@ function ExperienceDetailHero({
   const heroImages = Array.from({ length: 9 }, (_item, index) =>
     images[index] || fallbackImages[index % fallbackImages.length]
   );
-  const albumCards = heroImages.slice(0, 5).map((image, index) => ({
+  const albumCards = heroImages.slice(0, 6).map((image, index) => ({
     image,
     title:
       index === 0
@@ -1021,149 +1092,158 @@ function ExperienceDetailHero({
         : getAttractionName(destination, featuredExperience, index) ||
           `${destination.tourName} album`,
   }));
-  const thumbnailImages = heroImages.slice(5, 9);
   const reviewCount = experiences.length;
-  const bullets = [
-    "One of our bestseller tours",
-    "100% safe routes with certified local guides",
-    "56 Guided Tours delivered",
-  ];
+  const heroSummary = getExperienceHeroSummary(destination, experiences);
+  const destinationIntro =
+    stripText(destination.description) ||
+    stripText(experiences[0]?.writtenReview) ||
+    heroSummary;
+  const storyHeading = getExperienceStoryHeading(destination, experiences);
+  const shortTourName = getShortTourName(destination);
+  const tourLabel = `${destination.tourName} tour`;
 
   return (
     <section>
-      <div className="grid items-center gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <p className="font-sans text-eyebrow font-medium uppercase leading-none text-primary">
-          Stories | Moments | Memories.
-        </p>
-        <span className="hidden h-px bg-primary/55 lg:block" />
-      </div>
-
-      <div className="mt-7 grid gap-8 lg:grid-cols-[minmax(0,66%)_minmax(0,30%)] lg:items-start lg:justify-between lg:gap-0">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 md:flex md:flex-row md:justify-between md:gap-5">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
-            <h1 className="font-heading text-title font-bold italic leading-none text-secondary">
+          <div className="flex flex-col gap-1 md:flex-row md:flex-wrap md:items-baseline md:gap-x-3">
+            <h1 className="font-heading text-[28px] font-bold leading-[0.95] tracking-normal text-secondary md:text-title">
               {destination.tourName}
             </h1>
-            <p className="pb-1 font-sans text-button font-medium leading-none text-secondary">
+            <p className="font-sans text-[12px] font-bold leading-none text-secondary md:text-eyebrow">
               {getTourMetaLabel(destination)}
             </p>
           </div>
-          <p className="mt-2 max-w-[520px] font-sans text-description text-secondary/60">
-            Real stories, moments and memories from our travellers
+          <p className="mt-3 hidden max-w-[760px] font-sans text-[13px] font-medium leading-[1.35] text-secondary/58 md:block">
+            {heroSummary}
           </p>
-
-          <div className="mt-5">
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,2fr)]">
-              <ExperienceAlbumCard
-                image={albumCards[0].image}
-                title={albumCards[0].title}
-                priority
-                featured
-              />
-              <div className="grid gap-4 sm:grid-cols-2">
-                {albumCards.slice(1).map((card, index) => (
-                  <ExperienceAlbumCard
-                    key={`${card.image}-${index}`}
-                    image={card.image}
-                    title={card.title}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-5 grid grid-cols-2 items-center gap-4 sm:grid-cols-[repeat(4,minmax(0,1fr))_180px]">
-              {thumbnailImages.map((image, index) => (
-                <div
-                  key={`${image}-${index}`}
-                  className="relative h-[92px] overflow-hidden rounded-[7px] bg-muted"
-                >
-                  <Image
-                    src={image}
-                    alt={`${destination.tourName} album thumbnail ${index + 1}`}
-                    fill
-                    unoptimized
-                    sizes="(min-width: 1280px) 145px, (min-width: 1024px) 11vw, (min-width: 640px) 20vw, 50vw"
-                    className="object-cover"
-                  />
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={() => onGalleryOpen(0)}
-                className="col-span-2 flex h-[92px] items-center justify-center gap-4 rounded-[7px] bg-white font-sans text-description font-medium uppercase leading-[1.1] text-primary transition-colors hover:text-accent sm:col-span-1"
-              >
-                <span className="grid size-10 shrink-0 place-items-center rounded-full border-2 border-primary">
-                  <ImageIcon className="size-5" strokeWidth={1.8} />
-                </span>
-                <span className="text-left">
-                  View all
-                  <br />
-                  photos
-                </span>
-              </button>
-            </div>
-          </div>
         </div>
 
-        <aside className="w-full">
-          
-
-          <div className="mt-9">
-            <p className="font-sans text-description font-normal uppercase leading-none text-secondary">
-              Rating
-            </p>
-            <div className="mt-3 grid w-full max-w-[390px] grid-cols-[auto_auto_minmax(112px,1fr)] items-end gap-3 rounded-[8px]  bg-transparent px-4 py-3">
-              <strong className="font-description text-[46px] font-semibold leading-none tracking-normal text-primary">
-                {averageRating.toFixed(1)}
-              </strong>
-              <span className="pb-1.5 font-description text-[20px] font-semibold leading-none text-primary">
-                / 5
-              </span>
-              <span className="mb-2 max-w-[160px] justify-self-end font-sans text-description italic leading-[1.2] text-secondary/70">
-                Based on {reviewCount}+ verified reviews
-              </span>
-            </div>
-
-            <ul className="mt-8 max-w-[390px] space-y-4 font-sans text-description font-medium leading-[1.25] text-secondary/82">
-              {(bullets.length > 0
-                ? bullets
-                : [
-                    "One of our traveller-loved heritage routes",
-                    "Local stories and guided moments included",
-                    "Memories from verified Ancient Trails travellers",
-                  ]
-              ).map((bullet) => (
-                <li key={bullet} className="flex items-start gap-3">
-                  <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" />
-                  <span>{bullet}</span>
-                </li>
-              ))}
-            </ul>
+        <aside className="shrink-0 text-right md:min-w-[220px]">
+          <div className="flex items-end justify-end gap-1.5 md:gap-2">
+            <strong className="font-description text-[34px] font-semibold leading-none tracking-normal text-primary md:text-[48px]">
+              {averageRating.toFixed(1)}
+            </strong>
+            <span className="pb-1 font-description text-[14px] font-semibold leading-none text-primary md:pb-1.5 md:text-[18px]">
+              / 5
+            </span>
           </div>
+          <p className="mt-1 max-w-[110px] font-sans text-[10px] font-medium leading-[1.15] text-secondary/60 md:mt-2 md:max-w-none md:text-[12px]">
+            Based on {reviewCount || 0}+ traveller reviews
+          </p>
         </aside>
+
+        <p className="col-span-2 max-w-[760px] font-sans text-[12px] font-medium leading-[1.35] text-secondary/58 md:hidden">
+          {heroSummary}
+        </p>
+      </div>
+
+      <div className="mt-5 grid grid-cols-[1.1fr_0.7fr_0.7fr_0.7fr] grid-rows-[72px_72px] gap-2 md:mt-6 md:grid-rows-[108px_108px] md:gap-3 lg:hidden">
+        <ExperienceAlbumCard
+          image={albumCards[0].image}
+          title={albumCards[0].title}
+          priority
+          featured
+          className="col-start-1 row-span-2"
+        />
+        <ExperienceAlbumCard
+          image={albumCards[1].image}
+          title={albumCards[1].title}
+          className="col-span-2"
+        />
+        <ExperienceAlbumCard
+          image={albumCards[2].image}
+          title={albumCards[2].title}
+        />
+        {albumCards.slice(3, 6).map((card, index) => (
+          <ExperienceAlbumCard
+            key={`${card.image}-${index}`}
+            image={card.image}
+            title={card.title}
+            compact
+            onClick={index === 2 ? () => onGalleryOpen(0) : undefined}
+          />
+        ))}
+      </div>
+
+      <div className="mt-6 hidden gap-3 lg:grid lg:grid-cols-[1.03fr_1.68fr] lg:grid-rows-[130px_130px_130px]">
+        <ExperienceAlbumCard
+          image={albumCards[0].image}
+          title={albumCards[0].title}
+          priority
+          featured
+          className="lg:row-span-3"
+        />
+        <div className="grid gap-3 sm:grid-cols-2 lg:row-span-2">
+          <ExperienceAlbumCard
+            image={albumCards[1].image}
+            title={albumCards[1].title}
+          />
+          <ExperienceAlbumCard
+            image={albumCards[2].image}
+            title={albumCards[2].title}
+          />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {albumCards.slice(3, 6).map((card, index) => (
+            <ExperienceAlbumCard
+              key={`${card.image}-${index}`}
+              image={card.image}
+              title={card.title}
+              compact
+              onClick={index === 2 ? () => onGalleryOpen(0) : undefined}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6 max-w-[920px] border-b border-secondary/10 pb-7 md:mt-8 md:border-b-0 md:pb-0">
+        <div className="flex items-center gap-3">
+          <p className="font-sans text-[10px] font-bold uppercase leading-none text-primary md:text-eyebrow">
+            {tourLabel}
+          </p>
+          <span className="h-px w-10 bg-primary md:w-12" />
+        </div>
+        <h2 className="mt-2 font-heading text-[25px] font-bold leading-[0.98] tracking-normal text-secondary md:mt-3 md:text-title">
+          {storyHeading}
+        </h2>
+        <p className="mt-3 max-w-[880px] font-sans text-[12px] font-medium leading-[1.45] text-secondary/68 md:text-description">
+          {destinationIntro}
+        </p>
+        <Link
+          href={getTourCalendarHref({ tour: destination })}
+          className={buttonVariants({
+            className: "mt-5 min-w-[158px] justify-between gap-5 px-4 text-[12px] md:min-w-[170px] md:px-5 md:text-button",
+          })}
+        >
+          <span className="md:hidden">Explore {shortTourName}</span>
+          <span className="hidden md:inline">Explore {destination.tourName}</span>
+          <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+        </Link>
       </div>
     </section>
   );
 }
 
 function ExperienceAlbumCard({
+  className,
+  compact = false,
   featured = false,
   image,
+  onClick,
   priority = false,
   title,
 }: {
+  className?: string;
+  compact?: boolean;
   featured?: boolean;
   image: string;
+  onClick?: () => void;
   priority?: boolean;
   title: string;
 }) {
-  return (
-    <article
-      className={cn(
-        "group relative overflow-hidden rounded-[8px] bg-muted shadow-[0_10px_26px_rgba(50,50,50,0.1)]",
-        featured ? "h-[360px] lg:h-full lg:min-h-[360px]" : "h-[172px]"
-      )}
-    >
+  const content = (
+    <>
       <Image
         src={image}
         alt={title}
@@ -1172,24 +1252,48 @@ function ExperienceAlbumCard({
         unoptimized
         sizes={
           featured
-            ? "(min-width: 1280px) 310px, (min-width: 1024px) 24vw, 100vw"
-            : "(min-width: 1280px) 185px, (min-width: 1024px) 14vw, (min-width: 640px) 45vw, 100vw"
+            ? "(min-width: 1280px) 370px, (min-width: 1024px) 34vw, 100vw"
+            : "(min-width: 1280px) 290px, (min-width: 1024px) 22vw, (min-width: 640px) 45vw, 100vw"
         }
         className="object-cover transition-transform duration-700 group-hover:scale-[1.035]"
       />
-      <span className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.04)_0%,rgba(18,12,8,0.18)_45%,rgba(18,12,8,0.66)_100%)]" />
-      <span className="pointer-events-none absolute left-4 top-4 inline-flex h-7 items-center gap-1.5 rounded-full bg-white px-3 text-[12px] font-semibold text-secondary">
-        <ImageIcon className="size-3.5" strokeWidth={2} />
-        Album
-      </span>
-      <span className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-5 text-white">
-        <strong className="max-w-[220px] font-sans text-description font-semibold leading-tight">
-          {title}
-        </strong>
-        <span className="grid size-10 shrink-0 place-items-center rounded-full border border-white/80 bg-white/5 text-white backdrop-blur-sm transition-colors group-hover:bg-primary group-hover:border-primary">
-          <ArrowRight className="size-5" strokeWidth={2} />
+      {onClick ? (
+        <span className="absolute inset-0 flex items-center justify-center bg-black/18 text-white opacity-0 transition-opacity group-hover:opacity-100">
+          <span className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 font-sans text-[12px] font-bold uppercase text-primary">
+            <ImageIcon className="size-4" strokeWidth={2} />
+            View all
+          </span>
         </span>
-      </span>
+      ) : null}
+    </>
+  );
+
+  const albumClassName = cn(
+    "group relative overflow-hidden rounded-[7px] bg-muted shadow-[0_10px_24px_rgba(50,50,50,0.1)]",
+    featured ? "h-full min-h-0 lg:h-full lg:min-h-[402px]" : compact ? "h-full min-h-0 lg:h-[130px]" : "h-full min-h-0 lg:h-full",
+    className
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        aria-label={`View all ${title} photos`}
+        onClick={onClick}
+        className={cn(albumClassName, "block w-full focus:outline-none focus:ring-3 focus:ring-primary/20")}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <article
+      className={cn(
+        albumClassName
+      )}
+    >
+      {content}
     </article>
   );
 }
@@ -1324,219 +1428,6 @@ function ExperiencePhotoLightbox({
   );
 }
 
-function ExploringWithUsSection({
-  destination,
-  experiences,
-  images,
-}: {
-  destination: PublicTour;
-  experiences: PublicExperience[];
-  images: string[];
-}) {
-  const featuredExperience = experiences[0];
-  const fallbackMediaImage =
-    getExperiencePhotoGallery(featuredExperience)[0] || images[1] || fallbackImages[0];
-  const tallImage = images[2] || fallbackMediaImage;
-  const centerVideo =
-    getExperienceVideo(featuredExperience) ||
-    getExperienceVideo(experiences.find((experience) => getExperienceVideo(experience)));
-
-  return (
-    <section className="mt-16 py-3 mb-10">
-      <div className="grid gap-8 lg:h-[390px] lg:grid-cols-[minmax(290px,1.02fr)_minmax(190px,0.62fr)_minmax(260px,0.82fr)] lg:items-stretch lg:gap-12 xl:grid-cols-[minmax(330px,1.08fr)_minmax(205px,0.64fr)_minmax(300px,0.86fr)]">
-        <div className="flex min-w-0 flex-col">
-          <p className="font-sans text-eyebrow font-medium uppercase leading-none text-secondary/68">
-            What Travellers Say On -
-          </p>
-          <h2 className="mt-2 font-heading text-title font-bold leading-none text-secondary border-b border-secondary/28 pb-4">
-            Exploring {destination.tourName} with Us
-          </h2>
-          <p className="mt-5 max-w-[320px] font-sans text-description font-medium leading-[1.35] text-primary">
-            Every Journey we organise is built on trust, safety and unforgettable
-            memories
-          </p>
-
-          <article className="relative mt-4 min-h-[180px] flex-1 overflow-hidden rounded-[8px] bg-muted shadow-[0_14px_32px_rgba(50,50,50,0.1)]">
-            <Image
-              src={fallbackMediaImage}
-              alt={`${destination.tourName} traveller memory`}
-              fill
-              unoptimized
-              sizes="(min-width: 1280px) 320px, (min-width: 1024px) 25vw, 100vw"
-              className="object-cover"
-            />
-          </article>
-        </div>
-
-        <article className="relative h-[320px] overflow-hidden rounded-[8px] bg-muted shadow-[0_14px_32px_rgba(50,50,50,0.1)] sm:h-[360px] lg:h-full">
-          {centerVideo ? (
-            <video
-              autoPlay
-              className="size-full object-cover"
-              loop
-              muted
-              playsInline
-              poster={tallImage}
-              preload="metadata"
-              src={centerVideo}
-            />
-          ) : (
-            <Image
-              src={tallImage}
-              alt={`${destination.tourName} memory`}
-              fill
-              unoptimized
-              sizes="(min-width: 1280px) 350px, (min-width: 1024px) 28vw, 100vw"
-              className="object-cover"
-            />
-          )}
-        </article>
-
-        <div className="flex min-w-0 flex-col justify-center">
-          <div className="w-full max-w-[390px] justify-self-center lg:justify-self-auto">
-            {experiences.length > 0 ? (
-              <ExperienceReviewSlider experiences={experiences} />
-            ) : (
-              <p className="mt-10 max-w-[320px] font-sans text-description leading-[1.5] text-secondary/62">
-                Traveller voices will appear here once experiences are published for
-                this tour.
-              </p>
-            )}
-            
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function CompactVoiceCard({ experience }: { experience: PublicExperience }) {
-  const name = experience.travellerName.trim() || "Traveller";
-
-  return (
-    <article className="text-center">
-      <p className="mx-auto mt-6 line-clamp-7 max-w-[360px] font-description text-[16px] font-medium leading-[1.36] text-secondary/70">
-        {experience.writtenReview || experience.title || "Traveller experience"}
-      </p>
-
-      <span className="mx-auto mt-5 block h-px w-20 bg-primary/45" />
-
-      <div className="mt-4 flex items-center justify-center gap-6">
-        <RatingStars
-          value={experience.overallRating}
-          className="text-primary"
-          starClassName="size-4"
-        />
-        <span className="font-sans text-[20px] font-semibold leading-none text-secondary">
-          {experience.overallRating.toFixed(1)}
-        </span>
-      </div>
-
-      <p className="mt-4 truncate font-sans text-[16px] font-medium leading-none text-primary">
-        {name}
-      </p>
-    </article>
-  );
-}
-
-function ExperienceReviewSlider({
-  experiences,
-}: {
-  experiences: PublicExperience[];
-}) {
-  const reviewExperiences = experiences.slice(0, 4);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const boundedIndex = reviewExperiences[activeIndex] ? activeIndex : 0;
-
-  useEffect(() => {
-    if (reviewExperiences.length <= 1) {
-      return;
-    }
-
-    const interval = window.setInterval(() => {
-      setActiveIndex((currentIndex) =>
-        currentIndex === reviewExperiences.length - 1 ? 0 : currentIndex + 1
-      );
-    }, 4500);
-
-    return () => window.clearInterval(interval);
-  }, [reviewExperiences.length]);
-
-  function showPreviousReview() {
-    setActiveIndex(
-      boundedIndex === 0 ? reviewExperiences.length - 1 : boundedIndex - 1
-    );
-  }
-
-  function showNextReview() {
-    setActiveIndex(
-      boundedIndex === reviewExperiences.length - 1 ? 0 : boundedIndex + 1
-    );
-  }
-
-  return (
-    <div className="w-full min-w-0">
-      <h3 className="mt-4 text-center font-sans text-description font-semibold uppercase tracking-normal text-primary">
-        Voices from our travellers
-      </h3>
-
-      <div className="overflow-hidden">
-        <div
-          className="flex transition-transform duration-700 ease-out"
-          style={{ transform: `translateX(-${boundedIndex * 100}%)` }}
-        >
-          {reviewExperiences.map((experience) => (
-            <div
-              key={experience.id || experience.experienceId}
-              className="w-full shrink-0"
-            >
-              <CompactVoiceCard experience={experience} />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {reviewExperiences.length > 1 ? (
-        <div className="mt-4 flex items-center justify-between gap-4">
-          <button
-            type="button"
-            aria-label="Previous traveller review"
-            onClick={showPreviousReview}
-            className="grid size-10 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:text-primary"
-          >
-            <ChevronLeft className="size-4" strokeWidth={2.3} />
-          </button>
-
-          <div className="flex items-center justify-center gap-3">
-            {reviewExperiences.map((experience, index) => (
-              <button
-                key={`${experience.id || experience.experienceId}-voice-dot`}
-                type="button"
-                aria-label={`Show traveller voice ${index + 1}`}
-                aria-current={index === boundedIndex ? "true" : undefined}
-                onClick={() => setActiveIndex(index)}
-                className={cn(
-                  "size-2 rounded-full transition-colors",
-                  index === boundedIndex ? "bg-primary" : "bg-primary/30"
-                )}
-              />
-            ))}
-          </div>
-
-          <button
-            type="button"
-            aria-label="Next traveller review"
-            onClick={showNextReview}
-            className="grid size-10 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:text-primary"
-          >
-            <ChevronRight className="size-4" strokeWidth={2.3} />
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function TravellerRatingSection({
   averageRating,
   experiences,
@@ -1569,36 +1460,36 @@ function TravellerRatingSection({
   ];
 
   return (
-    <section className="mt-40">
+    <section className="mt-7 md:mt-12">
       <div className="flex flex-wrap items-end gap-4">
         <div>
-          <h2 className="font-heading text-title font-bold leading-none text-secondary">
+          <h2 className="font-heading text-[25px] font-bold leading-none text-secondary md:text-title">
             Traveller Rating
           </h2>
-          <p className="mt-2 font-sans text-description font-medium leading-none text-secondary">
+          <p className="mt-2 font-sans text-[12px] font-medium leading-none text-secondary/70 md:text-description md:text-secondary">
             Overall {averageRating.toFixed(1)} rating based on{" "}
             <strong>{reviewCount || 0} reviews</strong>
           </p>
         </div>
       </div>
 
-      <div className="mt-7 grid gap-2 md:grid-cols-2">
+      <div className="mt-4 grid gap-1.5 md:mt-7 md:gap-2 md:grid-cols-2">
         {rows.map(({ icon: Icon, label, value }) => (
           <div
             key={label}
-            className="grid grid-cols-[minmax(130px,0.82fr)_minmax(0,1fr)_42px] items-center gap-3  bg-white px-4 py-4 sm:grid-cols-[minmax(160px,0.82fr)_minmax(0,1fr)_48px]"
+            className="grid grid-cols-[minmax(112px,0.74fr)_minmax(0,1fr)_32px] items-center gap-2 bg-white px-1 py-1.5 md:grid-cols-[minmax(130px,0.82fr)_minmax(0,1fr)_42px] md:gap-3 md:px-4 md:py-4 sm:grid-cols-[minmax(160px,0.82fr)_minmax(0,1fr)_48px]"
           >
-            <span className="flex min-w-0 items-center gap-2.5 font-sans text-description font-medium text-secondary/82">
-              <Icon className="size-4 shrink-0 text-primary" strokeWidth={1.8} />
+            <span className="flex min-w-0 items-center gap-2 font-sans text-[11px] font-medium text-secondary/72 md:gap-2.5 md:text-description md:text-secondary/82">
+              <Icon className="size-3.5 shrink-0 text-primary md:size-4" strokeWidth={1.8} />
               {label}
             </span>
-            <span className="h-2 overflow-hidden rounded-full bg-primary/12">
+            <span className="h-1.5 overflow-hidden rounded-full bg-primary/12 md:h-2">
               <span
                 className="block h-full rounded-full bg-primary"
                 style={{ width: `${Math.min(100, (value / 5) * 100)}%` }}
               />
             </span>
-            <span className="font-sans text-button font-semibold text-primary">
+            <span className="font-sans text-[11px] font-semibold text-primary md:text-button">
               {value.toFixed(1)}
             </span>
           </div>
@@ -1618,6 +1509,7 @@ function TravellerMomentsSection({
   images: string[];
 }) {
   const [activeMomentIndex, setActiveMomentIndex] = useState<number | null>(null);
+  const [mobileMomentIndex, setMobileMomentIndex] = useState(0);
 
   const availableVideos = uniqueValues(
     experiences.flatMap((experience) => experience.travellerVideos)
@@ -1649,6 +1541,19 @@ function TravellerMomentsSection({
   });
   const activeMoment =
     activeMomentIndex === null ? null : moments[activeMomentIndex] || null;
+  const activeMobileMoment = moments[mobileMomentIndex] || moments[0];
+
+  function showPreviousMobileMoment() {
+    setMobileMomentIndex((currentIndex) =>
+      currentIndex === 0 ? moments.length - 1 : currentIndex - 1
+    );
+  }
+
+  function showNextMobileMoment() {
+    setMobileMomentIndex((currentIndex) =>
+      currentIndex === moments.length - 1 ? 0 : currentIndex + 1
+    );
+  }
 
   return (
     <>
@@ -1656,7 +1561,76 @@ function TravellerMomentsSection({
         <h2 className="font-heading text-title font-bold leading-none text-secondary">
           Traveller Moments
         </h2>
-        <div className="mt-7 grid grid-cols-2 gap-4 lg:grid-cols-7">
+
+        <div className="mt-7 lg:hidden">
+          <div className="relative">
+            <button
+              type="button"
+              aria-label={activeMobileMoment.title}
+              onClick={() => setActiveMomentIndex(mobileMomentIndex)}
+              className="group relative h-[235px] w-full overflow-hidden rounded-[8px] bg-muted text-left shadow-[0_8px_18px_rgba(50,50,50,0.08)] focus:outline-none focus:ring-3 focus:ring-primary/20"
+            >
+              {activeMobileMoment.video ? (
+                <video
+                  className="size-full object-cover"
+                  muted
+                  playsInline
+                  poster={activeMobileMoment.image}
+                  preload="metadata"
+                  src={activeMobileMoment.video}
+                />
+              ) : (
+                <Image
+                  src={activeMobileMoment.image}
+                  alt={activeMobileMoment.title}
+                  fill
+                  unoptimized
+                  sizes="calc(100vw - 40px)"
+                  className="object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+                />
+              )}
+              <span className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0)_45%,rgba(0,0,0,0.18)_100%)]" />
+              <span className="absolute left-1/2 top-1/2 grid size-10 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-secondary text-white transition-transform group-hover:scale-110">
+                <Play className="ml-0.5 size-5 fill-current" strokeWidth={0} />
+              </span>
+            </button>
+
+            <button
+              type="button"
+              aria-label="Previous traveller moment"
+              onClick={showPreviousMobileMoment}
+              className="absolute left-3 top-1/2 grid size-10 -translate-y-1/2 place-items-center rounded-full bg-white/92 text-primary shadow-[0_8px_20px_rgba(35,24,16,0.16)] transition-colors hover:bg-primary hover:text-white"
+            >
+              <ChevronLeft className="size-5" strokeWidth={2.3} />
+            </button>
+            <button
+              type="button"
+              aria-label="Next traveller moment"
+              onClick={showNextMobileMoment}
+              className="absolute right-3 top-1/2 grid size-10 -translate-y-1/2 place-items-center rounded-full bg-white/92 text-primary shadow-[0_8px_20px_rgba(35,24,16,0.16)] transition-colors hover:bg-primary hover:text-white"
+            >
+              <ChevronRight className="size-5" strokeWidth={2.3} />
+            </button>
+          </div>
+
+          <div className="mt-4 flex items-center justify-center gap-2">
+            {moments.map((moment, index) => (
+              <button
+                key={`${moment.image}-${index}-mobile-dot`}
+                type="button"
+                aria-label={`Show traveller moment ${index + 1}`}
+                aria-current={index === mobileMomentIndex ? "true" : undefined}
+                onClick={() => setMobileMomentIndex(index)}
+                className={cn(
+                  "size-2 rounded-full transition-colors",
+                  index === mobileMomentIndex ? "bg-primary" : "bg-primary/25"
+                )}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-7 hidden gap-4 lg:grid lg:grid-cols-7">
           {moments.map((moment, index) => (
             <button
               key={`${moment.image}-${index}`}
@@ -1664,7 +1638,7 @@ function TravellerMomentsSection({
               aria-label={moment.title}
               onClick={() => setActiveMomentIndex(index)}
               className={cn(
-                "group relative h-[190px] overflow-hidden rounded-[8px] bg-muted text-left shadow-[0_8px_18px_rgba(50,50,50,0.08)] focus:outline-none focus:ring-3 focus:ring-primary/20 lg:h-[210px] xl:h-[225px]",
+                "group relative overflow-hidden rounded-[8px] bg-muted text-left shadow-[0_8px_18px_rgba(50,50,50,0.08)] focus:outline-none focus:ring-3 focus:ring-primary/20 lg:h-[210px] xl:h-[225px]",
                 momentLayouts[index % momentLayouts.length]
               )}
             >
@@ -1803,6 +1777,11 @@ function ExperiencePlanTripCta({
     destination.bannerImage ||
     destination.thumbnailImage ||
     fallbackImages[0];
+  const ctaMeta = [destination.durationDn, destination.bestSeason, destination.difficulty]
+    .map(stripText)
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(" | ");
 
   return (
     <section className="relative mt-12 overflow-hidden rounded-[10px] bg-secondary px-5 py-8 text-white shadow-[0_18px_44px_rgba(50,50,50,0.12)] sm:px-8 lg:px-10">
@@ -1817,7 +1796,7 @@ function ExperiencePlanTripCta({
       <span className="absolute inset-0 bg-[linear-gradient(90deg,rgba(35,24,16,0.86)_0%,rgba(35,24,16,0.66)_44%,rgba(35,24,16,0.2)_100%)]" />
       <div className="relative max-w-[560px]">
         <p className="font-sans text-eyebrow font-medium uppercase leading-none text-white/78">
-          Make It Your Journey
+          {ctaMeta || getTourMetaLabel(destination) || destination.tourName}
         </p>
         <h2 className="mt-3 font-heading text-title font-bold leading-none tracking-normal">
           Plan your {destination.tourName} trip with Ancient Trails
@@ -1844,7 +1823,9 @@ function ReviewsGrid({
   images: string[];
 }) {
   const [visibleReviewCount, setVisibleReviewCount] = useState(12);
+  const [mobileVisibleReviewCount, setMobileVisibleReviewCount] = useState(2);
   const reviewsPerLoad = 4;
+  const mobileReviewsPerLoad = 2;
   const reviewItems =
     experiences.length > 0
       ? experiences
@@ -1897,7 +1878,34 @@ function ReviewsGrid({
       <h2 className="font-heading text-title font-bold leading-none text-secondary">
         Written Reviews
       </h2>
-      <div className="mt-7 columns-1 gap-6 sm:columns-2 lg:columns-4">
+
+      <div className="mt-7 sm:hidden">
+        {masonryReviews.slice(0, mobileVisibleReviewCount).map(({ experience, key }, index) => (
+          <ReviewCard
+            key={`${key}-mobile`}
+            className={reviewLayouts[index % reviewLayouts.length]}
+            experience={experience}
+            experiences={experiences}
+            fallbackImage={images[index % images.length] || fallbackImages[0]}
+            lineClampClass={reviewLineClamps[index % reviewLineClamps.length]}
+          />
+        ))}
+        <div className="mt-2 flex justify-center">
+          <button
+            type="button"
+            onClick={() =>
+              setMobileVisibleReviewCount((currentCount) =>
+                currentCount + mobileReviewsPerLoad
+              )
+            }
+            className="inline-flex h-10 min-w-[150px] items-center justify-center rounded-full border border-primary bg-primary px-5 font-sans text-button font-medium text-white transition-colors hover:bg-transparent hover:text-primary"
+          >
+            Load more
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-7 hidden gap-6 sm:block sm:columns-2 lg:columns-4">
         {masonryReviews.map(({ experience, key }, index) => (
           <ReviewCard
             key={key}
@@ -1909,7 +1917,7 @@ function ReviewsGrid({
           />
         ))}
       </div>
-      <div className="absolute inset-x-0 bottom-0 flex h-64 items-center justify-center bg-gradient-to-t from-background via-background/80 to-transparent pb-2">
+      <div className="absolute inset-x-0 bottom-0 hidden h-64 items-center justify-center bg-gradient-to-t from-background via-background/80 to-transparent pb-2 sm:flex">
         <button
           type="button"
           onClick={() =>

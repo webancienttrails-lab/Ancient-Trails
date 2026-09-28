@@ -690,13 +690,86 @@ function isTravellerDetailFormComplete(form: TravellerDetailForm) {
       form.lastName.trim() &&
       isValidEmail(form.email) &&
       form.address.trim() &&
-      form.emergencyContactName.trim() &&
-      isValidMobileNumber(form.emergencyContactMobileNumber) &&
       extractPhoneCountryCode(form.phoneCountryCode) &&
       isValidMobileNumber(form.mobileNumber) &&
       form.gender &&
       isValidStoredBirthDate(form.dateOfBirth)
   );
+}
+
+function isBookingEmergencyContactComplete(form: TravellerDetailForm) {
+  const emergencyContactDigits = getMobileDigits(
+    form.emergencyContactMobileNumber
+  );
+
+  return Boolean(
+    form.emergencyContactName.trim() &&
+      emergencyContactDigits.length >= 6 &&
+      emergencyContactDigits.length <= 15
+  );
+}
+
+function normalizeContactName(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function getMobileDigits(value: string) {
+  return sanitizeMobileNumber(value).replace(/\D/g, "");
+}
+
+function isSameMobileNumber(value: string, form: TravellerDetailForm) {
+  const mobileDigits = getMobileDigits(value);
+  const travellerMobileDigits = getMobileDigits(form.mobileNumber);
+  const travellerAuthMobileDigits = getLeadTravellerAuthMobileNumber(form);
+
+  if (!mobileDigits || !travellerMobileDigits) {
+    return false;
+  }
+
+  return (
+    mobileDigits === travellerMobileDigits ||
+    mobileDigits === travellerAuthMobileDigits ||
+    (mobileDigits.length >= 10 &&
+      travellerMobileDigits.length >= 10 &&
+      mobileDigits.slice(-10) === travellerMobileDigits.slice(-10))
+  );
+}
+
+function getEmergencyContactTravellerWarning(
+  emergencyContact: TravellerDetailForm,
+  tabs: TravellerDetailTab[],
+  forms: Record<string, TravellerDetailForm>
+) {
+  const emergencyContactName = normalizeContactName(
+    emergencyContact.emergencyContactName
+  );
+
+  if (!emergencyContactName && !getMobileDigits(emergencyContact.emergencyContactMobileNumber)) {
+    return "";
+  }
+
+  const hasSameTraveller = tabs.some((tab) => {
+    const travellerForm = {
+      ...defaultTravellerDetailForm,
+      ...(forms[tab.id] || {}),
+    };
+    const travellerName = normalizeContactName(
+      `${travellerForm.firstName} ${travellerForm.lastName}`
+    );
+    const hasSameName =
+      emergencyContactName && travellerName && emergencyContactName === travellerName;
+
+    return (
+      isSameMobileNumber(
+        emergencyContact.emergencyContactMobileNumber,
+        travellerForm
+      ) || hasSameName
+    );
+  });
+
+  return hasSameTraveller
+    ? "Emergency contact cannot be the same as any traveller. Please add a different contact person."
+    : "";
 }
 
 function getLeadTravellerFormFromProfile(
@@ -787,6 +860,11 @@ function createBookingPayload({
   const travellerTabs = createTravellerDetailTabs(travellerCounts);
   const totalGuests = getTotalTravellers(travellerCounts);
   const childTabs = travellerTabs.filter((tab) => tab.travellerType !== "adult");
+  const leadForm = forms["adult-1"] || defaultTravellerDetailForm;
+  const bookingEmergencyContactName = leadForm.emergencyContactName.trim();
+  const bookingEmergencyContactMobileNumber = sanitizeMobileNumber(
+    leadForm.emergencyContactMobileNumber
+  );
 
   return {
     tourId: tour.tourId,
@@ -801,6 +879,13 @@ function createBookingPayload({
     guestDetails: travellerTabs.map((tab) => {
       const form = forms[tab.id];
       const address = form.address.trim() || "Not provided";
+      const emergencyContact =
+        tab.id === "adult-1"
+          ? {
+              emergencyContactName: bookingEmergencyContactName,
+              emergencyContactMobileNumber: bookingEmergencyContactMobileNumber,
+            }
+          : {};
 
       return {
         title: form.title,
@@ -812,16 +897,20 @@ function createBookingPayload({
         dateOfBirth: form.dateOfBirth,
         gender: form.gender,
         address,
-        emergencyContactName: form.emergencyContactName.trim(),
-        emergencyContactMobileNumber: sanitizeMobileNumber(
-          form.emergencyContactMobileNumber
-        ),
+        ...emergencyContact,
       };
     }),
     travellers: travellerTabs.map((tab) => {
       const form = forms[tab.id];
       const countryCode = extractPhoneCountryCode(form.phoneCountryCode);
       const mobileNumber = sanitizeMobileNumber(form.mobileNumber);
+      const emergencyContact =
+        tab.id === "adult-1"
+          ? {
+              emergencyContactName: bookingEmergencyContactName,
+              emergencyContactMobileNumber: bookingEmergencyContactMobileNumber,
+            }
+          : {};
 
       return {
         id: tab.id,
@@ -835,10 +924,7 @@ function createBookingPayload({
         dateOfBirth: form.dateOfBirth,
         gender: form.gender,
         address: form.address.trim() || "Not provided",
-        emergencyContactName: form.emergencyContactName.trim(),
-        emergencyContactMobileNumber: sanitizeMobileNumber(
-          form.emergencyContactMobileNumber
-        ),
+        ...emergencyContact,
         ageOnDeparture:
           tab.travellerType === "adult"
             ? undefined
@@ -3223,8 +3309,15 @@ function PricingPanel({
       }),
     [travellerDetailForms, travellerDetailTabs]
   );
+  const bookingEmergencyContactWarning = getEmergencyContactTravellerWarning(
+    leadTravellerDetails,
+    travellerDetailTabs,
+    travellerDetailForms
+  );
   const areTravellerDetailsCompleteForBooking =
     areAllTravellerDetailsComplete &&
+    isBookingEmergencyContactComplete(leadTravellerDetails) &&
+    !bookingEmergencyContactWarning &&
     isLeadTravellerAuthReady;
   const childInputs = useMemo(
     () =>
@@ -3344,16 +3437,18 @@ function PricingPanel({
         [key]: nextValue,
       };
 
-      if (delta > 0 && getTotalTravellers(nextCounts) > maxTravellers) {
-        return current;
-      }
-
       if (
         delta > 0 &&
         getTotalTravellers(current) <= BOOKING_TRAVELLER_LIMIT &&
         getTotalTravellers(nextCounts) > BOOKING_TRAVELLER_LIMIT
       ) {
         setIsGroupEnquiryOpen(true);
+
+        return current;
+      }
+
+      if (delta > 0 && getTotalTravellers(nextCounts) > maxTravellers) {
+        return current;
       }
 
       return nextCounts;
@@ -3858,7 +3953,7 @@ function PricingPanel({
                   aria-controls={`traveller-panel-${travellerTab.id}`}
                   aria-selected={isSelected}
                   className={cn(
-                    "h-9 shrink-0 rounded-[6px] px-3 font-sans text-[14px] font-medium transition-colors focus:outline-none focus:ring-3 focus:ring-primary/15",
+                    "h-9 shrink-0 rounded-[6px] px-3 font-sans !text-[14px] font-medium leading-none transition-colors focus:outline-none focus:ring-3 focus:ring-primary/15",
                     isSelected
                       ? "bg-primary text-white shadow-[0_5px_12px_rgba(212,114,32,0.18)]"
                       : "text-secondary/68 hover:bg-background hover:text-secondary",
@@ -4043,36 +4138,62 @@ function PricingPanel({
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <input
-                aria-label={`${activeTravellerDetailTab.label} emergency contact name`}
-                className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
-                value={activeTravellerDetails.emergencyContactName}
-                onChange={(event) =>
-                  updateActiveTravellerDetail(
-                    "emergencyContactName",
-                    event.target.value
-                  )
-                }
-                placeholder="Emergency Contact Name *"
-                type="text"
-              />
-              <input
-                aria-label={`${activeTravellerDetailTab.label} emergency contact mobile number`}
-                className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
-                value={activeTravellerDetails.emergencyContactMobileNumber}
-                onChange={(event) =>
-                  updateActiveTravellerDetail(
-                    "emergencyContactMobileNumber",
-                    event.target.value
-                  )
-                }
-                placeholder="Emergency Contact Number *"
-                type="tel"
-              />
-            </div>
           </fieldset>
         </div>
+
+        <fieldset
+          disabled={!canEditTravellerDetailFields}
+          className={cn(
+            "mt-4 space-y-3 rounded-[8px] border border-border bg-muted/25 p-3",
+            !canEditTravellerDetailFields && "opacity-60"
+          )}
+        >
+          <div>
+            <h3 className="font-sans text-[14px] font-bold text-secondary">
+              Emergency Contact
+            </h3>
+            <p className="mt-1 font-sans text-[13px] font-medium text-secondary/64">
+              Add one emergency contact for the whole booking.
+            </p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <input
+              aria-label="Booking emergency contact name"
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
+              value={leadTravellerDetails.emergencyContactName}
+              onChange={(event) =>
+                updateLeadTravellerDetail(
+                  "emergencyContactName",
+                  event.target.value
+                )
+              }
+              placeholder="Emergency Contact Name *"
+              type="text"
+            />
+            <input
+              aria-label="Booking emergency contact mobile number"
+              className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
+              inputMode="numeric"
+              maxLength={15}
+              pattern="[0-9]{6,15}"
+              value={leadTravellerDetails.emergencyContactMobileNumber}
+              onChange={(event) =>
+                updateLeadTravellerDetail(
+                  "emergencyContactMobileNumber",
+                  getMobileDigits(event.target.value).slice(0, 15)
+                )
+              }
+              placeholder="Emergency Contact Number *"
+              type="tel"
+            />
+          </div>
+          {bookingEmergencyContactWarning ? (
+            <p className="flex items-start gap-2 rounded-[6px] border border-destructive/20 bg-destructive/5 px-3 py-2 font-sans text-[13px] font-semibold leading-[1.45] text-destructive">
+              <Info className="mt-0.5 size-3.5 shrink-0" />
+              <span>{bookingEmergencyContactWarning}</span>
+            </p>
+          ) : null}
+        </fieldset>
 
         <p className="mt-4 font-sans text-[14px] font-medium text-secondary/72">
           {totalTravellers > 1
