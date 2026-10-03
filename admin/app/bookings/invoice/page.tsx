@@ -430,10 +430,10 @@ function DetailRow({
   value: string;
 }) {
   return (
-    <div className="grid grid-cols-[24px_1fr_1.25fr] items-center gap-4">
+    <div className="grid grid-cols-[24px_minmax(0,1fr)] items-center gap-4 sm:grid-cols-[24px_1fr_1.25fr]">
       <Icon className="size-5 text-primary" />
       <span className="text-[15px] text-slate-700">{label}</span>
-      <span className="text-[15px] font-medium text-slate-900">{value}</span>
+      <span className="col-start-2 text-[15px] font-medium text-slate-900 sm:col-start-auto">{value}</span>
     </div>
   );
 }
@@ -588,7 +588,7 @@ function InvoiceSheet({
 
       <InvoiceSection
         className="mt-3"
-        contentClassName="overflow-hidden rounded-[6px] border border-border"
+        contentClassName="overflow-x-auto rounded-[6px] border border-border"
         title="Booking Details"
       >
           <table className="admin-invoice-items-table w-full border-collapse text-[13px]">
@@ -667,7 +667,7 @@ function InvoiceSheet({
             </p>
           </div>
 
-          <div className="min-w-[230px] border-border md:border-l md:pl-14">
+          <div className="min-w-0 border-border md:min-w-[230px] md:border-l md:pl-14">
             <p className="font-heading text-[38px] italic leading-none text-primary">
               Rahul
             </p>
@@ -706,12 +706,12 @@ function SummaryRow({
   return (
     <div
       className={cn(
-        "grid grid-cols-[1fr_auto] border-b border-border last:border-b-0",
+        "grid grid-cols-1 border-b border-border sm:grid-cols-[1fr_auto] last:border-b-0",
         strong && "bg-primary/10 text-[18px] font-bold text-slate-950"
       )}
     >
       <span className="px-4 py-2">{label}</span>
-      <span className="min-w-[180px] border-l border-border px-4 py-2 text-right">
+      <span className="min-w-0 border-t border-border px-4 py-2 text-right sm:min-w-[180px] sm:border-l sm:border-t-0">
         {value}
       </span>
     </div>

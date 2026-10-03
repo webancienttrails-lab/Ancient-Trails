@@ -993,7 +993,11 @@ function BookingTable({
             >
               {/* ID */}
 
-              <td className="border-r border-border px-5 py-4 align-middle">
+              <td
+                data-label="ID"
+                data-mobile-primary
+                className="border-r border-border px-5 py-4 align-middle"
+              >
                 <button
                   type="button"
                   onClick={() => onView(booking)}
@@ -1005,14 +1009,20 @@ function BookingTable({
 
               {/* DATE */}
 
-              <td className="whitespace-nowrap border-r border-border px-5 py-4 align-middle text-xs font-medium text-foreground/65">
+              <td
+                data-label="Date"
+                className="whitespace-nowrap border-r border-border px-5 py-4 align-middle text-xs font-medium text-foreground/65"
+              >
                 {formatDate(booking.createdAt)}
               </td>
 
               {/* GUEST DETAILS */}
 
-              <td className="border-r border-border px-5 py-4 align-middle">
-                <div className="min-w-[210px]">
+              <td
+                data-label="Guest Details"
+                className="border-r border-border px-5 py-4 align-middle"
+              >
+                <div className="min-w-0 md:min-w-[210px]">
                   <p className="font-bold text-foreground">
                     {getGuestName(primaryGuest)}
                   </p>
@@ -1038,8 +1048,11 @@ function BookingTable({
 
               {/* TOUR ID */}
 
-              <td className="border-r border-border px-5 py-4 align-middle">
-                <div className="min-w-[130px]">
+              <td
+                data-label="Tour ID"
+                className="border-r border-border px-5 py-4 align-middle"
+              >
+                <div className="min-w-0 md:min-w-[130px]">
                   <p className="whitespace-nowrap text-xs font-bold text-foreground">
                     {booking.tourId}
                   </p>
@@ -1054,7 +1067,10 @@ function BookingTable({
 
               {/* PAID */}
 
-              <td className="whitespace-nowrap border-r border-border px-5 py-4 align-middle">
+              <td
+                data-label="Paid"
+                className="whitespace-nowrap border-r border-border px-5 py-4 align-middle"
+              >
                 <span className="text-xs font-bold text-emerald-600">
                   {formatCurrency(paidAmount, currency)}
                 </span>
@@ -1062,7 +1078,10 @@ function BookingTable({
 
               {/* DUE */}
 
-              <td className="whitespace-nowrap border-r border-border px-5 py-4 align-middle">
+              <td
+                data-label="Due"
+                className="whitespace-nowrap border-r border-border px-5 py-4 align-middle"
+              >
                 <span
                   className={cn(
                     "text-xs font-bold",
@@ -1077,7 +1096,10 @@ function BookingTable({
 
               {/* STATUS */}
 
-              <td className="border-r border-border px-5 py-4 align-middle">
+              <td
+                data-label="Status"
+                className="border-r border-border px-5 py-4 align-middle"
+              >
                 <span
                   className={cn(
                     "inline-flex items-center rounded-full border px-2.5 py-1",
@@ -1091,7 +1113,11 @@ function BookingTable({
 
               {/* ACTIONS */}
 
-              <td className="px-5 py-4 align-middle">
+              <td
+                data-actions
+                data-label="Actions"
+                className="px-5 py-4 align-middle"
+              >
                 <BookingActionsMenu
                   booking={booking}
                   isArchiving={

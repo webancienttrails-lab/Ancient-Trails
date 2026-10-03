@@ -29,6 +29,11 @@ import {
   type AboutPagePayload,
   type AboutStatIcon,
 } from "@/lib/about";
+import {
+  getExpertMediaUrl,
+  listAdminExperts,
+  type AdminExpert,
+} from "@/lib/experts";
 import { cn } from "@/lib/utils";
 
 type AboutFormState = AboutPagePayload;
@@ -131,7 +136,9 @@ export default function AboutAdminPage() {
 export function AboutPageEditor() {
   const toast = useToast();
   const [form, setForm] = useState<AboutFormState>(emptyForm);
+  const [experts, setExperts] = useState<AdminExpert[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingExperts, setIsLoadingExperts] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [uploadingMemberIndex, setUploadingMemberIndex] = useState<number | null>(
     null
@@ -164,6 +171,32 @@ export function AboutPageEditor() {
     };
   }, [toast]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadExperts() {
+      try {
+        const response = await listAdminExperts();
+
+        if (isMounted) {
+          setExperts(response.data.experts);
+        }
+      } catch (error) {
+        toast.error("Unable to load experts", getErrorMessage(error));
+      } finally {
+        if (isMounted) {
+          setIsLoadingExperts(false);
+        }
+      }
+    }
+
+    loadExperts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [toast]);
+
   const overviewMetrics = useMemo(
     () => [
       {
@@ -179,6 +212,12 @@ export function AboutPageEditor() {
         icon: Users,
       },
       {
+        label: "Experts",
+        value: experts.length.toString(),
+        detail: "From Experts tab",
+        icon: Users,
+      },
+      {
         label: "Images",
         value: form.teamMembers
           .filter((member) => member.image.trim())
@@ -187,7 +226,7 @@ export function AboutPageEditor() {
         icon: ImageIcon,
       },
     ],
-    [form.stats.length, form.teamMembers]
+    [experts.length, form.stats.length, form.teamMembers]
   );
 
   function updateStat<K extends keyof AboutFormState["stats"][number]>(
@@ -342,14 +381,14 @@ export function AboutPageEditor() {
 
         <section
           data-admin-metric-grid
-          className="grid gap-3 sm:grid-cols-3"
+          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
         >
           {overviewMetrics.map((metric) => (
             <OverviewMetric key={metric.label} metric={metric} />
           ))}
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-[0.95fr_1.45fr]">
+        <section className="grid gap-5">
           <div className="rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
             <SectionHeader
               actionLabel="Add Stat"
@@ -396,6 +435,40 @@ export function AboutPageEditor() {
                 ))
               )}
             </div>
+          </div>
+        </section>
+
+        <section className="rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+            <div>
+              <h2 className="font-sans text-base font-bold text-foreground">
+                Our Experts
+              </h2>
+              <p className="mt-1 text-xs font-medium text-foreground/55">
+                Experts are managed from the Experts tab and shown on the public About page.
+              </p>
+            </div>
+            <Link
+              href="/experts"
+              className="inline-flex h-9 shrink-0 items-center rounded-sm border border-border bg-white px-3 text-xs font-bold text-foreground/70 transition-colors hover:border-primary hover:text-primary"
+            >
+              Manage Experts
+            </Link>
+          </div>
+          <div className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-4">
+            {isLoadingExperts ? (
+              <div className="sm:col-span-2 xl:col-span-4">
+                <LoadingPanel label="Loading experts..." />
+              </div>
+            ) : experts.length > 0 ? (
+              experts.map((expert) => (
+                <ExpertPreviewCard key={expert.id} expert={expert} />
+              ))
+            ) : (
+              <div className="sm:col-span-2 xl:col-span-4">
+                <LoadingPanel label="No experts added yet." />
+              </div>
+            )}
           </div>
         </section>
       </form>
@@ -617,13 +690,13 @@ function TeamMemberEditor({
             placeholder="/uploads/about/member.webp"
           />
         </FormField>
-        <FormField className="sm:col-span-2" label="Bio">
+        <FormField className="sm:col-span-2" label="Info">
           <textarea
             required
             value={member.bio}
             onChange={(event) => onUpdate(index, "bio", event.target.value)}
             className={textareaClassName}
-            placeholder="Short profile description"
+            placeholder="Short team member info"
           />
         </FormField>
         <div className="sm:col-span-2">
@@ -637,6 +710,39 @@ function TeamMemberEditor({
           </button>
         </div>
       </div>
+    </article>
+  );
+}
+
+function ExpertPreviewCard({ expert }: { expert: AdminExpert }) {
+  const image = expert.image.trim();
+
+  return (
+    <article className="rounded-sm border border-border bg-[#fffaf7] p-3">
+      <div
+        role="img"
+        aria-label={expert.fullName || "Expert image"}
+        className={cn(
+          "grid aspect-[4/3] place-items-center overflow-hidden rounded-sm border border-border bg-white bg-cover bg-center text-foreground/35",
+          !image && "bg-muted/45"
+        )}
+        style={
+          image
+            ? { backgroundImage: `url("${getExpertMediaUrl(image)}")` }
+            : undefined
+        }
+      >
+        {!image ? <ImageIcon className="size-8" /> : null}
+      </div>
+      <h3 className="mt-3 truncate text-sm font-bold text-foreground">
+        {expert.fullName}
+      </h3>
+      <p className="mt-1 truncate text-[11px] font-semibold text-primary">
+        {expert.expertiseTags[0] || expert.expertId}
+      </p>
+      <p className="mt-2 line-clamp-3 text-xs font-medium leading-relaxed text-foreground/62">
+        {expert.fullBiography || "Expert profile from the Experts tab."}
+      </p>
     </article>
   );
 }

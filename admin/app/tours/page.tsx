@@ -3902,7 +3902,7 @@ function ImagePreviewGrid({
     <div
       className={cn(
         "grid gap-2",
-        isGallery ? "grid-cols-3" : "grid-cols-1"
+        isGallery ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-1"
       )}
     >
       {previewImages.map((image, index) => (

@@ -1723,7 +1723,7 @@ function ImagePreviewGrid({
   }
 
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
       {images.map((image, index) => (
         <div
           key={`${image}-${index}`}
