@@ -43,6 +43,7 @@ const trimmedString = {
   trim: true,
   default: "",
 };
+const aboutTeamMemberBioMaxLength = 5000;
 
 const aboutStatSchema = new Schema<IAboutStat>(
   {
@@ -88,7 +89,7 @@ const aboutTeamMemberSchema = new Schema<IAboutTeamMember>(
     },
     bio: {
       ...trimmedString,
-      maxlength: 500,
+      maxlength: aboutTeamMemberBioMaxLength,
       required: true,
     },
     image: {

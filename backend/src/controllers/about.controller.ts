@@ -176,6 +176,7 @@ const requiredTextField = (fieldName: string, max: number) =>
   z.string().trim().min(1, `${fieldName} is required`).max(max);
 const textField = (max: number) => z.string().trim().max(max).default("");
 const sortOrderField = z.coerce.number().int().min(0).max(999).default(0);
+const aboutTeamMemberBioMaxLength = 5000;
 
 const aboutStatPayloadSchema = z.object({
   label: requiredTextField("Stat label", 80),
@@ -187,7 +188,7 @@ const aboutStatPayloadSchema = z.object({
 const aboutTeamMemberPayloadSchema = z.object({
   name: requiredTextField("Team member name", 120),
   role: requiredTextField("Team member role", 120),
-  bio: requiredTextField("Team member bio", 500),
+  bio: requiredTextField("Team member bio", aboutTeamMemberBioMaxLength),
   image: textField(500),
   sortOrder: sortOrderField,
 });
