@@ -464,10 +464,10 @@ export function TopDestinationsSection({
           <aside className="order-2 pt-0 lg:order-none lg:pt-4">
             <div className="mb-4 flex items-center justify-between gap-3 lg:mb-5 lg:justify-start">
               <div className="flex items-center gap-3">
-              <h3 className="font-heading text-title font-bold leading-none text-secondary lg:font-sans lg:text-description">
-                Popular Destinations
-              </h3>
-              <span className="h-px w-5 bg-primary" />
+                <h3 className="font-sans text-[18px] font-bold text-secondary">
+                  Popular Destinations
+                </h3>
+                <span className="h-px w-5 bg-primary/50" />
               </div>
               <Link
                 href="/destinations"

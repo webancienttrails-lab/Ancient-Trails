@@ -8,9 +8,18 @@ import {
   ChevronDown,
   Search,
   SlidersHorizontal,
+  Sparkles,
+  type LucideIcon,
 } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
+import {
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   getHomeMediaUrl,
   getTourDestinationIds,
@@ -589,6 +598,8 @@ export function DestinationsPage({
   const [selectedFocuses, setSelectedFocuses] = useState<string[]>([]);
   const [visibleDestinationCount, setVisibleDestinationCount] =
     useState(pageSize);
+  const [isMobileInterestOpen, setIsMobileInterestOpen] = useState(false);
+  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -885,6 +896,20 @@ export function DestinationsPage({
     setSelectedFocuses([]);
   }
 
+  function clearInterestFilters() {
+    resetVisibleDestinations();
+    setSelectedInterests([]);
+  }
+
+  function clearDestinationFilters() {
+    resetVisibleDestinations();
+    setSearchQuery("");
+    setActiveCategory("india");
+    setSelectedRegions([]);
+    setSelectedStates([]);
+    setSelectedFocuses([]);
+  }
+
   const hasActiveFilters =
     searchQuery.trim().length > 0 ||
     activeCategory !== "india" ||
@@ -892,6 +917,11 @@ export function DestinationsPage({
     activeSelectedRegions.length > 0 ||
     activeSelectedStates.length > 0 ||
     activeSelectedFocuses.length > 0;
+  const activeFilterCount =
+    (activeCategory !== "india" ? 1 : 0) +
+    activeSelectedRegions.length +
+    activeSelectedStates.length +
+    activeSelectedFocuses.length;
 
   return (
     <main className="min-h-screen bg-background text-secondary">
@@ -902,18 +932,19 @@ export function DestinationsPage({
         onSearchQueryChange={updateSearchQuery}
       />
 
-      <section className={`${pageContainerClassName} pt-6`}>
+      <section className={`${pageContainerClassName} hidden pt-4 lg:block`}>
         <InterestFilter
           selectedInterests={selectedInterests}
           onInterestToggle={toggleInterest}
         />
       </section>
 
-      <section className={`${pageContainerClassName} grid items-start gap-8 pb-14 pt-7 lg:grid-cols-[255px_minmax(0,1fr)] xl:gap-10`}>
+      <section className={`${pageContainerClassName} grid items-start gap-8 pb-28 pt-7 lg:grid-cols-[255px_minmax(0,1fr)] lg:pb-14 xl:gap-10`}>
         <DestinationSidebar
           activeCategory={activeCategory}
           focusOptions={focusOptions}
           hasActiveFilters={hasActiveFilters}
+          variant="desktop"
           onCategoryChange={updateCategory}
           regionOptions={regionOptions}
           selectedFocuses={activeSelectedFocuses}
@@ -962,13 +993,36 @@ export function DestinationsPage({
 
         </section>
       </section>
+
+      <MobileDestinationActions
+        activeCategory={activeCategory}
+        activeFilterCount={activeFilterCount}
+        focusOptions={focusOptions}
+        isFilterOpen={isMobileFilterOpen}
+        isInterestOpen={isMobileInterestOpen}
+        regionOptions={regionOptions}
+        selectedFocuses={activeSelectedFocuses}
+        selectedInterests={selectedInterests}
+        selectedRegions={activeSelectedRegions}
+        selectedStates={activeSelectedStates}
+        stateOptions={stateOptions}
+        onCategoryChange={updateCategory}
+        onClearDestinationFilters={clearDestinationFilters}
+        onClearInterestFilters={clearInterestFilters}
+        onFilterOpenChange={setIsMobileFilterOpen}
+        onFocusToggle={toggleFocus}
+        onInterestOpenChange={setIsMobileInterestOpen}
+        onInterestToggle={toggleInterest}
+        onRegionToggle={toggleRegion}
+        onStateToggle={toggleState}
+      />
     </main>
   );
 }
 
 function HeaderBand() {
   return (
-    <section className="relative h-[200px] overflow-hidden bg-secondary">
+    <section className="relative h-[120px] overflow-hidden bg-secondary">
       <Image
         src="/home assets/Heritage Banner.webp"
         alt="Ancient Trails heritage landscape"
@@ -994,7 +1048,7 @@ function DestinationTopBar({
 }) {
   return (
     <section>
-      <div className={`${pageContainerClassName} flex justify-end pt-5`}>
+      <div className={`${pageContainerClassName} flex justify-end pt-0`}>
         {/* <label className="relative w-full md:w-[235px]">
           <span className="sr-only">Search Destination</span>
           <input
@@ -1025,6 +1079,7 @@ function DestinationSidebar({
   selectedRegions,
   selectedStates,
   stateOptions,
+  variant = "desktop",
 }: {
   activeCategory: CategoryFilter;
   focusOptions: CountOption[];
@@ -1034,6 +1089,7 @@ function DestinationSidebar({
   selectedRegions: string[];
   selectedStates: string[];
   stateOptions: CountOption[];
+  variant?: "desktop" | "mobile";
   onCategoryChange: (category: CategoryFilter) => void;
   onClearAll: () => void;
   onFocusToggle: (value: string) => void;
@@ -1067,7 +1123,13 @@ function DestinationSidebar({
   }
 
   return (
-    <aside className="lg:sticky lg:top-[70px] lg:self-start">
+    <aside
+      className={cn(
+        variant === "desktop"
+          ? "hidden lg:sticky lg:top-[70px] lg:block lg:self-start"
+          : "block"
+      )}
+    >
       <div className="mb-4 flex items-center justify-between gap-3 font-sans leading-none">
         <div className="flex items-center gap-2 text-[13px] font-semibold uppercase text-secondary">
           <SlidersHorizontal className="size-4" strokeWidth={1.8} />
@@ -1086,12 +1148,14 @@ function DestinationSidebar({
       <div className="rounded-[4px] border border-border bg-white px-5 py-5 ">
         <CategoryFilterGroup
           activeCategory={activeCategory}
+          variant={variant}
           onCategoryChange={onCategoryChange}
         />
         <FilterOptionGroup
           options={regionOptions}
           selectedValues={selectedRegions}
           title="Regions"
+          variant={variant}
           onToggle={handleRegionToggle}
         />
         <FilterOptionGroup
@@ -1100,6 +1164,7 @@ function DestinationSidebar({
           title={stateFilterTitle}
           isCollapsible
           isOpen={isStateFilterOpen}
+          variant={variant}
           onOpenToggle={() => setIsStateFilterOpen((current) => !current)}
           onToggle={handleStateToggle}
         />
@@ -1109,6 +1174,7 @@ function DestinationSidebar({
           title="Heritage Focus"
           isCollapsible
           isOpen={isFocusFilterOpen}
+          variant={variant}
           onOpenToggle={() => setIsFocusFilterOpen((current) => !current)}
           onToggle={onFocusToggle}
         />
@@ -1117,12 +1183,200 @@ function DestinationSidebar({
   );
 }
 
+function MobileDestinationActions({
+  activeCategory,
+  activeFilterCount,
+  focusOptions,
+  isFilterOpen,
+  isInterestOpen,
+  onCategoryChange,
+  onClearDestinationFilters,
+  onClearInterestFilters,
+  onFilterOpenChange,
+  onFocusToggle,
+  onInterestOpenChange,
+  onInterestToggle,
+  onRegionToggle,
+  onStateToggle,
+  regionOptions,
+  selectedFocuses,
+  selectedInterests,
+  selectedRegions,
+  selectedStates,
+  stateOptions,
+}: {
+  activeCategory: CategoryFilter;
+  activeFilterCount: number;
+  focusOptions: CountOption[];
+  isFilterOpen: boolean;
+  isInterestOpen: boolean;
+  regionOptions: CountOption[];
+  selectedFocuses: string[];
+  selectedInterests: string[];
+  selectedRegions: string[];
+  selectedStates: string[];
+  stateOptions: CountOption[];
+  onCategoryChange: (category: CategoryFilter) => void;
+  onClearDestinationFilters: () => void;
+  onClearInterestFilters: () => void;
+  onFilterOpenChange: (open: boolean) => void;
+  onFocusToggle: (value: string) => void;
+  onInterestOpenChange: (open: boolean) => void;
+  onInterestToggle: (value: string) => void;
+  onRegionToggle: (value: string) => void;
+  onStateToggle: (value: string) => void;
+}) {
+  return (
+    <>
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[#ead8c5] bg-white/96 px-2 pb-[max(0.45rem,env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-12px_30px_rgba(18,32,44,0.13)] backdrop-blur lg:hidden">
+        <div className="mx-auto grid max-w-[520px] grid-cols-2 divide-x divide-[#ead8c5] overflow-hidden rounded-t-[10px]">
+          <MobileActionButton
+            badge={selectedInterests.length}
+            icon={Sparkles}
+            label="Pick Interest"
+            onClick={() => onInterestOpenChange(true)}
+          />
+          <MobileActionButton
+            badge={activeFilterCount}
+            icon={SlidersHorizontal}
+            label="Filter"
+            onClick={() => onFilterOpenChange(true)}
+          />
+        </div>
+      </div>
+
+      <Sheet open={isInterestOpen} onOpenChange={onInterestOpenChange}>
+        <SheetContent
+          side="bottom"
+          className="z-[90] max-h-[86dvh] gap-0 overflow-hidden rounded-t-[18px] border-[#ead8c5] bg-white p-0 lg:hidden"
+        >
+          <SheetHeader className="shrink-0 border-b border-[#ead8c5] px-5 py-4">
+            <SheetTitle className="flex items-center gap-2 font-heading text-[22px] font-bold text-secondary">
+              Pick Interest
+              {selectedInterests.length > 0 ? (
+                <span className="rounded-full bg-primary px-2 py-0.5 font-sans text-[12px] font-bold text-white">
+                  {selectedInterests.length}
+                </span>
+              ) : null}
+            </SheetTitle>
+          </SheetHeader>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            <InterestFilter
+              selectedInterests={selectedInterests}
+              onInterestToggle={onInterestToggle}
+              onInterestClear={onClearInterestFilters}
+            />
+          </div>
+
+          <SheetFooter className="shrink-0 border-t border-[#ead8c5] bg-white px-5 py-5">
+            <button
+              type="button"
+              className="h-[40px] rounded-[6px] bg-primary px-4 font-sans text-[17px] font-normal text-white shadow-[0_12px_24px_rgba(244,192,7,0.24)] transition-transform active:translate-y-px"
+              onClick={() => onInterestOpenChange(false)}
+            >
+              Apply ({selectedInterests.length}) Interests
+            </button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={isFilterOpen} onOpenChange={onFilterOpenChange}>
+        <SheetContent
+          side="bottom"
+          className="z-[90] max-h-[86dvh] gap-0 overflow-hidden rounded-t-[18px] border-[#ead8c5] bg-white p-0 lg:hidden"
+        >
+          <SheetHeader className="shrink-0 border-b border-[#ead8c5] px-5 py-4">
+            <SheetTitle className="flex items-center gap-2 font-heading text-[22px] font-bold text-secondary">
+              Filters
+              {activeFilterCount > 0 ? (
+                <span className="rounded-full bg-primary px-2 py-0.5 font-sans text-[12px] font-bold text-white">
+                  {activeFilterCount}
+                </span>
+              ) : null}
+            </SheetTitle>
+          </SheetHeader>
+
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-4">
+            <DestinationSidebar
+              activeCategory={activeCategory}
+              focusOptions={focusOptions}
+              hasActiveFilters={activeFilterCount > 0}
+              regionOptions={regionOptions}
+              selectedFocuses={selectedFocuses}
+              selectedRegions={selectedRegions}
+              selectedStates={selectedStates}
+              stateOptions={stateOptions}
+              variant="mobile"
+              onCategoryChange={onCategoryChange}
+              onClearAll={onClearDestinationFilters}
+              onFocusToggle={onFocusToggle}
+              onRegionToggle={onRegionToggle}
+              onStateToggle={onStateToggle}
+            />
+          </div>
+
+          <SheetFooter className="grid shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,1.65fr)] items-center gap-4 border-t border-[#ead8c5] bg-white px-5 py-5">
+            <button
+              type="button"
+              disabled={activeFilterCount === 0}
+              className="justify-self-center font-sans text-[15px] font-medium text-secondary underline underline-offset-2 transition-colors hover:text-primary disabled:pointer-events-none disabled:opacity-45"
+              onClick={onClearDestinationFilters}
+            >
+              Reset Filters
+            </button>
+            <button
+              type="button"
+              className="h-[40px] rounded-[6px] bg-primary px-4 font-sans text-[17px] font-normal text-white shadow-[0_12px_24px_rgba(244,192,7,0.24)] transition-transform active:translate-y-px"
+              onClick={() => onFilterOpenChange(false)}
+            >
+              Apply ({activeFilterCount}) Filters
+            </button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+    </>
+  );
+}
+
+function MobileActionButton({
+  badge,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  badge?: number;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="relative flex min-h-[44px] w-full items-center justify-center gap-1.5 bg-white px-1.5 font-sans text-[14px] font-medium leading-none text-secondary transition-colors active:bg-[#fff8f1]"
+      onClick={onClick}
+    >
+      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary text-white">
+        <Icon className="size-3.5" strokeWidth={2.2} />
+      </span>
+      <span className="truncate">{label}</span>
+      {badge && badge > 0 ? (
+        <span className="grid min-w-4 place-items-center rounded-full bg-secondary px-1 py-0.5 font-sans text-[10px] font-bold leading-none text-white">
+          {badge}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
 function CategoryFilterGroup({
   activeCategory,
   onCategoryChange,
+  variant = "desktop",
 }: {
   activeCategory: CategoryFilter;
   onCategoryChange: (category: CategoryFilter) => void;
+  variant?: "desktop" | "mobile";
 }) {
   return (
     <section className="border-b border-[#f1ebe6] pb-4">
@@ -1130,21 +1384,48 @@ function CategoryFilterGroup({
         Destination Type
       </h3>
       <div className="mt-3 space-y-2">
-        {categoryTabs.map((tab) => (
-          <label
-            key={tab.id}
-            className="flex cursor-pointer items-center gap-2.5 font-sans text-[14px] font-medium leading-[1.25] text-secondary/68 transition-colors hover:text-primary"
-          >
-            <input
-              checked={activeCategory === tab.id}
-              onChange={() => onCategoryChange(tab.id)}
-              type="radio"
-              name="destination-category"
-              className="size-4 border-[#d9cdc3] accent-primary"
-            />
-            <span className="min-w-0 flex-1 truncate">{tab.label}</span>
-          </label>
-        ))}
+        {categoryTabs.map((tab) => {
+          const isActive = activeCategory === tab.id;
+
+          return (
+            <label
+              key={tab.id}
+              className={cn(
+                "flex cursor-pointer items-center gap-2.5 font-sans text-[14px] font-medium leading-[1.25] text-secondary/68 transition-colors hover:text-primary",
+                variant === "mobile" &&
+                  "rounded-[6px] border border-transparent px-2.5 py-2",
+                variant === "mobile" &&
+                  isActive &&
+                  "border-primary/30 bg-primary/8 text-primary"
+              )}
+            >
+              <input
+                checked={isActive}
+                onChange={() => onCategoryChange(tab.id)}
+                type="radio"
+                name="destination-category"
+                className={cn(
+                  "size-4 border-[#d9cdc3] accent-primary",
+                  variant === "mobile" && "sr-only"
+                )}
+              />
+              {variant === "mobile" ? (
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "grid size-4 shrink-0 place-items-center rounded-full border border-secondary/38 bg-white",
+                    isActive && "border-primary"
+                  )}
+                >
+                  {isActive ? (
+                    <span className="size-2 rounded-full bg-primary" />
+                  ) : null}
+                </span>
+              ) : null}
+              <span className="min-w-0 flex-1 truncate">{tab.label}</span>
+            </label>
+          );
+        })}
       </div>
     </section>
   );
@@ -1158,12 +1439,14 @@ function FilterOptionGroup({
   onToggle,
   selectedValues,
   title,
+  variant = "desktop",
 }: {
   isCollapsible?: boolean;
   isOpen?: boolean;
   options: CountOption[];
   selectedValues: string[];
   title: string;
+  variant?: "desktop" | "mobile";
   onOpenToggle?: () => void;
   onToggle: (value: string) => void;
 }) {
@@ -1197,21 +1480,55 @@ function FilterOptionGroup({
 
       {isOpen ? (
         <div className="mt-3 space-y-2">
-          {options.map((option) => (
-            <label
-              key={option.value}
-              className="flex cursor-pointer items-center gap-2.5 font-sans text-[14px] font-medium leading-[1.25] text-secondary/68 transition-colors hover:text-primary"
-            >
-              <input
-                checked={hasSelection(selectedValues, option.value)}
-                onChange={() => onToggle(option.value)}
-                type="checkbox"
-                className="size-4 rounded-[2px] border-[#d9cdc3] accent-primary"
-              />
-              <span className="min-w-0 flex-1 truncate">{option.label}</span>
-              <span className="text-[12px] text-secondary/38">{option.count}</span>
-            </label>
-          ))}
+          {options.map((option) => {
+            const isActive = hasSelection(selectedValues, option.value);
+
+            return (
+              <label
+                key={option.value}
+                className={cn(
+                  "flex cursor-pointer items-center gap-2.5 font-sans text-[14px] font-medium leading-[1.25] text-secondary/68 transition-colors hover:text-primary",
+                  variant === "mobile" &&
+                    "rounded-[6px] border border-transparent px-2.5 py-2",
+                  variant === "mobile" &&
+                    isActive &&
+                    "border-primary/30 bg-primary/8 text-primary"
+                )}
+              >
+                <input
+                  checked={isActive}
+                  onChange={() => onToggle(option.value)}
+                  type="checkbox"
+                  className={cn(
+                    "size-4 rounded-[2px] border-[#d9cdc3] accent-primary",
+                    variant === "mobile" && "sr-only"
+                  )}
+                />
+                {variant === "mobile" ? (
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "grid size-4 shrink-0 place-items-center rounded-[3px] border border-secondary/38 bg-white",
+                      isActive && "border-primary bg-primary"
+                    )}
+                  >
+                    {isActive ? (
+                      <span className="h-1.5 w-2.5 rotate-[-45deg] border-b-2 border-l-2 border-white" />
+                    ) : null}
+                  </span>
+                ) : null}
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                <span
+                  className={cn(
+                    "text-[12px] text-secondary/38",
+                    variant === "mobile" && isActive && "text-primary"
+                  )}
+                >
+                  {option.count}
+                </span>
+              </label>
+            );
+          })}
         </div>
       ) : null}
     </section>
@@ -1219,12 +1536,23 @@ function FilterOptionGroup({
 }
 
 function InterestFilter({
+  onInterestClear,
   onInterestToggle,
   selectedInterests,
 }: {
+  onInterestClear?: () => void;
   selectedInterests: string[];
   onInterestToggle: (value: string) => void;
 }) {
+  function handleClearInterests() {
+    if (onInterestClear) {
+      onInterestClear();
+      return;
+    }
+
+    selectedInterests.forEach((value) => onInterestToggle(value));
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
@@ -1233,7 +1561,7 @@ function InterestFilter({
         </p>
         <button
           type="button"
-          onClick={() => selectedInterests.forEach((value) => onInterestToggle(value))}
+          onClick={handleClearInterests}
           disabled={selectedInterests.length === 0}
           className="font-sans text-[12px] font-bold leading-none text-secondary/55 transition-colors hover:text-secondary disabled:pointer-events-none disabled:text-secondary/30"
         >

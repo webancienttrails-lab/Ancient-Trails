@@ -11,6 +11,7 @@ import {
   Landmark,
   LogOut,
   MapPin,
+  Menu,
   Mountain,
   Plane,
   Route,
@@ -70,6 +71,10 @@ const navItems = [
 ];
 
 const headerLayerStyle: CSSProperties = {
+  zIndex: 2147483000,
+};
+
+const mobileDrawerLayerStyle: CSSProperties = {
   zIndex: 2147483647,
 };
 
@@ -1204,6 +1209,244 @@ function AccountMenu({
   );
 }
 
+function MobileHeaderDrawer({
+  isOpen,
+  traveller,
+  loginHref,
+  accountHref,
+  tourMenuColumns,
+  indianItems,
+  internationalItems,
+  cityItems,
+  onClose,
+  onSignOut,
+}: {
+  isOpen: boolean;
+  traveller: TravellerUser | null;
+  loginHref: string;
+  accountHref: string;
+  tourMenuColumns: TourMenuColumn[];
+  indianItems: DestinationMenuItem[];
+  internationalItems: DestinationMenuItem[];
+  cityItems: CityMenuItem[];
+  onClose: () => void;
+  onSignOut: () => void;
+}) {
+  const [openChildLabel, setOpenChildLabel] = useState<string | null>(null);
+  const displayName =
+    traveller?.firstName?.trim() ||
+    traveller?.email.split("@")[0] ||
+    "Traveller";
+  const displayEmail = traveller?.email || "Plan your next heritage journey.";
+  const tourChildGroups = tourMenuColumns
+    .map((column) => ({
+      title: column.title,
+      items: column.items.map((item) => ({
+        href: item.href,
+        title: item.title,
+      })),
+    }))
+    .filter((group) => group.items.length > 0);
+  const destinationChildGroups = [
+    {
+      title: "India",
+      items: indianItems,
+    },
+    {
+      title: "International",
+      items: internationalItems,
+    },
+    {
+      title: "Top Cities",
+      items: cityItems,
+    },
+  ]
+    .map((group) => ({
+      title: group.title,
+      items: group.items.map((item) => ({
+        href: item.href,
+        title: item.title,
+      })),
+    }))
+    .filter((group) => group.items.length > 0);
+  const childGroupsByLabel: Record<
+    string,
+    Array<{ title: string; items: Array<{ href: string; title: string }> }>
+  > = {
+    Tours: tourChildGroups,
+    Destinations: destinationChildGroups,
+  };
+
+  const drawer = (
+    <div
+      style={mobileDrawerLayerStyle}
+      className={`fixed inset-0 z-[2147483647] lg:hidden ${
+        isOpen ? "pointer-events-auto" : "pointer-events-none"
+      }`}
+      aria-hidden={!isOpen}
+    >
+      <button
+        type="button"
+        aria-label="Close menu"
+        onClick={onClose}
+        className={`absolute inset-0 bg-secondary/45 backdrop-blur-[2px] transition-opacity duration-300 ${
+          isOpen ? "opacity-100" : "opacity-0"
+        }`}
+      />
+
+      <aside
+        className={`absolute left-0 top-0 flex h-[100svh] max-h-[100svh] w-[min(340px,calc(100vw-1.25rem))] flex-col overflow-hidden border-r border-border bg-white text-secondary shadow-[0_26px_80px_rgba(35,24,16,0.24)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          isOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
+          <Link href="/" aria-label="Ancient Trails home" onClick={onClose}>
+            <Image
+              src="/Header Logo.png"
+              alt="Ancient Trails"
+              width={218}
+              height={86}
+              className="h-10 w-auto"
+            />
+          </Link>
+          <button
+            type="button"
+            aria-label="Close menu"
+            onClick={onClose}
+            className="grid size-10 shrink-0 place-items-center rounded-full border border-primary/20 bg-white text-secondary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+          >
+            <X className="size-5" strokeWidth={2} />
+          </button>
+        </div>
+
+        <div className="border-b border-border bg-[#fff8f0] px-5 py-4">
+          <p className="font-heading text-[22px] font-bold leading-tight text-secondary">
+            {traveller ? `Hello, ${displayName}` : "Ancient Trails"}
+          </p>
+          <p className="mt-1 truncate font-sans text-[13px] font-medium text-secondary/64">
+            {displayEmail}
+          </p>
+        </div>
+
+        <nav
+          aria-label="Mobile navigation"
+          className="min-h-0 flex-1 overflow-y-auto px-4 py-3"
+        >
+          <div className="space-y-1">
+            {navItems.map((item) => {
+              const childGroups = childGroupsByLabel[item.label] || [];
+
+              return (
+                <div key={item.label}>
+                  {childGroups.length > 0 ? (
+                    <button
+                      type="button"
+                      aria-expanded={openChildLabel === item.label}
+                      onClick={() =>
+                        setOpenChildLabel((current) =>
+                          current === item.label ? null : item.label
+                        )
+                      }
+                      className="group/mobile-nav flex h-11 w-full items-center justify-between rounded-[7px] px-3 text-left font-sans text-[15px] font-semibold text-secondary transition-colors hover:bg-primary/8 hover:text-primary"
+                    >
+                      <span>{item.label}</span>
+                      <ArrowRight
+                        className={`size-4 text-primary opacity-70 transition-transform ${
+                          openChildLabel === item.label
+                            ? "rotate-90"
+                            : "group-hover/mobile-nav:translate-x-0.5"
+                        }`}
+                        strokeWidth={1.8}
+                      />
+                    </button>
+                  ) : (
+                    <Link
+                      href={item.href}
+                      onClick={onClose}
+                      className="group/mobile-nav flex h-11 items-center justify-between rounded-[7px] px-3 font-sans text-[15px] font-semibold text-secondary transition-colors hover:bg-primary/8 hover:text-primary"
+                    >
+                      <span>{item.label}</span>
+                      <ArrowRight
+                        className="size-4 text-primary opacity-70 transition-transform group-hover/mobile-nav:translate-x-0.5"
+                        strokeWidth={1.8}
+                      />
+                    </Link>
+                  )}
+
+                  {childGroups.length > 0 && openChildLabel === item.label ? (
+                    <div className="mb-2 ml-3 border-l border-primary/18 pl-3">
+                      <Link
+                        href={item.href}
+                        onClick={onClose}
+                        className="mb-1 block rounded-[6px] px-2 py-1.5 font-sans text-[13px] font-bold text-primary transition-colors hover:bg-primary/8"
+                      >
+                        View all {item.label}
+                      </Link>
+                      {childGroups.map((group) => (
+                        <div key={group.title} className="py-1.5">
+                          <p className="px-2 font-sans text-[11px] font-bold uppercase tracking-[0.08em] text-secondary/48">
+                            {group.title}
+                          </p>
+                          <div className="mt-1 space-y-0.5">
+                            {group.items.map((child) => (
+                              <Link
+                                key={`${group.title}-${child.href}-${child.title}`}
+                                href={child.href}
+                                onClick={onClose}
+                                className="block rounded-[6px] px-2 py-1.5 font-sans text-[13px] font-semibold text-secondary/72 transition-colors hover:bg-primary/8 hover:text-primary"
+                              >
+                                {child.title}
+                              </Link>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </nav>
+
+        <div className="border-t border-border px-5 py-4">
+          {traveller ? (
+            <>
+              <Link
+                href={accountHref}
+                onClick={onClose}
+                className="flex h-11 w-full items-center justify-center rounded-full bg-primary px-5 font-sans text-[14px] font-semibold text-white transition-colors hover:bg-secondary"
+              >
+                My Dashboard
+              </Link>
+              <button
+                type="button"
+                onClick={onSignOut}
+                className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-full border border-primary/30 bg-white font-sans text-[14px] font-semibold text-primary transition-colors hover:bg-primary hover:text-white"
+              >
+                <LogOut className="size-4" strokeWidth={1.9} />
+                Sign Out
+              </button>
+            </>
+          ) : (
+            <Link
+              href={loginHref}
+              onClick={onClose}
+              className="flex h-11 w-full items-center justify-center rounded-full bg-primary px-5 font-sans text-[14px] font-semibold text-white transition-colors hover:bg-secondary"
+            >
+              Login
+            </Link>
+          )}
+        </div>
+      </aside>
+    </div>
+  );
+
+  return typeof document === "undefined"
+    ? null
+    : createPortal(drawer, document.body);
+}
+
 function HeaderSearchPopup({
   isLoading,
   isOpen,
@@ -1365,6 +1608,7 @@ export function Header() {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [hasLoadedSearchData, setHasLoadedSearchData] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1709,6 +1953,14 @@ export function Header() {
   }, [hasLoadedSearchData, isSearchOpen]);
 
   useEffect(() => {
+    document.body.style.overflow = isMobileMenuOpen ? "hidden" : "";
+
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isMobileMenuOpen]);
+
+  useEffect(() => {
     if (!isSearchOpen) {
       return;
     }
@@ -1730,6 +1982,7 @@ export function Header() {
     clearTravellerSession();
     setTravellerUser(null);
     setIsAccountMenuOpen(false);
+    setIsMobileMenuOpen(false);
     toast.success("Logged out", "You have been signed out successfully.");
 
     if (pathname?.startsWith("/me")) {
@@ -1769,7 +2022,16 @@ export function Header() {
     window.clearTimeout(accountMenuCloseTimeoutRef.current);
     setHoveredItem(null);
     setIsAccountMenuOpen(false);
+    setIsMobileMenuOpen(false);
     setIsSearchOpen((current) => !current);
+  };
+  const openMobileMenu = () => {
+    window.clearTimeout(megaMenuCloseTimeoutRef.current);
+    window.clearTimeout(accountMenuCloseTimeoutRef.current);
+    setHoveredItem(null);
+    setIsAccountMenuOpen(false);
+    setIsSearchOpen(false);
+    setIsMobileMenuOpen(true);
   };
 
   const loginHref =
@@ -1782,28 +2044,32 @@ export function Header() {
     !isTourTabsDocked &&
     (isHeaderVisible || Boolean(hoveredItem) || isSearchOpen);
   const headerTopClass = hasScrolled
-    ? "top-[clamp(0.5rem,2vh,1rem)]"
-    : "top-[clamp(1rem,4vh,2.25rem)]";
+    ? "top-0 lg:top-[clamp(0.5rem,2vh,1rem)]"
+    : "top-0 lg:top-[clamp(1rem,4vh,2.25rem)]";
 
   const headerContent = (
     <header
       style={headerLayerStyle}
       onMouseEnter={keepMegaMenuOpen}
       onMouseLeave={closeMegaMenu}
-      className={`fixed left-1/2 ${headerTopClass} isolate z-[2147483647] flex w-[calc(100%-2.5rem)] max-w-[1300px] -translate-x-1/2 items-center justify-between rounded-[18px] bg-white px-4 py-1.5 shadow-[0_18px_55px_rgba(50,50,50,0.18)] ring-1 ring-white transition-[top,translate,opacity] duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)] sm:py-2 md:px-5 lg:w-full [@media(min-width:1300px)]:max-w-[min(1720px,max(1300px,calc(100vw-200px)))] [@media(max-height:600px)]:py-1.5 ${
+      className={`fixed left-0 right-0 ${headerTopClass} isolate z-[2147483647] flex w-full max-w-none translate-x-0 items-center justify-between rounded-none bg-white px-4 py-2 shadow-[0_18px_55px_rgba(50,50,50,0.18)] ring-1 ring-white transition-[top,translate,opacity] duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)] sm:py-2 md:px-5 lg:left-1/2 lg:right-auto lg:w-full lg:max-w-[1300px] lg:-translate-x-1/2 lg:rounded-[18px] lg:py-1.5 [@media(min-width:1300px)]:max-w-[min(1720px,max(1300px,calc(100vw-200px)))] [@media(max-height:600px)]:py-1.5 ${
         shouldShowHeader
           ? "translate-y-0 opacity-100"
-          : "pointer-events-none -translate-y-[calc(100%+3rem)] opacity-0"
+          : "lg:pointer-events-none lg:-translate-y-[calc(100%+3rem)] lg:opacity-0"
       }`}
     >
-      <Link href="/" aria-label="Ancient Trails home" className="shrink-0">
+      <Link
+        href="/"
+        aria-label="Ancient Trails home"
+        className="absolute left-1/2 z-0 shrink-0 -translate-x-1/2 lg:static lg:translate-x-0"
+      >
         <Image
           src="/Header Logo.png"
           alt="Ancient Trails"
           width={218}
           height={86}
           priority
-          className="h-8 w-auto sm:h-12 [@media(max-height:600px)]:h-12"
+          className="h-9 w-auto sm:h-12 [@media(max-height:600px)]:h-12"
         />
       </Link>
 
@@ -1867,7 +2133,18 @@ export function Header() {
         onMouseLeave={closeMegaMenu}
       />
 
-      <div className="relative flex items-center gap-2">
+      <div className="relative z-10 flex w-full items-center justify-between gap-2 lg:w-auto lg:justify-start">
+        <button
+          type="button"
+          aria-expanded={isMobileMenuOpen}
+          aria-label="Open menu"
+          title="Menu"
+          onClick={openMobileMenu}
+          className="grid size-10 shrink-0 place-items-center rounded-full border border-primary/20 bg-white text-primary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-primary hover:bg-primary hover:text-white lg:hidden"
+        >
+          <Menu className="size-5" strokeWidth={2.3} />
+        </button>
+
         <button
           type="button"
           aria-expanded={isSearchOpen}
@@ -1875,7 +2152,7 @@ export function Header() {
           title="Search"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={toggleSearch}
-          className="grid size-10 shrink-0 place-items-center rounded-full bg-white text-primary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-white"
+          className="hidden size-10 shrink-0 place-items-center rounded-full bg-white text-primary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-white lg:grid"
         >
           <Search className="size-5" strokeWidth={2.3} />
         </button>
@@ -1935,6 +2212,20 @@ export function Header() {
       className="relative isolate z-[2147483647] h-[60px] sm:h-[84px] [@media(max-height:600px)]:sm:h-[76px]"
     >
       {isHeaderPortaled ? createPortal(headerContent, document.body) : headerContent}
+      {isHeaderPortaled ? (
+        <MobileHeaderDrawer
+          isOpen={isMobileMenuOpen}
+          traveller={travellerUser}
+          loginHref={loginHref}
+          accountHref={accountHref}
+          tourMenuColumns={activeTourColumns}
+          indianItems={activeIndianDestinations}
+          internationalItems={activeInternationalDestinations}
+          cityItems={activeTopCities}
+          onClose={() => setIsMobileMenuOpen(false)}
+          onSignOut={handleSignOut}
+        />
+      ) : null}
     </div>
   );
 }

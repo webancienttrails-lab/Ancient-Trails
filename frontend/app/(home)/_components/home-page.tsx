@@ -49,7 +49,7 @@ export function HomePage({
         />
 
       
-        <div className="home-wide-frame relative z-[2147483647] mx-auto flex h-full w-full flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0 [@media(min-width:1300px)]:px-12">
+        <div className="home-wide-frame relative z-20 mx-auto flex h-full w-full flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0 [@media(min-width:1300px)]:px-12">
           <Header />
 
           <div className="flex min-h-0 flex-1 items-start px-0 py-[clamp(0.5rem,3vh,4rem)] pt-[clamp(1.5rem,8vh,4rem)] sm:items-center sm:px-6 sm:pt-[clamp(0.5rem,3vh,4rem)] lg:px-10 [@media(min-width:1300px)]:px-4">

@@ -291,6 +291,18 @@ function slugify(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
+const tourSlugAliases: Record<string, string> = {
+  "flavours-of-badami-hampi": "HAMPI",
+  "badami-hampi": "HAMPI",
+  hampi: "HAMPI",
+  "enigmatic-khajuraho": "KHAJURAHO",
+  khajuraho: "KHAJURAHO",
+};
+
+function getRequestedTourAlias(requestedTourId: string) {
+  return tourSlugAliases[slugify(decodeURIComponent(requestedTourId))] || "";
+}
+
 function uniqueValues(values: Array<string | undefined>) {
   return Array.from(
     new Set(values.map((value) => value?.trim() || "").filter(Boolean))
@@ -1161,9 +1173,12 @@ function createFallbackDestination(): PublicDestination {
 }
 
 function createFallbackTour(requestedTourId: string): PublicTour {
+  const requestedAlias = getRequestedTourAlias(requestedTourId);
   const matchedFallback = fallbackUpcomingTours.find(
     (tour) =>
       normalizeCode(tour.tourId) === normalizeCode(requestedTourId) ||
+      (requestedAlias &&
+        normalizeCode(tour.tourId) === normalizeCode(requestedAlias)) ||
       slugify(tour.title) === slugify(requestedTourId)
   );
 
@@ -1511,11 +1526,14 @@ function enrichTourData(
 function findRequestedTour(tours: PublicTour[], requestedTourId: string) {
   const requestedCode = normalizeCode(decodeURIComponent(requestedTourId));
   const requestedSlug = slugify(decodeURIComponent(requestedTourId));
+  const requestedAlias = getRequestedTourAlias(requestedTourId);
 
   return (
     tours.find(
       (tour) =>
         normalizeCode(tour.tourId) === requestedCode ||
+        (requestedAlias &&
+          normalizeCode(tour.tourId) === normalizeCode(requestedAlias)) ||
         slugify(tour.tourName) === requestedSlug ||
         tour.id === requestedTourId
     ) || null

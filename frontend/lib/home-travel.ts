@@ -325,7 +325,7 @@ export type HomeExperienceCard = {
 
 export const fallbackUpcomingTours: HomeTourCard[] = [
   {
-    title: "Khajuraho",
+    title: "Enigmatic Khajuraho",
     duration: "6 Days/ 5 Nights",
     date: "16 Jul 2026",
     image: "/home assets/Khajuraho.webp",
@@ -349,7 +349,7 @@ export const fallbackUpcomingTours: HomeTourCard[] = [
     tourId: "COMBODIA",
   },
   {
-    title: "Leisurely Hampi",
+    title: "Flavours of Badami & Hampi",
     duration: "6 Days/ 5 Nights",
     date: "23 Aug 2026",
     image: "/home assets/Haridwar.webp",

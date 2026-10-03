@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { SingleTourPage } from "./_components/single-tour-page";
+import { TourDetailClient } from "./_components/tour-detail-client";
 
 type TourDetailRouteProps = {
   params: Promise<{
@@ -26,5 +26,5 @@ export async function generateMetadata({
 export default async function TourDetailRoute({ params }: TourDetailRouteProps) {
   const { tourId } = await params;
 
-  return <SingleTourPage tourId={tourId} />;
+  return <TourDetailClient tourId={tourId} />;
 }
