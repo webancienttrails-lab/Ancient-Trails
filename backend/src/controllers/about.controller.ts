@@ -126,6 +126,9 @@ const defaultTeamMembers: IAboutTeamMember[] = [
     sortOrder: 5,
   },
 ];
+const defaultTeamMemberFingerprints = new Set(
+  defaultTeamMembers.map(createTeamMemberFingerprint)
+);
 
 mkdirSync(aboutUploadDirectory, { recursive: true });
 
@@ -222,6 +225,16 @@ function sortBySortOrder<TItem extends { sortOrder: number }>(items: TItem[]) {
   return [...items].sort((left, right) => left.sortOrder - right.sortOrder);
 }
 
+function createTeamMemberFingerprint(member: IAboutTeamMember) {
+  return [member.name, member.role, member.bio]
+    .map((value) => value.trim().toLowerCase())
+    .join("|");
+}
+
+function isDefaultTeamMember(member: IAboutTeamMember) {
+  return defaultTeamMemberFingerprints.has(createTeamMemberFingerprint(member));
+}
+
 function getSubdocumentId(item: unknown, fallback: string) {
   if (typeof item !== "object" || item === null || !("_id" in item)) {
     return fallback;
@@ -251,25 +264,10 @@ function getTeamMemberImage(member: IAboutTeamMember, index: number) {
   return defaultTeamImages[index % defaultTeamImages.length] || image;
 }
 
-function getTeamMembersWithDefaults(teamMembers: IAboutTeamMember[]) {
-  const sortedTeamMembers = sortBySortOrder(teamMembers);
-  const existingSortOrders = new Set(
-    sortedTeamMembers.map((member) => member.sortOrder)
-  );
-  const mergedTeamMembers = [...sortedTeamMembers];
-
-  defaultTeamMembers.forEach((defaultMember) => {
-    if (!existingSortOrders.has(defaultMember.sortOrder)) {
-      mergedTeamMembers.push({ ...defaultMember });
-      existingSortOrders.add(defaultMember.sortOrder);
-    }
-  });
-
-  return sortBySortOrder(mergedTeamMembers);
-}
-
 function formatAboutPage(page: AboutPageDocument) {
-  const teamMembers = getTeamMembersWithDefaults(page.teamMembers);
+  const teamMembers = sortBySortOrder(page.teamMembers).filter(
+    (member) => !isDefaultTeamMember(member)
+  );
 
   return {
     id: page._id.toString(),
@@ -303,7 +301,7 @@ async function getOrCreateAboutPage(): Promise<AboutPageDocument> {
   return AboutPage.create({
     pageKey: aboutPageKey,
     stats: defaultStats,
-    teamMembers: defaultTeamMembers,
+    teamMembers: [],
   });
 }
 
