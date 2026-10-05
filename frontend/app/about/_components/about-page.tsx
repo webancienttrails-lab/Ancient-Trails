@@ -2,7 +2,14 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -454,7 +461,7 @@ function StoryPanel({
 }) {
   return (
     <article className="flex min-h-[210px] flex-col justify-center rounded-[12px] border border-[#f3ddcd] bg-white px-7 py-8 max-sm:min-h-0 max-sm:px-5 max-sm:py-6 sm:px-9 lg:min-h-[242px] lg:px-10 xl:px-11">
-      <h2 className="font-heading text-title font-bold leading-none tracking-normal text-secondary">
+      <h2 className="font-sans text-title font-semibold leading-none tracking-normal text-secondary">
         {title}
       </h2>
       <span className="mt-5 block h-px w-[60px] bg-primary" />
@@ -466,42 +473,102 @@ function StoryPanel({
 }
 
 function ValuesSection() {
+  const [activeValueIndex, setActiveValueIndex] = useState(0);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setActiveValueIndex(
+        (currentIndex) => (currentIndex + 1) % valueItems.length
+      );
+    }, 3200);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
   return (
     <section className="relative overflow-hidden bg-background px-5 pb-16 pt-10 max-sm:px-4 max-sm:pb-12 max-sm:pt-8 sm:px-0 lg:pb-20 lg:pt-14">
+      <div className="pointer-events-none absolute -left-10 bottom-0 hidden h-[clamp(230px,21vw,350px)] w-[clamp(190px,17vw,290px)] overflow-hidden opacity-45 md:block">
+        <Image
+          src="/illustration/Khajuraho illustration.png"
+          alt=""
+          fill
+          sizes="(min-width: 768px) 17vw, 0px"
+          className="object-cover object-left-bottom grayscale contrast-[1.12] brightness-[1.18] mix-blend-multiply"
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0)_54%,#ffffff_100%),linear-gradient(180deg,#ffffff_0%,rgba(255,255,255,0)_18%,rgba(255,255,255,0)_68%,#ffffff_100%)]" />
+      </div>
+
+      <div className="pointer-events-none absolute -right-10 top-0 hidden h-[clamp(220px,20vw,330px)] w-[clamp(200px,18vw,310px)] overflow-hidden opacity-42 lg:block">
+        <Image
+          src="/illustration/Hampi illustration.png"
+          alt=""
+          fill
+          sizes="(min-width: 1024px) 18vw, 0px"
+          className="object-cover object-right-top grayscale contrast-[1.1] brightness-[1.2] mix-blend-multiply"
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,#ffffff_0%,rgba(255,255,255,0)_24%,rgba(255,255,255,0)_74%,#ffffff_100%),linear-gradient(180deg,#ffffff_0%,rgba(255,255,255,0)_12%,rgba(255,255,255,0)_70%,#ffffff_100%)]" />
+      </div>
+
       <div className="home-wide-frame relative mx-auto w-full [@media(min-width:1300px)]:px-12">
         <div className="text-center">
           <span className="mx-auto block h-px w-[150px] bg-primary max-sm:w-[110px]" />
           <p className="mt-7 font-sans text-eyebrow font-medium uppercase tracking-normal text-primary max-sm:mt-5">
             Why Travel With Us?
           </p>
-          <h2 className="mt-2 font-heading text-title font-bold leading-none tracking-normal text-secondary">
+          <h2 className="mt-2 font-sans text-title font-semibold leading-none tracking-normal text-secondary">
             Why Choose Ancient Trails
           </h2>
         </div>
 
-        <div className="mt-16 grid gap-y-12 max-sm:mt-10 max-sm:gap-y-10 sm:grid-cols-2 lg:mt-[92px] lg:grid-cols-6 lg:gap-y-0">
-          {valueItems.map(({ description, icon: Icon, title }, index) => (
-            <article
-              key={title}
-              className="relative flex flex-col items-center px-5 text-center max-sm:px-2"
-            >
-              {index < valueItems.length - 1 ? (
-                <span className="pointer-events-none absolute right-0 top-0 hidden h-full w-px bg-[#e9ddd4] lg:block">
-                  <span className="absolute -top-1 left-1/2 size-2 -translate-x-1/2 rounded-full bg-[#e1d6ce]" />
-                </span>
-              ) : null}
+        <div className="mt-16 overflow-hidden max-sm:mt-10 sm:overflow-visible lg:mt-[92px]">
+          <div
+            className="flex transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] max-sm:translate-x-[var(--about-value-offset)] sm:grid sm:translate-x-0 sm:grid-cols-2 sm:gap-y-12 lg:grid-cols-6 lg:gap-y-0"
+            style={
+              {
+                "--about-value-offset": `-${activeValueIndex * 100}%`,
+              } as CSSProperties
+            }
+          >
+            {valueItems.map(({ description, icon: Icon, title }, index) => (
+              <article
+                key={title}
+                className="relative flex min-w-full flex-col items-center px-5 text-center max-sm:px-2 sm:min-w-0"
+              >
+                {index < valueItems.length - 1 ? (
+                  <span className="pointer-events-none absolute right-0 top-0 hidden h-full w-px bg-[#e9ddd4] lg:block">
+                    <span className="absolute -top-1 left-1/2 size-2 -translate-x-1/2 rounded-full bg-[#e1d6ce]" />
+                  </span>
+                ) : null}
 
-              <span className="grid size-[78px] place-items-center rounded-full border border-[#f5ddca] bg-[#fff7f1] text-primary max-sm:size-[64px]">
-                <Icon className="size-8 max-sm:size-7" strokeWidth={1.8} />
-              </span>
-              <h3 className="mt-7 min-h-[54px] max-w-[235px] font-sans text-description font-bold leading-[1.32] tracking-normal text-secondary max-sm:mt-5 max-sm:min-h-0">
-                {title}
-              </h3>
-              <p className="mt-5 max-w-[240px] font-sans text-description font-normal italic tracking-normal text-secondary/72 max-sm:mt-3">
-                {description}
-              </p>
-            </article>
-          ))}
+                <span className="grid size-[78px] place-items-center rounded-full border border-[#f5ddca] bg-[#fff7f1] text-primary max-sm:size-[64px]">
+                  <Icon className="size-8 max-sm:size-7" strokeWidth={1.8} />
+                </span>
+                <h3 className="mt-7 min-h-[54px] max-w-[235px] font-sans text-description font-bold leading-[1.32] tracking-normal text-secondary max-sm:mt-5 max-sm:min-h-0">
+                  {title}
+                </h3>
+                <p className="mt-5 max-w-[240px] font-sans text-description font-normal italic tracking-normal text-secondary/72 max-sm:mt-3">
+                  {description}
+                </p>
+              </article>
+            ))}
+          </div>
+
+          <div className="mt-8 flex justify-center gap-2 sm:hidden">
+            {valueItems.map((item, index) => (
+              <button
+                key={item.title}
+                type="button"
+                aria-label={`Show ${item.title}`}
+                aria-pressed={activeValueIndex === index}
+                onClick={() => setActiveValueIndex(index)}
+                className={`h-1.5 rounded-full transition-all ${
+                  activeValueIndex === index
+                    ? "w-8 bg-primary"
+                    : "w-1.5 bg-primary/25"
+                }`}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </section>
@@ -610,21 +677,69 @@ function TeamCarouselSection({
 }: {
   members: AboutTeamMember[];
 }) {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const visibleMembers = useMemo(
-    () => getCarouselItems(members, activeIndex, 5),
-    [activeIndex, members]
+  const memberCount = members.length;
+  const baseSlideIndex = memberCount > 1 ? memberCount * 2 : 0;
+  const [activeIndex, setActiveIndex] = useState(baseSlideIndex);
+  const [slideOffset, setSlideOffset] = useState(0);
+  const [isTransitionEnabled, setIsTransitionEnabled] = useState(true);
+  const teamCardRefs = useRef<Array<HTMLElement | null>>([]);
+  const loopedMembers = useMemo(
+    () =>
+      memberCount > 1
+        ? Array.from({ length: 7 }, () => members).flat()
+        : members,
+    [memberCount, members]
   );
 
   function showPreviousMember() {
-    setActiveIndex((currentIndex) =>
-      currentIndex === 0 ? members.length - 1 : currentIndex - 1
-    );
+    setActiveIndex((currentIndex) => currentIndex - 1);
   }
 
   function showNextMember() {
-    setActiveIndex((currentIndex) => (currentIndex + 1) % members.length);
+    setActiveIndex((currentIndex) => currentIndex + 1);
   }
+
+  function normalizeSlideIndex(index: number) {
+    if (memberCount <= 1) {
+      return 0;
+    }
+
+    return baseSlideIndex + ((index % memberCount) + memberCount) % memberCount;
+  }
+
+  function jumpToSlide(index: number) {
+    setIsTransitionEnabled(false);
+    setActiveIndex(index);
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        setIsTransitionEnabled(true);
+      });
+    });
+  }
+
+  function handleSlideTransitionEnd() {
+    if (memberCount <= 1) {
+      return;
+    }
+
+    const lastBaseSlideIndex = baseSlideIndex + memberCount - 1;
+
+    if (activeIndex < baseSlideIndex || activeIndex > lastBaseSlideIndex) {
+      jumpToSlide(normalizeSlideIndex(activeIndex));
+    }
+  }
+
+  useLayoutEffect(() => {
+    function updateSlideOffset() {
+      setSlideOffset(teamCardRefs.current[activeIndex]?.offsetLeft || 0);
+    }
+
+    updateSlideOffset();
+    window.addEventListener("resize", updateSlideOffset);
+
+    return () => window.removeEventListener("resize", updateSlideOffset);
+  }, [activeIndex, loopedMembers.length]);
 
   return (
     <section id="team" className="bg-background py-16 max-sm:py-12 lg:py-20">
@@ -665,16 +780,30 @@ function TeamCarouselSection({
         </div>
       </div>
 
-      <div className="mt-14 overflow-hidden max-sm:mt-8">
-        <div className="flex gap-6 overflow-x-auto px-5 pb-3 [scrollbar-width:none] max-sm:gap-4 max-sm:px-4 sm:px-8 lg:w-max lg:-translate-x-[calc(12vw-12px)] lg:gap-6 lg:overflow-visible lg:px-0 [&::-webkit-scrollbar]:hidden">
-          {visibleMembers.map((member) => {
-            return (
-              <TeamCarouselCard
-                key={member.id || member.name}
-                member={member}
-              />
-            );
-          })}
+      <div className="mt-14 w-screen overflow-hidden max-sm:mt-8">
+        <div className="w-screen overflow-hidden px-5 pb-3 max-sm:px-4 sm:px-8 lg:w-[calc(100vw+12vw-12px)] lg:-translate-x-[calc(12vw-12px)] lg:px-0">
+          <div
+            className="flex w-max gap-6 max-sm:gap-4 lg:gap-6"
+            onTransitionEnd={handleSlideTransitionEnd}
+            style={{
+              transform: `translate3d(-${slideOffset}px, 0, 0)`,
+              transition: isTransitionEnabled
+                ? "transform 680ms cubic-bezier(0.22, 1, 0.36, 1)"
+                : "none",
+            }}
+          >
+            {loopedMembers.map((member, index) => {
+              return (
+                <TeamCarouselCard
+                  key={`${index}-${member.id || member.name}`}
+                  cardRef={(element) => {
+                    teamCardRefs.current[index] = element;
+                  }}
+                  member={member}
+                />
+              );
+            })}
+          </div>
         </div>
       </div>
     </section>
@@ -682,8 +811,10 @@ function TeamCarouselSection({
 }
 
 function TeamCarouselCard({
+  cardRef,
   member,
 }: {
+  cardRef?: (element: HTMLElement | null) => void;
   member: AboutTeamMember;
 }) {
   const image = member.image;
@@ -691,7 +822,7 @@ function TeamCarouselCard({
   const bio = member.bio;
 
   return (
-    <article className="group relative h-[330px] w-[260px] shrink-0 overflow-hidden rounded-[8px] bg-transparent shadow-[0_14px_30px_rgba(50,36,22,0.10)] max-sm:h-[310px] max-sm:w-[78vw] max-sm:max-w-[280px] sm:w-[300px] lg:h-[360px] lg:w-[calc(24vw-24px)]">
+    <article ref={cardRef} className="group relative h-[330px] w-[260px] shrink-0 overflow-hidden rounded-[8px] bg-transparent shadow-[0_14px_30px_rgba(50,36,22,0.10)] max-sm:h-[310px] max-sm:w-[78vw] max-sm:max-w-[280px] sm:w-[300px] lg:h-[360px] lg:w-[calc(24vw-24px)]">
       {image ? (
         <div
           role="img"
@@ -704,21 +835,21 @@ function TeamCarouselCard({
       )}
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.02)_22%,rgba(2,18,10,0.74)_100%)]" />
       <div className="absolute inset-x-0 bottom-0 p-6 text-white transition-opacity duration-300 group-hover:opacity-0">
-        <h3 className="font-sans text-[24px] font-bold leading-tight tracking-normal sm:text-[28px]">
+        <h3 className="font-heading text-[20px] font-semibold leading-tight tracking-normal sm:text-[24px]">
           {member.name}
         </h3>
-        <p className="mt-2 font-sans text-[14px] font-semibold uppercase tracking-normal text-white/82">
+        <p className="mt-2 font-sans text-[14px] font-normal uppercase tracking-normal text-white/82">
           {role}
         </p>
       </div>
       <div className="absolute inset-0 flex translate-y-3 flex-col justify-end bg-black/12 p-6 opacity-0 backdrop-blur-sm transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
-        <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+        <p className="font-sans text-eyebrow font-semibold uppercase tracking-normal text-primary">
           {role}
         </p>
-        <h3 className="mt-3 font-sans text-[24px] font-bold leading-tight tracking-normal text-white sm:text-[28px]">
+        <h3 className="mt-3 font-heading text-[20px] font-semibold leading-tight tracking-normal text-white sm:text-[24px]">
           {member.name}
         </h3>
-        <p className="mt-4 line-clamp-5 font-sans text-description leading-[1.5] text-white/82">
+        <p className="mt-4 line-clamp-10 font-sans text-[14px] leading-[1.5] text-white/82">
           {bio}
         </p>
       </div>
@@ -761,7 +892,7 @@ function ExpertPeopleSection({ experts }: { experts: PublicExpert[] }) {
         <div className="flex min-h-[330px] flex-col justify-between max-sm:min-h-0 max-sm:gap-6 lg:min-h-[380px]">
           <div>
             <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
-              <span className="mr-3 inline-block size-1.5 rounded-full bg-primary align-middle" />
+             
               Our Experts
             </p>
             <h2 className="mt-4 font-heading text-title font-bold leading-none tracking-normal text-secondary">
@@ -834,10 +965,8 @@ function ExpertPeopleCard({ expert }: { expert: PublicExpert }) {
         <ArrowUpRight className="size-5" strokeWidth={2.2} />
       </span>
       <div className="absolute inset-x-0 bottom-0 p-6 text-white">
-        <p className="font-sans text-[13px] font-semibold uppercase leading-[1.25] tracking-normal text-white/86 sm:text-[14px]">
-          {role}
-        </p>
-        <h3 className="mt-2 font-sans text-[21px] font-bold leading-tight tracking-normal sm:text-[24px]">
+       
+        <h3 className="mt-2 font-heading text-[20px] font-bold leading-tight tracking-normal sm:text-[20px]">
           {name}
         </h3>
         <p className="sr-only">{bio}</p>

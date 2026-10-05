@@ -71,7 +71,7 @@ const navItems = [
 ];
 
 const headerLayerStyle: CSSProperties = {
-  zIndex: 2147483000,
+  zIndex: 2147483647,
 };
 
 const mobileDrawerLayerStyle: CSSProperties = {

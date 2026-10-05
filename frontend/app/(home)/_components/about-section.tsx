@@ -106,7 +106,7 @@ export function AboutSection() {
           loop
           playsInline
         />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(47,20,5,0.68),rgba(47,20,5,0.72))]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(47,20,5,0.42),rgba(47,20,5,0.48))]" />
 
         {/* <button
           type="button"

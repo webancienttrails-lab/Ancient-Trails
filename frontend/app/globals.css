@@ -131,6 +131,14 @@
     overflow-x: hidden;
   }
 
+  .tour-tabs-docked .tour-detail-tabs {
+    left: 1rem;
+    position: fixed;
+    right: 1rem;
+    top: 60px;
+    width: auto;
+  }
+
   :root {
     --font-size-description: 14px;
     --font-size-eyebrow: 12px;

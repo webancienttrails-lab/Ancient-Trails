@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
-import { Compass, Landmark, MapPin, Users } from "lucide-react";
+import { CalendarDays, Clock3, Landmark, Users } from "lucide-react";
 
 import { Button, ButtonArrow } from "@/components/ui/button";
 import { getDestinationHref } from "@/lib/routes";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { TextReveal } from "./reveal-on-view";
 
 type TopDestination = {
+  attractionCount?: number;
   bestSeason: string;
   description: string;
   destinationId: string;
@@ -21,7 +22,9 @@ type TopDestination = {
   markerX: number;
   markerY: number;
   name: string;
+  recommendedDays?: number;
   state: string;
+  tourCount?: number;
   tourImage: string;
   tourName: string;
 };
@@ -178,26 +181,43 @@ const destinationCategoryFallbacks = [
 ];
 
 function getDestinationHighlights(destination: TopDestination) {
+  const recommendedDays = Math.max(
+    0,
+    Math.trunc(destination.recommendedDays || 0)
+  );
+  const attractionCount = Math.max(
+    0,
+    Math.trunc(destination.attractionCount || 0)
+  );
+  const tourCount = Math.max(0, Math.trunc(destination.tourCount || 0));
+
   return [
     {
+      icon: Clock3,
+      label:
+        recommendedDays > 0
+          ? `${recommendedDays} ${recommendedDays === 1 ? "Day" : "Days"}`
+          : "Flexible Days",
+    },
+    {
+      icon: CalendarDays,
+      label: destination.bestSeason || "Best Season",
+    },
+    {
       icon: Landmark,
-      label: "Top Attraction",
-    },
-    {
-      icon: MapPin,
-      label: destination.duration || "Popular Trail",
-    },
-    {
-      icon: Compass,
-      label: "Best Time",
-    },
-    {
-      icon: Landmark,
-      label: "Heritage Focus",
+      label:
+        attractionCount > 0
+          ? `${attractionCount} ${
+              attractionCount === 1 ? "Attraction" : "Attractions"
+            }`
+          : destination.duration || "Attractions",
     },
     {
       icon: Users,
-      label: "Popular Tours",
+      label:
+        tourCount > 0
+          ? `${tourCount} ${tourCount === 1 ? "Tour" : "Tours"}`
+          : "Tours",
     },
   ];
 }
@@ -384,6 +404,7 @@ export function TopDestinationsSection({
     : displayedDestinations[0]?.destinationId || topDestinations[0].destinationId;
   const [activeDestinationId, setActiveDestinationId] =
     useState(initialDestinationId);
+  const destinationListRef = useRef<HTMLDivElement | null>(null);
   const destinationButtonRefs = useRef<Record<string, HTMLButtonElement | null>>(
     {}
   );
@@ -402,18 +423,26 @@ export function TopDestinationsSection({
 
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
       window.requestAnimationFrame(() => {
-        destinationButtonRefs.current[destinationId]?.scrollIntoView({
+        const destinationList = destinationListRef.current;
+        const destinationButton = destinationButtonRefs.current[destinationId];
+
+        if (!destinationList || !destinationButton) {
+          return;
+        }
+
+        destinationList.scrollTo({
           behavior: "smooth",
-          block: "nearest",
-          inline: "center",
+          left:
+            destinationButton.offsetLeft -
+            (destinationList.clientWidth - destinationButton.clientWidth) / 2,
         });
       });
     }
   }
 
   return (
-    <section className="overflow-hidden bg-background py-10 lg:overflow-visible">
-      <div className="home-wide-frame mx-auto w-full overflow-hidden px-5 sm:px-0 lg:overflow-visible [@media(min-width:1300px)]:px-12">
+    <section className="max-w-full overflow-x-clip bg-background py-10 lg:overflow-visible">
+      <div className="home-wide-frame mx-auto w-full max-w-full overflow-hidden px-5 sm:px-0 lg:overflow-visible [@media(min-width:1300px)]:px-12">
         <div className="grid items-start gap-5 lg:grid-cols-[330px_1px_minmax(0,1fr)_270px] lg:items-end lg:gap-8">
           <div>
             <TextReveal>
@@ -478,7 +507,10 @@ export function TopDestinationsSection({
               </Link>
             </div>
 
-            <div className="-mx-5 flex max-w-[100vw] gap-3 overflow-x-auto overscroll-x-contain px-5 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:mx-0 lg:grid lg:max-w-none lg:gap-2 lg:overflow-visible lg:px-0 lg:pb-0">
+            <div
+              ref={destinationListRef}
+              className="-mx-5 flex max-w-[100vw] gap-3 overflow-x-auto overscroll-x-contain px-5 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:mx-0 lg:grid lg:max-w-none lg:gap-2 lg:overflow-visible lg:px-0 lg:pb-0"
+            >
               {displayedDestinations.map((destination, index) => {
                 const isActive =
                   destination.destinationId === activeDestination.destinationId;
@@ -491,10 +523,11 @@ export function TopDestinationsSection({
                     }}
                     type="button"
                     onClick={() => selectDestination(destination.destinationId)}
-                    onFocus={() => selectDestination(destination.destinationId)}
-                    onMouseEnter={() =>
+                  onFocus={() => selectDestination(destination.destinationId)}
+                  onMouseEnter={() =>
                       selectDestination(destination.destinationId)
                     }
+                  onPointerEnter={() => selectDestination(destination.destinationId)}
                     className={cn(
                       "flex w-[132px] shrink-0 flex-col items-center gap-2 rounded-[8px] border border-border bg-white p-2 text-center shadow-[0_8px_20px_rgba(50,50,50,0.06)] transition-[border-color,opacity,transform] duration-300 hover:-translate-y-0.5 hover:border-primary/45 lg:w-full lg:flex-row lg:items-center lg:gap-3 lg:rounded-none lg:border-x-0 lg:border-t-0 lg:bg-transparent lg:p-0 lg:pb-2 lg:text-left lg:shadow-none lg:last:border-b-0",
                       isActive
@@ -530,8 +563,8 @@ export function TopDestinationsSection({
             </div>
           </aside>
 
-          <div className="relative order-1 -mx-5 w-[390px] h-[min(410px,82vw)] overflow-visible lg:order-none lg:mx-auto lg:h-[535px] lg:w-full lg:max-w-[700px] lg:rounded-none lg:border-0 lg:bg-transparent lg:shadow-none">
-            <div className="absolute left-1/2 top-1/2 aspect-[700/535] w-[min(100vw,520px)] -translate-x-1/2 -translate-y-1/2 lg:inset-0 lg:aspect-auto lg:w-full lg:translate-x-0 lg:translate-y-0">
+          <div className="relative order-1 mx-auto h-[min(410px,82vw)] w-full max-w-[390px] overflow-visible lg:order-none lg:mx-auto lg:h-[535px] lg:w-full lg:max-w-[700px] lg:rounded-none lg:border-0 lg:bg-transparent lg:shadow-none">
+            <div className="absolute left-1/2 top-1/2 aspect-[700/535] w-full max-w-[520px] -translate-x-1/2 -translate-y-1/2 lg:inset-0 lg:aspect-auto lg:w-full lg:max-w-none lg:translate-x-0 lg:translate-y-0">
               <Image
                 src="/home assets/Map.webp"
                 alt="Top destinations map of India"
@@ -560,6 +593,7 @@ export function TopDestinationsSection({
                   }}
                   onFocus={() => selectDestination(destination.destinationId)}
                   onMouseEnter={() => selectDestination(destination.destinationId)}
+                  onPointerEnter={() => selectDestination(destination.destinationId)}
                     className={cn(
                       "group absolute grid h-8 w-5 -translate-x-1/2 -translate-y-full origin-bottom place-items-end transition-transform duration-300 hover:z-40 hover:scale-110 focus-visible:z-40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25",
                       isActive ? "z-40 scale-110" : "z-10"

@@ -1,4 +1,7 @@
+"use client";
+
 import Image from "next/image";
+import { type CSSProperties, useEffect, useState } from "react";
 
 import { TextReveal } from "./reveal-on-view";
 
@@ -41,6 +44,18 @@ const whyChooseUsFeatures = [
 ];
 
 export function WhyChooseUsSection() {
+  const [activeFeatureIndex, setActiveFeatureIndex] = useState(0);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setActiveFeatureIndex(
+        (currentIndex) => (currentIndex + 1) % whyChooseUsFeatures.length
+      );
+    }, 3200);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
   return (
     <section
       id="why-choose-us"
@@ -48,7 +63,7 @@ export function WhyChooseUsSection() {
     >
       <div className="pointer-events-none absolute -right-14 -top-[118px] hidden h-[clamp(270px,22vw,390px)] w-[clamp(250px,17vw,330px)] overflow-hidden lg:block">
         <Image
-          src="/home assets/Heritage Banner.webp"
+          src="/illustration/Hampi illustration.png"
           alt=""
           fill
           sizes="(min-width: 1024px) 15vw, 0px"
@@ -59,7 +74,7 @@ export function WhyChooseUsSection() {
 
       <div className="pointer-events-none absolute bottom-2 -left-0 hidden h-[clamp(230px,21vw,340px)] w-[clamp(170px,14vw,250px)] overflow-hidden md:block">
         <Image
-          src="/home assets/Heritage Banner.webp"
+          src="/illustration/Khajuraho illustration.png"
           alt=""
           fill
           sizes="(min-width: 768px) 14vw, 0px"
@@ -83,42 +98,68 @@ export function WhyChooseUsSection() {
           </TextReveal>
         </div>
 
-        <div className="mt-14 grid gap-y-10 sm:grid-cols-2 lg:mt-20 lg:grid-cols-5 lg:gap-y-0">
-          {whyChooseUsFeatures.map((feature, index) => (
-            <article
-              key={feature.title}
-              className="relative flex flex-col items-center px-5 text-center"
-            >
-              {index < whyChooseUsFeatures.length - 1 ? (
-                <span className="pointer-events-none absolute right-0 top-0 hidden h-full w-px bg-border lg:block">
-                  <span className="absolute -top-1 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-border" />
-                </span>
-              ) : null}
+        <div className="mt-14 overflow-hidden sm:overflow-visible lg:mt-20">
+          <div
+            className="flex transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] max-sm:translate-x-[var(--why-feature-offset)] sm:grid sm:translate-x-0 sm:grid-cols-2 sm:gap-y-10 lg:grid-cols-5 lg:gap-y-0"
+            style={
+              {
+                "--why-feature-offset": `-${activeFeatureIndex * 100}%`,
+              } as CSSProperties
+            }
+          >
+            {whyChooseUsFeatures.map((feature, index) => (
+              <article
+                key={feature.title}
+                className="relative flex min-w-full flex-col items-center px-5 text-center sm:min-w-0"
+              >
+                {index < whyChooseUsFeatures.length - 1 ? (
+                  <span className="pointer-events-none absolute right-0 top-0 hidden h-full w-px bg-border lg:block">
+                    <span className="absolute -top-1 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-border" />
+                  </span>
+                ) : null}
 
-              <div className="relative size-[50px]">
-                <Image
-                  src={feature.icon}
-                  alt=""
-                  fill
-                  sizes="50px"
-                  className="object-contain"
-                />
-              </div>
+                <div className="relative size-[50px]">
+                  <Image
+                    src={feature.icon}
+                    alt=""
+                    fill
+                    sizes="50px"
+                    className="object-contain"
+                  />
+                </div>
 
-              <TextReveal delay={120 + index * 70}>
-                <h3 className="mt-5 min-h-[46px] max-w-[240px] font-sans text-[16px] font-normal leading-[1.35] text-secondary lg:max-w-[190px]">
-                  {feature.titleLines.map((line) => (
-                    <span key={line} className="block">
-                      {line}
-                    </span>
-                  ))}
-                </h3>
-                <p className="mt-4 max-w-[240px] text-[13px] italic leading-[1.25] text-secondary/75 lg:max-w-[190px]">
-                  {feature.description}
-                </p>
-              </TextReveal>
-            </article>
-          ))}
+                <TextReveal delay={120 + index * 70}>
+                  <h3 className="mt-5 min-h-[46px] max-w-[240px] font-sans text-[16px] font-normal leading-[1.35] text-secondary lg:max-w-[190px]">
+                    {feature.titleLines.map((line) => (
+                      <span key={line} className="block">
+                        {line}
+                      </span>
+                    ))}
+                  </h3>
+                  <p className="mt-4 max-w-[240px] text-[13px] italic leading-[1.25] text-secondary/75 lg:max-w-[190px]">
+                    {feature.description}
+                  </p>
+                </TextReveal>
+              </article>
+            ))}
+          </div>
+
+          <div className="mt-8 flex justify-center gap-2 sm:hidden">
+            {whyChooseUsFeatures.map((feature, index) => (
+              <button
+                key={feature.title}
+                type="button"
+                aria-label={`Show ${feature.title}`}
+                aria-pressed={activeFeatureIndex === index}
+                onClick={() => setActiveFeatureIndex(index)}
+                className={`h-1.5 rounded-full transition-all ${
+                  activeFeatureIndex === index
+                    ? "w-8 bg-primary"
+                    : "w-1.5 bg-primary/25"
+                }`}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </section>

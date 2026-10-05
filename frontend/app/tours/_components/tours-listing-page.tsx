@@ -1111,7 +1111,6 @@ export function ToursListingPage({
           ) : null}
         </section>
       </section>
-
       <MobileTourActions
         durationFilter={durationFilter}
         isFilterOpen={isMobileFilterOpen}
@@ -1271,7 +1270,7 @@ function MobileTourActions({
 
   return (
     <>
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[#ead8c5] bg-white/96 px-2 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-12px_30px_rgba(18,32,44,0.13)] backdrop-blur lg:hidden">
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[#ead8c5] bg-white/96 px-2 pb-[max(0.45rem,env(safe-area-inset-bottom))] pt-1.5 shadow-[0_-12px_30px_rgba(18,32,44,0.13)] backdrop-blur lg:hidden">
         <div className="mx-auto grid max-w-[520px] grid-cols-2 divide-x divide-[#ead8c5] overflow-hidden rounded-t-[10px]">
           <MobileActionButton
             badge={mobileFilterCount}
@@ -1359,11 +1358,11 @@ function MobileActionButton({
   return (
     <button
       type="button"
-      className="relative flex min-h-[56px] items-center justify-center gap-2 bg-white px-2 font-sans text-[16px] font-medium text-secondary transition-colors active:bg-[#fff8f1]"
+      className="relative flex min-h-[48px] min-w-0 items-center justify-center gap-1.5 bg-white px-1.5 font-sans text-[14px] font-medium text-secondary transition-colors active:bg-[#fff8f1]"
       onClick={onClick}
     >
-      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-white">
-        <Icon className="size-4" strokeWidth={2.2} />
+      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-white">
+        <Icon className="size-3.5" strokeWidth={2.2} />
       </span>
       <span className="truncate">{label}</span>
       

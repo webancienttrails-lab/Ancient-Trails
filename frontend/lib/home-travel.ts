@@ -282,6 +282,7 @@ export type HomeTourCard = {
 };
 
 export type HomeDestinationCard = {
+  attractionCount: number;
   bestSeason: string;
   description: string;
   destinationId: string;
@@ -292,7 +293,9 @@ export type HomeDestinationCard = {
   markerX: number;
   markerY: number;
   name: string;
+  recommendedDays: number;
   state: string;
+  tourCount: number;
   tourImage: string;
   tourName: string;
 };
@@ -397,8 +400,11 @@ export const fallbackCustomisedTours: HomeCustomisedTourCard[] = [
 
 export const fallbackTrendingDestinations: HomeDestinationCard[] = [
   {
+    attractionCount: 12,
     name: "Jaipur",
+    recommendedDays: 3,
     state: "Rajasthan",
+    tourCount: 1,
     image: "/home assets/destination/hawa-mahal.webp",
     destinationId: "JAIPUR",
     focus: "",
@@ -413,8 +419,11 @@ export const fallbackTrendingDestinations: HomeDestinationCard[] = [
     tourImage: "/home assets/destination/hawa-mahal.webp",
   },
   {
+    attractionCount: 8,
     name: "Udaipur",
+    recommendedDays: 3,
     state: "Rajasthan",
+    tourCount: 1,
     image: "/home assets/destination/Udaipur.webp",
     destinationId: "UDAIPUR",
     focus: "",
@@ -429,8 +438,11 @@ export const fallbackTrendingDestinations: HomeDestinationCard[] = [
     tourImage: "/home assets/destination/Udaipur.webp",
   },
   {
+    attractionCount: 10,
     name: "Varanasi",
+    recommendedDays: 3,
     state: "Uttar Pradesh",
+    tourCount: 1,
     image: "/home assets/destination/Varanasi.webp",
     destinationId: "VARANASI",
     focus: "",
@@ -445,8 +457,11 @@ export const fallbackTrendingDestinations: HomeDestinationCard[] = [
     tourImage: "/home assets/destination/Varanasi.webp",
   },
   {
+    attractionCount: 9,
     name: "Hampi",
+    recommendedDays: 3,
     state: "Karnataka",
+    tourCount: 1,
     image: "/home assets/destination/Hampi.webp",
     destinationId: "HAMPI",
     focus: "",
@@ -461,8 +476,11 @@ export const fallbackTrendingDestinations: HomeDestinationCard[] = [
     tourImage: "/home assets/destination/Hampi.webp",
   },
   {
+    attractionCount: 7,
     name: "Khajuraho",
+    recommendedDays: 3,
     state: "Madhya Pradesh",
+    tourCount: 1,
     image: "/home assets/Khajuraho.webp",
     destinationId: "KHAJURAHO",
     focus: "",
@@ -477,8 +495,11 @@ export const fallbackTrendingDestinations: HomeDestinationCard[] = [
     tourImage: "/home assets/Khajuraho.webp",
   },
   {
+    attractionCount: 6,
     name: "Amritsar",
+    recommendedDays: 2,
     state: "Punjab",
+    tourCount: 1,
     image: "/home assets/destination/Amritsar.webp",
     destinationId: "AMRITSAR",
     focus: "",
@@ -493,8 +514,11 @@ export const fallbackTrendingDestinations: HomeDestinationCard[] = [
     tourImage: "/home assets/destination/Amritsar.webp",
   },
   {
+    attractionCount: 5,
     name: "Hoysalas",
+    recommendedDays: 2,
     state: "Karnataka",
+    tourCount: 1,
     image: "/home assets/destination/Hoysalas.webp",
     destinationId: "HOYSALAS",
     focus: "",
@@ -509,8 +533,11 @@ export const fallbackTrendingDestinations: HomeDestinationCard[] = [
     tourImage: "/home assets/destination/Hoysalas.webp",
   },
   {
+    attractionCount: 7,
     name: "Khajuraho",
+    recommendedDays: 3,
     state: "Madhya Pradesh",
+    tourCount: 1,
     image: "/home assets/Khajuraho.webp",
     destinationId: "KHAJURAHO-2",
     focus: "",
@@ -761,6 +788,16 @@ function getDestinationPlaceCountLabel(
   destination: PublicDestination,
   fallbackLabel: string
 ) {
+  const placeCount = getDestinationAttractionCount(destination);
+
+  if (placeCount > 0) {
+    return `${placeCount} ${placeCount === 1 ? "Place" : "Places"}`;
+  }
+
+  return fallbackLabel;
+}
+
+function getDestinationAttractionCount(destination: PublicDestination) {
   const landmarkCount = Array.from(
     new Set(
       (destination.keyLandmarks || [])
@@ -771,13 +808,8 @@ function getDestinationPlaceCountLabel(
   const landmarkImageCount = (destination.keyLandmarkImages || []).filter(
     (image) => image.trim()
   ).length;
-  const placeCount = landmarkCount || landmarkImageCount;
 
-  if (placeCount > 0) {
-    return `${placeCount} ${placeCount === 1 ? "Place" : "Places"}`;
-  }
-
-  return fallbackLabel;
+  return landmarkCount || landmarkImageCount;
 }
 
 function getDestinationTourCategoryLabel(relatedTours: PublicTour[]) {
@@ -1124,6 +1156,7 @@ export function buildTrendingDestinationCards(
     );
 
     return {
+      attractionCount: getDestinationAttractionCount(destination),
       bestSeason:
         destination.bestTimeToVisit ||
         relatedTour?.bestSeason ||
@@ -1143,7 +1176,12 @@ export function buildTrendingDestinationCards(
       markerX,
       markerY,
       name: destination.destinationName,
+      recommendedDays: Math.max(
+        0,
+        Math.trunc(destination.recommendedDurationDays || 0)
+      ),
       state: destination.state || destination.countryRegion || destination.city,
+      tourCount: new Set(relatedTours.map((tour) => tour.tourId)).size,
       tourImage: getTourImage(relatedTour, image),
       tourName: relatedTour?.tourName || `Explore ${destination.destinationName}`,
     };

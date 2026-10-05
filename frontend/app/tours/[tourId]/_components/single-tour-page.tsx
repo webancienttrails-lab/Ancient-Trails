@@ -1785,9 +1785,13 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
       frameId = 0;
 
       const panel = document.getElementById("tour-detail-panel");
+      const dockingOffset = window.matchMedia("(max-width: 639.98px)").matches
+        ? 60
+        : 0;
+
       root.classList.toggle(
         "tour-tabs-docked",
-        Boolean(panel && panel.getBoundingClientRect().top <= 0)
+        Boolean(panel && panel.getBoundingClientRect().top <= dockingOffset)
       );
     };
 
@@ -2008,7 +2012,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
   }
 
   return (
-    <main className="min-h-screen bg-background pb-2 sm:pb-32 text-secondary lg:pb-0">
+    <main className="min-h-screen bg-background pb-28 text-secondary sm:pb-32 lg:pb-0">
       <Header />
       <PaymentProceedingOverlay checkoutStatus={checkoutStatus} />
 
@@ -2536,13 +2540,20 @@ function TourTabs({
       return;
     }
 
-    tabsList
-      .querySelector<HTMLElement>(`[data-tour-tab-value="${activeTab}"]`)
-      ?.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
-        inline: "center",
-      });
+    const activeTabButton = tabsList.querySelector<HTMLElement>(
+      `[data-tour-tab-value="${activeTab}"]`
+    );
+
+    if (!activeTabButton) {
+      return;
+    }
+
+    tabsList.scrollTo({
+      behavior: "smooth",
+      left:
+        activeTabButton.offsetLeft -
+        (tabsList.clientWidth - activeTabButton.clientWidth) / 2,
+    });
   }, [activeTab]);
 
   function handleTabClick(tab: (typeof tabs)[number]) {
@@ -2557,10 +2568,11 @@ function TourTabs({
       id="tour-detail-panel"
       className="mt-5"
     >
-      <div
-        data-tour-tabs
-        className="sticky top-0 z-[2147483647] overflow-hidden rounded-[8px] border border-border bg-card shadow-[0_6px_16px_rgba(67,43,27,0.08)] sm:shadow-none"
-      >
+      <div className="min-h-12">
+        <div
+          data-tour-tabs
+          className="tour-detail-tabs sticky top-[60px] z-[2147483646] overflow-hidden rounded-[8px] border border-border bg-card shadow-[0_6px_16px_rgba(67,43,27,0.08)] sm:top-0 sm:z-[2147483647] sm:shadow-none"
+        >
         <div
           ref={tabsListRef}
           className="flex w-full overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-4 sm:overflow-visible xl:grid-cols-[0.95fr_1.3fr_1.35fr_1fr]"
@@ -2593,6 +2605,7 @@ function TourTabs({
               </button>
             );
           })}
+        </div>
         </div>
       </div>
 
@@ -2698,21 +2711,22 @@ function TourAdditionalDetails({ tour }: { tour: PublicTour }) {
   return (
     <section className="mt-5 space-y-5">
       <div className="overflow-hidden rounded-[8px] border border-border bg-card">
-        <div className="grid grid-cols-3 gap-1 border-b-2 border-primary bg-transparent sm:gap-0 sm:border-b sm:border-border sm:bg-muted/45">
-          {tabItems.map(({ icon: Icon, label, value }) => (
+        <div className="grid grid-cols-2 gap-1 border-b border-border bg-transparent p-1 sm:grid-cols-3 sm:gap-0 sm:border-b sm:bg-muted/45 sm:p-0">
+          {tabItems.map(({ icon: Icon, label, value }, index) => (
             <button
               key={value}
               type="button"
               onClick={() => setActiveTab(value)}
               className={cn(
-                "flex min-h-16 min-w-0 items-center justify-center gap-2 rounded-t-[8px] border-b-0 px-2 py-2 text-center font-sans text-[12px] font-semibold leading-[1.3] transition-colors sm:min-h-12 sm:rounded-none sm:border-b-2 sm:px-3 sm:py-3 sm:text-[14px]",
+                "flex min-h-16 min-w-0 items-center justify-center gap-3 rounded-[7px] border border-border px-2 py-2 text-center font-sans text-[14px] font-semibold leading-[1.3] transition-colors sm:min-h-12 sm:rounded-none sm:border-0 sm:border-b-2 sm:px-3 sm:py-3 sm:text-[14px]",
+                index === 2 && "col-span-2 sm:col-span-1",
                 activeTab === value
-                  ? "bg-primary text-white sm:border-primary sm:bg-primary"
-                  : "bg-primary/10 text-secondary/60 hover:bg-primary/15 hover:text-primary sm:border-transparent sm:bg-transparent sm:hover:bg-primary/8"
+                  ? "border-primary bg-primary text-white sm:border-primary sm:bg-primary sm:shadow-none"
+                  : "bg-white text-secondary/52 hover:border-primary/30 hover:bg-primary/5 hover:text-primary sm:border-transparent sm:bg-transparent sm:hover:bg-primary/8"
               )}
             >
               <Icon className="hidden size-4 shrink-0 sm:block" strokeWidth={1.8} />
-              <span className="whitespace-normal break-words text-[12px] font-semibold leading-[1.3] sm:text-[14px]">
+              <span className="whitespace-normal break-words text-[14px] font-semibold leading-[1.35] sm:text-[14px]">
                 {label}
               </span>
             </button>
@@ -2808,6 +2822,7 @@ function PolicyPanel({
           }))}
           firstHeader="Cancellation received no. of days prior to departure"
           secondHeader="Cancellation charges applicable per person"
+          mobileValueAlign="center"
         />
       ) : (
         <NeedToKnowContent groups={items as TourNeedToKnowGroup[]} />
@@ -2818,10 +2833,12 @@ function PolicyPanel({
 
 function PolicyTable({
   firstHeader,
+  mobileValueAlign = "left",
   rows,
   secondHeader,
 }: {
   firstHeader: string;
+  mobileValueAlign?: "center" | "left";
   rows: Array<TourPaymentPolicyRow | { first: string; second: string }>;
   secondHeader: string;
 }) {
@@ -2832,24 +2849,60 @@ function PolicyTable({
   );
 
   return (
-    <div className="overflow-x-auto p-5 sm:p-6">
+    <div className="pt-4 sm:p-6">
       {normalizedRows.length > 0 ? (
-        <table className="w-full min-w-[620px] border-collapse font-sans text-[14px] text-secondary/78 sm:text-[15px]">
-          <thead>
-            <tr className="bg-muted/65 font-semibold text-secondary">
-              <th className="border border-border px-5 py-5 text-center">{firstHeader}</th>
-              <th className="border border-border px-5 py-5 text-center">{secondHeader}</th>
-            </tr>
-          </thead>
-          <tbody>
+        <>
+          <div className="grid gap-3 sm:hidden">
             {normalizedRows.map((row, index) => (
-              <tr key={`${row.first}-${index}`} className={index % 2 ? "bg-muted/45" : "bg-white"}>
-                <td className="border border-border px-5 py-5 text-center">{row.first}</td>
-                <td className="border border-border px-5 py-5 text-center">{row.second}</td>
-              </tr>
+              <article
+                key={`${row.first}-${index}`}
+                className="overflow-hidden rounded-[8px] border border-border bg-white font-sans text-[13px] font-medium text-secondary/78"
+              >
+                <h3 className="bg-muted/65 px-4 py-3 font-bold leading-tight text-secondary">
+                  {firstHeader}
+                </h3>
+                <p
+                  className={cn(
+                    "px-4 py-3 leading-[1.55]",
+                    mobileValueAlign === "center" && "text-center"
+                  )}
+                >
+                  {row.first}
+                </p>
+                <h3 className="border-t border-border bg-muted/65 px-4 py-3 font-bold leading-tight text-secondary">
+                  {secondHeader}
+                </h3>
+                <p
+                  className={cn(
+                    "px-4 py-3 leading-[1.55]",
+                    mobileValueAlign === "center" && "text-center"
+                  )}
+                >
+                  {row.second}
+                </p>
+              </article>
             ))}
-          </tbody>
-        </table>
+          </div>
+
+          <div className="hidden overflow-x-auto sm:block">
+            <table className="w-full min-w-[620px] border-collapse font-sans text-[14px] text-secondary/78 sm:text-[15px]">
+              <thead>
+                <tr className="bg-muted/65 font-semibold text-secondary">
+                  <th className="border border-border px-5 py-5 text-center">{firstHeader}</th>
+                  <th className="border border-border px-5 py-5 text-center">{secondHeader}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {normalizedRows.map((row, index) => (
+                  <tr key={`${row.first}-${index}`} className={index % 2 ? "bg-muted/45" : "bg-white"}>
+                    <td className="border border-border px-5 py-5 text-center">{row.first}</td>
+                    <td className="border border-border px-5 py-5 text-center">{row.second}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       ) : (
         <p className="font-sans text-[14px] font-medium text-secondary/55">This information will be shared by the Ancient Trails team.</p>
       )}
@@ -4874,7 +4927,7 @@ function DailyItinerary({
                 <span className="font-sans text-[13px] font-bold uppercase text-primary">
                   Day {day.dayNumber}
                 </span>
-                <strong className="min-w-0 truncate font-heading text-[16px] font-semibold leading-tight text-secondary sm:text-[20px]">
+                <strong className="min-w-0 truncate font-sans text-[16px] font-semibold leading-tight text-secondary sm:text-[20px]">
                   {day.title}
                 </strong>
                 <span className="grid size-10 place-items-center rounded-full border border-[#ead8c5] bg-white text-primary">
@@ -5631,7 +5684,7 @@ function ExpertPanel({
       <iframe
         src={embedUrl}
         title={`${tour.tourName} tour expert video`}
-        className="h-full w-full"
+        className="h-full w-full pointer-events-none sm:pointer-events-auto"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowFullScreen
       />
