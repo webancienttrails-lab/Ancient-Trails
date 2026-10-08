@@ -66,7 +66,8 @@ const emptyForm: FormState = {
   tourShortTrails: [],
 };
 
-const TOUR_MENU_SECTION_LIMIT = 4;
+const LONG_TRAILS_MENU_LIMIT = 8;
+const SHORT_TRAILS_MENU_LIMIT = 4;
 
 const indianRegionOptions = [
   "North India",
@@ -209,11 +210,11 @@ function createFormState(content: MegaMenuContent): FormState {
     []
   ).slice(
     0,
-    TOUR_MENU_SECTION_LIMIT
+    LONG_TRAILS_MENU_LIMIT
   );
   const tourShortTrails = content.tourMenu.shortTrails.slice(
     0,
-    TOUR_MENU_SECTION_LIMIT
+    SHORT_TRAILS_MENU_LIMIT
   );
 
   return {
@@ -386,7 +387,7 @@ export default function PagesMegaMenuPage() {
         label: "Tour Menu",
         value: `${
           form.tourHeritage.length + form.tourShortTrails.length
-        }/${TOUR_MENU_SECTION_LIMIT * 2}`,
+        }/${LONG_TRAILS_MENU_LIMIT + SHORT_TRAILS_MENU_LIMIT}`,
       },
       {
         detail: "Destination links in the Destinations dropdown",
@@ -433,8 +434,14 @@ export default function PagesMegaMenuPage() {
     }));
   }
 
+  function getTourSelectionLimit(key: "tourHeritage" | "tourShortTrails") {
+    return key === "tourHeritage"
+      ? LONG_TRAILS_MENU_LIMIT
+      : SHORT_TRAILS_MENU_LIMIT;
+  }
+
   function addTourSelection(key: "tourHeritage" | "tourShortTrails") {
-    addSelection(key, tourOptions, TOUR_MENU_SECTION_LIMIT);
+    addSelection(key, tourOptions, getTourSelectionLimit(key));
   }
 
   function updateSelection(key: SelectionKey, index: number, referenceId: string) {
@@ -596,7 +603,7 @@ export default function PagesMegaMenuPage() {
           <EditorPanel title="Tours Mega Menu">
             <SelectionPanel
               isLoading={isLoading}
-              limit={TOUR_MENU_SECTION_LIMIT}
+              limit={LONG_TRAILS_MENU_LIMIT}
               onAdd={() => addTourSelection("tourHeritage")}
               onRemove={(index) => removeSelection("tourHeritage", index)}
               onUpdate={(index, referenceId) =>
@@ -608,7 +615,7 @@ export default function PagesMegaMenuPage() {
             />
             <SelectionPanel
               isLoading={isLoading}
-              limit={TOUR_MENU_SECTION_LIMIT}
+              limit={SHORT_TRAILS_MENU_LIMIT}
               onAdd={() => addTourSelection("tourShortTrails")}
               onRemove={(index) => removeSelection("tourShortTrails", index)}
               onUpdate={(index, referenceId) =>

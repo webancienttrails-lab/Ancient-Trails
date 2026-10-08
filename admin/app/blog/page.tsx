@@ -309,6 +309,7 @@ export default function BlogPage() {
 
           <Button
             render={<Link href="/blog/new" />}
+            nativeButton={false}
             type="button"
             className="h-10 rounded-sm px-4 text-xs font-bold"
           >

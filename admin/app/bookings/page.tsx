@@ -4,11 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Archive,
+  Ban,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
+  Copy,
   Eye,
   FileText,
+  Hourglass,
+  Mail,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -33,7 +37,10 @@ import { useToast } from "@/components/ui/toast";
 
 import {
   archiveAdminBooking,
+  cancelAdminBooking,
+  expireAdminBooking,
   listAdminBookings,
+  sendAdminBookingRecoveryEmail,
   type AdminBooking,
   type BookingGuestDetails,
 } from "@/lib/bookings";
@@ -107,7 +114,7 @@ function getGuestName(
 function getBookingReference(
   booking: AdminBooking
 ): string {
-  return `BK-${booking.id.slice(-6).toUpperCase()}`;
+  return booking.bookingReference || `BK-${booking.id.slice(-6).toUpperCase()}`;
 }
 
 function toMoney(
@@ -172,6 +179,13 @@ function getBookingPaidAmount(
 ): number {
   const totalAmount =
     getBookingTotalAmount(booking);
+  const amountPaid = toMoney(
+    booking.amountPaid
+  );
+
+  if (booking.paymentStatus !== "paid") {
+    return amountPaid;
+  }
 
   if (
     booking.paymentOption === "full" &&
@@ -179,10 +193,6 @@ function getBookingPaidAmount(
   ) {
     return totalAmount;
   }
-
-  const amountPaid = toMoney(
-    booking.amountPaid
-  );
 
   if (amountPaid > 0) {
     return amountPaid;
@@ -211,6 +221,10 @@ function getBookingDueAmount(
 
   const paidAmount =
     getBookingPaidAmount(booking);
+
+  if (booking.paymentStatus !== "paid") {
+    return totalAmount;
+  }
 
   if (
     booking.paymentOption === "full" &&
@@ -257,6 +271,30 @@ function getBookingDueAmount(
 function getPaymentStatus(
   booking: AdminBooking
 ) {
+  if (booking.bookingStatus === "cancelled") {
+    return {
+      label: "Cancelled",
+      tone:
+        "bg-stone-100 text-stone-600 border-stone-200",
+    };
+  }
+
+  if (booking.bookingStatus === "expired") {
+    return {
+      label: "Expired",
+      tone:
+        "bg-stone-100 text-stone-600 border-stone-200",
+    };
+  }
+
+  if (booking.bookingStatus === "payment_pending") {
+    return {
+      label: booking.paymentStatus === "failed" ? "Failed" : "Pending",
+      tone:
+        "bg-amber-100 text-amber-700 border-amber-200",
+    };
+  }
+
   const totalAmount =
     getBookingTotalAmount(booking);
 
@@ -422,6 +460,11 @@ export default function BookingsPage() {
   const [
     isArchivingBookingId,
     setIsArchivingBookingId,
+  ] = useState<string | null>(null);
+
+  const [
+    pendingActionBookingId,
+    setPendingActionBookingId,
   ] = useState<string | null>(null);
 
   /* =======================================================
@@ -637,6 +680,87 @@ export default function BookingsPage() {
     }
   }
 
+  async function handleCopyRecoveryLink(booking: AdminBooking) {
+    if (!booking.recoveryUrl) {
+      toast.error("Recovery link unavailable", "This booking does not have a recovery link.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(booking.recoveryUrl);
+      toast.success("Recovery link copied", "The secure booking recovery link is ready to share.");
+    } catch {
+      toast.error("Copy failed", "Unable to copy the recovery link from this browser.");
+    }
+  }
+
+  async function handleSendRecoveryEmail(booking: AdminBooking) {
+    setPendingActionBookingId(booking.id);
+
+    try {
+      const response = await sendAdminBookingRecoveryEmail(booking.id);
+
+      setBookings((currentBookings) =>
+        currentBookings.map((currentBooking) =>
+          currentBooking.id === booking.id
+            ? response.data.booking
+            : currentBooking
+        )
+      );
+      toast.success("Recovery email sent", response.message || "Recovery email sent successfully.");
+    } catch (error) {
+      toast.error("Recovery email not sent", getErrorMessage(error));
+    } finally {
+      setPendingActionBookingId(null);
+    }
+  }
+
+  async function handleCancelPendingBooking(booking: AdminBooking) {
+    if (!window.confirm(`Cancel booking ${getBookingReference(booking)}?`)) {
+      return;
+    }
+
+    setPendingActionBookingId(booking.id);
+
+    try {
+      const response = await cancelAdminBooking(booking.id);
+
+      setBookings((currentBookings) =>
+        currentBookings.map((currentBooking) =>
+          currentBooking.id === booking.id
+            ? response.data.booking
+            : currentBooking
+        )
+      );
+      toast.success("Booking cancelled", response.message || "Booking cancelled successfully.");
+    } catch (error) {
+      toast.error("Booking not cancelled", getErrorMessage(error));
+    } finally {
+      setPendingActionBookingId(null);
+    }
+  }
+
+  async function handleMarkExpired(booking: AdminBooking) {
+    setPendingActionBookingId(booking.id);
+
+    try {
+      const response = await expireAdminBooking(booking.id);
+
+      setBookings((currentBookings) =>
+        currentBookings.map((currentBooking) =>
+          currentBooking.id === booking.id && response.data.booking
+            ? response.data.booking
+            : currentBooking
+        )
+      );
+      toast.success("Booking expired", response.message || "Booking marked expired.");
+    } catch (error) {
+      toast.error("Booking not expired", getErrorMessage(error));
+    } finally {
+      setPendingActionBookingId(null);
+    }
+  }
+
   return (
     <AdminDashboardShell
       activeLabel="Booking"
@@ -710,17 +834,32 @@ export default function BookingsPage() {
             isArchivingBookingId={
               isArchivingBookingId
             }
+            pendingActionBookingId={
+              pendingActionBookingId
+            }
             isLoading={
               isLoadingBookings
             }
             onArchive={
               handleArchiveBooking
             }
+            onCancelPending={
+              handleCancelPendingBooking
+            }
+            onCopyRecoveryLink={
+              handleCopyRecoveryLink
+            }
             onEdit={
               openEditBookingPage
             }
+            onExpire={
+              handleMarkExpired
+            }
             onInvoice={
               openInvoicePage
+            }
+            onSendRecoveryEmail={
+              handleSendRecoveryEmail
             }
             onView={
               openViewBookingPage
@@ -861,9 +1000,14 @@ function BookingTable({
   bookings,
   isArchivingBookingId,
   isLoading,
+  pendingActionBookingId,
   onArchive,
+  onCancelPending,
+  onCopyRecoveryLink,
   onEdit,
+  onExpire,
   onInvoice,
+  onSendRecoveryEmail,
   onView,
   totalCount,
   tourNameById,
@@ -873,13 +1017,28 @@ function BookingTable({
     | string
     | null;
   isLoading: boolean;
+  pendingActionBookingId:
+    | string
+    | null;
   onArchive: (
+    booking: AdminBooking
+  ) => void;
+  onCancelPending: (
+    booking: AdminBooking
+  ) => void;
+  onCopyRecoveryLink: (
     booking: AdminBooking
   ) => void;
   onEdit: (
     booking: AdminBooking
   ) => void;
+  onExpire: (
+    booking: AdminBooking
+  ) => void;
   onInvoice: (
+    booking: AdminBooking
+  ) => void;
+  onSendRecoveryEmail: (
     booking: AdminBooking
   ) => void;
   onView: (
@@ -894,7 +1053,7 @@ function BookingTable({
   return (
     <>
       <div className="w-full overflow-x-auto">
-       <table className="w-full min-w-[1100px] border-collapse text-left text-sm">
+       <table className="w-full min-w-[1320px] border-collapse text-left text-sm">
   {/* ============================================= */}
   {/* TABLE HEADER */}
   {/* ============================================= */}
@@ -929,6 +1088,14 @@ function BookingTable({
         Status
       </th>
 
+      <th className="whitespace-nowrap border-r border-border px-5 py-4 font-bold last:border-r-0">
+        Hold Expiry
+      </th>
+
+      <th className="whitespace-nowrap border-r border-border px-5 py-4 font-bold last:border-r-0">
+        Recovery Expiry
+      </th>
+
       <th className="whitespace-nowrap px-5 py-4 text-right font-bold">
         Actions
       </th>
@@ -943,7 +1110,7 @@ function BookingTable({
     {isLoading ? (
       <tr>
         <td
-          colSpan={8}
+          colSpan={10}
           className="px-5 py-10 text-center text-xs text-foreground/55"
         >
           Loading bookings...
@@ -954,7 +1121,7 @@ function BookingTable({
     {!isLoading && bookings.length === 0 ? (
       <tr>
         <td
-          colSpan={8}
+          colSpan={10}
           className="px-5 py-10 text-center text-xs text-foreground/55"
         >
           No bookings found.
@@ -1111,6 +1278,20 @@ function BookingTable({
                 </span>
               </td>
 
+              <td
+                data-label="Hold Expiry"
+                className="whitespace-nowrap border-r border-border px-5 py-4 align-middle text-xs font-medium text-foreground/65"
+              >
+                {booking.holdExpiresAt ? formatDate(booking.holdExpiresAt) : "-"}
+              </td>
+
+              <td
+                data-label="Recovery Expiry"
+                className="whitespace-nowrap border-r border-border px-5 py-4 align-middle text-xs font-medium text-foreground/65"
+              >
+                {booking.recoveryExpiresAt ? formatDate(booking.recoveryExpiresAt) : "-"}
+              </td>
+
               {/* ACTIONS */}
 
               <td
@@ -1123,9 +1304,16 @@ function BookingTable({
                   isArchiving={
                     isArchivingBookingId === booking.id
                   }
+                  isPendingAction={
+                    pendingActionBookingId === booking.id
+                  }
                   onArchive={onArchive}
+                  onCancelPending={onCancelPending}
+                  onCopyRecoveryLink={onCopyRecoveryLink}
                   onEdit={onEdit}
+                  onExpire={onExpire}
                   onInvoice={onInvoice}
+                  onSendRecoveryEmail={onSendRecoveryEmail}
                   onView={onView}
                 />
               </td>
@@ -1190,20 +1378,38 @@ function BookingTable({
 function BookingActionsMenu({
   booking,
   isArchiving,
+  isPendingAction,
   onArchive,
+  onCancelPending,
+  onCopyRecoveryLink,
   onEdit,
+  onExpire,
   onInvoice,
+  onSendRecoveryEmail,
   onView,
 }: {
   booking: AdminBooking;
   isArchiving: boolean;
+  isPendingAction: boolean;
   onArchive: (
+    booking: AdminBooking
+  ) => void;
+  onCancelPending: (
+    booking: AdminBooking
+  ) => void;
+  onCopyRecoveryLink: (
     booking: AdminBooking
   ) => void;
   onEdit: (
     booking: AdminBooking
   ) => void;
+  onExpire: (
+    booking: AdminBooking
+  ) => void;
   onInvoice: (
+    booking: AdminBooking
+  ) => void;
+  onSendRecoveryEmail: (
     booking: AdminBooking
   ) => void;
   onView: (
@@ -1215,6 +1421,10 @@ function BookingActionsMenu({
   const canViewInvoice =
     getPaymentStatus(booking).label === "Paid" &&
     getBookingDueAmount(booking) <= 0;
+  const isRecoverable =
+    booking.bookingStatus === "payment_pending" &&
+    booking.paymentStatus !== "paid" &&
+    Boolean(booking.recoveryUrl);
 
   return (
     <div className="flex justify-end">
@@ -1238,7 +1448,7 @@ function BookingActionsMenu({
                 primaryGuest
               )}`}
               disabled={
-                isArchiving
+                isArchiving || isPendingAction
               }
             />
           }
@@ -1288,6 +1498,56 @@ function BookingActionsMenu({
             <Pencil className="size-4 text-primary" />
 
             Edit
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator />
+
+          <DropdownMenuItem
+            onClick={() =>
+              onCopyRecoveryLink(booking)
+            }
+            disabled={!isRecoverable || isPendingAction}
+            className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"
+          >
+            <Copy className="size-4 text-primary" />
+
+            Copy Recovery Link
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            onClick={() =>
+              onSendRecoveryEmail(booking)
+            }
+            disabled={!isRecoverable || isPendingAction}
+            className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"
+          >
+            <Mail className="size-4 text-primary" />
+
+            Send Recovery Email
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            onClick={() =>
+              onExpire(booking)
+            }
+            disabled={!isRecoverable || isPendingAction}
+            className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"
+          >
+            <Hourglass className="size-4 text-amber-700" />
+
+            Mark Expired
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            onClick={() =>
+              onCancelPending(booking)
+            }
+            disabled={!isRecoverable || isPendingAction}
+            className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold text-red-700 focus:bg-red-50 focus:text-red-700"
+          >
+            <Ban className="size-4" />
+
+            Cancel Booking
           </DropdownMenuItem>
 
           <DropdownMenuSeparator />

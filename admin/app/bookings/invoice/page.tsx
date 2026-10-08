@@ -176,12 +176,15 @@ function getBookingTotalAmount(booking: AdminBooking): number {
 
 function getBookingPaidAmount(booking: AdminBooking): number {
   const totalAmount = getBookingTotalAmount(booking);
+  const amountPaid = toMoney(booking.amountPaid);
+
+  if (booking.paymentStatus !== "paid") {
+    return amountPaid;
+  }
 
   if (booking.paymentOption === "full" && totalAmount > 0) {
     return totalAmount;
   }
-
-  const amountPaid = toMoney(booking.amountPaid);
 
   if (amountPaid > 0) {
     return amountPaid;
@@ -190,13 +193,16 @@ function getBookingPaidAmount(booking: AdminBooking): number {
   if (booking.paymentStatus === "paid") {
     return getBookingTotalAmount(booking);
   }
-
-  return toMoney(booking.depositAmount);
+  return 0;
 }
 
 function getBookingDueAmount(booking: AdminBooking): number {
   const totalAmount = getBookingTotalAmount(booking);
   const paidAmount = getBookingPaidAmount(booking);
+
+  if (booking.paymentStatus !== "paid") {
+    return totalAmount;
+  }
 
   if (booking.paymentOption === "full" && totalAmount > 0) {
     return 0;

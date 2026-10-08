@@ -442,6 +442,7 @@ export function BlogEditorPage({
             <div className="min-w-0">
               <Button
                 render={<Link href="/blog" />}
+                nativeButton={false}
                 type="button"
                 variant="outline"
                 className="mb-4 h-9 rounded-sm border-border bg-white px-3 text-xs font-bold"
@@ -461,6 +462,7 @@ export function BlogEditorPage({
               <div className="flex flex-wrap items-center gap-3">
                 <Button
                   render={<Link href="/blog" />}
+                  nativeButton={false}
                   type="button"
                   variant="outline"
                   className="h-11 rounded-sm border-border bg-white px-4 text-sm font-bold"

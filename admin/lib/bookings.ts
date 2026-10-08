@@ -71,6 +71,14 @@ export type BookingAccommodationOption = {
 
 export type AdminBooking = {
   id: string;
+  bookingReference?: string;
+  bookingStatus?:
+    | "draft"
+    | "payment_pending"
+    | "payment_processing"
+    | "confirmed"
+    | "expired"
+    | "cancelled";
   tourId: string;
   departureId?: string;
   selectedAccommodationOptionId?: string;
@@ -105,6 +113,12 @@ export type AdminBooking = {
   paymentCurrency?: string;
   amountPaid?: number;
   paymentCapturedAt?: string | null;
+  heldSeatCount?: number;
+  holdExpiresAt?: string | null;
+  recoveryExpiresAt?: string | null;
+  recoveryUrl?: string;
+  recoveryEmailStatus?: "pending" | "sending" | "sent" | "failed" | "disabled";
+  recoveryReminderCount?: number;
   archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -184,6 +198,36 @@ export async function updateAdminBooking(id: string, payload: BookingPayload) {
 export async function archiveAdminBooking(id: string) {
   return apiRequest<{ booking: AdminBooking }>(
     `/api/admin/bookings/${id}/archive`,
+    {
+      method: "PATCH",
+      headers: getAdminHeaders(),
+    }
+  );
+}
+
+export async function sendAdminBookingRecoveryEmail(id: string) {
+  return apiRequest<{ booking: AdminBooking; recoveryUrl: string }>(
+    `/api/admin/bookings/${id}/recovery-email`,
+    {
+      method: "POST",
+      headers: getAdminHeaders(),
+    }
+  );
+}
+
+export async function cancelAdminBooking(id: string) {
+  return apiRequest<{ booking: AdminBooking }>(
+    `/api/admin/bookings/${id}/cancel`,
+    {
+      method: "PATCH",
+      headers: getAdminHeaders(),
+    }
+  );
+}
+
+export async function expireAdminBooking(id: string) {
+  return apiRequest<{ booking: AdminBooking | null }>(
+    `/api/admin/bookings/${id}/expire`,
     {
       method: "PATCH",
       headers: getAdminHeaders(),
