@@ -85,6 +85,7 @@ import {
   requestTravellerProfileMobileChangeOtp,
   requestTravellerOtp,
   saveTravellerSession,
+  updateTravellerProfile,
   verifyTravellerProfileMobileChangeOtp,
   verifyTravellerOtp,
   type TravellerSession,
@@ -947,6 +948,70 @@ function createBookingPayload({
     gstPercentage: GST_PERCENTAGE,
     paymentOption,
   };
+}
+
+function getProfileSaveGender(gender: TravellerDetailForm["gender"]) {
+  if (gender === "male") {
+    return "Male";
+  }
+
+  if (gender === "female") {
+    return "Female";
+  }
+
+  return "";
+}
+
+function shouldSyncLeadTravellerProfile(
+  user: TravellerUser,
+  leadForm: TravellerDetailForm
+) {
+  const firstName = leadForm.firstName.trim();
+  const lastName = leadForm.lastName.trim();
+  const email = leadForm.email.trim().toLowerCase();
+  const leadAuthMobileNumber = getLeadTravellerAuthMobileNumber(leadForm);
+  const profileAuthMobileNumber = getProfileAuthMobileNumber(user.mobileNumber);
+
+  if (
+    !firstName ||
+    !lastName ||
+    !isValidEmail(email) ||
+    !leadAuthMobileNumber ||
+    profileAuthMobileNumber !== leadAuthMobileNumber
+  ) {
+    return false;
+  }
+
+  return (
+    user.firstName?.trim() !== firstName ||
+    user.lastName?.trim() !== lastName ||
+    (user.email || "").trim().toLowerCase() !== email ||
+    (user.gender || "") !== getProfileSaveGender(leadForm.gender) ||
+    (user.dateOfBirth || "") !== leadForm.dateOfBirth
+  );
+}
+
+async function syncLeadTravellerProfileFromBooking(
+  forms: Record<string, TravellerDetailForm>
+) {
+  const session = getTravellerSession();
+  const leadForm = forms["adult-1"] || defaultTravellerDetailForm;
+
+  if (!session?.token || !shouldSyncLeadTravellerProfile(session.user, leadForm)) {
+    return;
+  }
+
+  const response = await updateTravellerProfile({
+    firstName: leadForm.firstName.trim(),
+    lastName: leadForm.lastName.trim(),
+    email: leadForm.email.trim().toLowerCase(),
+    mobileNumber: getLeadTravellerAuthMobileNumber(leadForm),
+    gender: getProfileSaveGender(leadForm.gender),
+    nationality: session.user.nationality || "",
+    dateOfBirth: leadForm.dateOfBirth || session.user.dateOfBirth || "",
+  });
+
+  saveTravellerSession(response.data);
 }
 
 function loadRazorpayCheckoutScript() {
@@ -1985,6 +2050,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
 
     try {
       await pendingPaymentCancellationRef.current;
+      await syncLeadTravellerProfileFromBooking(completeTravellerDetailForms);
 
       const order = (
         await createBookingPaymentOrder(
@@ -3454,7 +3520,19 @@ function PricingPanel({
         ...current,
         "adult-1": {
           ...currentLeadTraveller,
-          ...leadTravellerForm,
+          title: leadTravellerForm.title || currentLeadTraveller.title,
+          firstName:
+            leadTravellerForm.firstName || currentLeadTraveller.firstName,
+          lastName: leadTravellerForm.lastName || currentLeadTraveller.lastName,
+          email: leadTravellerForm.email || currentLeadTraveller.email,
+          mobileNumber:
+            leadTravellerForm.mobileNumber || currentLeadTraveller.mobileNumber,
+          phoneCountryCode:
+            leadTravellerForm.phoneCountryCode ||
+            currentLeadTraveller.phoneCountryCode,
+          gender: leadTravellerForm.gender || currentLeadTraveller.gender,
+          dateOfBirth:
+            leadTravellerForm.dateOfBirth || currentLeadTraveller.dateOfBirth,
           address: currentLeadTraveller.address,
         },
       };
@@ -3753,14 +3831,11 @@ function PricingPanel({
           otp: leadOtp.trim(),
         });
 
-        setVerifiedLeadMobileNumber(response.data.mobileNumber);
-        setLeadOtp("");
-        setLeadOtpTargetMobileNumber("");
-        setLeadRegistrationToken("");
-        setHasLeadOtpBeenRequested(false);
-        setLeadOtpCooldownSeconds(0);
-        setLeadAuthMessage(response.message);
-        toast.success("Mobile verified", response.message);
+        saveLeadTravellerSession(
+          response.data,
+          "Mobile verified",
+          response.message
+        );
         return;
       }
 
@@ -4826,7 +4901,7 @@ function DailyItinerary({
                     Day {day.dayNumber}
                   </span>
                   <span className="h-8 w-px shrink-0 bg-[#ead8c5]" />
-                  <h3 className="min-w-0 font-heading text-[18px] font-semibold leading-tight text-secondary sm:text-[20px]">
+                  <h3 className="min-w-0 font-sans text-[18px] font-semibold leading-tight text-secondary sm:text-[18px]">
                     {day.title}
                   </h3>
                   <button
@@ -4857,7 +4932,7 @@ function DailyItinerary({
                           <span className="mt-2 h-full min-h-12 w-px bg-[#ead8c5]" />
                         </div>
                         <div className="min-w-0">
-                        <h4 className="font-sans text-[16px] font-semibold leading-tight text-secondary">
+                        <h4 className="font-sans text-[14px] font-semibold leading-tight text-secondary">
                           Today&apos;s Sightseeing
                         </h4>
                         <ul className="mt-3 grid gap-x-7 gap-y-1.5 font-sans text-[13px] font-medium leading-[1.45] text-secondary/72 sm:grid-cols-2">
@@ -4927,7 +5002,7 @@ function DailyItinerary({
                 <span className="font-sans text-[13px] font-bold uppercase text-primary">
                   Day {day.dayNumber}
                 </span>
-                <strong className="min-w-0 truncate font-sans text-[16px] font-semibold leading-tight text-secondary sm:text-[20px]">
+                <strong className="min-w-0 truncate font-sans text-[16px] font-semibold leading-tight text-secondary sm:text-[18px]">
                   {day.title}
                 </strong>
                 <span className="grid size-10 place-items-center rounded-full border border-[#ead8c5] bg-white text-primary">

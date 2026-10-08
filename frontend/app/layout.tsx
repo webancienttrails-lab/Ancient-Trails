@@ -4,6 +4,7 @@ import { SiteFooter } from "@/components/layout/footer";
 import { ToastProvider } from "@/components/ui/toast";
 import { SiteLoader } from "@/components/layout/site-loader";
 import { BackToTopButton } from "@/components/layout/back-to-top-button";
+import { ProfileCompletionPrompt } from "@/components/auth/profile-completion-prompt";
 import "./globals.css";
 
 const montserrat = Montserrat({
@@ -46,6 +47,7 @@ export default function RootLayout({
         <ToastProvider>
           <SiteLoader />
           {children}
+          <ProfileCompletionPrompt />
           <SiteFooter />
           <BackToTopButton />
         </ToastProvider>

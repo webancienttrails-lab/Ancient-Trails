@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import {
@@ -18,10 +18,13 @@ import { useToast } from "@/components/ui/toast";
 import {
   completeGoogleTravellerProfile,
   completeTravellerProfile,
+  isTravellerProfileComplete,
   loginTravellerWithGoogle,
   requestTravellerOtp,
   saveTravellerSession,
+  travellerProfileCompletionPath,
   verifyTravellerOtp,
+  type TravellerUser,
 } from "@/lib/auth";
 import { getFirebaseAuth } from "@/lib/firebase";
 
@@ -142,6 +145,7 @@ export function TravellerLoginCard() {
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const [isCompletingProfile, setIsCompletingProfile] = useState(false);
   const [otpCooldownSeconds, setOtpCooldownSeconds] = useState(0);
+  const autoVerifiedOtpRef = useRef("");
   const isSubmitting = isRequestingOtp || isVerifyingOtp;
 
   const title = useMemo(() => {
@@ -168,7 +172,12 @@ export function TravellerLoginCard() {
     };
   }, [otpCooldownSeconds]);
 
-  function redirectAfterAuth() {
+  function redirectAfterAuth(user: TravellerUser) {
+    if (!isTravellerProfileComplete(user)) {
+      router.push(travellerProfileCompletionPath);
+      return;
+    }
+
     router.push(getInitialRedirectPath());
   }
 
@@ -209,8 +218,11 @@ export function TravellerLoginCard() {
     await sendLoginOtp();
   }
 
-  async function handleVerifyOtp(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function verifyCurrentOtp(otpValue = otp) {
+    if (isVerifyingOtp) {
+      return;
+    }
+
     setErrorMessage("");
     setStatusMessage("");
     setIsVerifyingOtp(true);
@@ -218,7 +230,7 @@ export function TravellerLoginCard() {
     try {
       const response = await verifyTravellerOtp({
         mobileNumber,
-        otp,
+        otp: otpValue,
       });
 
       if (response.data.requiresProfile) {
@@ -242,7 +254,7 @@ export function TravellerLoginCard() {
       setOtpCooldownSeconds(0);
       setStatusMessage(response.message);
       toast.success("Login successful", response.message);
-      redirectAfterAuth();
+      redirectAfterAuth(response.data.user);
     } catch (error) {
       const message = getErrorMessage(error);
 
@@ -252,6 +264,25 @@ export function TravellerLoginCard() {
       setIsVerifyingOtp(false);
     }
   }
+
+  async function handleVerifyOtp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await verifyCurrentOtp();
+  }
+
+  useEffect(() => {
+    if (
+      step !== "otp" ||
+      otp.length !== 4 ||
+      isVerifyingOtp ||
+      autoVerifiedOtpRef.current === otp
+    ) {
+      return;
+    }
+
+    autoVerifiedOtpRef.current = otp;
+    void verifyCurrentOtp(otp);
+  }, [isVerifyingOtp, otp, step]);
 
   async function handleCompleteProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -286,7 +317,7 @@ export function TravellerLoginCard() {
       saveTravellerSession(response.data);
       setIsProfilePopupOpen(false);
       toast.success("Profile completed", response.message);
-      redirectAfterAuth();
+      redirectAfterAuth(response.data.user);
     } catch (error) {
       const message = getErrorMessage(error);
 
@@ -328,7 +359,7 @@ export function TravellerLoginCard() {
       saveTravellerSession(response.data);
       setStatusMessage(response.message);
       toast.success("Login successful", response.message);
-      redirectAfterAuth();
+      redirectAfterAuth(response.data.user);
     } catch (error) {
       const message = getGoogleErrorMessage(error);
 
@@ -465,7 +496,16 @@ export function TravellerLoginCard() {
                   inputMode="numeric"
                   autoComplete="one-time-code"
                   value={otp}
-                  onChange={(event) => setOtp(event.target.value)}
+                  onChange={(event) => {
+                    const nextOtp = event.target.value.replace(/\D/g, "").slice(0, 4);
+
+                    if (nextOtp.length < 4) {
+                      autoVerifiedOtpRef.current = "";
+                    }
+
+                    setOtp(nextOtp);
+                  }}
+                  maxLength={4}
                   placeholder="Enter OTP"
                   className="h-full min-w-0 flex-1 bg-transparent font-sans text-[14px] text-secondary outline-none placeholder:text-secondary/42"
                   required

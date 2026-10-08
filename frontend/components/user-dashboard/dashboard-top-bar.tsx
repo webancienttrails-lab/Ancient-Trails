@@ -51,6 +51,11 @@ import {
   getStoredProfilePhoto,
   listenForProfilePhotoChanges,
 } from "@/lib/profile-photo";
+import {
+  getUserBookingTripStatus,
+  listTravellerBookings,
+} from "@/lib/user-bookings";
+import { ApiError } from "@/lib/api";
 
 const navItems = [
   { label: "Home", href: "/" },
@@ -479,6 +484,7 @@ export function DashboardTopBar() {
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [hoveredNavItem, setHoveredNavItem] = useState<string | null>(null);
+  const [notificationCount, setNotificationCount] = useState(0);
   const [megaMenuContent, setMegaMenuContent] =
     useState<PublicMegaMenuContent | null>(null);
   const accountMenuCloseTimeoutRef = useRef(0);
@@ -565,6 +571,45 @@ export function DashboardTopBar() {
   useEffect(() => {
     let isMounted = true;
 
+    async function loadNotificationCount() {
+      if (!travellerUser) {
+        if (isMounted) {
+          setNotificationCount(0);
+        }
+
+        return;
+      }
+
+      try {
+        const response = await listTravellerBookings();
+        const upcomingCount = response.data.bookings.filter(
+          (booking) => getUserBookingTripStatus(booking) === "Upcoming"
+        ).length;
+
+        if (isMounted) {
+          setNotificationCount(upcomingCount);
+        }
+      } catch (error) {
+        if (error instanceof ApiError && error.statusCode === 401) {
+          clearTravellerSession();
+        }
+
+        if (isMounted) {
+          setNotificationCount(0);
+        }
+      }
+    }
+
+    loadNotificationCount();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [travellerUser]);
+
+  useEffect(() => {
+    let isMounted = true;
+
     async function loadMegaMenu() {
       try {
         const response = await listPublicMegaMenu();
@@ -596,6 +641,8 @@ export function DashboardTopBar() {
 
   const displayName = getTravellerDisplayName(travellerUser);
   const initials = getTravellerInitials(travellerUser);
+  const notificationCountLabel =
+    notificationCount > 99 ? "99+" : String(notificationCount);
   const openAccountMenu = () => {
     window.clearTimeout(accountMenuCloseTimeoutRef.current);
     setHoveredNavItem(null);
@@ -628,7 +675,7 @@ export function DashboardTopBar() {
             aria-label="Open dashboard menu"
             variant="outline"
             size="icon-lg"
-            className="rounded-full text-secondary hover:text-primary"
+            className="rounded-full text-secondary hover:bg-primary/8 hover:text-primary"
             onClick={() => setIsMobileMenuOpen(true)}
           >
             <Menu className="size-5" strokeWidth={1.9} />
@@ -693,15 +740,17 @@ export function DashboardTopBar() {
         <div className="ml-auto flex items-center gap-4">
           <Button
             type="button"
-            aria-label="Notifications"
+            aria-label={`Notifications${notificationCount > 0 ? ` (${notificationCountLabel})` : ""}`}
             variant="ghost"
             size="icon-lg"
             className="relative rounded-full text-secondary hover:text-primary"
           >
             <Bell className="size-5" strokeWidth={1.9} />
-            <span className="absolute right-1.5 top-1 grid size-5 place-items-center rounded-full bg-primary text-[11px] font-bold leading-none text-white">
-              3
-            </span>
+            {notificationCount > 0 ? (
+              <span className="absolute right-1.5 top-1 grid size-5 place-items-center rounded-full bg-primary text-[11px] font-bold leading-none text-white">
+                {notificationCountLabel}
+              </span>
+            ) : null}
           </Button>
           <div
             className="relative hidden sm:block"

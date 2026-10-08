@@ -165,7 +165,7 @@ function getNationalityValue(profileForm: ProfileFormState) {
 function getDisplayMobileNumber(value?: string) {
   let digits = (value || "").replace(/\D/g, "");
 
-  if (digits.length > 10 && digits.startsWith("91")) {
+  if (digits.length === 12 && digits.startsWith("91")) {
     digits = digits.slice(2);
   }
 
@@ -173,7 +173,7 @@ function getDisplayMobileNumber(value?: string) {
     digits = digits.slice(1);
   }
 
-  return digits.slice(0, 10);
+  return digits.slice(0, 15);
 }
 
 function normalizeMobileDraft(value: string) {
@@ -222,8 +222,8 @@ function getMobileWarningMessage(mobileNumber: string) {
     return "Phone number is required.";
   }
 
-  if (digits.length !== 10) {
-    return "Phone number must be 10 digits.";
+  if (digits.length < 10 || digits.length > 15) {
+    return "Phone number must include country code and contain 10 to 15 digits.";
   }
 
   return "";
@@ -390,6 +390,8 @@ export function AccountPageContent() {
   const isMobileNumberChanged =
     getComparableProfileForm(profileForm).mobileNumber !==
     getComparableProfileForm(savedProfileForm).mobileNumber;
+  const isAddingInitialMobileNumber =
+    isMobileNumberChanged && !getComparableProfileForm(savedProfileForm).mobileNumber;
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -715,7 +717,7 @@ export function AccountPageContent() {
       return;
     }
 
-    if (isMobileNumberChanged) {
+    if (isMobileNumberChanged && !isAddingInitialMobileNumber) {
       if (!isMobileOtpOpen) {
         await requestMobileChangeOtp();
         return;
@@ -739,15 +741,7 @@ export function AccountPageContent() {
 
           <div className="mx-auto w-full max-w-[1220px] px-3 py-5 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
             <section className="relative overflow-hidden pb-5 sm:pb-8">
-              <Image
-                src="/home assets/About_trails.webp"
-                alt=""
-                fill
-                sizes="(min-width: 1024px) 560px, 100vw"
-                priority
-                className="pointer-events-none object-cover object-right-top opacity-[0.22] mix-blend-multiply"
-              />
-              <div className="absolute inset-0 bg-[linear-gradient(90deg,#fff8f0_0%,#fff8f0_46%,rgba(255,248,240,0.78)_68%,rgba(255,248,240,0.58)_100%)]" />
+
               <div className="relative">
                 <h1 className="font-heading text-[30px] font-bold leading-none text-secondary sm:text-[34px]">
                   My Account
@@ -835,17 +829,14 @@ export function AccountPageContent() {
                         <FieldLabel>Phone Number*</FieldLabel>
                         <div className="mt-2 flex h-11 items-center gap-3 rounded-[6px] border border-border bg-white px-4 text-secondary/48 transition-colors focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/15">
                           <Phone className="size-4" strokeWidth={1.8} />
-                          <span className="border-r border-border pr-3 font-sans text-[13px] font-semibold text-secondary">
-                            +91
-                          </span>
                           <input
                             type="tel"
                             inputMode="numeric"
                             autoComplete="tel"
                             value={profileForm.mobileNumber}
                             onChange={(event) => updateMobileNumber(event.target.value)}
-                            maxLength={10}
-                            placeholder="Enter mobile number"
+                            maxLength={15}
+                            placeholder="Phone number with country code"
                             className="h-full min-w-0 flex-1 bg-transparent font-sans text-[13px] font-medium text-secondary outline-none placeholder:text-secondary/42"
                           />
                         </div>
@@ -856,7 +847,7 @@ export function AccountPageContent() {
                         ) : null}
                       </div>
 
-                      {isMobileNumberChanged ? (
+                      {isMobileNumberChanged && !isAddingInitialMobileNumber ? (
                         <div className="rounded-[7px] border border-primary/20 bg-primary/5 p-4 sm:col-span-2 sm:p-5">
                           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
                             <div className="min-w-0 flex-1">
@@ -1046,10 +1037,10 @@ export function AccountPageContent() {
                             ? "Saving..."
                             : isRequestingMobileOtp
                               ? "Sending OTP..."
-                              : isMobileNumberChanged
-                                ? isMobileOtpOpen
-                                  ? "Verify & Save"
-                                  : "Send OTP"
+                                : isMobileNumberChanged && !isAddingInitialMobileNumber
+                                  ? isMobileOtpOpen
+                                    ? "Verify & Save"
+                                    : "Send OTP"
                                 : "Save Changes"}
                         {isSaving || isRequestingMobileOtp || isVerifyingMobileOtp ? (
                           <Loader2 className="size-4 animate-spin" strokeWidth={2.2} />

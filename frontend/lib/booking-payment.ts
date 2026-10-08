@@ -59,9 +59,12 @@ export type BookingPayload = {
 
 export type BookingConfirmation = {
   id: string;
+  bookingReference?: string;
+  bookingStatus?: string;
   tourId: string;
   departureId: string;
   selectedAccommodationOptionId: string;
+  paymentOption?: "advance" | "full";
   totalGuest: number;
   adultCount: number;
   childCount: number;
@@ -101,6 +104,9 @@ export type BookingConfirmation = {
   paymentCurrency?: string;
   amountPaid?: number;
   paymentCapturedAt?: string | null;
+  heldSeatCount?: number;
+  holdExpiresAt?: string | null;
+  recoveryExpiresAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -170,6 +176,21 @@ export type BookingConfirmationData = {
     bannerImage: string;
     galleryImages: string[];
   } | null;
+};
+
+export type BookingRecoveryData = {
+  booking: BookingConfirmation;
+  canRetry: boolean;
+  isCancelled: boolean;
+  isConfirmed: boolean;
+  isExpired: boolean;
+  hasAvailability: boolean;
+  confirmationToken?: string;
+  recoveryUrl: string;
+  requiredSeats: number;
+  availableSeats: number;
+  departure: BookingConfirmationData["departure"];
+  tour: BookingConfirmationData["tour"];
 };
 
 export function createBookingPaymentOrder(payload: BookingPayload) {
@@ -247,6 +268,31 @@ export function getBookingConfirmation(bookingId: string, token: string) {
     )}/confirmation?token=${encodeURIComponent(token)}`,
     {
       cache: "no-store",
+    }
+  );
+}
+
+export function getBookingRecovery(bookingId: string, token: string) {
+  return apiRequest<BookingRecoveryData>(
+    `/api/bookings/${encodeURIComponent(
+      bookingId
+    )}/recovery?token=${encodeURIComponent(token)}`,
+    {
+      cache: "no-store",
+    }
+  );
+}
+
+export function createBookingRecoveryPaymentOrder(
+  bookingId: string,
+  token: string
+) {
+  return apiRequest<BookingPaymentOrder>(
+    `/api/bookings/${encodeURIComponent(
+      bookingId
+    )}/recovery/payment/order?token=${encodeURIComponent(token)}`,
+    {
+      method: "POST",
     }
   );
 }

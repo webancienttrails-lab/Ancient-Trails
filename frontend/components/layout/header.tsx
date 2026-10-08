@@ -60,6 +60,7 @@ import {
   getTourHref,
   slugifyRoute,
 } from "@/lib/routes";
+import { cn } from "@/lib/utils";
 
 const navItems = [
   { label: "Home", href: "/" },
@@ -258,6 +259,10 @@ type HeaderSearchItem = {
   title: string;
   type: string;
 };
+
+function getTourMenuItemLimit(title: string) {
+  return /long/i.test(title) ? 8 : 4;
+}
 
 const staticSearchItems: HeaderSearchItem[] = [
   {
@@ -947,7 +952,7 @@ export function ToursMegaMenu({
           : "pointer-events-none -translate-y-1.5 scale-[0.99] opacity-0 blur-[1px]"
       }`}
     >
-      <div className="grid min-h-[330px] overflow-hidden rounded-[10px] border border-primary/25 bg-white shadow-[0_28px_80px_rgba(35,24,16,0.3)] ring-1 ring-white/80 lg:grid-cols-[210px_repeat(4,minmax(0,1fr))] xl:grid-cols-[240px_repeat(4,minmax(0,1fr))]">
+      <div className="grid min-h-[330px] overflow-hidden rounded-[10px] border border-primary/25 bg-white shadow-[0_28px_80px_rgba(35,24,16,0.3)] ring-1 ring-white/80 lg:grid-cols-[210px_minmax(0,1.75fr)_minmax(0,1fr)_minmax(0,1.2fr)] xl:grid-cols-[240px_minmax(0,1.9fr)_minmax(0,1.05fr)_minmax(0,1.25fr)]">
         <div className="relative overflow-hidden bg-[#fff4ea] p-6 xl:p-7">
           <p
             className={megaTextRevealClass(
@@ -1003,6 +1008,8 @@ export function ToursMegaMenu({
 
         {tourMenuColumns.map(({ title, icon: Icon, items }, columnIndex) => {
           const baseDelay = 120 + columnIndex * 70;
+          const visibleItems = items.slice(0, getTourMenuItemLimit(title));
+          const isLongTrails = /long/i.test(title);
 
           return (
           <div
@@ -1024,19 +1031,34 @@ export function ToursMegaMenu({
               </h3>
             </div>
 
-            <ul className="mt-5 space-y-4">
-              {items.map((item, index) => (
+            <ul
+              className={cn(
+                "mt-5",
+                isLongTrails ? "grid grid-cols-2 gap-x-4 gap-y-4" : "space-y-4"
+              )}
+            >
+              {visibleItems.map((item, index) => (
                 <li key={`${title}-${item.title}`}>
                   <Link
                     href={item.href}
-                    className="group/tour grid grid-cols-[52px_minmax(0,1fr)] items-center gap-3 font-sans text-description font-medium leading-[1.25] text-secondary transition-colors hover:text-primary"
+                    className={cn(
+                      "group/tour grid items-center gap-3 font-sans text-description font-medium leading-[1.25] text-secondary transition-colors hover:text-primary",
+                      isLongTrails
+                        ? "grid-cols-[44px_minmax(0,1fr)] text-[14px]"
+                        : "grid-cols-[52px_minmax(0,1fr)]"
+                    )}
                   >
-                    <span className="relative size-[52px] shrink-0 overflow-hidden rounded-[5px] bg-muted ring-1 ring-primary/10">
+                    <span
+                      className={cn(
+                        "relative shrink-0 overflow-hidden rounded-[5px] bg-muted ring-1 ring-primary/10",
+                        isLongTrails ? "size-11" : "size-[52px]"
+                      )}
+                    >
                       <Image
                         src={item.image}
                         alt=""
                         fill
-                        sizes="52px"
+                        sizes={isLongTrails ? "44px" : "52px"}
                         className="object-cover transition-transform duration-[720ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/tour:scale-105"
                       />
                     </span>
@@ -1069,72 +1091,72 @@ export function ToursMegaMenu({
           );
         })}
 
-        {featuredItems.map(({ title, subtitle, image, icon: Icon, href }, columnIndex) => {
-          const baseDelay = 260 + columnIndex * 70;
+        <div className="grid min-w-0 grid-rows-2 border-l border-primary/25">
+          {featuredItems.slice(0, 2).map(({ title, subtitle, image, icon: Icon, href }, columnIndex) => {
+            const baseDelay = 260 + columnIndex * 110;
 
-          return (
-          <div
-            key={title}
-            className="min-w-0 border-l border-primary/25 px-5 py-6 xl:px-6"
-          >
-            <div className="flex min-h-[44px] min-w-0 items-center gap-3">
-              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/15">
-                <Icon className="size-5" strokeWidth={1.7} />
-              </span>
-              <h3
-                className={megaTextRevealClass(
-                  isOpen,
-                  "min-w-0 font-sans text-[16px] font-semibold leading-[1.15] text-secondary"
+            return (
+              <Link
+                key={title}
+                href={href}
+                className={cn(
+                  "group/feature grid min-h-0 grid-cols-[112px_minmax(0,1fr)] gap-4 px-5 py-5 transition-colors hover:bg-primary/5 xl:grid-cols-[128px_minmax(0,1fr)] xl:px-6",
+                  columnIndex > 0 && "border-t border-primary/25"
                 )}
-                style={megaTextRevealStyle(isOpen, baseDelay)}
               >
-                {title}
-              </h3>
-            </div>
-
-            <Link
-              href={href}
-              className="group/feature mt-5 block"
-            >
-              <span className="relative block h-[180px] overflow-hidden rounded-[7px] bg-muted ring-1 ring-primary/10 xl:h-[190px]">
-                <Image
-                  src={image}
-                  alt={`${title} preview`}
-                  fill
-                  sizes="205px"
-                  className="object-cover transition-transform duration-[720ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/feature:scale-105"
-                />
-                <span className="absolute inset-0 bg-gradient-to-t from-secondary/35 to-transparent" />
-              </span>
-              <span className="mt-6 flex items-center justify-between gap-4">
-                <span className="min-w-0">
-                  <span
-                    className={megaTextRevealClass(
-                      isOpen,
-                      "block font-sans text-description font-bold leading-[1.15] text-primary"
-                    )}
-                    style={megaTextRevealStyle(isOpen, baseDelay + 170)}
-                  >
-                    {title}
+                <span className="relative block h-full min-h-[118px] overflow-hidden rounded-[7px] bg-muted ring-1 ring-primary/10">
+                  <Image
+                    src={image}
+                    alt={`${title} preview`}
+                    fill
+                    sizes="128px"
+                    className="object-cover transition-transform duration-[720ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/feature:scale-105"
+                  />
+                  <span className="absolute inset-0 bg-gradient-to-t from-secondary/30 to-transparent" />
+                </span>
+                <span className="flex min-w-0 flex-col justify-between">
+                  <span className="min-w-0">
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/15">
+                        <Icon className="size-5" strokeWidth={1.7} />
+                      </span>
+                      <span
+                        className={megaTextRevealClass(
+                          isOpen,
+                          "min-w-0 font-sans text-[16px] font-semibold leading-[1.15] text-secondary"
+                        )}
+                        style={megaTextRevealStyle(isOpen, baseDelay)}
+                      >
+                        {title}
+                      </span>
+                    </span>
+                    <span
+                      className={megaTextRevealClass(
+                        isOpen,
+                        "mt-4 block font-sans text-description font-bold leading-[1.15] text-primary"
+                      )}
+                      style={megaTextRevealStyle(isOpen, baseDelay + 90)}
+                    >
+                      {title}
+                    </span>
+                    <span
+                      className={megaTextRevealClass(
+                        isOpen,
+                        "mt-1 block max-w-[180px] font-sans text-[13px] font-normal leading-[1.25] text-secondary"
+                      )}
+                      style={megaTextRevealStyle(isOpen, baseDelay + 135)}
+                    >
+                      {subtitle}
+                    </span>
                   </span>
-                  <span
-                    className={megaTextRevealClass(
-                      isOpen,
-                      "mt-1 block max-w-[170px] font-sans text-[14px] font-normal leading-[1.25] text-secondary"
-                    )}
-                    style={megaTextRevealStyle(isOpen, baseDelay + 220)}
-                  >
-                    {subtitle}
+                  <span className="mt-3 grid size-8 shrink-0 place-items-center self-end rounded-full border border-primary text-primary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/feature:bg-primary group-hover/feature:text-white">
+                    <ArrowRight className="size-4" strokeWidth={2} />
                   </span>
                 </span>
-                <span className="grid size-8 shrink-0 place-items-center rounded-full border border-primary text-primary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/feature:bg-primary group-hover/feature:text-white">
-                  <ArrowRight className="size-4" strokeWidth={2} />
-                </span>
-              </span>
-            </Link>
-          </div>
-          );
-        })}
+              </Link>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -1149,8 +1171,7 @@ function AccountMenu({
   traveller: TravellerUser;
   onSignOut: () => void;
 }) {
-  const displayName =
-    traveller.firstName?.trim() || traveller.email.split("@")[0] || "Traveller";
+  const displayName = getTravellerDisplayName(traveller);
 
   return (
     <div
@@ -1209,6 +1230,38 @@ function AccountMenu({
   );
 }
 
+function getTravellerDisplayName(traveller: TravellerUser | null) {
+  if (!traveller) {
+    return "Traveller";
+  }
+
+  const fullName = [traveller.firstName, traveller.lastName]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(" ");
+
+  return fullName || traveller.email?.split("@")[0] || "Traveller";
+}
+
+function getTravellerInitials(traveller: TravellerUser | null) {
+  const displayName = getTravellerDisplayName(traveller);
+  const nameParts = displayName.split(/\s+/).filter(Boolean);
+
+  if (nameParts.length >= 2) {
+    return `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase();
+  }
+
+  return displayName.slice(0, 2).toUpperCase();
+}
+
+function hasCompletedTravellerName(traveller: TravellerUser | null) {
+  if (!traveller) {
+    return false;
+  }
+
+  return Boolean(traveller.firstName?.trim() && traveller.lastName?.trim());
+}
+
 function MobileHeaderDrawer({
   isOpen,
   traveller,
@@ -1233,10 +1286,7 @@ function MobileHeaderDrawer({
   onSignOut: () => void;
 }) {
   const [openChildLabel, setOpenChildLabel] = useState<string | null>(null);
-  const displayName =
-    traveller?.firstName?.trim() ||
-    traveller?.email.split("@")[0] ||
-    "Traveller";
+  const displayName = getTravellerDisplayName(traveller);
   const displayEmail = traveller?.email || "Plan your next heritage journey.";
   const tourChildGroups = tourMenuColumns
     .map((column) => ({
@@ -2181,9 +2231,13 @@ export function Header() {
             href={accountHref}
             aria-label={travellerUser ? "Open traveller dashboard" : "Login"}
             title={travellerUser ? "My Dashboard" : "Login"}
-            className="grid size-10 shrink-0 place-items-center rounded-full border border-primary/25 bg-white text-primary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-primary hover:bg-primary hover:text-white"
+            className="grid size-10 shrink-0 place-items-center rounded-full border border-primary/25 bg-white font-sans text-[13px] font-bold uppercase leading-none text-primary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-primary hover:bg-primary hover:text-white"
           >
-            <User className="size-5" strokeWidth={2.3} />
+            {hasCompletedTravellerName(travellerUser) ? (
+              <span>{getTravellerInitials(travellerUser)}</span>
+            ) : (
+              <User className="size-5" strokeWidth={2.3} />
+            )}
           </Link>
 
           {travellerUser ? (

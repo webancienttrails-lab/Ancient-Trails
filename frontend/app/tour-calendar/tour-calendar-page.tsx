@@ -74,11 +74,6 @@ type SortMode = "price-low" | "price-high";
 const monthNameFormatter = new Intl.DateTimeFormat("en-US", {
   month: "long",
 });
-const currencyFormatter = new Intl.NumberFormat("en-IN", {
-  currency: "INR",
-  maximumFractionDigits: 0,
-  style: "currency",
-});
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const departureCapacityFallback = 25;
 const currentDateDotClassName = "bg-[#2faa5d]";
@@ -307,10 +302,6 @@ function compactDurationLabel(value: string) {
   }
 
   return source.replace(/\s*\/\s*/g, "/").replace(/\s+/g, " ");
-}
-
-function formatPrice(value: number) {
-  return currencyFormatter.format(value || 0);
 }
 
 function getDateValue(value: string | null) {
@@ -1766,14 +1757,13 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
             </div>
           </div>
 
-          <div>
-            <span className="block text-[12px] font-medium leading-none text-secondary/62">
-              Starting from
-            </span>
-            <strong className="mt-1.5 block truncate text-[21px] font-semibold leading-none text-secondary sm:text-[22px]">
-              {formatPrice(item.departure.priceAdult)}
-            </strong>
-          </div>
+          <Link
+            href={getTourHref(item.tour)}
+            aria-label={`View itinerary for ${item.tour.tourName}`}
+            className="justify-self-start font-sans text-[15px] font-semibold leading-none text-primary underline-offset-4 transition-colors hover:underline xl:justify-self-end"
+          >
+            View Itinerary
+          </Link>
 
           <Link
             href={getTourHref(item.tour)}

@@ -77,6 +77,8 @@ type ButtonProps = Omit<ComponentProps<typeof ButtonPrimitive>, "className"> &
 
 function Button({
   className,
+  nativeButton,
+  render,
   variant = "default",
   size = "default",
   ...props
@@ -85,6 +87,8 @@ function Button({
     <ButtonPrimitive
       data-slot="button"
       className={buttonVariants({ variant, size, className })}
+      nativeButton={nativeButton ?? (render ? false : undefined)}
+      render={render}
       {...props}
     />
   )

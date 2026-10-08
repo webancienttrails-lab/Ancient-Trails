@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   BedDouble,
@@ -22,6 +22,10 @@ import { createPortal } from "react-dom";
 
 import { Header } from "@/components/layout/header";
 import { ButtonArrow, buttonVariants } from "@/components/ui/button";
+import {
+  getAboutPageContent,
+  type AboutStat,
+} from "@/lib/about";
 import {
   getHomeMediaUrl,
   listPublicExperiences,
@@ -56,6 +60,12 @@ type ExperienceDetailState = {
   experiences: PublicExperience[];
 };
 
+type ExperienceHeaderStat = {
+  id?: string;
+  label: string;
+  value: string;
+};
+
 const pageContainerClassName =
   "home-wide-frame mx-auto w-full px-5 sm:px-8 lg:px-0";
 const detailContainerClassName =
@@ -78,27 +88,11 @@ const categoryTabs: Array<{ id: ExperienceCategory; label: string }> = [
   { id: "unesco-sites", label: "Unesco Sites" },
 ];
 
-const experienceStats: Array<{
-  label: string;
-  value: string;
-}> = [
-  { label: "Curated Tours", value: "150+" },
-  { label: "Destinations", value: "75+" },
-  { label: "Happy Travellers", value: "25,000+" },
-  { label: "Years of Experience", value: "12+" },
-  { label: "Countries Explored", value: "10+" },
-];
-
-const experienceHeaderStats: Array<{
-  label: string;
-  value: string;
-}> = [
+const fallbackExperienceHeaderStats: ExperienceHeaderStat[] = [
   { label: "Curated Tours", value: "150+" },
   { label: "Happy Travellers", value: "25K" },
   { label: "Countries explored", value: "10+" },
 ];
-
-const experienceStatFormatter = new Intl.NumberFormat("en-IN");
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
@@ -110,6 +104,10 @@ function getErrorMessage(error: unknown) {
 
 function normalizeKey(value = "") {
   return value.trim().toLowerCase();
+}
+
+function normalizeStatLabel(value = "") {
+  return normalizeKey(value).replace(/[^a-z0-9]/g, "");
 }
 
 function normalizeId(value = "") {
@@ -407,16 +405,93 @@ function buildDestinationGroups(
     });
 }
 
+function getSortedAboutStats(stats: AboutStat[]) {
+  return [...stats].sort((left, right) => left.sortOrder - right.sortOrder);
+}
+
+function getExperienceHeaderStats(stats: AboutStat[]): ExperienceHeaderStat[] {
+  const sortedStats = getSortedAboutStats(stats);
+  const usedStatIds = new Set<string>();
+  const preferredLabelGroups = [
+    ["curatedtours", "curatedtour"],
+    ["happytravellers", "happytravelers", "travellers", "travelers"],
+    ["countriesexplored", "countryexplored", "countries", "country"],
+  ];
+
+  const preferredStats = preferredLabelGroups.flatMap((labelGroup) => {
+    const matchedStat = sortedStats.find((stat) => {
+      const normalizedLabel = normalizeStatLabel(stat.label);
+
+      return (
+        !usedStatIds.has(stat.id) &&
+        labelGroup.some((label) => normalizedLabel.includes(label))
+      );
+    });
+
+    if (!matchedStat) {
+      return [];
+    }
+
+    usedStatIds.add(matchedStat.id);
+
+    return [
+      {
+        id: matchedStat.id,
+        label: matchedStat.label,
+        value: matchedStat.value,
+      },
+    ];
+  });
+
+  const fillerStats = sortedStats
+    .filter((stat) => !usedStatIds.has(stat.id))
+    .slice(0, Math.max(0, 3 - preferredStats.length))
+    .map((stat) => ({
+      id: stat.id,
+      label: stat.label,
+      value: stat.value,
+    }));
+
+  return [...preferredStats, ...fillerStats].slice(0, 3);
+}
+
+function useExperienceHeaderStats() {
+  const [stats, setStats] = useState<ExperienceHeaderStat[]>(
+    fallbackExperienceHeaderStats
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadAboutStats() {
+      try {
+        const response = await getAboutPageContent();
+        const aboutStats = getExperienceHeaderStats(response.data.about.stats);
+
+        if (isMounted && aboutStats.length > 0) {
+          setStats(aboutStats);
+        }
+      } catch {
+        if (isMounted) {
+          setStats(fallbackExperienceHeaderStats);
+        }
+      }
+    }
+
+    loadAboutStats();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  return stats;
+}
+
 function HeaderBand({
-  description,
-  stats = experienceHeaderStats,
-  subtitle,
-  title = "Experiences",
+  stats,
 }: {
-  description?: string;
-  stats?: Array<{ label: string; value: string }>;
-  subtitle?: string;
-  title?: string;
+  stats: ExperienceHeaderStat[];
 }) {
   return (
     <section className="relative h-[260px] overflow-hidden bg-secondary md:h-[200px]">
@@ -436,9 +511,9 @@ function HeaderBand({
           
             {stats.length > 0 ? (
               <div className="flex flex-wrap items-center justify-center gap-3 text-center">
-                {stats.map((stat) => (
+                {stats.map((stat, index) => (
                   <div
-                    key={stat.label}
+                    key={stat.id || `${stat.label}-${index}`}
                     className="border-r border-white px-4 last:border-none"
                   >
                     <span className="block font-description text-[20px] font-semibold leading-none text-white">
@@ -458,129 +533,8 @@ function HeaderBand({
   );
 }
 
-function parseExperienceStatValue(value: string) {
-  const target = Number(value.replace(/[^\d]/g, ""));
-  const suffix = value.trim().endsWith("+") ? "+" : "";
-
-  return {
-    suffix,
-    target: Number.isFinite(target) ? target : 0,
-  };
-}
-
-function formatExperienceStatValue(value: number, suffix: string) {
-  return `${experienceStatFormatter.format(value)}${suffix}`;
-}
-
-function CountUpStatValue({
-  className,
-  value,
-}: {
-  className: string;
-  value: string;
-}) {
-  const valueRef = useRef<HTMLElement | null>(null);
-  const { suffix, target } = useMemo(
-    () => parseExperienceStatValue(value),
-    [value]
-  );
-  const [hasStarted, setHasStarted] = useState(false);
-  const [displayValue, setDisplayValue] = useState(() =>
-    formatExperienceStatValue(0, suffix)
-  );
-
-  useEffect(() => {
-    const element = valueRef.current;
-
-    if (!element) {
-      return;
-    }
-
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      const frameId = window.requestAnimationFrame(() => {
-        setDisplayValue(formatExperienceStatValue(target, suffix));
-      });
-
-      return () => window.cancelAnimationFrame(frameId);
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting) {
-          setHasStarted(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.35 }
-    );
-
-    observer.observe(element);
-
-    return () => observer.disconnect();
-  }, [suffix, target]);
-
-  useEffect(() => {
-    if (!hasStarted) {
-      return;
-    }
-
-    const duration = 1200;
-    const startTime = window.performance.now();
-    let frameId = 0;
-
-    const animateValue = (timestamp: number) => {
-      const progress = Math.min(1, (timestamp - startTime) / duration);
-      const easedProgress = 1 - Math.pow(1 - progress, 3);
-      const nextValue = Math.round(target * easedProgress);
-
-      setDisplayValue(formatExperienceStatValue(nextValue, suffix));
-
-      if (progress < 1) {
-        frameId = window.requestAnimationFrame(animateValue);
-      }
-    };
-
-    frameId = window.requestAnimationFrame(animateValue);
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [hasStarted, suffix, target]);
-
-  return (
-    <strong ref={valueRef} className={className}>
-      {displayValue}
-    </strong>
-  );
-}
-
-// function ExperienceStatsStrip() {
-//   return (
-//     <section className={`${detailContainerClassName} relative z-20 -mt-[44px]`}>
-//       <div className="mx-auto grid max-w-[1080px] overflow-hidden rounded-[10px] border border-primary/15 bg-white sm:grid-cols-2 lg:grid-cols-5">
-//         {experienceStats.map((stat, index) => (
-//             <article
-//               key={stat.label}
-//               className={cn(
-//                 "flex min-h-[82px] flex-col items-center justify-center px-2 py-3 text-center",
-//                 index > 0 && "border-t border-border sm:border-l sm:border-t-0",
-//                 index === 2 && "sm:border-t lg:border-t-0",
-//                 index === 4 && "sm:col-span-2 lg:col-span-1"
-//               )}
-//             >
-//               <CountUpStatValue
-//                 value={stat.value}
-//                 className="font-description text-[24px] font-semibold leading-none tracking-normal text-secondary"
-//               />
-//               <span className="mt-1.5 font-description text-description font-medium leading-none text-secondary/70">
-//                 {stat.label}
-//               </span>
-//             </article>
-//         ))}
-//       </div>
-//     </section>
-//   );
-// }
-
 export function ExperiencesPage() {
+  const headerStats = useExperienceHeaderStats();
   const [destinations, setDestinations] = useState<PublicTour[]>([]);
   const [experiences, setExperiences] = useState<PublicExperience[]>([]);
   const [activeCategory, setActiveCategory] =
@@ -650,11 +604,7 @@ export function ExperiencesPage() {
 
   return (
     <main className="min-h-screen bg-background text-secondary">
-      <HeaderBand
-        description="Real stories, moments and memories from travellers who joined these tours with Ancient Trails."
-        stats={experienceHeaderStats}
-        title="Experiences"
-      />
+      <HeaderBand stats={headerStats} />
 
       <ExperienceTopBar
         activeCategory={activeCategory}
@@ -859,6 +809,7 @@ export function SingleExperiencePage({
 }: {
   experienceId: string;
 }) {
+  const headerStats = useExperienceHeaderStats();
   const [detail, setDetail] = useState<ExperienceDetailState>({
     tour: null,
     experiences: [],
@@ -952,7 +903,7 @@ export function SingleExperiencePage({
   if (isLoading) {
     return (
       <main className="min-h-screen bg-background text-secondary">
-        <HeaderBand />
+        <HeaderBand stats={headerStats} />
         <section className={`${detailContainerClassName} py-10`}>
           <div className="h-[360px] animate-pulse rounded-[8px] bg-muted" />
           <div className="mt-10 h-[260px] animate-pulse rounded-[8px] bg-muted" />
@@ -964,7 +915,7 @@ export function SingleExperiencePage({
   if (!detail.tour || loadError) {
     return (
       <main className="min-h-screen bg-background text-secondary">
-        <HeaderBand />
+        <HeaderBand stats={headerStats} />
         <section className="mx-auto mt-10 max-w-[720px] px-5 pb-20">
           <div className="rounded-[8px] border border-[#ead8c5] bg-white p-8 text-center shadow-[0_18px_44px_rgba(50,50,50,0.08)]">
             <h1 className="font-heading text-title font-bold leading-none tracking-normal text-secondary">
@@ -989,49 +940,10 @@ export function SingleExperiencePage({
 
   const images = getDestinationImages(detail.tour, detail.experiences);
   const averageRating = getAverageRating(detail.experiences);
-  const reviewCount = detail.experiences.length;
-  const detailHeaderStats = [
-    { label: "Average Rating", value: averageRating.toFixed(1) },
-    { label: "Traveller Reviews", value: reviewCount.toString() },
-    {
-      label: detail.tour.durationDn ? "Duration" : "Tour Type",
-      value: detail.tour.durationDn || detail.tour.tourType || detail.tour.category || "Tour",
-    },
-  ];
 
   return (
     <main className="min-h-screen bg-background text-secondary">
-      <section className="relative h-[96px] overflow-hidden bg-background md:h-[200px] md:bg-secondary">
-        <Image
-          src="/home assets/Heritage Banner.webp"
-          alt="Ancient Trails heritage landscape"
-          fill
-          priority
-          sizes="100vw"
-          className="hidden object-cover object-center md:block"
-        />
-        <div className="absolute inset-0 hidden bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(20,16,12,0.7)_100%)] md:block" />
-        <div className="home-wide-frame relative z-10 mx-auto flex h-full w-full flex-col px-5 sm:px-8 lg:px-0">
-          <Header />
-          <div className="hidden flex-1 items-center justify-center pb-6 md:flex">
-            <div className="flex flex-wrap items-center justify-center gap-3 text-center">
-              {detailHeaderStats.map((stat) => (
-                <div
-                  key={stat.label}
-                  className="border-r border-white px-4 last:border-none"
-                >
-                  <span className="block font-description text-[20px] font-semibold leading-none text-white">
-                    {stat.value}
-                  </span>
-                  <span className="mt-1 block font-sans text-[16px] tracking-[0.10em] text-white">
-                    {stat.label}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
+      <HeaderBand stats={headerStats} />
 
       <section className={`${detailContainerClassName} pb-20 pt-6 md:pt-8`}>
         <ExperienceDetailHero
@@ -1195,31 +1107,6 @@ function ExperienceDetailHero({
             />
           ))}
         </div>
-      </div>
-
-      <div className="mt-6 max-w-[920px] border-b border-secondary/10 pb-7 md:mt-8 md:border-b-0 md:pb-0">
-        <div className="flex items-center gap-3">
-          <p className="font-sans text-[10px] font-bold uppercase leading-none text-primary md:text-eyebrow">
-            {tourLabel}
-          </p>
-          <span className="h-px w-10 bg-primary md:w-12" />
-        </div>
-        <h2 className="mt-2 font-heading text-[25px] font-bold leading-[0.98] tracking-normal text-secondary md:mt-3 md:text-title">
-          {storyHeading}
-        </h2>
-        <p className="mt-3 max-w-[880px] font-sans text-[12px] font-medium leading-[1.45] text-secondary/68 md:text-description">
-          {destinationIntro}
-        </p>
-        <Link
-          href={getTourCalendarHref({ tour: destination })}
-          className={buttonVariants({
-            className: "mt-5 min-w-[158px] justify-between gap-5 px-4 text-[12px] md:min-w-[170px] md:px-5 md:text-button",
-          })}
-        >
-          <span className="md:hidden">Explore {shortTourName}</span>
-          <span className="hidden md:inline">Explore {destination.tourName}</span>
-          <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
-        </Link>
       </div>
     </section>
   );

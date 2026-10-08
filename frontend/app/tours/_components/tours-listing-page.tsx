@@ -1131,7 +1131,7 @@ export function ToursListingPage({
 
 function HeaderBand() {
   return (
-    <section className="relative h-[100px] overflow-hidden bg-secondary lg:h-[200px]">
+    <section className="relative h-[100px] overflow-hidden bg-secondary lg:h-[120px]">
       <Image
         src="/home assets/Heritage Banner.webp"
         alt="Ancient Trails heritage landscape"

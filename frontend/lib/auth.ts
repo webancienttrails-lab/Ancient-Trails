@@ -45,6 +45,10 @@ export type VerifyTravellerOtpData =
   | TravellerProfileRequired
   | TravellerLoginComplete;
 
+export type VerifyTravellerProfileMobileChangeData = TravellerSession & {
+  mobileNumber: string;
+};
+
 export type CompleteTravellerProfilePayload = {
   registrationToken: string;
   firstName: string;
@@ -92,6 +96,20 @@ export type UpdateTravellerProfilePayload = {
 const travellerTokenKey = "ancient_trails_token";
 const travellerUserKey = "ancient_trails_user";
 const travellerSessionEvent = "ancient-trails-session-change";
+export const travellerProfileCompletionPath = "/me/account";
+
+export function isTravellerProfileComplete(user: TravellerUser | null) {
+  if (!user) {
+    return false;
+  }
+
+  return Boolean(
+    user.firstName?.trim() &&
+      user.lastName?.trim() &&
+      user.email?.trim() &&
+      user.mobileNumber?.trim()
+  );
+}
 
 export async function requestTravellerOtp(mobileNumber: string) {
   return apiRequest<RequestTravellerOtpData>("/api/auth/traveller/request-otp", {
@@ -167,7 +185,7 @@ export async function verifyTravellerProfileMobileChangeOtp(
     throw new Error("Please sign in to verify your mobile number.");
   }
 
-  return apiRequest<RequestTravellerOtpData>(
+  return apiRequest<VerifyTravellerProfileMobileChangeData>(
     "/api/auth/traveller/profile/verify-mobile-change-otp",
     {
       method: "POST",
