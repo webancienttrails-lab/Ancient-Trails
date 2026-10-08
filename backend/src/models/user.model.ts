@@ -21,7 +21,7 @@ export enum UserStatus {
 export interface IUser {
   firstName: string;
   lastName: string;
-  email: string;
+  email?: string;
   passwordHash?: string;
   mobileNumber?: string;
   gender?: string;
@@ -42,19 +42,18 @@ const userSchema = new Schema<IUser>(
   {
     firstName: {
       type: String,
-      required: true,
       trim: true,
       maxlength: 80,
+      default: "",
     },
     lastName: {
       type: String,
-      required: true,
       trim: true,
       maxlength: 80,
+      default: "",
     },
     email: {
       type: String,
-      required: true,
       trim: true,
       lowercase: true,
       maxlength: 254,
@@ -133,7 +132,7 @@ const userSchema = new Schema<IUser>(
 
 userSchema.index({ mobileNumber: 1 }, { unique: true, sparse: true });
 userSchema.index({ firebaseUid: 1 }, { unique: true, sparse: true });
-userSchema.index({ email: 1 }, { unique: true });
+userSchema.index({ email: 1 }, { unique: true, sparse: true });
 userSchema.index({ roles: 1 });
 
 export const User =

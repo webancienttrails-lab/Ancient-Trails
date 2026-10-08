@@ -32,6 +32,17 @@ export type BookingAlertEmailPayload = BookingConfirmationEmailPayload & {
   travellerPhone?: string;
 };
 
+export type BookingRecoveryEmailPayload = {
+  amount: number;
+  bookingReference: string;
+  departureDate?: Date | string | null;
+  recoveryUrl: string;
+  recipientEmail: string;
+  tourName: string;
+  travellerName: string;
+  travellersLabel: string;
+};
+
 export type TourEnquiryAlertEmailPayload = {
   city?: string;
   email: string;
@@ -750,6 +761,111 @@ function buildBookingAlertEmailContent(payload: BookingAlertEmailPayload): {
   };
 }
 
+function buildBookingRecoveryEmailContent(payload: BookingRecoveryEmailPayload): {
+  attachments: SendMailOptions["attachments"];
+  html: string;
+  text: string;
+} {
+  const logo = createLogoBlock();
+  const departureDate = formatDate(payload.departureDate);
+  const amount = formatCurrency(payload.amount);
+  const previewText = `Complete your ${brandName} booking ${payload.bookingReference}.`;
+
+  const detailRows = renderDetailRows([
+    { label: "Tour", value: payload.tourName },
+    { label: "Departure", value: departureDate },
+    { label: "Travellers", value: payload.travellersLabel },
+    { label: "Amount", value: amount },
+  ]);
+
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1" name="viewport" />
+    <title>${escapeHtml(previewText)}</title>
+    <style>
+      @media screen and (max-width: 640px) {
+        .email-outer { padding: 0 !important; }
+        .email-shell { border-radius: 0 !important; width: 100% !important; }
+        .email-content { padding: 24px 18px 26px !important; }
+        .email-title { font-size: 26px !important; line-height: 31px !important; }
+        .detail-label, .detail-value {
+          display: block !important;
+          padding-bottom: 3px !important;
+          text-align: left !important;
+          width: 100% !important;
+        }
+        .detail-value { padding-top: 0 !important; }
+        .logo-img { width: 132px !important; max-width: 132px !important; }
+      }
+    </style>
+  </head>
+  <body style="margin:0;padding:0;background:${colors.background};">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(
+      previewText
+    )}</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${colors.background};border-collapse:collapse;margin:0;padding:0;width:100%;">
+      <tr>
+        <td align="center" class="email-outer" style="padding:16px 8px;">
+          <table role="presentation" width="640" cellspacing="0" cellpadding="0" border="0" class="email-shell" style="background:${colors.white};border-collapse:separate;border-radius:8px;box-shadow:0 12px 32px rgba(50,50,50,0.08);overflow:hidden;width:640px;">
+            <tr>
+              <td align="center" style="border-bottom:1px solid ${colors.border};padding:28px 28px 20px;">
+                ${logo.html}
+              </td>
+            </tr>
+            <tr>
+              <td class="email-content" style="padding:34px 34px 32px;">
+                <h1 class="email-title" style="color:${colors.accent};font-family:Georgia,'Times New Roman',serif;font-size:29px;font-weight:700;line-height:36px;margin:0;text-align:center;">You were almost done</h1>
+                <p style="color:${colors.foreground};font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;line-height:20px;margin:13px 0 0;text-align:center;">Hi ${escapeHtml(
+                  payload.travellerName || "Traveller"
+                )},</p>
+                <p style="color:${colors.foreground};font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:500;line-height:22px;margin:8px auto 22px;max-width:500px;text-align:center;">
+                  Your ${brandName} booking is not confirmed yet. Complete payment to confirm your seats, subject to current availability.
+                </p>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">
+                  ${detailRows}
+                </table>
+                <p style="margin:24px 0 0;text-align:center;">
+                  <a href="${escapeAttribute(
+                    payload.recoveryUrl
+                  )}" style="background:${colors.primary};border-radius:999px;color:${colors.white};display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:800;line-height:42px;min-width:190px;text-align:center;text-decoration:none;">Complete Your Booking</a>
+                </p>
+                <p style="color:${colors.foreground};font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:500;line-height:19px;margin:18px 0 0;text-align:center;">
+                  Seats are subject to availability until payment is completed.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+
+  const text = [
+    `Hi ${payload.travellerName || "Traveller"},`,
+    "",
+    `You were almost done booking your ${brandName} journey.`,
+    "",
+    `Tour: ${payload.tourName}`,
+    `Departure: ${departureDate}`,
+    `Travellers: ${payload.travellersLabel}`,
+    `Amount: ${amount}`,
+    "",
+    "Your booking is not confirmed yet.",
+    `Complete Your Booking: ${payload.recoveryUrl}`,
+    "",
+    "Seats are subject to availability until payment is completed.",
+  ].join("\n");
+
+  return {
+    attachments: logo.attachments,
+    html,
+    text,
+  };
+}
+
 export async function sendBookingConfirmationEmail(
   payload: BookingConfirmationEmailPayload
 ): Promise<{
@@ -808,6 +924,36 @@ export async function sendBookingAlertEmail(
   return {
     messageId: info.messageId || "",
     recipients,
+  };
+}
+
+export async function sendBookingRecoveryEmail(
+  payload: BookingRecoveryEmailPayload
+): Promise<{
+  messageId: string;
+}> {
+  const recipientEmail = payload.recipientEmail.trim().toLowerCase();
+
+  if (!recipientEmail) {
+    throw new HttpError(400, "Booking recovery recipient email is missing");
+  }
+
+  const { attachments, html, text } = buildBookingRecoveryEmailContent({
+    ...payload,
+    recipientEmail,
+  });
+  const { from, transporter } = getTransporter();
+  const info = await transporter.sendMail({
+    attachments,
+    from,
+    html,
+    subject: `${brandName} booking pending - ${payload.bookingReference}`,
+    text,
+    to: recipientEmail,
+  });
+
+  return {
+    messageId: info.messageId || "",
   };
 }
 

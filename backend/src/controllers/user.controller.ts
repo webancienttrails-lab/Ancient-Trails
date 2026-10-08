@@ -27,7 +27,7 @@ function formatUser(user: UserDocument) {
     id: user._id.toString(),
     firstName: user.firstName,
     lastName: user.lastName,
-    email: user.email,
+    email: user.email || "",
     mobileNumber: user.mobileNumber || "",
     roles: user.roles,
     status: user.status,

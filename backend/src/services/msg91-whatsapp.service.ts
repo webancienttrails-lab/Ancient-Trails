@@ -6,6 +6,7 @@ const whatsappBaseUrl =
   process.env.MSG91_WHATSAPP_BASE_URL ||
   "https://control.msg91.com/api/v5/whatsapp";
 const bookingConfirmationTemplateName = "booking_confirmation";
+const bookingReminderTemplateName = "ancient_trails_booking_reminder";
 const bookingConfirmationIntegratedNumber = "917262930404";
 const defaultTemplateLanguage =
   process.env.MSG91_WHATSAPP_TEMPLATE_LANGUAGE || "en";
@@ -24,6 +25,14 @@ export type BookingConfirmationWhatsappPayload = {
   travellerName: string;
   tourName: string;
   departureDate: string;
+  crqId?: string;
+};
+
+export type BookingRecoveryWhatsappPayload = {
+  recipientNumber: string;
+  travellerName: string;
+  tourName: string;
+  recoveryUrl: string;
   crqId?: string;
 };
 
@@ -163,6 +172,87 @@ export async function sendBookingConfirmationWhatsapp({
       extractMsg91Message(
         response.data,
         "MSG91 failed to send WhatsApp confirmation"
+      )
+    );
+  }
+
+  return {
+    requestId: getRequestId(response.data),
+    response: response.data,
+  };
+}
+
+export async function sendBookingRecoveryWhatsapp({
+  crqId,
+  recipientNumber,
+  recoveryUrl,
+  tourName,
+  travellerName,
+}: BookingRecoveryWhatsappPayload): Promise<{
+  requestId: string;
+  response: Msg91WhatsappResponse;
+}> {
+  const authKey = getMsg91AuthKey();
+  const namespace = getTemplateNamespace();
+  const response = await axios
+    .post<Msg91WhatsappResponse>(
+      `${whatsappBaseUrl}/whatsapp-outbound-message/bulk/`,
+      {
+        integrated_number: bookingConfirmationIntegratedNumber,
+        content_type: "template",
+        payload: {
+          messaging_product: "whatsapp",
+          type: "template",
+          template: {
+            name: bookingReminderTemplateName,
+            language: {
+              code: defaultTemplateLanguage,
+              policy: "deterministic",
+            },
+            ...(namespace ? { namespace } : {}),
+            to_and_components: [
+              {
+                to: [recipientNumber],
+                components: {
+                  body_1: {
+                    type: "text",
+                    value: travellerName,
+                  },
+                  body_2: {
+                    type: "text",
+                    value: tourName,
+                  },
+                  button_1: {
+                    subtype: "url",
+                    type: "text",
+                    value: recoveryUrl,
+                  },
+                },
+                ...(crqId ? { CRQID: crqId } : {}),
+              },
+            ],
+          },
+        },
+      },
+      {
+        headers: {
+          accept: "application/json",
+          authkey: authKey,
+          "Content-Type": "application/json",
+        },
+        timeout: 10000,
+      }
+    )
+    .catch((error: unknown) => {
+      throw toHttpError(error, "MSG91 failed to send WhatsApp recovery reminder");
+    });
+
+  if (hasFailureResponse(response.data)) {
+    throw new HttpError(
+      502,
+      extractMsg91Message(
+        response.data,
+        "MSG91 failed to send WhatsApp recovery reminder"
       )
     );
   }

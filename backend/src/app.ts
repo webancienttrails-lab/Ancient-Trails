@@ -14,6 +14,7 @@ import { adminAboutRoutes, publicAboutRoutes } from "./routes/about.routes";
 import authRoutes from "./routes/auth.routes";
 import { adminBlogRoutes, publicBlogRoutes } from "./routes/blog.routes";
 import bookingRoutes, { publicBookingRoutes } from "./routes/booking.routes";
+import { verifyRazorpayWebhook } from "./controllers/booking.controller";
 import dashboardRoutes from "./routes/dashboard.routes";
 import destinationRoutes from "./routes/destination.routes";
 import enquiryRoutes, { publicEnquiryRoutes } from "./routes/enquiry.routes";
@@ -114,6 +115,12 @@ app.use(
 );
 
 app.use(cors(corsOptions));
+
+app.post(
+  "/api/bookings/payment/webhook",
+  express.raw({ type: "application/json" }),
+  verifyRazorpayWebhook
+);
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));

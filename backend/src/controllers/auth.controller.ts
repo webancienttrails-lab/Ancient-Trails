@@ -14,8 +14,6 @@ import { validateTravellerEmailAddress } from "../utils/email";
 import { HttpError } from "../utils/httpError";
 import {
   signAuthToken,
-  signTravellerGoogleRegistrationToken,
-  signTravellerRegistrationToken,
   verifyAuthToken,
   verifyTravellerGoogleRegistrationToken,
   verifyTravellerRegistrationToken,
@@ -152,7 +150,7 @@ function formatUser(user: UserDocument) {
     id: user._id.toString(),
     firstName: user.firstName,
     lastName: user.lastName,
-    email: user.email,
+    email: user.email || "",
     mobileNumber: user.mobileNumber || "",
     gender: user.gender || "",
     nationality: user.nationality || "",
@@ -164,6 +162,29 @@ function formatUser(user: UserDocument) {
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
+}
+
+async function createMobileOnlyTraveller(mobileNumber: string) {
+  try {
+    return await User.create({
+      firstName: "",
+      lastName: "",
+      mobileNumber,
+      roles: [UserRole.TRAVELLER],
+      status: UserStatus.ACTIVE,
+      isMobileVerified: true,
+      lastLoginAt: new Date(),
+    });
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      throw new HttpError(
+        409,
+        "Traveller already exists with this mobile number"
+      );
+    }
+
+    throw error;
+  }
 }
 
 function isDuplicateKeyError(error: unknown): boolean {
@@ -446,11 +467,20 @@ export async function verifyTravellerProfileMobileChangeOtp(
 
   await verifyOtp(payload.mobileNumber, payload.otp);
 
+  traveller.mobileNumber = payload.mobileNumber;
+  traveller.isMobileVerified = true;
+  traveller.lastLoginAt = new Date();
+  await traveller.save();
+
+  const token = signAuthToken(traveller);
+
   response.status(200).json({
     success: true,
     message: "Mobile number verified successfully",
     data: {
       mobileNumber: payload.mobileNumber,
+      token,
+      user: formatUser(traveller),
     },
   });
 }
@@ -500,8 +530,10 @@ export async function updateTravellerProfile(
   }
 
   const didMobileNumberChange = traveller.mobileNumber !== payload.mobileNumber;
+  const isAddingInitialMobileNumber =
+    didMobileNumberChange && !traveller.mobileNumber;
 
-  if (didMobileNumberChange) {
+  if (didMobileNumberChange && !isAddingInitialMobileNumber) {
     if (!payload.mobileNumberOtp) {
       throw new HttpError(400, "Please verify your new mobile number with OTP");
     }
@@ -519,7 +551,8 @@ export async function updateTravellerProfile(
   traveller.lastLoginAt = new Date();
 
   if (didMobileNumberChange) {
-    traveller.isMobileVerified = true;
+    traveller.isMobileVerified =
+      !isAddingInitialMobileNumber || Boolean(payload.mobileNumberOtp);
   }
 
   await traveller.save();
@@ -630,30 +663,16 @@ export async function verifyTravellerOtpAndLogin(
   });
 
   if (!traveller) {
-    const registrationToken = signTravellerRegistrationToken(
-      payload.mobileNumber
-    );
+    traveller = await createMobileOnlyTraveller(payload.mobileNumber);
+  } else {
+    if (traveller.status === UserStatus.BLOCKED) {
+      throw new HttpError(403, "This traveller account is blocked");
+    }
 
-    response.status(200).json({
-      success: true,
-      message: "OTP verified successfully. Complete your traveller profile.",
-      data: {
-        requiresProfile: true,
-        mobileNumber: payload.mobileNumber,
-        registrationToken,
-      },
-    });
-
-    return;
+    traveller.isMobileVerified = true;
+    traveller.lastLoginAt = new Date();
+    await traveller.save();
   }
-
-  if (traveller.status === UserStatus.BLOCKED) {
-    throw new HttpError(403, "This traveller account is blocked");
-  }
-
-  traveller.isMobileVerified = true;
-  traveller.lastLoginAt = new Date();
-  await traveller.save();
 
   const token = signAuthToken(traveller);
 
@@ -693,16 +712,8 @@ export async function loginTravellerWithGoogle(
     displayName: firebaseUser.name,
   });
 
-  const travellerIdentityFilters: Array<
-    { firebaseUid: string } | { email: string } | { mobileNumber: string }
-  > = [{ firebaseUid }, { email }];
-
-  if (mobileNumber) {
-    travellerIdentityFilters.push({ mobileNumber });
-  }
-
   const traveller = await User.findOne({
-    $or: travellerIdentityFilters,
+    $or: [{ firebaseUid }, { email }],
   });
 
   if (traveller) {
@@ -758,24 +769,41 @@ export async function loginTravellerWithGoogle(
     return;
   }
 
-  const registrationToken = signTravellerGoogleRegistrationToken({
-    firebaseUid,
-    email,
-    ...profileName,
-  });
+  const availableMobileNumber =
+    mobileNumber && !(await User.exists({ mobileNumber })) ? mobileNumber : undefined;
 
-  response.status(200).json({
-    success: true,
-    message: "Google sign-in verified. Complete your traveller profile.",
-    data: {
-      requiresProfile: true,
-      provider: "google",
-      registrationToken,
+  try {
+    const newTraveller = await User.create({
       email,
-      mobileNumber: mobileNumber || "",
+      mobileNumber: availableMobileNumber,
+      firebaseUid,
+      roles: [UserRole.TRAVELLER],
+      status: UserStatus.ACTIVE,
+      isMobileVerified: Boolean(availableMobileNumber),
+      lastLoginAt: new Date(),
       ...profileName,
-    },
-  });
+    });
+    const token = signAuthToken(newTraveller);
+
+    response.status(201).json({
+      success: true,
+      message: "Traveller logged in with Google successfully",
+      data: {
+        requiresProfile: false,
+        token,
+        user: formatUser(newTraveller),
+      },
+    });
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      throw new HttpError(
+        409,
+        "This email is already registered with another traveller"
+      );
+    }
+
+    throw error;
+  }
 }
 
 export async function completeTravellerProfile(

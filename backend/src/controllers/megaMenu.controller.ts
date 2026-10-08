@@ -12,7 +12,8 @@ import { Tour } from "../models/tour.model";
 import { HttpError } from "../utils/httpError";
 
 const megaMenuPageKey = "main";
-const megaMenuTourSectionLimit = 4;
+const megaMenuLongTrailsLimit = 8;
+const megaMenuShortTrailsLimit = 4;
 
 const referencePayloadSchema = z.object({
   referenceId: z
@@ -45,11 +46,11 @@ const megaMenuPayloadSchema = z
     destinationTopCities: z.array(referencePayloadSchema).max(8).default([]),
     tourHeritage: z
       .array(referencePayloadSchema)
-      .max(megaMenuTourSectionLimit)
+      .max(megaMenuLongTrailsLimit)
       .default([]),
     tourShortTrails: z
       .array(referencePayloadSchema)
-      .max(megaMenuTourSectionLimit)
+      .max(megaMenuShortTrailsLimit)
       .default([]),
   });
 
@@ -222,11 +223,11 @@ async function validateReferenceIds({
 async function formatMegaMenu(page: MegaMenuPageDocument) {
   const tourHeritage = sortBySortOrder(page.tourHeritage).slice(
     0,
-    megaMenuTourSectionLimit
+    megaMenuLongTrailsLimit
   );
   const tourShortTrails = sortBySortOrder(page.tourShortTrails).slice(
     0,
-    megaMenuTourSectionLimit
+    megaMenuShortTrailsLimit
   );
   const hasIndiaRegions = (page.destinationIndiaRegions || []).length > 0;
   const hasInternationalRegions =

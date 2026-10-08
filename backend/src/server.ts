@@ -5,11 +5,13 @@ import http from "node:http";
 import mongoose from "mongoose";
 
 import app from "./app";
+import { runBookingRecoveryMaintenance } from "./controllers/booking.controller";
 
 const port = Number(process.env.PORT) || 5000;
 const databaseUrl = process.env.DATABASE_URL;
 
 const server = http.createServer(app);
+let bookingRecoveryMaintenanceTimer: NodeJS.Timeout | null = null;
 
 async function connectDatabase(): Promise<void> {
   if (!databaseUrl) {
@@ -30,6 +32,13 @@ async function startServer(): Promise<void> {
       console.log(`Health check: http://localhost:${port}/api/health`);
       console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
     });
+
+    void runBookingRecoveryMaintenance();
+    bookingRecoveryMaintenanceTimer = setInterval(() => {
+      void runBookingRecoveryMaintenance().catch((error) => {
+        console.error("Booking recovery maintenance failed:", error);
+      });
+    }, 5 * 60 * 1000);
   } catch (error) {
     console.error("Failed to start Ancient Trails backend:", error);
     process.exit(1);
@@ -41,6 +50,11 @@ async function startServer(): Promise<void> {
  */
 async function shutdown(signal: string): Promise<void> {
   console.log(`${signal} received. Shutting down server...`);
+
+  if (bookingRecoveryMaintenanceTimer) {
+    clearInterval(bookingRecoveryMaintenanceTimer);
+    bookingRecoveryMaintenanceTimer = null;
+  }
 
   server.close(async (serverError) => {
     if (serverError) {

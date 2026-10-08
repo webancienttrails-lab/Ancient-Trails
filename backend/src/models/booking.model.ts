@@ -54,6 +54,15 @@ export interface IBookingTraveller {
 }
 
 export interface IBooking {
+  bookingReference?: string;
+  pendingBookingKey?: string;
+  bookingStatus?:
+    | "draft"
+    | "payment_pending"
+    | "payment_processing"
+    | "confirmed"
+    | "expired"
+    | "cancelled";
   tourId: string;
   departureId?: string;
   selectedAccommodationOptionId?: string;
@@ -82,6 +91,28 @@ export interface IBooking {
   paymentCurrency?: string;
   amountPaid?: number;
   paymentCapturedAt?: Date | null;
+  heldSeatCount?: number;
+  holdExpiresAt?: Date | null;
+  recoveryExpiresAt?: Date | null;
+  recoveryToken?: string;
+  recoveryEmailStatus?: "pending" | "sending" | "sent" | "failed" | "disabled";
+  recoveryEmailAttemptedAt?: Date | null;
+  recoveryEmailSentAt?: Date | null;
+  recoveryEmailError?: string;
+  whatsappMarketingConsent?: boolean;
+  whatsappRecoveryStatus?:
+    | "pending"
+    | "sending"
+    | "sent"
+    | "failed"
+    | "disabled";
+  whatsappRecoveryAttemptedAt?: Date | null;
+  whatsappRecoverySentAt?: Date | null;
+  whatsappRecoveryRecipient?: string;
+  whatsappRecoveryRequestId?: string;
+  whatsappRecoveryError?: string;
+  recoveryReminderCount?: number;
+  recoveryLastReminderSentAt?: Date | null;
   confirmationToken?: string;
   archivedAt?: Date | null;
   emailBookingConfirmationStatus?:
@@ -304,6 +335,27 @@ const bookingSchema = new Schema<IBooking>(
       uppercase: true,
       maxlength: 40,
     },
+    bookingReference: {
+      ...trimmedString,
+      uppercase: true,
+      maxlength: 40,
+    },
+    pendingBookingKey: {
+      ...trimmedString,
+      maxlength: 128,
+    },
+    bookingStatus: {
+      type: String,
+      enum: [
+        "draft",
+        "payment_pending",
+        "payment_processing",
+        "confirmed",
+        "expired",
+        "cancelled",
+      ],
+      default: "payment_pending",
+    },
     departureId: {
       ...trimmedString,
       uppercase: true,
@@ -429,6 +481,76 @@ const bookingSchema = new Schema<IBooking>(
       type: Date,
       default: null,
     },
+    heldSeatCount: {
+      ...nonNegativeNumber,
+      max: 100000,
+    },
+    holdExpiresAt: {
+      type: Date,
+      default: null,
+    },
+    recoveryExpiresAt: {
+      type: Date,
+      default: null,
+    },
+    recoveryToken: {
+      ...trimmedString,
+      maxlength: 128,
+    },
+    recoveryEmailStatus: {
+      type: String,
+      enum: ["pending", "sending", "sent", "failed", "disabled"],
+      default: "pending",
+    },
+    recoveryEmailAttemptedAt: {
+      type: Date,
+      default: null,
+    },
+    recoveryEmailSentAt: {
+      type: Date,
+      default: null,
+    },
+    recoveryEmailError: {
+      ...trimmedString,
+      maxlength: 500,
+    },
+    whatsappMarketingConsent: {
+      type: Boolean,
+      default: true,
+    },
+    whatsappRecoveryStatus: {
+      type: String,
+      enum: ["pending", "sending", "sent", "failed", "disabled"],
+      default: "pending",
+    },
+    whatsappRecoveryAttemptedAt: {
+      type: Date,
+      default: null,
+    },
+    whatsappRecoverySentAt: {
+      type: Date,
+      default: null,
+    },
+    whatsappRecoveryRecipient: {
+      ...trimmedString,
+      maxlength: 20,
+    },
+    whatsappRecoveryRequestId: {
+      ...trimmedString,
+      maxlength: 160,
+    },
+    whatsappRecoveryError: {
+      ...trimmedString,
+      maxlength: 500,
+    },
+    recoveryReminderCount: {
+      ...nonNegativeNumber,
+      max: 10,
+    },
+    recoveryLastReminderSentAt: {
+      type: Date,
+      default: null,
+    },
     confirmationToken: {
       ...trimmedString,
       maxlength: 128,
@@ -495,14 +617,21 @@ const bookingSchema = new Schema<IBooking>(
 );
 
 bookingSchema.index({ tourId: 1 });
+bookingSchema.index({ bookingReference: 1 }, { sparse: true });
+bookingSchema.index({ pendingBookingKey: 1 }, { unique: true, sparse: true });
+bookingSchema.index({ bookingStatus: 1 });
 bookingSchema.index({ departureId: 1 });
 bookingSchema.index({ "guestDetails.email": 1 });
 bookingSchema.index({ paymentOrderId: 1 }, { sparse: true });
 bookingSchema.index({ paymentId: 1 }, { sparse: true });
 bookingSchema.index({ confirmationToken: 1 }, { sparse: true });
+bookingSchema.index({ recoveryToken: 1 }, { sparse: true });
+bookingSchema.index({ holdExpiresAt: 1 });
+bookingSchema.index({ recoveryExpiresAt: 1 });
 bookingSchema.index({ archivedAt: 1 });
 bookingSchema.index({ emailBookingConfirmationStatus: 1 });
 bookingSchema.index({ whatsappBookingConfirmationStatus: 1 });
+bookingSchema.index({ whatsappRecoveryStatus: 1 });
 bookingSchema.index({
   tourId: "text",
   "guestDetails.firstName": "text",
