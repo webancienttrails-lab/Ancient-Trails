@@ -1,7 +1,7 @@
 "use client";
 
+import { SiteLogo } from "@/components/site-logo";
 import { FormEvent, useEffect, useState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
@@ -131,8 +131,7 @@ export function AdminLoginCard() {
   return (
     <div className="w-full max-w-[350px] rounded-[12px] border border-white/85 bg-white/92 px-4 py-4 shadow-[0_22px_48px_rgba(92,62,38,0.22)] backdrop-blur-xl sm:px-6 sm:py-6">
       <div className="text-center">
-        <Image
-          src="/brand/header-logo.png"
+        <SiteLogo
           alt="Ancient Trails"
           width={156}
           height={52}

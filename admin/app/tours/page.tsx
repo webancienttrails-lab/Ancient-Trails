@@ -142,6 +142,7 @@ type DepartureFormState = Omit<
   | "returnDate"
   | "earlyBirdOffer"
   | "bookingDeadline"
+  | "totalSeats"
   | "seatsAvailable"
   | "roomPolicy"
   | "priceAdult"
@@ -168,6 +169,7 @@ type DepartureFormState = Omit<
     allowExtraBed: boolean;
     allowChildSingleRoom: boolean;
   };
+  totalSeats: string;
   seatsAvailable: string;
   priceAdult: string;
   priceExtraBed: string;
@@ -229,6 +231,7 @@ const emptyDepartureForm: DepartureFormState = {
   destinationId: "",
   departureDate: "",
   returnDate: "",
+  totalSeats: "0",
   seatsAvailable: "0",
   priceAdult: "0",
   priceExtraBed: "0",
@@ -364,6 +367,8 @@ function createDeparturePayload(
     destinationId: form.destinationId.trim() || undefined,
     departureDate: isComingSoon || !form.departureDate ? null : form.departureDate,
     returnDate: isComingSoon || !form.returnDate ? null : form.returnDate,
+    totalSeats:
+      Number(form.totalSeats) || Number(form.seatsAvailable) || 0,
     seatsAvailable: Number(form.seatsAvailable) || 0,
     priceAdult: Number(form.priceAdult) || 0,
     priceExtraBed: Number(form.priceExtraBed) || 0,
@@ -451,6 +456,8 @@ function departureToForm(departure: AdminTourDeparture): DepartureFormState {
     destinationId: departure.destinationId || "",
     departureDate: formatDateInput(departure.departureDate),
     returnDate: formatDateInput(departure.returnDate),
+    totalSeats:
+      (departure.totalSeats || departure.seatsAvailable || 0).toString(),
     seatsAvailable: departure.seatsAvailable.toString(),
     priceAdult: departure.priceAdult.toString(),
     priceExtraBed: departure.priceExtraBed.toString(),
@@ -2196,6 +2203,9 @@ function TourDepartureTable({
                       className="px-2 py-3 text-xs font-semibold text-foreground/70"
                     >
                       {departure.seatsAvailable}
+                      <span className="mt-1 block font-medium text-foreground/45">
+                        of {departure.totalSeats || departure.seatsAvailable}
+                      </span>
                     </td>
                     <td
                       data-label="Price"
@@ -2707,24 +2717,6 @@ function TourFormDialog({
               />
             </FormField>
 
-            <FormField label="Payment Policy" renderAsDiv>
-              <PolicyRowsEditor
-                disabled={isReadOnly}
-                rows={form.paymentPolicy}
-                onChange={(rows) => onUpdate("paymentPolicy", rows)}
-                firstLabel="Package cost / payment condition"
-                secondLabel="Payment amount or timing"
-              />
-            </FormField>
-
-            <FormField label="Cancellation Policy" renderAsDiv>
-              <CancellationRowsEditor
-                disabled={isReadOnly}
-                rows={form.cancellationPolicy}
-                onChange={(rows) => onUpdate("cancellationPolicy", rows)}
-              />
-            </FormField>
-
             <FormField className="sm:col-span-2" label="Need to Know" renderAsDiv>
               <NeedToKnowEditor
                 disabled={isReadOnly}
@@ -2825,94 +2817,6 @@ function TourFormDialog({
           ) : null}
         </form>
     </section>
-  );
-}
-
-function PolicyRowsEditor({
-  disabled,
-  firstLabel,
-  onChange,
-  rows,
-  secondLabel,
-}: {
-  disabled: boolean;
-  firstLabel: string;
-  onChange: (rows: TourPaymentPolicyRow[]) => void;
-  rows: TourPaymentPolicyRow[];
-  secondLabel: string;
-}) {
-  const addButtonClassName =
-    "inline-flex h-9 items-center justify-center justify-self-start rounded-sm border border-primary/30 bg-primary/5 px-3 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary/10";
-
-  function updateRow(index: number, field: keyof TourPaymentPolicyRow, value: string) {
-    onChange(rows.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
-  }
-
-  return (
-    <div className="grid gap-2">
-      {rows.map((row, index) => (
-        <div key={index} className="grid gap-2 sm:grid-cols-2">
-          <input
-            disabled={disabled}
-            value={row.condition}
-            onChange={(event) => updateRow(index, "condition", event.target.value)}
-            className="h-10 rounded-sm border border-border px-3 text-xs outline-none focus:border-primary"
-            placeholder={firstLabel}
-          />
-          <div className="flex gap-2">
-            <input
-              disabled={disabled}
-              value={row.payment}
-              onChange={(event) => updateRow(index, "payment", event.target.value)}
-              className="h-10 min-w-0 flex-1 rounded-sm border border-border px-3 text-xs outline-none focus:border-primary"
-              placeholder={secondLabel}
-            />
-            {!disabled ? (
-              <button type="button" onClick={() => onChange(rows.filter((_row, rowIndex) => rowIndex !== index))} className="px-2 text-xs font-bold text-red-600">Remove</button>
-            ) : null}
-          </div>
-        </div>
-      ))}
-      {!disabled ? (
-        <button type="button" onClick={() => onChange([...rows, { condition: "", payment: "" }])} className={addButtonClassName}>
-          <Plus className="size-4" data-icon="inline-start" />
-          Add payment row
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-function CancellationRowsEditor({
-  disabled,
-  onChange,
-  rows,
-}: {
-  disabled: boolean;
-  onChange: (rows: TourCancellationPolicyRow[]) => void;
-  rows: TourCancellationPolicyRow[];
-}) {
-  const addButtonClassName =
-    "inline-flex h-9 items-center justify-center justify-self-start rounded-sm border border-primary/30 bg-primary/5 px-3 text-xs font-bold text-primary transition-colors hover:border-primary hover:bg-primary/10";
-
-  return (
-    <div className="grid gap-2">
-      {rows.map((row, index) => (
-        <div key={index} className="grid gap-2 sm:grid-cols-2">
-          <input disabled={disabled} value={row.days} onChange={(event) => onChange(rows.map((item, rowIndex) => rowIndex === index ? { ...item, days: event.target.value } : item))} className="h-10 rounded-sm border border-border px-3 text-xs outline-none focus:border-primary" placeholder="Days before departure" />
-          <div className="flex gap-2">
-            <input disabled={disabled} value={row.charge} onChange={(event) => onChange(rows.map((item, rowIndex) => rowIndex === index ? { ...item, charge: event.target.value } : item))} className="h-10 min-w-0 flex-1 rounded-sm border border-border px-3 text-xs outline-none focus:border-primary" placeholder="Cancellation charge" />
-            {!disabled ? <button type="button" onClick={() => onChange(rows.filter((_item, rowIndex) => rowIndex !== index))} className="px-2 text-xs font-bold text-red-600">Remove</button> : null}
-          </div>
-        </div>
-      ))}
-      {!disabled ? (
-        <button type="button" onClick={() => onChange([...rows, { days: "", charge: "" }])} className={addButtonClassName}>
-          <Plus className="size-4" data-icon="inline-start" />
-          Add cancellation row
-        </button>
-      ) : null}
-    </div>
   );
 }
 
@@ -3173,6 +3077,19 @@ function DepartureFormDialog({
                 value={form.returnDate}
                 onChange={(value) => onUpdate("returnDate", value)}
                 triggerClassName={inputClassName}
+              />
+            </FormField>
+
+            <FormField label="Total Seats">
+              <input
+                min={0}
+                readOnly={isReadOnly}
+                type="number"
+                value={form.totalSeats}
+                onChange={(event) =>
+                  onUpdate("totalSeats", event.target.value)
+                }
+                className={inputClassName}
               />
             </FormField>
 

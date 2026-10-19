@@ -1,3 +1,4 @@
+import { SiteLogo } from "@/components/site-logo";
 import Image from "next/image";
 import type { Metadata } from "next";
 
@@ -23,8 +24,7 @@ export default function AdminLoginPage() {
       <section className="relative z-10 mx-auto grid h-full w-full max-w-[1050px] items-center px-4 py-2 sm:px-5 sm:py-4 lg:grid-cols-[minmax(0,1fr)_350px] lg:gap-8 lg:px-8 lg:py-0">
         <div className="hidden h-full items-center justify-center lg:flex">
           <div className="w-full max-w-[440px] text-center">
-            <Image
-              src="/brand/header-logo.png"
+            <SiteLogo
               alt="Ancient Trails"
               width={220}
               height={74}

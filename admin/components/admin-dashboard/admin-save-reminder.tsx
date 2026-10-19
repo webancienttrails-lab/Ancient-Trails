@@ -130,6 +130,10 @@ function focusSaveControl(form: HTMLFormElement) {
   saveControl.focus({ preventScroll: true });
 }
 
+function isLoginPath(pathname: string) {
+  return pathname.replace(/\/+$/, "") === "/login";
+}
+
 export function AdminSaveReminder() {
   const toast = useToast();
   const pathname = usePathname();
@@ -144,7 +148,7 @@ export function AdminSaveReminder() {
   }, [pathname]);
 
   useEffect(() => {
-    if (pathname === "/login") {
+    if (isLoginPath(pathname)) {
       return;
     }
 
@@ -177,7 +181,7 @@ export function AdminSaveReminder() {
       const form = getEditableForm(event.target);
 
       if (form) {
-        showReminder(form);
+        form.dataset.adminUnsaved = "true";
       }
     }
 

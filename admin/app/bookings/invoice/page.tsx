@@ -1,19 +1,13 @@
 "use client";
+import { SiteLogo } from "@/components/site-logo";
+import { formatBookingPaymentMethod } from "@/lib/bookings";
 
-import Image from "next/image";
+import { AirfareDisclosure } from "@/components/airfare-disclosure";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
-  BedDouble,
-  CalendarDays,
-  Check,
-  CreditCard,
   Download,
-  Mail,
-  MapPin,
-  Phone,
-  Users,
 } from "lucide-react";
 
 import { AdminDashboardShell } from "@/components/admin-dashboard/admin-dashboard-shell";
@@ -31,6 +25,7 @@ import {
   type AdminTour,
   type AdminTourDeparture,
 } from "@/lib/tours";
+import { getAdminSiteSettings, type SiteContactSettings } from "@/lib/site-settings";
 import { cn } from "@/lib/utils";
 
 type InvoiceLineItem = {
@@ -48,7 +43,19 @@ const invoiceDateFormatter = new Intl.DateTimeFormat("en-GB", {
 
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
+const invoiceLayoutStyles = `
+  .admin-invoice-sheet .admin-invoice-items-table th,
+  .admin-invoice-sheet .admin-invoice-items-table td {
+    height: auto;
+    padding: 10px 12px;
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+  .admin-invoice-sheet .admin-invoice-items-table th:first-child { width: 46%; }
+  .admin-invoice-sheet.admin-invoice-exporting { padding: 6mm !important; }
+`;
 const invoiceExportStyles = `
+  ${invoiceLayoutStyles}
   .admin-invoice-sheet,
   .admin-invoice-sheet * {
     border-color: #e8ded6 !important;
@@ -182,12 +189,16 @@ function getBookingPaidAmount(booking: AdminBooking): number {
     return amountPaid;
   }
 
-  if (booking.paymentOption === "full" && totalAmount > 0) {
-    return totalAmount;
-  }
-
   if (amountPaid > 0) {
     return amountPaid;
+  }
+
+  if (Number.isFinite(booking.balanceAmount) && totalAmount > 0) {
+    return Math.max(0, totalAmount - toMoney(booking.balanceAmount));
+  }
+
+  if (booking.paymentOption === "full" && totalAmount > 0) {
+    return totalAmount;
   }
 
   if (booking.paymentStatus === "paid") {
@@ -204,7 +215,7 @@ function getBookingDueAmount(booking: AdminBooking): number {
     return totalAmount;
   }
 
-  if (booking.paymentOption === "full" && totalAmount > 0) {
+  if (booking.paymentOption === "full" && totalAmount > 0 && paidAmount >= totalAmount) {
     return 0;
   }
 
@@ -325,9 +336,10 @@ function getRoomAmount(room: BookingAccommodationOption["rooms"][number]): numbe
 
 function createLineItems(booking: AdminBooking): InvoiceLineItem[] {
   const rooms = booking.pricingSnapshot?.accommodation?.rooms || [];
+  const airFlightCharges = toMoney(booking.airFlightCharges);
 
   if (rooms.length > 0) {
-    return rooms.map((room, index) => {
+    const roomItems = rooms.map((room, index) => {
       const amount = getRoomAmount(room);
 
       return {
@@ -337,11 +349,23 @@ function createLineItems(booking: AdminBooking): InvoiceLineItem[] {
         rate: amount,
       };
     });
+
+    return airFlightCharges > 0 && !booking.airfareIncludedInTotal
+      ? [
+          ...roomItems,
+          {
+            amount: airFlightCharges,
+            description: "Air-flight charges",
+            quantity: 1,
+            rate: airFlightCharges,
+          },
+        ]
+      : roomItems;
   }
 
   const subtotal = toMoney(booking.subtotal);
 
-  return [
+  const items = [
     {
       amount: subtotal,
       description: booking.pricingSnapshot?.accommodation?.optionTitle || "Tour Package",
@@ -349,6 +373,18 @@ function createLineItems(booking: AdminBooking): InvoiceLineItem[] {
       rate: booking.totalGuest > 0 ? Math.round(subtotal / booking.totalGuest) : subtotal,
     },
   ];
+
+  return airFlightCharges > 0 && !booking.airfareIncludedInTotal
+    ? [
+        ...items,
+        {
+          amount: airFlightCharges,
+          description: "Air-flight charges",
+          quantity: 1,
+          rate: airFlightCharges,
+        },
+      ]
+    : items;
 }
 
 function getTravellerLabel(booking: AdminBooking): string {
@@ -365,363 +401,127 @@ function getTravellerLabel(booking: AdminBooking): string {
 }
 
 function getPaymentMethodLabel(booking: AdminBooking): string {
-  if (booking.paymentProvider === "razorpay" || booking.paymentMethod === "razorpay") {
-    return "Paid via Razorpay (UPI)";
-  }
-
-  if (booking.paymentMethod) {
-    return `Paid via ${booking.paymentMethod.toUpperCase()}`;
-  }
-
-  return "Paid in Full";
+  return "Paid via " + formatBookingPaymentMethod(booking);
 }
 
-function InvoiceInfoTile({
-  icon: Icon,
-  label,
-  value,
-  valueClassName,
-}: {
-  icon: typeof CalendarDays;
-  label: string;
-  value: string;
-  valueClassName?: string;
+function InvoiceSection({ children, className, title }: {
+  children: React.ReactNode; className?: string; title: string;
 }) {
-  return (
-    <div className="flex items-center gap-3 border-border px-4 py-3 md:border-r md:last:border-r-0">
-      <span className="grid size-11 shrink-0 place-items-center rounded-full bg-primary/8 text-primary">
-        <Icon className="size-5" strokeWidth={1.8} />
-      </span>
-      <div>
-        <p className="font-heading text-[14px] font-bold leading-none text-primary">
-          {label}
-        </p>
-        <p className={cn("mt-2 text-[14px] font-bold text-slate-900", valueClassName)}>
-          {value}
-        </p>
-      </div>
-    </div>
-  );
+  return <section className={cn("rounded-[8px] border border-border bg-white p-4", className)}>
+    <h2 className="mb-3 text-[11px] font-bold uppercase tracking-wide text-slate-900">{title}</h2>
+    {children}
+  </section>;
 }
 
-function InvoiceSection({
-  children,
-  className,
-  contentClassName,
-  title,
-}: {
-  children: React.ReactNode;
-  className?: string;
-  contentClassName?: string;
-  title: string;
-}) {
-  return (
-    <section className={cn("rounded-[8px] border border-primary/18 bg-white p-4", className)}>
-      <h2 className="font-heading text-[21px] font-bold leading-none text-primary">
-        {title}
-      </h2>
-      <span className="mt-2 block h-px w-8 bg-primary" />
-      <div className={cn("mt-4", contentClassName)}>{children}</div>
-    </section>
-  );
+function InvoiceField({ label, value }: { label: string; value: React.ReactNode }) {
+  return <div className="flex items-start justify-between gap-4 border-b border-dashed border-border py-2 last:border-0">
+    <span className="shrink-0 text-slate-500">{label}</span>
+    <span className="min-w-0 text-right font-semibold text-slate-900">{value}</span>
+  </div>;
 }
 
-function DetailRow({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: typeof CalendarDays;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="grid grid-cols-[24px_minmax(0,1fr)] items-center gap-4 sm:grid-cols-[24px_1fr_1.25fr]">
-      <Icon className="size-5 text-primary" />
-      <span className="text-[15px] text-slate-700">{label}</span>
-      <span className="col-start-2 text-[15px] font-medium text-slate-900 sm:col-start-auto">{value}</span>
-    </div>
-  );
-}
-
-function InvoiceSheet({
-  booking,
-  departure,
-  destinationLabel,
-  invoiceRef,
-  tour,
-}: {
-  booking: AdminBooking;
-  departure?: AdminTourDeparture;
-  destinationLabel: string;
-  invoiceRef?: React.Ref<HTMLElement>;
-  tour?: AdminTour;
+function InvoiceSheet({ booking, departure, destinationLabel, invoiceRef, tour, contact }: {
+  booking: AdminBooking; departure?: AdminTourDeparture; destinationLabel: string;
+  invoiceRef?: React.Ref<HTMLElement>; tour?: AdminTour; contact?: SiteContactSettings;
 }) {
   const primaryGuest = booking.guestDetails[0];
   const rooms = booking.pricingSnapshot?.accommodation?.rooms || [];
   const lineItems = createLineItems(booking);
   const currency = booking.paymentCurrency || "INR";
-  const subtotal = toMoney(booking.subtotal) || lineItems.reduce((sum, item) => sum + item.amount, 0);
-  const gstPercentage = Number.isFinite(booking.gstPercentage) ? Number(booking.gstPercentage) : 5;
-  const gstAmount = toMoney(booking.gstAmount) || Math.round((subtotal * gstPercentage) / 100);
-  const grandTotal = getBookingTotalAmount(booking) || subtotal + gstAmount;
+  const subtotal = toMoney(booking.subtotal);
+  const gstPercentage = Number.isFinite(booking.gstPercentage) ? Number(booking.gstPercentage) : 0;
+  const gstAmount = toMoney(booking.gstAmount);
+  const airFlightCharges = toMoney(booking.airFlightCharges);
+  const grandTotal = getBookingTotalAmount(booking);
   const amountPaid = getBookingPaidAmount(booking);
   const balanceDue = getBookingDueAmount(booking);
-  const departureDate =
-    booking.pricingSnapshot?.departureDate || departure?.departureDate || null;
-  const returnDate =
-    booking.pricingSnapshot?.returnDate || departure?.returnDate || null;
-
-  return (
-    <article
-      ref={invoiceRef}
-      className="admin-invoice-sheet mx-auto w-full max-w-[1000px] bg-white px-5 py-7 text-[#18314f] shadow-sm print:max-w-none print:px-8 print:py-7 print:shadow-none"
-    >
-      <header className="grid gap-6 md:grid-cols-[1fr_auto]">
-        <div>
-          <Image
-            src="/brand/header-logo.png"
-            alt="Ancient Trails"
-            width={260}
-            height={90}
-            priority
-            className="h-auto w-[210px] object-contain"
-          />
-          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] font-semibold">
-            <span className="inline-flex items-center gap-2">
-              <Phone className="size-4 text-primary" />
-              +91 11 4567 8900
-            </span>
-            <span className="hidden h-8 w-px bg-border sm:block" />
-            <span className="inline-flex items-center gap-2">
-              <Mail className="size-4 text-primary" />
-              hello@ancienttrails.com
-            </span>
-          </div>
-          
-        </div>
-
-        <div className="text-left md:text-right">
-          <h1 className="font-heading text-[46px] font-bold leading-none text-slate-950">
-            Invoice
-          </h1>
-          <span className="ml-auto mt-4 block h-px w-14 bg-primary" />
-          <p className="mt-3 text-[14px] text-slate-700">Invoice No.</p>
-          <p className="mt-1 font-heading text-[22px] font-bold text-primary">
-            {getInvoiceNumber(booking)}
-          </p>
-        </div>
-      </header>
-
-      <section className="mt-7 grid overflow-hidden rounded-[8px] border border-primary/18 bg-white md:grid-cols-4">
-        <InvoiceInfoTile icon={CalendarDays} label="Issue Date" value={formatDate(booking.createdAt)} />
-        <InvoiceInfoTile
-          icon={CalendarDays}
-          label="Due Date"
-          value={formatDate(booking.balanceDueDate || booking.createdAt)}
-        />
-        <InvoiceInfoTile
-          icon={Check}
-          label="Booking Status"
-          value="Paid"
-          valueClassName="inline-flex px-0 py-0 text-[15px] text-emerald-800"
-        />
-        <InvoiceInfoTile
-          icon={CalendarDays}
-          label="Payment Date"
-          value={formatDate(booking.paymentCapturedAt || booking.updatedAt)}
-        />
-      </section>
-
-      <section className="mt-3 grid gap-3 md:grid-cols-2">
-        <InvoiceSection title="Billed To">
-          <p className="font-heading text-[21px] font-bold text-slate-950">
-            {getGuestName(primaryGuest)}
-          </p>
-          <div className="mt-3 space-y-1 text-[14px] leading-[1.5] text-slate-700">
-            <p>{primaryGuest?.address || "-"}</p>
-            <p>{primaryGuest?.email || "-"}</p>
-            <p>
-              {primaryGuest
-                ? `${primaryGuest.countryCode} ${primaryGuest.mobileNumber}`
-                : "-"}
-            </p>
-          </div>
-        </InvoiceSection>
-
-        <InvoiceSection title="Trip Details">
-          <div className="space-y-4">
-            <DetailRow icon={MapPin} label="Destination" value={destinationLabel} />
-            <DetailRow icon={CalendarDays} label="Departure Date" value={formatDate(departureDate)} />
-            <DetailRow icon={CalendarDays} label="Return Date" value={formatDate(returnDate)} />
-            <DetailRow icon={Users} label="Number of Guests" value={getTravellerLabel(booking)} />
-          </div>
-        </InvoiceSection>
-      </section>
-
-      <InvoiceSection className="mt-3" title="Accommodation Details">
-        <div className="grid items-center gap-4 rounded-[8px] bg-primary/5 p-4 md:grid-cols-[1fr_auto]">
-          <div className="flex items-center gap-5">
-            <span className="grid size-14 shrink-0 place-items-center rounded-full bg-white text-primary">
-              <BedDouble className="size-7" strokeWidth={1.8} />
-            </span>
-            <div>
-              <p className="font-heading text-[20px] font-bold text-primary">
-                {summarizeAccommodation(booking)}
-              </p>
-              <div className="mt-1 space-y-0.5 text-[15px] leading-[1.45] text-slate-700">
-                {rooms.length > 0 ? (
-                  rooms.map((room, index) => (
-                    <p key={room.id || index}>
-                      {room.title || `Room ${index + 1}`} - {room.bedSummary || "Accommodation"}
-                    </p>
-                  ))
-                ) : (
-                  <p>{booking.pricingSnapshot?.accommodation?.optionTitle || tour?.tourName || "Tour accommodation"}</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="border-border pl-0 text-left md:border-l md:pl-10">
-            <p className="text-[15px] text-slate-700">Total Room Charges</p>
-            <p className="mt-2 font-description text-[18px] font-semibold text-primary">
-              {formatCurrency(subtotal, currency)}
-            </p>
-          </div>
+  const departureDate = booking.pricingSnapshot?.departureDate || departure?.departureDate;
+  const returnDate = booking.pricingSnapshot?.returnDate || departure?.returnDate;
+  const phone = [...new Set([contact?.primaryCalling, contact?.secondaryCalling, contact?.landline].filter(Boolean))].join(" | ");
+  return <article ref={invoiceRef} className="admin-invoice-sheet mx-auto w-full max-w-[900px] bg-white p-6 text-[11px] leading-relaxed text-slate-700 shadow-sm print:shadow-none">
+    <style>{invoiceLayoutStyles}</style>
+    <header className="flex items-start justify-between gap-6 border-b border-border pb-3">
+      <div className="min-w-0">
+        <SiteLogo alt="Ancient Trails" width={200} height={70} priority className="h-auto w-[170px] object-contain" />
+        <p className="mt-2 text-[10px]">A quest for Indian heritage</p>
+      </div>
+      <div className="min-w-[220px] text-right">
+        <span className="inline-block rounded-full bg-primary/10 px-3 py-1 text-[10px] font-bold uppercase text-primary">Invoice</span>
+        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-[10px]">
+          <dt className="text-slate-500">Invoice No</dt><dd className="font-bold text-slate-900">{getInvoiceNumber(booking)}</dd>
+          <dt className="text-slate-500">Invoice Date</dt><dd className="font-semibold">{formatDate(booking.paymentCapturedAt || booking.createdAt)}</dd>
+          <dt className="text-slate-500">Booking ID</dt><dd className="font-semibold">{booking.bookingReference || booking.id}</dd>
+        </dl>
+      </div>
+    </header>
+    <div className="mt-3 grid grid-cols-2 gap-3">
+      <InvoiceSection title="Ancient Trails">
+        <div className="space-y-1 break-words">
+          {contact?.officeAddress ? <p className="whitespace-pre-line">{contact.officeAddress}</p> : null}
+          {contact?.emailId ? <p>Email: {contact.emailId}</p> : null}
+          {phone ? <p>Phone: {phone}</p> : null}
+          {contact?.whatsapp ? <p>WhatsApp: {contact.whatsapp}</p> : null}
         </div>
       </InvoiceSection>
-
-      <InvoiceSection
-        className="mt-3"
-        contentClassName="overflow-x-auto rounded-[6px] border border-border"
-        title="Booking Details"
-      >
-          <table className="admin-invoice-items-table w-full border-collapse text-[13px]">
-            <thead className="bg-primary/5 text-slate-950">
-              <tr>
-                <th className="w-12 border-r border-border px-4 py-3 text-center">#</th>
-                <th className="border-r border-border px-4 py-3 text-left">Description</th>
-                <th className="w-28 border-r border-border px-4 py-3 text-center">Quantity</th>
-                <th className="w-36 border-r border-border px-4 py-3 text-right">Rate (INR)</th>
-                <th className="w-36 px-4 py-3 text-right">Amount (INR)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lineItems.map((item, index) => (
-                <tr key={`${item.description}-${index}`} className="border-t border-border">
-                  <td className="border-r border-border px-4 py-4 text-center">{index + 1}</td>
-                  <td className="border-r border-border px-4 py-4 font-medium text-slate-950">{item.description}</td>
-                  <td className="border-r border-border px-4 py-3 text-center">{item.quantity}</td>
-                  <td className="border-r border-border px-4 py-3 text-right">
-                    {formatCurrency(item.rate, currency).replace(/^₹\s?/, "")}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {formatCurrency(item.amount, currency).replace(/^₹\s?/, "")}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <InvoiceSection title="Bill To">
+        <p className="font-bold text-slate-950">{getGuestName(primaryGuest)}</p>
+        <div className="mt-1 space-y-1 break-words">
+          <p>Email: {primaryGuest?.email || "-"}</p>
+          <p>Phone: {primaryGuest ? primaryGuest.countryCode + " " + primaryGuest.mobileNumber : "-"}</p>
+          <p className="whitespace-pre-line">{primaryGuest?.address || "-"}</p>
+        </div>
       </InvoiceSection>
-
-      <section className="mt-3 grid gap-3 md:grid-cols-[1fr_1.02fr]">
-        <InvoiceSection title="Payment Method">
-          <div className="flex items-center gap-5">
-            <span className="grid size-14 shrink-0 place-items-center rounded-full bg-primary/8 text-primary">
-              <CreditCard className="size-7" strokeWidth={1.8} />
-            </span>
-            <div>
-              <p className="text-[17px] font-bold text-slate-950">
-                {getPaymentMethodLabel(booking)}
-              </p>
-              <p className="mt-1 text-[14px] text-slate-700">
-                Payment ID: {booking.paymentId || booking.paymentOrderId || "-"}
-              </p>
-              <p className="mt-1 text-[14px] text-slate-700">
-                Paid on: {formatDateTime(booking.paymentCapturedAt || booking.updatedAt)}
-              </p>
-            </div>
-          </div>
-        </InvoiceSection>
-
-        <InvoiceSection className="p-5" title="Summary">
-          <div className="overflow-hidden rounded-[6px] border border-border text-[15px]">
-            <SummaryRow label="Subtotal" value={formatCurrency(subtotal, currency)} />
-            <SummaryRow label={`GST (${gstPercentage}%)`} value={formatCurrency(gstAmount, currency)} />
-            <SummaryRow label="Discount" value={`- ${formatCurrency(0, currency)}`} />
-            <SummaryRow
-              label="Grand Total"
-              value={formatCurrency(grandTotal, currency)}
-              strong
-            />
-            <SummaryRow label="Amount Paid" value={formatCurrency(amountPaid, currency)} />
-            <SummaryRow label="Balance Due" value={formatCurrency(balanceDue, currency)} />
-          </div>
-        </InvoiceSection>
-      </section>
-
-      <footer className="mt-10">
-        <div className="grid items-end gap-8 md:grid-cols-[1fr_auto]">
-          <div>
-            <span className="mb-5 block h-px w-20 bg-primary" />
-            <p className="font-heading text-[40px] italic leading-none text-primary">
-              Thank you
-            </p>
-            <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.35em] text-[#18314f]">
-              For travelling with us!
-            </p>
-          </div>
-
-          <div className="min-w-0 border-border md:min-w-[230px] md:border-l md:pl-14">
-            <p className="font-heading text-[38px] italic leading-none text-primary">
-              Rahul
-            </p>
-            <p className="mt-5 text-[16px] font-semibold text-[#18314f]">
-              Rahul Deshmukh
-            </p>
-            <p className="text-[14px] leading-[1.35] text-[#18314f]">
-              Manager
-              <br />
-              Ancient Trails
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-primary/35 pt-5 text-[12px] text-primary">
-          <span className="font-heading text-[19px] font-bold uppercase tracking-[0.04em]">
-            Ancient Trails
-          </span>
-          
-          <span className="ml-auto text-[#18314f]">www.ancienttrails.com</span>
-        </div>
-      </footer>
-    </article>
-  );
-}
-
-function SummaryRow({
-  label,
-  strong = false,
-  value,
-}: {
-  label: string;
-  strong?: boolean;
-  value: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "grid grid-cols-1 border-b border-border sm:grid-cols-[1fr_auto] last:border-b-0",
-        strong && "bg-primary/10 text-[18px] font-bold text-slate-950"
-      )}
-    >
-      <span className="px-4 py-2">{label}</span>
-      <span className="min-w-0 border-t border-border px-4 py-2 text-right sm:min-w-[180px] sm:border-l sm:border-t-0">
-        {value}
-      </span>
     </div>
-  );
+    <InvoiceSection className="mt-3" title="Tour Details">
+      <div className="grid grid-cols-2 gap-x-7">
+        <div><InvoiceField label="Tour" value={tour?.tourName || booking.tourId} /><InvoiceField label="Departure" value={formatDate(departureDate)} /><InvoiceField label="Return" value={formatDate(returnDate)} /></div>
+        <div><InvoiceField label="Destination" value={destinationLabel} /><InvoiceField label="Guests" value={getTravellerLabel(booking)} /><InvoiceField label="Duration" value={tour?.durationDn || "-"} /></div>
+      </div>
+      <div className="mt-1 border-t border-dashed border-border pt-2">
+        <p className="font-semibold text-slate-900">Accommodation: {summarizeAccommodation(booking)}</p>
+        {rooms.map((room, index) => <p key={room.id || index}>{room.title || "Room " + (index + 1)} - {room.bedSummary || "Accommodation"}</p>)}
+      </div>
+    </InvoiceSection>
+    <div className="mt-3 overflow-hidden rounded-[8px] border border-border">
+      <table className="admin-invoice-items-table w-full border-collapse text-[11px]">
+        <thead className="bg-slate-100 text-slate-700"><tr>
+          <th className="text-left font-medium">Description</th><th className="text-center font-medium">Qty</th><th className="text-right font-medium">Rate ({currency})</th><th className="text-right font-medium">Amount ({currency})</th>
+        </tr></thead>
+        <tbody>{lineItems.map((item, index) => <tr key={index} className="border-t border-border">
+          <td className="font-semibold text-slate-900">{item.description}</td><td className="text-center">{item.quantity}</td>
+          <td className="whitespace-nowrap text-right">{formatCurrency(item.rate, currency)}</td><td className="whitespace-nowrap text-right font-semibold">{formatCurrency(item.amount, currency)}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>
+    <div className="mt-3 grid grid-cols-[0.85fr_1.15fr] items-start gap-3">
+      <div className="rounded-[8px] border border-dashed border-primary/30 bg-primary/5 p-4 text-[10px] leading-relaxed">
+        <p className="font-semibold text-primary">Note</p>
+        <p className="mt-1">This invoice covers the confirmed tour package and charges listed here. Please retain it for your records.</p>
+        <AirfareDisclosure excluded={booking.airfareExcluded} amount={airFlightCharges} addedAt={booking.airfareAddedAt} includedInTotal={booking.airfareIncludedInTotal} />
+      </div>
+      <InvoiceSection title="Totals">
+        <InvoiceField label="Subtotal (Taxable Value)" value={formatCurrency(subtotal, currency)} />
+        <InvoiceField label={"GST (" + gstPercentage + "%)"} value={formatCurrency(gstAmount, currency)} />
+        {airFlightCharges > 0 ? <InvoiceField label={booking.airfareIncludedInTotal ? "Airfare (Included)" : "Additional Airfare"} value={formatCurrency(airFlightCharges, currency)} /> : null}
+        <div className="flex justify-between gap-4 border-t border-border pt-3"><span className="font-bold">{booking.airfareExcluded && !booking.airfareAddedAt && !airFlightCharges ? "Total (Excluding Airfare)" : "Total Payable"}</span><strong className="text-[18px] text-primary">{formatCurrency(grandTotal, currency)}</strong></div>
+        <InvoiceField label="Amount Paid" value={formatCurrency(amountPaid, currency)} />
+        <InvoiceField label="Balance Due" value={formatCurrency(balanceDue, currency)} />
+      </InvoiceSection>
+    </div>
+    <div className="mt-3 grid grid-cols-2 gap-3">
+      <InvoiceSection title="Payment Details">
+        <p>Mode: <strong>{getPaymentMethodLabel(booking).replace(/^Paid via /, "")}</strong></p>
+        <p className="break-all">Transaction ID: {booking.paymentId || booking.paymentOrderId || "-"}</p>
+        <p>Payment Date: {formatDateTime(booking.paymentCapturedAt || booking.updatedAt)}</p>
+        <p>Payment Status: <strong className="text-emerald-800">FULLY PAID</strong></p>
+      </InvoiceSection>
+      <section className="flex min-h-[110px] flex-col justify-between rounded-[8px] border border-border p-4 text-right">
+        <p className="font-semibold text-slate-900">For Ancient Trails</p>
+        <p className="mt-10 border-t border-border pt-2">Authorized Signatory</p>
+      </section>
+    </div>
+    <p className="mt-4 text-center text-[10px] text-slate-500">Thank you for travelling with Ancient Trails.</p>
+  </article>;
 }
 
 function ErrorPanel({
@@ -755,6 +555,7 @@ function BookingInvoiceContent() {
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [tours, setTours] = useState<AdminTour[]>([]);
   const [departures, setDepartures] = useState<AdminTourDeparture[]>([]);
+  const [contact, setContact] = useState<SiteContactSettings>();
   const [destinations, setDestinations] = useState<AdminDestination[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -767,18 +568,20 @@ function BookingInvoiceContent() {
       setIsLoading(true);
 
       try {
-        const [bookingsResponse, toursResponse, departuresResponse, destinationsResponse] =
+        const [bookingsResponse, toursResponse, departuresResponse, destinationsResponse, settingsResponse] =
           await Promise.all([
             listAdminBookings(),
             listAdminTours(),
             listAdminTourDepartures(),
             listAdminDestinations(),
+            getAdminSiteSettings().catch(() => null),
           ]);
 
         if (!isMounted) {
           return;
         }
 
+        setContact(settingsResponse?.data.settings.contact);
         setBookings(bookingsResponse.data.bookings);
         setTours(toursResponse.data.tours);
         setDepartures(departuresResponse.data.departures);
@@ -861,6 +664,8 @@ function BookingInvoiceContent() {
 
           style.textContent = invoiceExportStyles;
           clonedDocument.head.appendChild(style);
+          const sheet = clonedDocument.querySelector<HTMLElement>(".admin-invoice-sheet");
+          if (sheet) { sheet.style.width = "794px"; sheet.style.padding = "24px"; }
         },
         scale: Math.min(3, window.devicePixelRatio || 2),
         scrollX: 0,
@@ -951,6 +756,7 @@ function BookingInvoiceContent() {
             booking={booking}
             departure={departure}
             destinationLabel={destinationLabel}
+            contact={contact}
             invoiceRef={invoiceRef}
             tour={tour}
           />

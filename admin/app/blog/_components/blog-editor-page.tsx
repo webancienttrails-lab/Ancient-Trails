@@ -60,6 +60,7 @@ import {
   type BlogPayload,
   type BlogStatus,
 } from "@/lib/blogs";
+import { listAdminTours, type AdminTour } from "@/lib/tours";
 import { cn } from "@/lib/utils";
 
 export type BlogEditorMode = "add" | "edit" | "view";
@@ -96,6 +97,7 @@ const emptyBlogForm: BlogFormState = {
   category: "Heritage",
   content: "",
   quote: "",
+  relatedTourIds: [],
   authorName: "Ancient Trails",
   heroImage: "",
   seoTitle: "",
@@ -226,6 +228,7 @@ function blogToForm(blog: AdminBlog): BlogFormState {
     category: blog.category,
     content: blog.content,
     quote: blog.quote,
+    relatedTourIds: blog.relatedTourIds || [],
     authorName: blog.authorName,
     heroImage: blog.heroImage,
     seoTitle: blog.seoTitle,
@@ -250,6 +253,7 @@ function createBlogPayload(form: BlogFormState): BlogPayload {
     category: form.category,
     content: form.content.trim(),
     quote: form.quote.trim(),
+    relatedTourIds: form.relatedTourIds,
     authorName: form.authorName.trim() || "Ancient Trails",
     heroImage: form.heroImage.trim(),
     seoTitle: form.seoTitle.trim(),
@@ -278,6 +282,11 @@ export function BlogEditorPage({
   const router = useRouter();
   const toast = useToast();
   const [blogForm, setBlogForm] = useState<BlogFormState>(emptyBlogForm);
+  const [tours, setTours] = useState<AdminTour[]>([]);
+  const [tourSearch, setTourSearch] = useState("");
+  const [isLoadingTours, setIsLoadingTours] = useState(true);
+  const [tourLoadError, setTourLoadError] = useState("");
+  const [tourReload, setTourReload] = useState(0);
   const [selectedBlog, setSelectedBlog] = useState<AdminBlog | null>(null);
   const [isLoadingBlog, setIsLoadingBlog] = useState(
     mode !== "add" && Boolean(blogId)
@@ -343,6 +352,20 @@ export function BlogEditorPage({
       isMounted = false;
     };
   }, [blogId, mode, toast]);
+
+  useEffect(() => {
+    let mounted = true;
+    listAdminTours().then(response => {
+      if (mounted) setTours(response.data.tours);
+    }).catch(error => { if (mounted) setTourLoadError(getErrorMessage(error)); })
+      .finally(() => { if (mounted) setIsLoadingTours(false); });
+    return () => { mounted = false; };
+  }, [tourReload]);
+
+  function toggleRelatedTour(tourId: string) {
+    setBlogForm(current => ({ ...current, relatedTourIds: current.relatedTourIds.includes(tourId)
+      ? current.relatedTourIds.filter(id => id !== tourId) : [...current.relatedTourIds, tourId] }));
+  }
 
   function updateBlogForm<K extends keyof BlogFormState>(
     field: K,
@@ -551,6 +574,22 @@ export function BlogEditorPage({
                       className={inputClassName}
                       placeholder="ajanta-caves-a-timeless-masterpiece-of-ancient-india"
                     />
+                  </FormField>
+
+                  <FormField className="sm:col-span-2" label="Related Tours">
+                    <p className="mb-3 text-xs leading-relaxed text-foreground/60">Select up to 20 tours to display on this blog page. Leave empty to show no related tours.</p>
+                    <input type="search" aria-label="Search related tours" placeholder="Search tours by name or ID" value={tourSearch} onChange={event => setTourSearch(event.target.value)} className={inputClassName} disabled={isReadOnly || isLoadingTours} />
+                    {isLoadingTours ? <p role="status" className="mt-3 text-sm text-foreground/60">Loading tours...</p>
+                      : tourLoadError ? <div role="alert" className="mt-3 text-sm text-red-700"><p>{tourLoadError}</p><button type="button" onClick={() => { setTourLoadError(""); setIsLoadingTours(true); setTourReload(value => value + 1); }} className="mt-2 font-semibold text-primary underline">Retry loading tours</button></div>
+                      : <div className="mt-3 max-h-60 space-y-1 overflow-y-auto rounded-sm border border-border p-2">
+                        {tours.filter(tour => (tour.tourName + " " + tour.tourId).toLowerCase().includes(tourSearch.trim().toLowerCase())).map(tour => <label key={tour.tourId} className="flex cursor-pointer items-start gap-3 rounded-sm px-2 py-2 hover:bg-primary/5">
+                          <input type="checkbox" checked={blogForm.relatedTourIds.includes(tour.tourId)} disabled={isReadOnly || isBusy || blogForm.relatedTourIds.length >= 20 && !blogForm.relatedTourIds.includes(tour.tourId)} onChange={() => toggleRelatedTour(tour.tourId)} className="mt-1 size-4 accent-primary" />
+                          <span className="min-w-0"><span className="block text-sm font-medium">{tour.tourName}</span><span className="mt-0.5 block text-xs text-foreground/55">{tour.tourId}{tour.durationDn ? " - " + tour.durationDn : ""}</span></span>
+                        </label>)}
+                        {!tours.some(tour => (tour.tourName + " " + tour.tourId).toLowerCase().includes(tourSearch.trim().toLowerCase())) ? <p className="p-2 text-sm text-foreground/60">{tours.length ? "No tours match your search." : "No tours available. Add tours in the Tours tab first."}</p> : null}
+                      </div>}
+                    {!isLoadingTours && !tourLoadError ? blogForm.relatedTourIds.filter(id => !tours.some(tour => tour.tourId === id)).map(id => <label key={id} className="mt-2 flex items-center gap-3 text-sm text-foreground/60"><input type="checkbox" checked disabled={isReadOnly || isBusy} onChange={() => toggleRelatedTour(id)} className="size-4 accent-primary" />Unavailable tour ({id})</label>) : null}
+                    <p className="mt-2 text-xs text-foreground/55">{blogForm.relatedTourIds.length} tours selected. Only existing tours appear on the website.</p>
                   </FormField>
 
                   <FormField className="sm:col-span-2" label="Content">

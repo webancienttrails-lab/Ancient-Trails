@@ -112,6 +112,19 @@ const pageMetrics: PageMetric[] = [
 
 const pages: AdminPageRecord[] = [
   {
+    title: "FAQ",
+    description: "Manage FAQ subjects, questions and answers.",
+    editorHref: "/pages/faq",
+    previewHref: "/faq",
+    slug: "/faq",
+    status: "Published",
+    thumbnailTone: "from-orange-100 via-amber-100 to-stone-400",
+    type: "Utility Page",
+    updatedBy: "Admin User",
+    updatedDate: "-",
+    updatedTime: "",
+  },
+  {
     title: "Home",
     description: "Manage content for homepage hero, sections, features, etc.",
     editorHref: "/pages/home",

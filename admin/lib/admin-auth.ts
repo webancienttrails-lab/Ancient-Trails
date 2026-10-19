@@ -1,3 +1,4 @@
+import { disableBrowserPush } from "@/lib/notification-push";
 import { apiRequest } from "@/lib/api";
 
 export type AdminUser = {
@@ -87,6 +88,10 @@ export function clearAdminSession(): void {
     return;
   }
 
+  const pushToken = window.localStorage.getItem(adminTokenKey);
+  let pushUserId = "";
+  try { pushUserId = JSON.parse(window.localStorage.getItem(adminUserKey) || "{}").id || ""; } catch {}
+  if (pushToken && pushUserId) void disableBrowserPush({ token: pushToken, user: { id: pushUserId } });
   window.localStorage.removeItem(adminTokenKey);
   window.localStorage.removeItem(adminUserKey);
   window.dispatchEvent(new Event(adminSessionEvent));

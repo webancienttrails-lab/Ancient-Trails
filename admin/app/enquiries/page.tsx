@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Clock3,
   Filter,
+  Eye,
   Mail,
   MessageCircle,
   MoreHorizontal,
@@ -26,6 +27,7 @@ import {
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,6 +49,7 @@ import {
   createAdminEnquiry,
   listAdminEnquiries,
   updateAdminEnquiry,
+  updateAdminEnquiryStatus,
   type EnquiryPayload,
 } from "@/lib/enquiries";
 
@@ -61,6 +64,7 @@ type EnquiryMetric = {
 
 type EnquiryRecord = {
   id: string;
+  enquiryReference: string;
   initials: string;
   avatarTone: string;
   name: string;
@@ -68,11 +72,13 @@ type EnquiryRecord = {
   phone: string;
   subject: string;
   message: string;
+  socialMediaReferral: string;
   source: "Website" | "Contact Form" | "Email" | "Phone Call";
   status: "New" | "In Progress" | "Replied" | "Closed";
   date: string;
   time: string;
   createdAt: string;
+  updatedAt: string;
 };
 
 const statusOptions = ["All Status", "New", "In Progress", "Replied", "Closed"];
@@ -85,6 +91,27 @@ const sourceOptions = [
 ];
 const dateRangeOptions = ["All Time", "Today", "This Week", "This Month"];
 
+function createEnquiriesCsv(enquiries: EnquiryRecord[]) {
+  const header = [
+    "Enquiry ID", "Name", "Email", "Phone", "Subject", "Message",
+    "Source", "Status", "Date", "Time", "Created At", "Updated At", "Social Media Referral",
+  ];
+  const rows = enquiries.map((item) => [
+    item.enquiryReference, item.name, item.email, item.phone,
+    item.subject, item.message, item.source, item.status,
+    item.date, item.time, item.createdAt, item.updatedAt, item.socialMediaReferral,
+  ]);
+  const escapeCell = (value: string) => {
+    const text = value || "";
+    // Prevent user-entered text from being interpreted as a spreadsheet formula.
+    const safeText = /^[\s]*[=+@-]/.test(text) ? `'${text}` : text;
+    return `"${safeText.replaceAll('"', '""')}"`;
+  };
+  return "\uFEFF" + [header, ...rows]
+    .map((row) => row.map(escapeCell).join(","))
+    .join("\r\n");
+}
+
 function createEmptyEnquiry(): EnquiryPayload {
   return {
     name: "",
@@ -92,6 +119,7 @@ function createEmptyEnquiry(): EnquiryPayload {
     phone: "",
     subject: "",
     message: "",
+    socialMediaReferral: "",
     source: "Website",
     status: "New",
   };
@@ -102,6 +130,7 @@ function toEnquiryRecord(enquiry: import("@/lib/enquiries").AdminEnquiry): Enqui
 
   return {
     ...enquiry,
+    socialMediaReferral: enquiry.socialMediaReferral || "",
     initials: enquiry.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
     avatarTone: "bg-primary",
     date: createdAt.toLocaleDateString("en-GB"),
@@ -115,6 +144,7 @@ export default function EnquiriesPage() {
   const [enquiries, setEnquiries] = useState<EnquiryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [viewingEnquiry, setViewingEnquiry] = useState<EnquiryRecord | null>(null);
   const [editingEnquiry, setEditingEnquiry] = useState<EnquiryRecord | null>(null);
   const [form, setForm] = useState<EnquiryPayload>(createEmptyEnquiry());
   const [searchQuery, setSearchQuery] = useState("");
@@ -149,12 +179,14 @@ export default function EnquiriesPage() {
       const matchesSearch = query
         ? [
             enquiry.id,
+            enquiry.enquiryReference,
             enquiry.name,
             enquiry.email,
             enquiry.phone,
             enquiry.subject,
             enquiry.message,
             enquiry.source,
+            enquiry.socialMediaReferral,
             enquiry.status,
           ]
             .join(" ")
@@ -199,6 +231,7 @@ export default function EnquiriesPage() {
       phone: enquiry.phone,
       subject: enquiry.subject,
       message: enquiry.message,
+      socialMediaReferral: enquiry.socialMediaReferral,
       source: enquiry.source,
       status: enquiry.status,
     });
@@ -221,16 +254,27 @@ export default function EnquiriesPage() {
     }
   }
 
+  async function changeEnquiryStatus(enquiry: EnquiryRecord, status: EnquiryRecord["status"]) {
+    try {
+      const response = await updateAdminEnquiryStatus(enquiry.id, status);
+      const updated = toEnquiryRecord(response.data.enquiry);
+      setEnquiries((current) => current.map((item) => item.id === updated.id ? updated : item));
+      toast.success("Status updated", `${updated.enquiryReference} is now ${updated.status}.`);
+    } catch (error) {
+      toast.error("Unable to update status", error instanceof Error ? error.message : "Please try again.");
+    }
+  }
+
   function exportEnquiries() {
-    const header = ["Name", "Email", "Phone", "Subject", "Source", "Status", "Date"];
-    const rows = filteredEnquiries.map((item) => [item.name, item.email, item.phone, item.subject, item.source, item.status, item.createdAt]);
-    const csv = [header, ...rows].map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(",")).join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const csv = createEnquiriesCsv(filteredEnquiries);
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
     const link = document.createElement("a");
     link.href = url;
     link.download = "enquiries.csv";
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   return (
@@ -277,9 +321,10 @@ export default function EnquiriesPage() {
             onSourceChange={setSelectedSource}
             onStatusChange={setSelectedStatus}
           />
-          <EnquiriesTable enquiries={filteredEnquiries} isLoading={isLoading} onEdit={openEditForm} />
+          <EnquiriesTable enquiries={filteredEnquiries} isLoading={isLoading} onEdit={openEditForm} onView={setViewingEnquiry} onStatusChange={changeEnquiryStatus} />
         </section>
       </div>
+      <EnquiryView enquiry={viewingEnquiry} onClose={() => setViewingEnquiry(null)} />
       {isFormOpen ? <EnquiryForm editing={Boolean(editingEnquiry)} form={form} onChange={setForm} onClose={() => setIsFormOpen(false)} onSubmit={saveEnquiry} /> : null}
     </AdminDashboardShell>
   );
@@ -470,13 +515,15 @@ function EnquiriesTable({
   enquiries,
   isLoading,
   onEdit,
+  onView,
+  onStatusChange,
 }: {
   enquiries: EnquiryRecord[];
   isLoading: boolean;
   onEdit: (enquiry: EnquiryRecord) => void;
+  onView: (enquiry: EnquiryRecord) => void;
+  onStatusChange: (enquiry: EnquiryRecord, status: EnquiryRecord["status"]) => Promise<void>;
 }) {
-  const toast = useToast();
-
   return (
     <>
       <div className="max-w-full overflow-hidden">
@@ -514,7 +561,7 @@ function EnquiriesTable({
                   key={enquiry.id}
                   onClick={(event) => {
                     if (shouldOpenTableRow(event)) {
-                      toast.info(enquiry.subject, enquiry.message);
+                      onView(enquiry);
                     }
                   }}
                   className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
@@ -523,7 +570,7 @@ function EnquiriesTable({
                     data-label="Enquiry ID"
                     className="px-4 py-4 text-xs font-semibold text-foreground/70"
                   >
-                    {enquiry.id}
+                    {enquiry.enquiryReference}
                   </td>
                   <td
                     data-label="Name & Contact"
@@ -555,9 +602,6 @@ function EnquiriesTable({
                   <td data-label="Subject" className="px-4 py-4">
                     <p className="truncate text-xs font-bold text-foreground">
                       {enquiry.subject}
-                    </p>
-                    <p className="mt-1 line-clamp-2 text-xs text-foreground/55">
-                      {enquiry.message}
                     </p>
                   </td>
                   <td data-label="Source" className="px-4 py-4">
@@ -592,7 +636,7 @@ function EnquiriesTable({
                     </span>
                   </td>
                   <td data-actions data-label="Actions" className="px-4 py-4">
-                    <EnquiryActions enquiry={enquiry} onEdit={onEdit} />
+                    <EnquiryActions enquiry={enquiry} onEdit={onEdit} onView={onView} onStatusChange={onStatusChange} />
                   </td>
                 </tr>
               ))
@@ -632,11 +676,25 @@ function EnquiriesTable({
 function EnquiryActions({
   enquiry,
   onEdit,
+  onView,
+  onStatusChange,
 }: {
   enquiry: EnquiryRecord;
   onEdit: (enquiry: EnquiryRecord) => void;
+  onView: (enquiry: EnquiryRecord) => void;
+  onStatusChange: (enquiry: EnquiryRecord, status: EnquiryRecord["status"]) => Promise<void>;
 }) {
-  const toast = useToast();
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  async function changeStatus(status: EnquiryRecord["status"]) {
+    if (isUpdating || enquiry.status === status) return;
+    setIsUpdating(true);
+    try {
+      await onStatusChange(enquiry, status);
+    } finally {
+      setIsUpdating(false);
+    }
+  }
 
   return (
     <div className="flex justify-end">
@@ -646,7 +704,7 @@ function EnquiryActions({
             <button
               type="button"
               className="grid size-10 place-items-center rounded-full border border-border bg-white text-foreground/65 transition-colors hover:border-primary hover:text-primary"
-              aria-label={`Open actions for ${enquiry.id}`}
+              aria-label={`Open actions for ${enquiry.enquiryReference}`}
             />
           }
         >
@@ -657,36 +715,80 @@ function EnquiryActions({
           className="w-40 rounded-sm border border-border bg-white p-1 shadow-lg shadow-stone-200/70"
         >
           <DropdownMenuItem
+            onClick={() => onView(enquiry)}
+            className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
+          >
+            <Eye className="size-4 text-foreground/60" />
+            View
+          </DropdownMenuItem>
+          <DropdownMenuItem
             onClick={() => onEdit(enquiry)}
             className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
           >
             <Pencil className="size-4 text-foreground/60" />
             Edit
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => toast.info("Reply", `Reply to ${enquiry.name}.`)}
-            className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
-          >
-            Reply
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() =>
-              toast.info("Mark as replied", `${enquiry.id} marked as replied.`)
-            }
-            className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
-          >
-            Mark as Replied
-          </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => toast.info("Close", `${enquiry.id} closed.`)}
-            className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
-          >
-            Close Enquiry
-          </DropdownMenuItem>
+          {(["In Progress", "Replied", "Closed"] as const).map((status) => (
+            <DropdownMenuItem
+              key={status}
+              disabled={isUpdating || enquiry.status === status}
+              onClick={() => void changeStatus(status)}
+              className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
+            >
+              {status}
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+  );
+}
+
+function EnquiryView({
+  enquiry,
+  onClose,
+}: {
+  enquiry: EnquiryRecord | null;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={Boolean(enquiry)} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-h-[85dvh] overflow-y-auto rounded-sm border border-border bg-white p-5 sm:max-w-2xl">
+        <DialogHeader className="border-b border-border pb-3 pr-8">
+          <DialogTitle className="text-lg font-bold">View Enquiry</DialogTitle>
+          <DialogDescription>{enquiry?.enquiryReference}</DialogDescription>
+        </DialogHeader>
+        {enquiry ? (
+          <div className="space-y-4">
+            <dl className="grid gap-4 sm:grid-cols-2">
+              {([
+                ["Name", enquiry.name],
+                ["Email", enquiry.email],
+                ["Phone", enquiry.phone],
+                ["Source", enquiry.source],
+                ["Social Media Referral", enquiry.socialMediaReferral],
+                ["Status", enquiry.status],
+                ["Date & Time", `${enquiry.date} ${enquiry.time}`],
+              ] as const).map(([label, value]) => (
+                <div key={label} className="min-w-0">
+                  <dt className="text-[11px] font-bold uppercase text-foreground/55">{label}</dt>
+                  <dd className="mt-1 text-sm break-words text-foreground">{value || "-"}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="border-t border-border pt-4">
+              <h3 className="text-[11px] font-bold uppercase text-foreground/55">Subject</h3>
+              <p className="mt-1 text-sm font-semibold break-words">{enquiry.subject}</p>
+            </div>
+            <div>
+              <h3 className="text-[11px] font-bold uppercase text-foreground/55">Message</h3>
+              <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed break-words text-foreground/70">{enquiry.message || "-"}</p>
+            </div>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -732,6 +834,16 @@ function EnquiryForm({
             <select value={form.status} onChange={(event) => update("status", event.target.value)} className="h-10 rounded-sm border border-border px-3">
               {statusOptions.slice(1).map((status) => <option key={status}>{status}</option>)}
             </select>
+          </label>
+          <label className="grid gap-1.5 text-xs font-semibold sm:col-span-2">
+            Social Media Referral
+            <input
+              value={form.socialMediaReferral || ""}
+              onChange={(event) => update("socialMediaReferral", event.target.value)}
+              maxLength={160}
+              placeholder="e.g. Instagram, Facebook, YouTube"
+              className="h-10 rounded-sm border border-border px-3 outline-none focus:border-primary"
+            />
           </label>
           <label className="grid gap-1.5 text-xs font-semibold sm:col-span-2">
             Message

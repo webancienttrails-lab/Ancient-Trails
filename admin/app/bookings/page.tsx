@@ -24,6 +24,14 @@ import {
 
 import { AdminDashboardShell } from "@/components/admin-dashboard/admin-dashboard-shell";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 import {
   DropdownMenu,
@@ -38,10 +46,14 @@ import { useToast } from "@/components/ui/toast";
 import {
   archiveAdminBooking,
   cancelAdminBooking,
+  createAdminBookingPaymentLink,
   expireAdminBooking,
   listAdminBookings,
+  sendAdminBookingFinalPaymentWhatsapp,
   sendAdminBookingRecoveryEmail,
+  updateAdminBookingAirFlightCharges,
   type AdminBooking,
+  type BookingCancellationPayload,
   type BookingGuestDetails,
 } from "@/lib/bookings";
 
@@ -109,6 +121,19 @@ function getGuestName(
     .join(" ");
 
   return name || "-";
+}
+
+function getGuestPhone(
+  guest?: BookingGuestDetails
+): string {
+  if (!guest) {
+    return "-";
+  }
+
+  return [guest.countryCode, guest.mobileNumber]
+    .map((value) => value?.trim())
+    .filter(Boolean)
+    .join(" ") || "-";
 }
 
 function getBookingReference(
@@ -187,15 +212,25 @@ function getBookingPaidAmount(
     return amountPaid;
   }
 
+  if (amountPaid > 0) {
+    return amountPaid;
+  }
+
+  if (
+    Number.isFinite(booking.balanceAmount) &&
+    totalAmount > 0
+  ) {
+    return Math.max(
+      0,
+      totalAmount - toMoney(booking.balanceAmount)
+    );
+  }
+
   if (
     booking.paymentOption === "full" &&
     totalAmount > 0
   ) {
     return totalAmount;
-  }
-
-  if (amountPaid > 0) {
-    return amountPaid;
   }
 
   const depositAmount = toMoney(
@@ -228,7 +263,8 @@ function getBookingDueAmount(
 
   if (
     booking.paymentOption === "full" &&
-    totalAmount > 0
+    totalAmount > 0 &&
+    paidAmount >= totalAmount
   ) {
     return 0;
   }
@@ -259,6 +295,20 @@ function getBookingDueAmount(
   return Math.max(
     0,
     totalAmount - paidAmount
+  );
+}
+
+function canSendAirFlightChargesLink(booking: AdminBooking): boolean {
+  const totalAmount = getBookingTotalAmount(booking);
+  const airFlightCharges = toMoney(booking.airFlightCharges);
+  const originalPackageTotal = Math.max(0, totalAmount - airFlightCharges);
+
+  return Boolean(
+    booking.paymentStatus === "paid" &&
+      airFlightCharges > 0 &&
+      getBookingDueAmount(booking) > 0 &&
+      originalPackageTotal > 0 &&
+      getBookingPaidAmount(booking) >= originalPackageTotal
   );
 }
 
@@ -443,6 +493,8 @@ export default function BookingsPage() {
   const router = useRouter();
   const toast = useToast();
 
+  const [cancellationBooking, setCancellationBooking] = useState<AdminBooking | null>(null);
+
   const [bookings, setBookings] =
     useState<AdminBooking[]>([]);
 
@@ -466,6 +518,31 @@ export default function BookingsPage() {
     pendingActionBookingId,
     setPendingActionBookingId,
   ] = useState<string | null>(null);
+
+  const [
+    airFlightDialogBooking,
+    setAirFlightDialogBooking,
+  ] = useState<AdminBooking | null>(null);
+
+  const [
+    airFlightChargeAmount,
+    setAirFlightChargeAmount,
+  ] = useState("");
+
+  const [
+    airFlightFinalPaymentUrl,
+    setAirFlightFinalPaymentUrl,
+  ] = useState("");
+
+  const [
+    isSavingAirFlightCharges,
+    setIsSavingAirFlightCharges,
+  ] = useState(false);
+
+  const [
+    isSendingAirFlightLink,
+    setIsSendingAirFlightLink,
+  ] = useState(false);
 
   /* =======================================================
      LOAD BOOKINGS
@@ -715,15 +792,159 @@ export default function BookingsPage() {
     }
   }
 
-  async function handleCancelPendingBooking(booking: AdminBooking) {
-    if (!window.confirm(`Cancel booking ${getBookingReference(booking)}?`)) {
+  const [airfareIncludedInTotal, setAirfareIncludedInTotal] = useState(false);
+
+  async function handleAddAirFlightCharges(booking: AdminBooking) {
+    setAirfareIncludedInTotal(booking.airfareIncludedInTotal || false);
+    setAirFlightDialogBooking(booking);
+    setAirFlightChargeAmount(
+      booking.airFlightCharges && booking.airFlightCharges > 0
+        ? String(Math.round(booking.airFlightCharges))
+        : ""
+    );
+    setAirFlightFinalPaymentUrl("");
+  }
+
+  function closeAirFlightDialog() {
+    if (isSavingAirFlightCharges || isSendingAirFlightLink) {
       return;
     }
 
+    setAirFlightDialogBooking(null);
+    setAirfareIncludedInTotal(false);
+    setAirFlightChargeAmount("");
+    setAirFlightFinalPaymentUrl("");
+  }
+
+  async function submitAirFlightCharges() {
+    if (!airFlightDialogBooking) {
+      return;
+    }
+
+    const amount = Number(airFlightChargeAmount);
+
+    if (!airFlightChargeAmount.trim() || !Number.isSafeInteger(amount) || amount < 0 || amount > 1000000000) {
+      toast.error("Invalid amount", "Enter a valid air-flight charge amount.");
+      return;
+    }
+
+    setIsSavingAirFlightCharges(true);
+    setPendingActionBookingId(airFlightDialogBooking.id);
+
+    try {
+      const response = await updateAdminBookingAirFlightCharges(
+        airFlightDialogBooking.id,
+        amount,
+        airfareIncludedInTotal
+      );
+
+      setBookings((currentBookings) =>
+        currentBookings.map((currentBooking) =>
+          currentBooking.id === airFlightDialogBooking.id
+            ? response.data.booking
+            : currentBooking
+        )
+      );
+      setAirFlightDialogBooking(response.data.booking);
+      setAirfareIncludedInTotal(response.data.booking.airfareIncludedInTotal || false);
+      setAirFlightChargeAmount(
+        response.data.booking.airFlightCharges &&
+          response.data.booking.airFlightCharges > 0
+          ? String(Math.round(response.data.booking.airFlightCharges))
+          : ""
+      );
+      setAirFlightFinalPaymentUrl("");
+
+      if (response.data.finalPaymentUrl) {
+        toast.success(
+          "Air-flight charges added",
+          "Use Send to generate a secure Razorpay payment link."
+        );
+      } else {
+        toast.success(
+          "Air-flight charges added",
+          response.data.booking.airfareIncludedInTotal ? "Airfare is included in the booking total and has not been added again." : response.message || "Charges added to the remaining amount."
+        );
+      }
+    } catch (error) {
+      toast.error("Charges not updated", getErrorMessage(error));
+    } finally {
+      setPendingActionBookingId(null);
+      setIsSavingAirFlightCharges(false);
+    }
+  }
+
+  async function handleCopyAirFlightDialogLink() {
+    if (!airFlightFinalPaymentUrl) {
+      toast.error(
+        "Final payment link unavailable",
+        "Send the payment link once to generate the secure Razorpay URL."
+      );
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(airFlightFinalPaymentUrl);
+      toast.success("Final payment link copied", "Share this link with the traveller.");
+    } catch {
+      toast.error("Copy failed", "Unable to copy the final payment link from this browser.");
+    }
+  }
+
+  async function handleSendAirFlightDialogLink() {
+    if (!airFlightDialogBooking) {
+      return;
+    }
+
+    setIsSendingAirFlightLink(true);
+    setPendingActionBookingId(airFlightDialogBooking.id);
+
+    try {
+      const amountRupees = getBookingDueAmount(airFlightDialogBooking);
+      const response = await createAdminBookingPaymentLink(
+        airFlightDialogBooking.id,
+        {
+          additionalChargeAlreadyApplied: true,
+          amount: amountRupees,
+          description: "Air-flight charge payment",
+          purpose: "additional",
+        }
+      );
+
+      setBookings((currentBookings) =>
+        currentBookings.map((currentBooking) =>
+          currentBooking.id === airFlightDialogBooking.id
+            ? response.data.booking
+            : currentBooking
+        )
+      );
+      setAirFlightDialogBooking(response.data.booking);
+      setAirFlightFinalPaymentUrl(
+        response.data.paymentLinkRequest.paymentLinkUrl
+      );
+      toast[
+        response.data.paymentLinkRequest.whatsappStatus === "sent"
+          ? "success"
+          : "error"
+      ](
+        response.data.paymentLinkRequest.whatsappStatus === "sent"
+          ? "WhatsApp link sent"
+          : "WhatsApp link not sent",
+        response.message
+      );
+    } catch (error) {
+      toast.error("WhatsApp link not sent", getErrorMessage(error));
+    } finally {
+      setPendingActionBookingId(null);
+      setIsSendingAirFlightLink(false);
+    }
+  }
+
+  async function handleSendFinalPaymentWhatsapp(booking: AdminBooking) {
     setPendingActionBookingId(booking.id);
 
     try {
-      const response = await cancelAdminBooking(booking.id);
+      const response = await sendAdminBookingFinalPaymentWhatsapp(booking.id);
 
       setBookings((currentBookings) =>
         currentBookings.map((currentBooking) =>
@@ -732,7 +953,30 @@ export default function BookingsPage() {
             : currentBooking
         )
       );
-      toast.success("Booking cancelled", response.message || "Booking cancelled successfully.");
+      toast.success("WhatsApp link sent", response.message || "Final payment link sent successfully.");
+    } catch (error) {
+      toast.error("WhatsApp link not sent", getErrorMessage(error));
+    } finally {
+      setPendingActionBookingId(null);
+    }
+  }
+
+  function handleCancelPendingBooking(booking: AdminBooking) {
+    setCancellationBooking(booking);
+  }
+
+  async function submitBookingCancellation(payload: BookingCancellationPayload) {
+    if (!cancellationBooking || pendingActionBookingId === cancellationBooking.id) return;
+    const booking = cancellationBooking;
+    setPendingActionBookingId(booking.id);
+    try {
+      const response = await cancelAdminBooking(booking.id, payload);
+      setBookings((current) => current.map((item) => item.id === booking.id ? response.data.booking : item));
+      setCancellationBooking(null);
+      const availability = response.data.availability;
+      toast.success("Booking cancelled", availability.seatsAvailable === null
+        ? response.message
+        : `${availability.seatsReleased} seat(s) released. ${availability.seatsAvailable} seat(s) now available.`);
     } catch (error) {
       toast.error("Booking not cancelled", getErrorMessage(error));
     } finally {
@@ -762,6 +1006,177 @@ export default function BookingsPage() {
   }
 
   return (
+    <>
+    {cancellationBooking ? (
+      <BookingCancellationDialog
+        booking={cancellationBooking}
+        isSubmitting={pendingActionBookingId === cancellationBooking.id}
+        onClose={() => { if (pendingActionBookingId !== cancellationBooking.id) setCancellationBooking(null); }}
+        onSubmit={submitBookingCancellation}
+      />
+    ) : null}
+    <Dialog
+      open={Boolean(airFlightDialogBooking)}
+      onOpenChange={(open) => {
+        if (!open) {
+          closeAirFlightDialog();
+        }
+      }}
+    >
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-[680px] overflow-hidden rounded-[14px] border border-border bg-white p-0 shadow-2xl shadow-stone-950/12 sm:max-w-[680px]" showCloseButton={false}>
+        <form
+          className="flex max-h-[88vh] min-w-0 flex-col"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitAirFlightCharges();
+          }}
+        >
+          <DialogHeader className="border-b border-border bg-white px-5 py-6 sm:px-8">
+            <DialogTitle className="font-heading text-[26px] font-bold leading-tight text-secondary">
+              Add Air-flight Charges
+            </DialogTitle>
+            <DialogDescription className="mt-1 break-words text-[14px] font-semibold leading-[1.45] text-primary">
+              {airFlightDialogBooking
+                ? `${getBookingReference(airFlightDialogBooking)} - ${getGuestName(
+                    airFlightDialogBooking.guestDetails[0]
+                  )} - ${getGuestPhone(airFlightDialogBooking.guestDetails[0])}`
+                : "Update the booking air-flight charges."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid min-w-0 gap-6 overflow-y-auto overflow-x-hidden px-5 py-6 sm:px-8">
+            <label className="grid gap-2">
+              <span className="text-[12px] font-bold uppercase tracking-[0.02em] text-foreground/55">
+                Air-flight charges (inclusive of applicable taxes)
+              </span>
+              <input
+                autoFocus
+                min={0}
+                type="number"
+                value={airFlightChargeAmount}
+                onChange={(event) =>
+                  setAirFlightChargeAmount(event.target.value)
+                }
+                placeholder="Enter amount"
+                className="h-14 w-full min-w-0 rounded-[10px] border border-border bg-white px-5 text-[20px] font-bold text-foreground outline-none transition placeholder:text-foreground/35 focus:border-primary focus:ring-3 focus:ring-primary/15"
+              />
+            </label>
+
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={airfareIncludedInTotal}
+                onChange={(event) => setAirfareIncludedInTotal(event.target.checked)}
+                className="mt-1 accent-primary"
+              />
+              <span>Airfare is already included in the booking total. Record it separately without adding it again.</span>
+            </label>
+            {(airFlightDialogBooking?.airfareHistory || []).map((entry, index) => <p key={index} className="text-xs">
+              {formatCurrency(entry.previousAmount)} to {formatCurrency(entry.amount)} | {entry.changedBy} | {new Date(entry.changedAt).toLocaleString()}{entry.includedInTotal === undefined ? "" : entry.includedInTotal ? " | Included in total" : " | Additional"}
+            </p>)}
+            <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+              <div className="min-w-0 rounded-[10px] border border-border bg-muted/20 px-5 py-4">
+                <p className="text-[12px] font-bold text-foreground/55">
+                  Current paid amount
+                </p>
+                <p className="mt-2 text-[18px] font-bold text-secondary">
+                  {formatCurrency(airFlightDialogBooking?.amountPaid || 0)}
+                </p>
+              </div>
+              <div className="min-w-0 rounded-[10px] border border-primary/20 bg-primary/5 px-5 py-4">
+                <p className="text-[12px] font-bold text-primary/75">
+                  Balance due after save
+                </p>
+                <p className="mt-2 text-[18px] font-bold text-primary">
+                  {formatCurrency(
+                    airFlightDialogBooking
+                      ? Math.max(0, getBookingDueAmount(airFlightDialogBooking)
+                        - (airFlightDialogBooking.airfareIncludedInTotal ? 0 : toMoney(airFlightDialogBooking.airFlightCharges))
+                        + (airfareIncludedInTotal ? 0 : Number(airFlightChargeAmount) || 0))
+                      : 0
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {airFlightDialogBooking &&
+            canSendAirFlightChargesLink(airFlightDialogBooking) ? (
+              <div className="grid min-w-0 gap-4 rounded-[10px] border border-primary/25 bg-primary/5 px-5 py-5">
+                <div className="min-w-0">
+                  <p className="text-[12px] font-bold uppercase tracking-[0.02em] text-primary">
+                    {airFlightFinalPaymentUrl
+                      ? "Payment link ready"
+                      : "Payment link can be sent"}
+                  </p>
+                  <p className="mt-1 text-[13px] font-semibold leading-[1.45] text-foreground/65">
+                    {airFlightFinalPaymentUrl
+                      ? `Send this link to ${getGuestPhone(
+                          airFlightDialogBooking?.guestDetails[0]
+                        )} on WhatsApp for the air-flight charge payment.`
+                      : "Generate a secure Razorpay payment link and send it by WhatsApp."}
+                  </p>
+                  <p className="mt-3 break-all rounded-[8px] border border-primary/15 bg-white px-3 py-2 text-[12px] font-semibold leading-relaxed text-foreground/65">
+                    {airFlightFinalPaymentUrl ||
+                      "Razorpay link will appear here after sending."}
+                  </p>
+                </div>
+                <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleCopyAirFlightDialogLink}
+                    disabled={!airFlightFinalPaymentUrl}
+                    className="min-h-10 rounded-sm px-4 py-2 text-xs font-bold"
+                  >
+                    <Copy className="size-4" />
+                    Copy Link
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleSendAirFlightDialogLink}
+                    disabled={isSendingAirFlightLink}
+                    className="min-h-10 min-w-0 whitespace-normal rounded-sm px-4 py-2 text-xs font-bold leading-snug"
+                  >
+                    <Mail className="size-4" />
+                    {isSendingAirFlightLink
+                      ? "Sending..."
+                      : airFlightFinalPaymentUrl
+                        ? `Send to ${getGuestPhone(airFlightDialogBooking?.guestDetails[0])}`
+                        : "Generate & Send"}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-[10px] border border-border bg-muted/15 px-4 py-3 text-[12px] font-semibold leading-[1.55] text-foreground/55">
+                {airfareIncludedInTotal
+                  ? "This airfare is already part of the booking total. It will not be added to the total or outstanding balance again."
+                  : "If this booking was already fully paid, saving air-flight charges will create a final payment link here. Otherwise, the charges are added to the existing remaining amount."}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex-wrap rounded-b-[14px] border-t border-border bg-white px-5 py-5 sm:px-8">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeAirFlightDialog}
+              disabled={isSavingAirFlightCharges || isSendingAirFlightLink}
+              className="h-11 rounded-sm px-5 text-xs font-bold"
+            >
+              Close
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSavingAirFlightCharges}
+              className="h-11 rounded-sm px-5 text-xs font-bold"
+            >
+              {isSavingAirFlightCharges ? "Saving..." : "Save Charges"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+
     <AdminDashboardShell
       activeLabel="Booking"
     >
@@ -843,6 +1258,9 @@ export default function BookingsPage() {
             onArchive={
               handleArchiveBooking
             }
+            onAddAirFlightCharges={
+              handleAddAirFlightCharges
+            }
             onCancelPending={
               handleCancelPendingBooking
             }
@@ -861,6 +1279,9 @@ export default function BookingsPage() {
             onSendRecoveryEmail={
               handleSendRecoveryEmail
             }
+            onSendFinalPaymentWhatsapp={
+              handleSendFinalPaymentWhatsapp
+            }
             onView={
               openViewBookingPage
             }
@@ -874,12 +1295,90 @@ export default function BookingsPage() {
         </section>
       </div>
     </AdminDashboardShell>
+    </>
   );
 }
 
 /* =========================================================
    METRIC CARD
 ========================================================= */
+
+function BookingCancellationDialog({
+  booking,
+  isSubmitting,
+  onClose,
+  onSubmit,
+}: {
+  booking: AdminBooking;
+  isSubmitting: boolean;
+  onClose: () => void;
+  onSubmit: (payload: BookingCancellationPayload) => Promise<void>;
+}) {
+  const [reason, setReason] = useState("");
+  const [percentage, setPercentage] = useState("");
+  const [requestedBy, setRequestedBy] = useState<BookingCancellationPayload["requestedBy"] | "">("");
+  const [notes, setNotes] = useState("");
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open && !isSubmitting) onClose(); }}>
+      <DialogContent className="max-h-[88dvh] overflow-y-auto rounded-sm border border-border bg-white p-5 sm:max-w-xl" showCloseButton={!isSubmitting}>
+        <form
+          className="grid gap-4"
+          data-admin-ignore-save-reminder="true"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (isSubmitting || !requestedBy || percentage === "" || reason.trim().length < 3) return;
+            void onSubmit({ reason: reason.trim(), chargePercentage: Number(percentage), requestedBy, notes: notes.trim() });
+          }}
+        >
+          <DialogHeader className="border-b border-border pb-3 pr-6">
+            <DialogTitle className="text-lg font-bold">Cancel Booking</DialogTitle>
+            <DialogDescription>{getBookingReference(booking)} - {getGuestName(booking.guestDetails[0])}</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 rounded-sm bg-muted/35 p-3 text-xs">
+            <div><span className="block text-foreground/55">Departure</span><strong>{booking.departureId || "-"}</strong></div>
+            <div><span className="block text-foreground/55">Guests</span><strong>{booking.totalGuest}</strong></div>
+          </div>
+          <label className="grid gap-1.5 text-xs font-semibold">
+            Cancellation reason *
+            <textarea required minLength={3} maxLength={1000} value={reason} disabled={isSubmitting} onChange={(event) => setReason(event.target.value)} rows={3} placeholder="Enter the reason for cancellation" className="w-full rounded-sm border border-border px-3 py-2 outline-none focus:border-primary" />
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-1.5 text-xs font-semibold">
+              Charges applicable per person *
+              <select required disabled={isSubmitting} value={percentage} onChange={(event) => setPercentage(event.target.value)} className="h-10 min-w-0 rounded-sm border border-border bg-white px-3 outline-none focus:border-primary">
+                <option value="">Select percentage</option>
+                {Array.from({ length: 11 }, (_, index) => index * 10).map((value) => <option key={value} value={value}>{value}%</option>)}
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-xs font-semibold">
+              Cancellation requested by *
+              <select required disabled={isSubmitting} value={requestedBy} onChange={(event) => setRequestedBy(event.target.value as typeof requestedBy)} className="h-10 min-w-0 rounded-sm border border-border bg-white px-3 outline-none focus:border-primary">
+                <option value="">Select requester</option>
+                {(["Customer", "Admin", "Tour Operator"] as const).map((value) => <option key={value}>{value}</option>)}
+              </select>
+            </label>
+          </div>
+          <label className="grid gap-1.5 text-xs font-semibold">
+            Notes (optional)
+            <textarea rows={2} maxLength={2000} value={notes} disabled={isSubmitting} onChange={(event) => setNotes(event.target.value)} className="w-full rounded-sm border border-border px-3 py-2 outline-none focus:border-primary" />
+          </label>
+          <p className="rounded-sm bg-muted/35 p-3 text-xs leading-relaxed text-foreground/70">
+            Cancelling releases this booking's reserved seats. No automatic refund is issued.
+          </p>
+          <label className="flex items-start gap-2 text-xs">
+            <input type="checkbox" required disabled={isSubmitting} className="mt-0.5 accent-primary" />
+            I confirm that this booking should be cancelled.
+          </label>
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={isSubmitting} onClick={onClose}>Keep Booking</Button>
+            <Button type="submit" disabled={isSubmitting} className="bg-red-700 text-white hover:bg-red-800">{isSubmitting ? "Cancelling..." : "Confirm Cancellation"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function BookingMetricCard({
   metric,
@@ -1002,11 +1501,13 @@ function BookingTable({
   isLoading,
   pendingActionBookingId,
   onArchive,
+  onAddAirFlightCharges,
   onCancelPending,
   onCopyRecoveryLink,
   onEdit,
   onExpire,
   onInvoice,
+  onSendFinalPaymentWhatsapp,
   onSendRecoveryEmail,
   onView,
   totalCount,
@@ -1023,6 +1524,9 @@ function BookingTable({
   onArchive: (
     booking: AdminBooking
   ) => void;
+  onAddAirFlightCharges: (
+    booking: AdminBooking
+  ) => void;
   onCancelPending: (
     booking: AdminBooking
   ) => void;
@@ -1036,6 +1540,9 @@ function BookingTable({
     booking: AdminBooking
   ) => void;
   onInvoice: (
+    booking: AdminBooking
+  ) => void;
+  onSendFinalPaymentWhatsapp: (
     booking: AdminBooking
   ) => void;
   onSendRecoveryEmail: (
@@ -1308,11 +1815,13 @@ function BookingTable({
                     pendingActionBookingId === booking.id
                   }
                   onArchive={onArchive}
+                  onAddAirFlightCharges={onAddAirFlightCharges}
                   onCancelPending={onCancelPending}
                   onCopyRecoveryLink={onCopyRecoveryLink}
                   onEdit={onEdit}
                   onExpire={onExpire}
                   onInvoice={onInvoice}
+                  onSendFinalPaymentWhatsapp={onSendFinalPaymentWhatsapp}
                   onSendRecoveryEmail={onSendRecoveryEmail}
                   onView={onView}
                 />
@@ -1380,11 +1889,13 @@ function BookingActionsMenu({
   isArchiving,
   isPendingAction,
   onArchive,
+  onAddAirFlightCharges,
   onCancelPending,
   onCopyRecoveryLink,
   onEdit,
   onExpire,
   onInvoice,
+  onSendFinalPaymentWhatsapp,
   onSendRecoveryEmail,
   onView,
 }: {
@@ -1392,6 +1903,9 @@ function BookingActionsMenu({
   isArchiving: boolean;
   isPendingAction: boolean;
   onArchive: (
+    booking: AdminBooking
+  ) => void;
+  onAddAirFlightCharges: (
     booking: AdminBooking
   ) => void;
   onCancelPending: (
@@ -1407,6 +1921,9 @@ function BookingActionsMenu({
     booking: AdminBooking
   ) => void;
   onInvoice: (
+    booking: AdminBooking
+  ) => void;
+  onSendFinalPaymentWhatsapp: (
     booking: AdminBooking
   ) => void;
   onSendRecoveryEmail: (
@@ -1425,6 +1942,23 @@ function BookingActionsMenu({
     booking.bookingStatus === "payment_pending" &&
     booking.paymentStatus !== "paid" &&
     Boolean(booking.recoveryUrl);
+  const canSendChargesLink =
+    canSendAirFlightChargesLink(booking);
+  const canAddAirFlightCharges =
+    booking.airfareExcluded === true &&
+    ((booking.bookingStatus === "confirmed" && booking.paymentStatus === "paid") ||
+      (booking.paymentMode === "offline" && booking.bookingStatus === "payment_pending" && booking.paymentStatus === "pending")) &&
+    !isPendingAction &&
+    !(toMoney(booking.airFlightCharges) > 0 && getBookingDueAmount(booking) === 0);
+  const canUseRecoveryActions =
+    isRecoverable &&
+    !isPendingAction;
+  const canCancelBooking =
+    booking.bookingStatus !== "cancelled" &&
+    booking.bookingStatus !== "expired" &&
+    !isPendingAction;
+  const canArchive =
+    !isArchiving;
 
   return (
     <div className="flex justify-end">
@@ -1458,8 +1992,17 @@ function BookingActionsMenu({
 
         <DropdownMenuContent
           align="end"
-          className="w-40 rounded-sm border border-border bg-white p-1 shadow-lg shadow-stone-200/70"
+          className="w-56 rounded-sm border border-border bg-white p-1 shadow-lg shadow-stone-200/70"
         >
+          {booking.hasBankTransfer || booking.paymentMode === "bank_transfer" || booking.paymentMethod === "bank_transfer" ? (
+          <DropdownMenuItem
+            render={<a href={"/bookings/bank-transfer/?bookingId=" + encodeURIComponent(booking.id)} />}
+            className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"
+          >
+            <WalletCards className="size-4 text-primary" />
+            Bank Transfer
+          </DropdownMenuItem>
+          ) : null}
           {/* View */}
 
           <DropdownMenuItem
@@ -1473,19 +2016,18 @@ function BookingActionsMenu({
             View
           </DropdownMenuItem>
 
-          {/* Edit */}
+          {canViewInvoice ? (
+            <DropdownMenuItem
+              onClick={() =>
+                onInvoice(booking)
+              }
+              className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"
+            >
+              <FileText className="size-4 text-primary" />
 
-          <DropdownMenuItem
-            onClick={() =>
-              onInvoice(booking)
-            }
-            disabled={!canViewInvoice}
-            className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"
-          >
-            <FileText className="size-4 text-primary" />
-
-            View Invoice
-          </DropdownMenuItem>
+              View Invoice
+            </DropdownMenuItem>
+          ) : null}
 
           {/* Edit */}
 
@@ -1500,77 +2042,113 @@ function BookingActionsMenu({
             Edit
           </DropdownMenuItem>
 
-          <DropdownMenuSeparator />
+          {canAddAirFlightCharges ? (
+            <DropdownMenuItem
+              onClick={() =>
+                onAddAirFlightCharges(booking)
+              }
+              className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"
+            >
+              <Ticket className="size-4 text-primary" />
 
-          <DropdownMenuItem
-            onClick={() =>
-              onCopyRecoveryLink(booking)
-            }
-            disabled={!isRecoverable || isPendingAction}
-            className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"
-          >
-            <Copy className="size-4 text-primary" />
+              Add Air-flight Charges
+            </DropdownMenuItem>
+          ) : null}
 
-            Copy Recovery Link
-          </DropdownMenuItem>
+          {canSendChargesLink && !isPendingAction ? (
+            <>
+              <DropdownMenuSeparator />
 
-          <DropdownMenuItem
-            onClick={() =>
-              onSendRecoveryEmail(booking)
-            }
-            disabled={!isRecoverable || isPendingAction}
-            className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"
-          >
-            <Mail className="size-4 text-primary" />
+              <DropdownMenuItem
+                onClick={() =>
+                  onSendFinalPaymentWhatsapp(booking)
+                }
+                className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"
+              >
+                <Mail className="size-4 text-primary" />
 
-            Send Recovery Email
-          </DropdownMenuItem>
+                Send Charges Link
+              </DropdownMenuItem>
+            </>
+          ) : null}
 
-          <DropdownMenuItem
-            onClick={() =>
-              onExpire(booking)
-            }
-            disabled={!isRecoverable || isPendingAction}
-            className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"
-          >
-            <Hourglass className="size-4 text-amber-700" />
+          {canUseRecoveryActions ? (
+            <>
+              <DropdownMenuSeparator />
 
-            Mark Expired
-          </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() =>
+                  onCopyRecoveryLink(booking)
+                }
+                className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"
+              >
+                <Copy className="size-4 text-primary" />
 
-          <DropdownMenuItem
-            onClick={() =>
-              onCancelPending(booking)
-            }
-            disabled={!isRecoverable || isPendingAction}
-            className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold text-red-700 focus:bg-red-50 focus:text-red-700"
-          >
-            <Ban className="size-4" />
+                Copy Recovery Link
+              </DropdownMenuItem>
 
-            Cancel Booking
-          </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() =>
+                  onSendRecoveryEmail(booking)
+                }
+                className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"
+              >
+                <Mail className="size-4 text-primary" />
 
-          <DropdownMenuSeparator />
+                Send Recovery Email
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={() =>
+                  onExpire(booking)
+                }
+                className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"
+              >
+                <Hourglass className="size-4 text-amber-700" />
+
+                Mark Expired
+              </DropdownMenuItem>
+
+            </>
+          ) : null}
+
+          {canCancelBooking ? (
+            <>
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem
+                onClick={() =>
+                  onCancelPending(booking)
+                }
+                className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold text-red-700 focus:bg-red-50 focus:text-red-700"
+              >
+                <Ban className="size-4" />
+
+                Cancel Booking
+              </DropdownMenuItem>
+            </>
+          ) : null}
 
           {/* Archive */}
 
-          <DropdownMenuItem
-            onClick={() =>
-              onArchive(
-                booking
-              )
-            }
-            disabled={
-              isArchiving
-            }
-            className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold text-amber-700 focus:bg-amber-50 focus:text-amber-700"
-          >
-            <Archive className="size-4" />
+          {canArchive ? (
+            <>
+              <DropdownMenuSeparator />
 
-            {isArchiving
-              ? "Archiving..."
-              : "Archive"}
-          </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() =>
+                  onArchive(
+                    booking
+                  )
+                }
+                className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold text-amber-700 focus:bg-amber-50 focus:text-amber-700"
+              >
+                <Archive className="size-4" />
+
+                Archive
+              </DropdownMenuItem>
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

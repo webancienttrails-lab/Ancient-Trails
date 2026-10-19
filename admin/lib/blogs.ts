@@ -25,6 +25,7 @@ export type AdminBlog = {
   category: BlogCategory;
   content: string;
   quote: string;
+  relatedTourIds: string[];
   authorName: string;
   heroImage: string;
   seoTitle: string;
@@ -49,6 +50,7 @@ export type BlogPayload = {
   category: BlogCategory;
   content: string;
   quote: string;
+  relatedTourIds: string[];
   authorName: string;
   heroImage: string;
   seoTitle: string;

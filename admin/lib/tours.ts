@@ -128,6 +128,7 @@ export type AdminTourDeparture = {
   destinationId?: string;
   departureDate: string | null;
   returnDate: string | null;
+  totalSeats?: number;
   seatsAvailable: number;
   priceAdult: number;
   priceExtraBed: number;
@@ -162,6 +163,7 @@ export type TourDeparturePayload = {
   destinationId?: string;
   departureDate: string | null;
   returnDate: string | null;
+  totalSeats?: number;
   seatsAvailable: number;
   priceAdult: number;
   priceExtraBed: number;

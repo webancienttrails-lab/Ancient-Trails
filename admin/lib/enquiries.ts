@@ -6,18 +6,20 @@ export type EnquiryStatus = "Closed" | "In Progress" | "New" | "Replied";
 
 export type AdminEnquiry = {
   id: string;
+  enquiryReference: string;
   name: string;
   email: string;
   phone: string;
   subject: string;
   message: string;
+  socialMediaReferral?: string;
   source: EnquirySource;
   status: EnquiryStatus;
   createdAt: string;
   updatedAt: string;
 };
 
-export type EnquiryPayload = Omit<AdminEnquiry, "id" | "createdAt" | "updatedAt">;
+export type EnquiryPayload = Omit<AdminEnquiry, "id" | "enquiryReference" | "createdAt" | "updatedAt">;
 
 function headers(): HeadersInit {
   const session = getAdminSession();
@@ -43,5 +45,13 @@ export async function updateAdminEnquiry(id: string, payload: EnquiryPayload) {
     method: "PATCH",
     headers: headers(),
     body: JSON.stringify(payload),
+  });
+}
+
+export async function updateAdminEnquiryStatus(id: string, status: EnquiryStatus) {
+  return apiRequest<{ enquiry: AdminEnquiry }>(`/api/admin/enquiries/${id}/status`, {
+    method: "PATCH",
+    headers: headers(),
+    body: JSON.stringify({ status }),
   });
 }

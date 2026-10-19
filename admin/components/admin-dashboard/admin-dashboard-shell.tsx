@@ -1,5 +1,6 @@
 "use client";
 
+import { SiteLogo } from "@/components/site-logo";
 import {
   createContext,
   type ReactNode,
@@ -7,15 +8,14 @@ import {
   useEffect,
   useState,
 } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import {
-  Bell,
   ChevronDown,
   ChevronLeft,
   Save,
 } from "lucide-react";
 
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { cn } from "@/lib/utils";
 
 import {
@@ -158,13 +158,7 @@ export function AdminSidebarToggle({
    ADMIN HEADER
 ========================================================= */
 
-function AdminHeader({
-  notificationCount = 0,
-  isNotificationLoading = false,
-}: {
-  notificationCount?: number;
-  isNotificationLoading?: boolean;
-}) {
+function AdminHeader() {
   const [adminUser, setAdminUser] =
     useState<AdminUser | null>(null);
   const [saveTarget, setSaveTarget] = useState<{
@@ -242,7 +236,7 @@ function AdminHeader({
   return (
     <header
       className={cn(
-        "mb-0 hidden min-h-[82px] w-full",
+        "mb-0 contents min-h-[82px] w-full",
         "items-center justify-between gap-5",
         "lg:flex"
       )}
@@ -254,10 +248,9 @@ function AdminHeader({
       <Link
         href="/"
         aria-label="Ancient Trails admin dashboard"
-        className="inline-flex shrink-0 items-center"
+        className="hidden shrink-0 items-center lg:inline-flex"
       >
-        <Image
-          src="/brand/header-logo.png"
+        <SiteLogo
           alt="Ancient Trails"
           width={210}
           height={72}
@@ -270,11 +263,11 @@ function AdminHeader({
       {/* RIGHT - ADMIN CONTROLS */}
       {/* ============================= */}
 
-      <div className="ml-auto flex items-center gap-3">
+      <div className="fixed right-[68px] top-3 z-[120] ml-auto flex items-center gap-3 lg:static lg:z-auto">
         {saveTarget ? (
           <button
             className={cn(
-              "inline-flex h-11 items-center gap-2 rounded-xl",
+              "hidden h-11 items-center gap-2 rounded-xl lg:inline-flex",
               "border border-primary bg-primary px-4",
               "text-sm font-bold text-white",
               "shadow-sm shadow-stone-200/30",
@@ -293,45 +286,13 @@ function AdminHeader({
 
         {/* Notification */}
 
-        <button
-          className={cn(
-            "relative grid size-11 place-items-center rounded-xl",
-            "border border-border bg-white text-foreground",
-            "shadow-sm shadow-stone-200/30",
-            "transition-all duration-200",
-            "hover:border-primary hover:text-primary hover:shadow-md"
-          )}
-          type="button"
-          aria-label="Notifications"
-        >
-          <Bell
-            className="size-5"
-            strokeWidth={1.9}
-          />
-
-          {!isNotificationLoading &&
-          notificationCount > 0 ? (
-            <span
-              className={cn(
-                "absolute -right-1 -top-1",
-                "grid min-w-5 h-5 place-items-center",
-                "rounded-full bg-primary px-1",
-                "text-[9px] font-bold leading-none text-white",
-                "ring-2 ring-[#fbf8f5]"
-              )}
-            >
-              {notificationCount > 99
-                ? "99+"
-                : notificationCount}
-            </span>
-          ) : null}
-        </button>
+        <NotificationBell />
 
         {/* Admin profile */}
 
         <button
           className={cn(
-            "flex h-11 items-center gap-2.5 rounded-xl",
+            "hidden h-11 items-center gap-2.5 rounded-xl lg:flex",
             "border border-border bg-white",
             "px-2.5 pr-3",
             "text-sm font-semibold text-foreground",
@@ -375,8 +336,6 @@ export function AdminDashboardShell({
   children,
   className,
   contentClassName,
-  notificationCount = 0,
-  isNotificationLoading = false,
 }: AdminDashboardShellProps) {
   const [
     isSidebarCollapsed,
@@ -451,7 +410,7 @@ export function AdminDashboardShell({
 
           <AdminSidebarToggle
             className={cn(
-              "fixed top-10 z-[60]",
+              "fixed top-10 z-50",
 
               /*
                * Sidebar expanded width = 256px
@@ -496,12 +455,7 @@ export function AdminDashboardShell({
             {/* TOP HEADER */}
             {/* ============================================= */}
 
-            <AdminHeader
-              notificationCount={notificationCount}
-              isNotificationLoading={
-                isNotificationLoading
-              }
-            />
+            <AdminHeader />
 
             {activeLabel ? (
               <div className="mb-4 lg:hidden">
