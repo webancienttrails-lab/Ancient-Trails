@@ -1,5 +1,20 @@
 import { apiRequest } from "@/lib/api";
 
+export type ContactEnquiryPayload = {
+  name: string;
+  email: string;
+  phone: string;
+  subject: string;
+  message: string;
+};
+
+export async function createContactEnquiry(payload: ContactEnquiryPayload) {
+  return apiRequest<{ enquiry: { id: string } }>("/api/enquiries/contact", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export type TourEnquiryPayload = {
   city: string;
   email: string;

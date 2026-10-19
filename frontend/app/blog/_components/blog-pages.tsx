@@ -20,7 +20,6 @@ import {
   Map,
   MapPin,
   Palette,
-  PenLine,
   Send,
   Share2,
   type LucideIcon,
@@ -34,7 +33,9 @@ import {
   type BlogCategory,
   type BlogCategoryCount,
   type PublicBlog,
+  type BlogRelatedTour,
 } from "@/lib/blogs";
+import { getTourHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
 type SortMode = "Latest" | "Oldest";
@@ -126,23 +127,6 @@ const categoryThemes: Record<BlogCategory, CategoryTheme> = {
     text: "text-secondary/75",
   },
 };
-
-const sidebarTours: SidebarTour[] = [
-  {
-    title: "Khajuraho",
-    duration: "6 Days / 5 Nights",
-    date: "16 Jul 2026",
-    image: "/home assets/Khajuraho.webp",
-    href: "/#upcoming-tours",
-  },
-  {
-    title: "Incredible Indonesia",
-    duration: "9 Days / 8 Nights",
-    date: "8 Jul 2026",
-    image: "/home assets/Indonesia.webp",
-    href: "/#upcoming-tours",
-  },
-];
 
 function getPostTime(post: PublicBlog): number {
   const date = new Date(post.publishedAt || post.createdAt);
@@ -371,13 +355,13 @@ function SidebarCard({
   );
 }
 
-function ExploreToursCard() {
+function ExploreToursCard({ tours = [], title = "Related Tours", viewAllHref = "/tours" }: { tours?: SidebarTour[]; title?: string; viewAllHref?: string }) {
   return (
-    <SidebarCard title="Explore Tours">
+    <SidebarCard title={title}>
       <div className="space-y-4">
-        {sidebarTours.slice(0, 1).map((tour) => (
+        {tours.map((tour) => (
           <article
-            key={tour.title}
+            key={tour.href}
             className="overflow-hidden rounded-[7px] border border-primary/20 bg-primary/5"
           >
             <BlogImage
@@ -386,10 +370,10 @@ function ExploreToursCard() {
               className="h-[118px]"
             />
             <div className="p-4">
-              <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase text-primary">
+              {tour.date ? <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase text-primary">
                 <CalendarDays className="size-3.5" />
                 {tour.date}
-              </div>
+              </div> : null}
               <h3 className="mt-2 font-heading text-[18px] font-bold leading-[1.18] tracking-normal text-secondary">
                 {tour.title}
               </h3>
@@ -407,7 +391,7 @@ function ExploreToursCard() {
           </article>
         ))}
         <Link
-          href="/#upcoming-tours"
+          href={viewAllHref}
           className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[5px] border border-primary bg-white px-4 text-[13px] font-bold text-primary transition-colors hover:bg-primary hover:text-white"
         >
           View All
@@ -453,11 +437,15 @@ function BlogSidebar({
   onCategorySelect,
   popularPosts,
   selectedCategory,
+  relatedTours,
+  isDetail = false,
 }: {
   categoryCounts: BlogCategoryCount[];
   onCategorySelect?: (category: BlogCategory | "All") => void;
   popularPosts: PublicBlog[];
   selectedCategory?: BlogCategory | "All";
+  relatedTours?: BlogRelatedTour[];
+  isDetail?: boolean;
 }) {
   return (
     <aside className="flex h-full flex-col gap-6 lg:sticky lg:top-28 lg:self-stretch">
@@ -515,22 +503,10 @@ function BlogSidebar({
         </div>
       </SidebarCard>
 
-      <ExploreToursCard />
+      {isDetail && relatedTours?.length ? <ExploreToursCard title="Related Tours" viewAllHref="/tours" tours={relatedTours.map(tour => ({
+        title: tour.tourName, duration: tour.durationDn, date: "", image: tour.thumbnailImage || tour.bannerImage, href: getTourHref(tour),
+      }))} /> : null}
 
-      <div className="flex flex-1 flex-col">
-        <SidebarCard className="h-full" title="Share Your Story">
-          <p className="text-[13px] leading-[1.7] text-secondary/76">
-            Have a travel story to share? We&apos;d love to feature it.
-          </p>
-          <Link
-            href="mailto:hello@ancienttrails.example?subject=Travel%20Story"
-            className="mt-4 flex h-11 items-center justify-center gap-2 rounded-[5px] border border-primary bg-white px-4 text-[13px] font-bold text-primary transition-colors hover:bg-primary hover:text-white"
-          >
-            Submit Your Story
-            <PenLine className="size-4" />
-          </Link>
-        </SidebarCard>
-      </div>
     </aside>
   );
 }
@@ -1003,6 +979,7 @@ function AdjacentPostCard({
 }
 
 export function BlogDetailPage({ slug }: { slug: string }) {
+  const [relatedTours, setRelatedTours] = useState<BlogRelatedTour[]>([]);
   const [post, setPost] = useState<PublicBlog | null>(null);
   const [blogs, setBlogs] = useState<PublicBlog[]>([]);
   const [popularPosts, setPopularPosts] = useState<PublicBlog[]>([]);
@@ -1027,6 +1004,7 @@ export function BlogDetailPage({ slug }: { slug: string }) {
 
         if (isMounted) {
           setPost(detailResponse.data.blog);
+          setRelatedTours(detailResponse.data.relatedTours || []);
           setBlogs(nextBlogs);
           setPopularPosts(
             detailResponse.data.popularPosts.length
@@ -1039,6 +1017,7 @@ export function BlogDetailPage({ slug }: { slug: string }) {
       } catch {
         if (isMounted) {
           setPost(null);
+          setRelatedTours([]);
           setBlogs([]);
           setPopularPosts([]);
           setCategoryCounts(getCategoryCounts([]));
@@ -1126,6 +1105,8 @@ export function BlogDetailPage({ slug }: { slug: string }) {
         </article>
 
         <BlogSidebar
+          isDetail
+          relatedTours={relatedTours}
           categoryCounts={categoryCounts}
           popularPosts={popularPosts}
         />

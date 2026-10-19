@@ -588,15 +588,6 @@ export function WishlistPageContent() {
 
           <div className="mx-auto w-full max-w-[1220px] px-3 py-5 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
             <section className="relative overflow-hidden pb-5 sm:pb-8">
-              <Image
-                src="/home assets/About_trails.webp"
-                alt=""
-                fill
-                sizes="(min-width: 1024px) 560px, 100vw"
-                priority
-                className="pointer-events-none object-cover object-right-top opacity-[0.22] mix-blend-multiply"
-              />
-              <div className="absolute inset-0 bg-[linear-gradient(90deg,#fff8f0_0%,#fff8f0_46%,rgba(255,248,240,0.78)_68%,rgba(255,248,240,0.58)_100%)]" />
               <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <h1 className="font-heading text-[30px] font-bold leading-none text-secondary sm:text-[34px]">

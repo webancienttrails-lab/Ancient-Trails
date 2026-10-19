@@ -1,5 +1,6 @@
 "use client";
 
+import { SiteLogo } from "@/components/site-logo";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -1351,8 +1352,7 @@ function MobileHeaderDrawer({
       >
         <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
           <Link href="/" aria-label="Ancient Trails home" onClick={onClose}>
-            <Image
-              src="/Header Logo.png"
+            <SiteLogo
               alt="Ancient Trails"
               width={218}
               height={86}
@@ -2113,8 +2113,7 @@ export function Header() {
         aria-label="Ancient Trails home"
         className="absolute left-1/2 z-0 shrink-0 -translate-x-1/2 lg:static lg:translate-x-0"
       >
-        <Image
-          src="/Header Logo.png"
+        <SiteLogo
           alt="Ancient Trails"
           width={218}
           height={86}

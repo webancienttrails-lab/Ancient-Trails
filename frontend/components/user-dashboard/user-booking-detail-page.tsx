@@ -1,9 +1,14 @@
 "use client";
+import { fetchSiteLogoUrl } from "@/lib/site-logo";
+import { formatBookingPaymentMethod } from "@/lib/booking-payment";
 
+import { BankTransferBalanceLink } from "@/components/bank-transfer-link";
+import { AirfareDisclosure } from "@/components/airfare-disclosure";
+import { AIRFARE_NOTE } from "@/lib/airfare";
 import Image from "next/image";
 import Link from "next/link";
-import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import type { ChangeEvent, FormEvent, ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarCheck,
   CalendarDays,
@@ -11,6 +16,7 @@ import {
   CircleDot,
   Clock3,
   Download,
+  ExternalLink,
   Eye,
   FileText,
   HelpCircle,
@@ -19,6 +25,8 @@ import {
   Phone,
   ReceiptText,
   ShieldCheck,
+  Trash2,
+  Upload,
   UsersRound,
   WalletCards,
   type LucideIcon,
@@ -36,13 +44,24 @@ import {
 import { getHomeMediaUrl } from "@/lib/home-travel";
 import { getTourHref } from "@/lib/routes";
 import {
+  defaultSiteContactSettings,
+  getContactCallDisplay,
+  getContactEmailDisplay,
+  getMailtoHref,
+  getPublicSiteSettings,
+  getTelephoneHref,
+  type SiteContactSettings,
+} from "@/lib/site-settings";
+import {
   getUserBookingDuration,
   getUserBookingImageSource,
   getUserBookingLocation,
   getUserBookingReference,
   getUserBookingTitle,
   getUserBookingTravellerLabel,
+  getBookingKycDocumentUrl,
   listTravellerBookings,
+  uploadTravellerBookingKycDocument,
   type UserBooking,
 } from "@/lib/user-bookings";
 import { cn } from "@/lib/utils";
@@ -109,12 +128,37 @@ type TimelineItem = {
 
 type DisplayTraveller = {
   ageOnDeparture?: number;
+  countryCode?: string;
+  email?: string;
   firstName?: string;
+  gender?: string;
   id: string;
+  kycDocuments?: BookingConfirmation["travellers"][number]["kycDocuments"];
   lastName?: string;
+  mobileNumber?: string;
   title?: string;
   type: "adult" | "child";
 };
+
+type KycDocumentType =
+  NonNullable<BookingConfirmation["travellers"][number]["kycDocuments"]>[number]["documentType"];
+
+const domesticKycDocumentOptions: Array<{
+  label: string;
+  value: KycDocumentType;
+}> = [
+  { label: "Aadhaar Card", value: "aadhaar_card" },
+  { label: "Driving License", value: "driving_license" },
+  { label: "Voter ID", value: "voter_id" },
+];
+
+const internationalKycDocumentOptions: Array<{
+  label: string;
+  value: KycDocumentType;
+}> = [
+  { label: "Passport", value: "passport" },
+  { label: "PAN Card", value: "pan_card" },
+];
 
 const dateFormatter = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",
@@ -150,6 +194,12 @@ function formatPdfCurrency(amount?: number, currency = "INR") {
   return `${currency} ${new Intl.NumberFormat("en-IN", {
     maximumFractionDigits: 0,
   }).format(Math.max(0, Math.round(amount || 0)))}`;
+}
+
+function formatPdfAmount(amount?: number) {
+  return new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: 0,
+  }).format(Math.max(0, Math.round(amount || 0)));
 }
 
 function escapePdfText(value: string) {
@@ -208,7 +258,7 @@ function buildSimplePdf(lines: string[]) {
     });
 
   if (pages.length === 0) {
-    pages.push(["Booking Invoice"]);
+    pages.push(["Final Invoice"]);
   }
 
   const objects: string[] = [];
@@ -293,9 +343,763 @@ function downloadBlob(blob: Blob, fileName: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
-function downloadBookingInvoicePdf(booking: UserBooking) {
+function getInvoiceNumber(booking: UserBooking) {
+  const sourceDate =
+    booking.booking.paymentCapturedAt ||
+    booking.booking.updatedAt ||
+    booking.booking.createdAt;
+  const year = new Date(sourceDate).getFullYear();
+  const safeYear = Number.isFinite(year) ? year : new Date().getFullYear();
+  const idValue = parseInt(booking.booking.id.replace(/\D/g, "").slice(-5), 10);
+  const fallbackValue = parseInt(booking.booking.id.slice(-5), 16);
+  const sequence = Number.isFinite(idValue)
+    ? idValue
+    : Number.isFinite(fallbackValue)
+      ? fallbackValue
+      : 1;
+
+  return `AT-${safeYear}-${String(sequence % 10000).padStart(4, "0")}`;
+}
+
+function getFinalInvoiceLineItems(booking: UserBooking) {
+  const rooms = booking.booking.pricingSnapshot?.accommodation?.rooms || [];
+  const airFlightCharges = booking.booking.airFlightCharges || 0;
+
+  if (rooms.length > 0) {
+    const roomItems = rooms.map((room, index) => {
+      const amount = (room.allocations || []).reduce(
+        (total, allocation) => total + Math.max(0, Math.round(allocation.price || 0)),
+        0
+      );
+
+      return {
+        amount,
+        description: `Accommodation - ${room.title || `Room ${index + 1}`}`,
+        quantity: 1,
+        rate: amount,
+      };
+    });
+
+    return airFlightCharges > 0 && !booking.booking.airfareIncludedInTotal
+      ? [
+          ...roomItems,
+          {
+            amount: airFlightCharges,
+            description: "Air-flight charges",
+            quantity: 1,
+            rate: airFlightCharges,
+          },
+        ]
+      : roomItems;
+  }
+
+  const packageAmount = getTourPackageAmount(booking);
+  const items = [
+    {
+      amount: packageAmount,
+      description:
+        booking.booking.pricingSnapshot?.accommodation?.optionTitle ||
+        getUserBookingTitle(booking),
+      quantity: booking.booking.totalGuest || 1,
+      rate:
+        booking.booking.totalGuest > 0
+          ? Math.round(packageAmount / booking.booking.totalGuest)
+          : packageAmount,
+    },
+  ];
+
+  return airFlightCharges > 0 && !booking.booking.airfareIncludedInTotal
+    ? [
+        ...items,
+        {
+          amount: airFlightCharges,
+          description: "Air-flight charges",
+          quantity: 1,
+          rate: airFlightCharges,
+        },
+      ]
+    : items;
+}
+
+function getVoucherTourDetails(booking: UserBooking) {
+  return (booking.tour || {}) as NonNullable<UserBooking["tour"]> & {
+    accommodationDetails?: string[];
+    exclusions?: string[];
+    flightDetails?: string[];
+    inclusions?: string[];
+  };
+}
+
+function getVoucherDateTime(value?: string | null) {
+  const date = parseDate(value);
+
+  if (!date) {
+    return "-";
+  }
+
+  return `${formatDate(value)}, ${date.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+}
+
+function getVoucherNights(booking: UserBooking) {
+  const departureDate = parseDate(
+    booking.departure?.departureDate || booking.booking.pricingSnapshot?.departureDate
+  );
+  const returnDate = parseDate(
+    booking.departure?.returnDate || booking.booking.pricingSnapshot?.returnDate
+  );
+
+  if (!departureDate || !returnDate) {
+    return "";
+  }
+
+  const days = Math.max(
+    1,
+    Math.round((returnDate.getTime() - departureDate.getTime()) / 86_400_000) + 1
+  );
+
+  return `${Math.max(0, days - 1)} Night${days === 2 ? "" : "s"}`;
+}
+
+function getVoucherHotelRows(booking: UserBooking) {
+  const rooms = booking.booking.pricingSnapshot?.accommodation?.rooms || [];
+  const nights = getVoucherNights(booking) || "-";
+  const destination = getUserBookingLocation(booking);
+  const tourDetails = getVoucherTourDetails(booking);
+
+  if (tourDetails.accommodationDetails?.length) {
+    return tourDetails.accommodationDetails.slice(0, 5).map((hotel, index) => ({
+      category: rooms[index]?.bedSummary || "Selected stay",
+      destination,
+      hotel,
+      nights,
+    }));
+  }
+
+  if (rooms.length > 0) {
+    return rooms.slice(0, 5).map((room) => ({
+      category: room.bedSummary || "Selected stay",
+      destination,
+      hotel: room.title || "Accommodation arranged by Ancient Trails",
+      nights,
+    }));
+  }
+
+  return [
+    {
+      category: "Selected stay",
+      destination,
+      hotel:
+        booking.booking.pricingSnapshot?.accommodation?.optionTitle ||
+        "Accommodation arranged by Ancient Trails",
+      nights,
+    },
+  ];
+}
+
+function getVoucherFlightRows(booking: UserBooking) {
+  const tourDetails = getVoucherTourDetails(booking);
+  const seats = String(booking.booking.totalGuest || 1);
+  const departureDate = formatDate(
+    booking.departure?.departureDate || booking.booking.pricingSnapshot?.departureDate
+  );
+  const returnDate = formatDate(
+    booking.departure?.returnDate || booking.booking.pricingSnapshot?.returnDate
+  );
+
+  if (tourDetails.flightDetails?.length) {
+    return tourDetails.flightDetails.slice(0, 5).map((detail, index) => ({
+      airline: detail,
+      dateTime: index === 0 ? departureDate : returnDate,
+      from: index === 0 ? "Departure city" : getUserBookingLocation(booking),
+      seats,
+      to: index === 0 ? getUserBookingLocation(booking) : "Return city",
+    }));
+  }
+
+  return [
+    {
+      airline: booking.booking.airfareExcluded && !booking.booking.airfareAddedAt && !booking.booking.airFlightCharges
+        ? "Air-Flight Charges: To Be Added"
+        : "Flight details will be shared after airline confirmation",
+      dateTime: departureDate,
+      from: "Departure city",
+      seats,
+      to: getUserBookingLocation(booking),
+    },
+    {
+      airline: "Final airline schedule will be shared before departure",
+      dateTime: returnDate,
+      from: getUserBookingLocation(booking),
+      seats,
+      to: "Return city",
+    },
+  ];
+}
+
+function getVoucherInclusions(booking: UserBooking) {
+  const tourDetails = getVoucherTourDetails(booking);
+
+  return tourDetails.inclusions?.length
+    ? tourDetails.inclusions
+    : [
+        "Accommodation in selected hotels as per booking.",
+        "Meals, sightseeing and transfers included in the tour package.",
+        ...(booking.booking.airFlightCharges ? ["Air-flight charges shown separately in the final booking amount."] : []),
+        "Tour assistance from the Ancient Trails team.",
+        "Applicable taxes as shown in the payment summary.",
+      ];
+}
+
+function getVoucherExclusions(booking: UserBooking) {
+  const tourDetails = getVoucherTourDetails(booking);
+
+  return tourDetails.exclusions?.length
+    ? tourDetails.exclusions
+    : [
+        "Personal expenses such as laundry, telephone, shopping and beverages.",
+        "Any increase in airfare, airport taxes or government levies after booking.",
+        "Visa, permits or entrance fees unless mentioned in inclusions.",
+        "Expenses caused by delays, accidents, illness or itinerary changes.",
+        "Anything not specifically mentioned in the inclusions.",
+      ];
+}
+
+function loadPdfImageDataUrl(source: string) {
+  if (typeof window === "undefined") {
+    return Promise.resolve("");
+  }
+
+  return new Promise<string>((resolve) => {
+    const image = new window.Image();
+
+    image.crossOrigin = "anonymous";
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+
+      if (!context) {
+        resolve("");
+        return;
+      }
+
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      context.drawImage(image, 0, 0);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    image.onerror = () => resolve("");
+    image.src = source;
+  });
+}
+
+async function downloadBookingVoucherPdf(booking: UserBooking) {
   const currency = booking.booking.paymentCurrency || "INR";
   const reference = getUserBookingReference(booking);
+  const primaryGuest = booking.booking.guestDetails[0];
+  const travellers = getBookingTravellers(booking);
+  const issueDate = getVoucherDateTime(
+    booking.booking.paymentCapturedAt || booking.booking.updatedAt
+  );
+  const departureDate = formatDate(
+    booking.departure?.departureDate || booking.booking.pricingSnapshot?.departureDate
+  );
+  const returnDate = formatDate(
+    booking.departure?.returnDate || booking.booking.pricingSnapshot?.returnDate
+  );
+  const totalAmount = getTotalAmount(booking);
+  const subtotal = booking.booking.subtotal || getTourPackageAmount(booking);
+  const gstPercentage = booking.booking.gstPercentage || 0;
+  const gstAmount = booking.booking.gstAmount || 0;
+  const airFlightCharges = booking.booking.airFlightCharges || 0;
+
+  try {
+    const { default: jsPDF } = await import("jspdf");
+    const pdf = new jsPDF({
+      format: "a4",
+      orientation: "portrait",
+      unit: "pt",
+    });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 26;
+    const navy: [number, number, number] = [24, 49, 79];
+    const orange: [number, number, number] = [244, 112, 32];
+    const paleOrange: [number, number, number] = [255, 244, 236];
+    const paleBlue: [number, number, number] = [238, 247, 253];
+    const lineColor: [number, number, number] = [232, 222, 214];
+    const bodyTextSize = 10.5;
+    const tableTextSize = 7.8;
+    const logoDataUrl = await loadPdfImageDataUrl(await fetchSiteLogoUrl());
+
+    const text = (
+      value: string,
+      x: number,
+      y: number,
+      options: {
+        align?: "left" | "center" | "right";
+        color?: [number, number, number];
+        size?: number;
+        style?: "bold" | "normal";
+      } = {}
+    ) => {
+      pdf.setFont("helvetica", options.style || "normal");
+      pdf.setFontSize(options.size || 9);
+      pdf.setTextColor(...(options.color || navy));
+      pdf.text(value, x, y, { align: options.align || "left" });
+    };
+
+    const rounded = (
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      fill: [number, number, number] = [255, 255, 255]
+    ) => {
+      pdf.setFillColor(...fill);
+      pdf.setDrawColor(...lineColor);
+      pdf.roundedRect(x, y, width, height, 6, 6, "FD");
+    };
+
+    const header = (showVoucherTitle = false) => {
+      text(issueDate, margin, 24, { color: [88, 103, 122], size: 7 });
+      text("Booking Confirmation Voucher", pageWidth - margin, 24, {
+        align: "right",
+        color: [88, 103, 122],
+        size: 7,
+        style: "bold",
+      });
+      if (logoDataUrl) {
+        pdf.addImage(logoDataUrl, "PNG", margin + 12, 48, 100, 48);
+      } else {
+        pdf.setFillColor(...orange);
+        pdf.roundedRect(margin + 18, 50, 58, 38, 6, 6, "F");
+        text("ancient", margin + 47, 66, {
+          align: "center",
+          color: [255, 255, 255],
+          size: 13,
+          style: "bold",
+        });
+        text("trails", margin + 47, 81, {
+          align: "center",
+          color: [255, 255, 255],
+          size: 13,
+          style: "bold",
+        });
+        text("A QUEST FOR", margin + 47, 101, {
+          align: "center",
+          color: orange,
+          size: 5,
+          style: "bold",
+        });
+        text("INDIAN HERITAGE", margin + 47, 109, {
+          align: "center",
+          color: orange,
+          size: 5,
+          style: "bold",
+        });
+      }
+      text("Ancient", pageWidth / 2 - 8, 62, {
+        align: "right",
+        color: navy,
+        size: 18,
+        style: "bold",
+      });
+      text("Trails", pageWidth / 2 - 4, 62, {
+        color: orange,
+        size: 18,
+        style: "bold",
+      });
+      text("Ancient Trails LLP", pageWidth / 2, 82, {
+        align: "center",
+        color: navy,
+        size: 9,
+        style: "bold",
+      });
+      text("+91 7272900202", pageWidth / 2 - 62, 104, {
+        align: "right",
+        color: navy,
+        size: 7,
+      });
+      text("travelwith@ancient-trails.com", pageWidth / 2 + 22, 104, {
+        color: navy,
+        size: 7,
+      });
+      if (showVoucherTitle) {
+        text("Booking Confirmation Voucher", pageWidth / 2, 146, {
+          align: "center",
+          color: navy,
+          size: 18,
+          style: "bold",
+        });
+        text("JOURNEYS  |  HERITAGE  |  MEMORABLE EXPERIENCES", pageWidth / 2, 164, {
+          align: "center",
+          color: [126, 139, 156],
+          size: 5,
+        });
+        pdf.setDrawColor(...orange);
+        pdf.line(pageWidth / 2 - 36, 154, pageWidth / 2 + 36, 154);
+      }
+    };
+
+    const footer = (pageNumber: number) => {
+      pdf.setFillColor(...navy);
+      pdf.rect(0, pageHeight - 24, pageWidth, 24, "F");
+      pdf.setFillColor(...orange);
+      pdf.rect(0, pageHeight - 27, pageWidth, 3, "F");
+      text("www.ancient-trails.com", margin + 18, pageHeight - 9, {
+        color: [255, 255, 255],
+        size: 7,
+      });
+      text(`Page ${pageNumber} of 3`, pageWidth - margin, pageHeight - 9, {
+        align: "right",
+        color: [255, 255, 255],
+        size: 7,
+      });
+    };
+
+    const sectionTitle = (title: string, y: number, strap = "") => {
+      const titleX = margin + 24;
+      const titleSize = 13;
+
+      rounded(margin, y, pageWidth - margin * 2, 36);
+      text(title, titleX, y + 23, {
+        color: navy,
+        size: titleSize,
+        style: "bold",
+      });
+      if (strap) {
+        text(strap, pageWidth - margin - 8, y + 21, {
+          align: "right",
+          color: [126, 139, 156],
+          size: 5,
+        });
+      }
+    };
+
+    const table = (
+      startY: number,
+      columns: Array<{ label: string; width: number }>,
+      rows: string[][],
+      rowHeight = 28
+    ) => {
+      const tableWidth = columns.reduce((sum, column) => sum + column.width, 0);
+      let y = startY;
+      let x = margin + 16;
+
+      pdf.setFillColor(...paleBlue);
+      pdf.rect(x, y, tableWidth, 22, "F");
+      columns.forEach((column) => {
+        text(column.label.toUpperCase(), x + 6, y + 14, {
+          color: navy,
+          size: 6,
+          style: "bold",
+        });
+        x += column.width;
+      });
+      y += 22;
+      rows.forEach((row) => {
+        x = margin + 16;
+        columns.forEach((column, index) => {
+          pdf.setDrawColor(...lineColor);
+          pdf.rect(x, y, column.width, rowHeight, "S");
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(tableTextSize);
+          const lines = pdf.splitTextToSize(row[index] || "-", column.width - 10);
+          text(lines.slice(0, 2).join("\n"), x + 6, y + 11, {
+            color: [31, 52, 74],
+            size: tableTextSize,
+          });
+          x += column.width;
+        });
+        y += rowHeight;
+      });
+      return y;
+    };
+
+    const bulletList = (items: string[], x: number, y: number, maxWidth: number) => {
+      let currentY = y;
+      items.slice(0, 9).forEach((item) => {
+        pdf.setFillColor(...orange);
+        pdf.circle(x, currentY - 3, 1.8, "F");
+        const lines = pdf.splitTextToSize(item, maxWidth);
+        text(lines.join("\n"), x + 8, currentY, {
+          color: [31, 52, 74],
+          size: bodyTextSize,
+        });
+        currentY += Math.max(15, lines.length * 13);
+      });
+      return currentY;
+    };
+
+    header(true);
+    let y = 186;
+    const metricGap = 8;
+    const metricWidth = (pageWidth - margin * 2 - metricGap * 3) / 4;
+    [
+      ["Booking Date", formatDate(booking.booking.createdAt)],
+      ["Duration", getUserBookingDuration(booking)],
+      ["Total Guest(s)", String(booking.booking.totalGuest || 1)],
+      ["Price", formatPdfAmount(totalAmount)],
+    ].forEach(([label, value], index) => {
+      const metricX = margin + index * (metricWidth + metricGap);
+
+      rounded(metricX, y, metricWidth, 58, index % 2 ? [255, 255, 255] : paleOrange);
+      text(label.toUpperCase(), metricX + 18, y + 23, {
+        color: [95, 110, 128],
+        size: 6,
+        style: "bold",
+      });
+      text(value, metricX + 18, y + 39, {
+        color: navy,
+        size: 10,
+        style: "bold",
+      });
+    });
+    y += 74;
+
+    sectionTitle("BOOKING DETAILS", y, "TRAVEL  -  EXPLORE  -  DISCOVER");
+    rounded(margin, y + 42, pageWidth - margin * 2, 116);
+    const detailRows = [
+      ["TOUR NAME", getUserBookingTitle(booking), "BOOKING ID", reference],
+      ["CUSTOMER NAME", getGuestName(primaryGuest) || "Traveller", "CONTACT NUMBER", [primaryGuest?.countryCode, primaryGuest?.mobileNumber].filter(Boolean).join(" ") || "-"],
+      ["TOUR DATE", `${departureDate} to ${returnDate}`, "TOTAL ROOMS", String(Math.max(1, getVoucherHotelRows(booking).length))],
+    ];
+    detailRows.forEach((row, index) => {
+      const rowY = y + 68 + index * 28;
+      text(row[0], margin + 44, rowY, { color: navy, size: 7, style: "bold" });
+      text(`: ${row[1]}`, margin + 122, rowY, {
+        color: [31, 52, 74],
+        size: bodyTextSize,
+      });
+      text(row[2], margin + 310, rowY, { color: navy, size: 7, style: "bold" });
+      text(`: ${row[3]}`, margin + 407, rowY, {
+        color: [31, 52, 74],
+        size: bodyTextSize,
+      });
+    });
+    y += 176;
+
+    sectionTitle("HOTEL", y, "COMFORTABLE STAYS  -  GREAT LOCATIONS");
+    rounded(margin, y + 42, pageWidth - margin * 2, 124);
+    table(
+      y + 54,
+      [
+        { label: "Destination", width: 130 },
+        { label: "Hotel Name", width: 220 },
+        { label: "Hotel Category", width: 95 },
+        { label: "Night", width: 72 },
+      ],
+      getVoucherHotelRows(booking).map((row) => [
+        row.destination,
+        row.hotel,
+        row.category,
+        row.nights,
+      ]),
+      25
+    );
+    y += 184;
+
+    sectionTitle("PASSENGERS", y, "TRAVELERS ON THIS BOOKING");
+    rounded(margin, y + 42, pageWidth - margin * 2, 102);
+    table(
+      y + 54,
+      [
+        { label: "Full Name", width: 160 },
+        { label: "Gender", width: 80 },
+        { label: "Email", width: 170 },
+        { label: "Phone", width: 107 },
+      ],
+      travellers.slice(0, 4).map((traveller) => [
+        getGuestName(traveller) || "Traveller",
+        traveller.gender || "-",
+        traveller.email || primaryGuest?.email || "-",
+        [traveller.countryCode, traveller.mobileNumber].filter(Boolean).join(" ") ||
+          [primaryGuest?.countryCode, primaryGuest?.mobileNumber].filter(Boolean).join(" ") ||
+          "-",
+      ]),
+      25
+    );
+    footer(1);
+
+    pdf.addPage();
+    header();
+    y = 142;
+    sectionTitle("FLIGHT", y, "JOURNEYS  -  CONNECTING DESTINATIONS  -  FLY TO EXPLORE");
+    rounded(margin, y + 42, pageWidth - margin * 2, 150);
+    table(
+      y + 54,
+      [
+        { label: "From", width: 120 },
+        { label: "To", width: 140 },
+        { label: "Airline", width: 145 },
+        { label: "Seats", width: 50 },
+        { label: "Date Time", width: 62 },
+      ],
+      getVoucherFlightRows(booking).map((row) => [
+        row.from,
+        row.to,
+        row.airline,
+        row.seats,
+        row.dateTime,
+      ]),
+      42
+    );
+    y += 212;
+
+    sectionTitle("INCLUSION", y, "WHAT'S INCLUDED  -  TRAVEL WITH CONFIDENCE");
+    rounded(margin, y + 42, pageWidth - margin * 2, 152);
+    bulletList(getVoucherInclusions(booking), margin + 36, y + 66, pageWidth - margin * 2 - 66);
+    y += 212;
+
+    sectionTitle("EXCLUSION", y, "THINGS NOT INCLUDED  -  PLAN BETTER");
+    rounded(margin, y + 42, pageWidth - margin * 2, 152);
+    bulletList(getVoucherExclusions(booking), margin + 36, y + 66, pageWidth - margin * 2 - 66);
+    footer(2);
+
+    pdf.addPage();
+    header();
+    y = 142;
+    sectionTitle("TERMS AND CONDITIONS", y, "TRAVEL  -  EXPLORE  -  DISCOVER");
+    rounded(margin, y + 42, pageWidth - margin * 2, 142);
+    bulletList(
+      [
+        "Carry valid government ID proof for every traveller.",
+        "Report at the communicated location and time before departure.",
+        "Airline schedules, baggage allowance and route changes are governed by airline rules.",
+        "Any extra expenses due to delay, accident, illness or personal choices are payable by the traveller.",
+        "Anything not specifically mentioned in inclusions remains excluded.",
+      ],
+      margin + 36,
+      y + 66,
+      pageWidth - margin * 2 - 66
+    );
+    y += 202;
+
+    sectionTitle("BOOKING SUMMARY", y, "JOURNEYS  -  HERITAGE  -  MEMORABLE EXPERIENCES");
+    rounded(margin, y + 42, pageWidth - margin * 2, 72);
+    text("BOOKING DATE", margin + 82, y + 76, {
+      color: navy,
+      size: 7,
+      style: "bold",
+    });
+    text(formatDate(booking.booking.createdAt), margin + 82, y + 93, {
+      color: navy,
+      size: 12,
+      style: "bold",
+    });
+    text("DUE DATE", margin + 345, y + 76, {
+      color: navy,
+      size: 7,
+      style: "bold",
+    });
+    text(formatDate(booking.booking.balanceDueDate || booking.booking.createdAt), margin + 345, y + 93, {
+      color: navy,
+      size: 12,
+      style: "bold",
+    });
+    y += 132;
+
+    sectionTitle("PAYMENT DETAILS", y, "SECURE PAYMENTS  -  TRANSPARENT BILLING");
+    const paymentPanelY = y + 42;
+    const paymentPanelWidth = pageWidth - margin * 2;
+    const paymentGridX = margin + 24;
+    const paymentGridY = paymentPanelY + 24;
+    const paymentCardGap = 8;
+    const paymentCardWidth = (paymentPanelWidth - 48 - paymentCardGap) / 2;
+    const paymentCardHeight = 24;
+    const paymentItems = [
+      ["BASIC AMOUNT", formatPdfCurrency(subtotal, currency)],
+      ["NET AMOUNT", formatPdfCurrency(subtotal + gstAmount, currency)],
+      [`TAX AMOUNT (GST ${gstPercentage}%)`, formatPdfCurrency(gstAmount, currency)],
+      ...(booking.booking.airfareExcluded || airFlightCharges > 0 ? [[booking.booking.airfareIncludedInTotal ? "Air-Flight Charges (Included in Total)" : "+ Air-Flight Charges (Additional)", booking.booking.airfareAddedAt || airFlightCharges > 0 ? formatPdfCurrency(airFlightCharges, currency) : "Air-Flight Charges: To Be Added"]] : []),
+      ["OUTSTANDING BALANCE", formatPdfCurrency(getBalanceAmount(booking), currency)],
+      ["TCS", "-"],
+      ["DUE DATE", formatDate(booking.booking.balanceDueDate || booking.booking.createdAt)],
+      ["ROUNDOFF", formatPdfCurrency(0, currency)],
+      ["TOTAL PAID", formatPdfCurrency(getPaidAmount(booking), currency)],
+    ];
+    const paymentGridRowCount = Math.ceil(paymentItems.length / 2);
+    const paymentGridHeight =
+      paymentGridRowCount * paymentCardHeight +
+      Math.max(0, paymentGridRowCount - 1) * paymentCardGap;
+    const grandTotalY = paymentGridY + paymentGridHeight + 10;
+    const paymentPanelHeight = grandTotalY - paymentPanelY + 40;
+
+    rounded(margin, paymentPanelY, paymentPanelWidth, paymentPanelHeight);
+    paymentItems.forEach(([label, value], index) => {
+      const columnIndex = index % 2;
+      const rowIndex = Math.floor(index / 2);
+      const cardX = paymentGridX + columnIndex * (paymentCardWidth + paymentCardGap);
+      const cardY = paymentGridY + rowIndex * (paymentCardHeight + 8);
+      const fill = rowIndex % 2 === 0 ? [255, 255, 255] : [253, 250, 247];
+
+      rounded(cardX, cardY, paymentCardWidth, paymentCardHeight, fill as [number, number, number]);
+      text(label, cardX + 10, cardY + (label.includes("Air-Flight Charges") ? 8 : 15.5), {
+        color: navy,
+        size: 7.2,
+        style: "bold",
+      });
+      text(value, cardX + paymentCardWidth - 10, cardY + (label.includes("Air-Flight Charges") ? 21 : 15.5), {
+        align: "right",
+        color: [31, 52, 74],
+        size: 9.8,
+      });
+    });
+
+    rounded(margin + 24, grandTotalY, paymentPanelWidth - 48, 30, paleOrange);
+    text(booking.booking.airfareExcluded && !booking.booking.airfareAddedAt && !airFlightCharges ? "CURRENT TOTAL (EXCLUDING AIRFARE)" : "GRAND TOTAL", margin + 44, grandTotalY + 20, {
+      color: navy,
+      size: 8,
+      style: "bold",
+    });
+    text(formatPdfCurrency(totalAmount, currency), pageWidth - margin - 44, grandTotalY + 20, {
+      align: "right",
+      color: navy,
+      size: 12,
+      style: "bold",
+    });
+
+    y += paymentPanelHeight + 60;
+    if (booking.booking.airfareExcluded && !booking.booking.airfareAddedAt && !airFlightCharges) {
+      pdf.setFontSize(8);
+      const noteLines = pdf.splitTextToSize(AIRFARE_NOTE, pageWidth - margin * 2);
+      pdf.text(noteLines, margin, y);
+      y += noteLines.length * 10 + 12;
+    }
+    rounded(margin, y, pageWidth - margin * 2, 64);
+    text("CUSTOMER'S SIGNATURE", margin + 66, y + 21, {
+      color: navy,
+      size: 7,
+      style: "bold",
+    });
+    pdf.setDrawColor(...lineColor);
+    pdf.line(margin + 66, y + 44, margin + 280, y + 44);
+    text("BOOKED BY", margin + 390, y + 21, {
+      color: navy,
+      size: 7,
+      style: "bold",
+    });
+    text("Ancient Trails", margin + 390, y + 38, {
+      color: [31, 52, 74],
+      size: bodyTextSize,
+    });
+    footer(3);
+
+    pdf.save(`${reference}-Ancient-Trails-Booking-Voucher.pdf`);
+  } catch (error) {
+    console.error("Booking voucher PDF download failed", error);
+    window.alert("Booking voucher PDF could not be downloaded. Please try again.");
+  }
+}
+
+async function downloadBookingInvoicePdf(booking: UserBooking) {
+  const currency = booking.booking.paymentCurrency || "INR";
+  const airFlightCharges = booking.booking.airFlightCharges || 0;
+  const reference = getUserBookingReference(booking);
+  const invoiceNumber = getInvoiceNumber(booking);
   const leadGuest = booking.booking.guestDetails[0];
   const travellers =
     booking.booking.travellers.length > 0
@@ -308,21 +1112,124 @@ function downloadBookingInvoicePdf(booking: UserBooking) {
               ? ("adult" as const)
               : ("child" as const),
         }));
-  const roomLines =
-    booking.booking.pricingSnapshot?.accommodation?.rooms?.flatMap((room) => [
-      `${room.title} - ${room.bedSummary || "Selected room"}`,
-      ...(room.allocations || []).map(
-        (allocation) =>
-          `  ${allocation.label}: ${formatPdfCurrency(allocation.price, currency)}`
-      ),
-    ]) || ["Accommodation details will be shared by the Ancient Trails team."];
+  const lineItems = getFinalInvoiceLineItems(booking);
+  const totalAmount = getTotalAmount(booking);
+  const paidAmount = getPaidAmount(booking);
+  const balanceAmount = getBalanceAmount(booking);
+  const issueDate = formatDate(booking.booking.createdAt);
+  const paymentDate = formatDate(
+    booking.booking.paymentCapturedAt || booking.booking.updatedAt
+  );
+
+  try {
+    const { default: jsPDF } = await import("jspdf");
+    const pdf = new jsPDF({
+      format: "a4",
+      orientation: "portrait",
+      unit: "pt",
+    });
+    const pageWidth = pdf.internal.pageSize.getWidth(), pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 30, width = pageWidth - 60, gap = 10, half = (width - gap) / 2;
+    let y = margin;
+    const contact = await getPublicSiteSettings().then(r => r.data.settings.contact).catch(() => defaultSiteContactSettings);
+    const text = (value: string, x: number, top: number, size = 9, bold = false, align: "left" | "right" = "left", accent = false) => {
+      pdf.setFont("helvetica", bold ? "bold" : "normal"); pdf.setFontSize(size);
+      if (accent) pdf.setTextColor(212, 114, 32); else pdf.setTextColor(30, 41, 59);
+      pdf.text(value, x, top, { align });
+    };
+    const wrap = (value: string, w: number, size = 9): string[] => {
+      pdf.setFont("helvetica", "normal"); pdf.setFontSize(size); return pdf.splitTextToSize(value, w);
+    };
+    const box = (x: number, top: number, w: number, h: number, shaded = false) => {
+      pdf.setDrawColor(226, 232, 240); pdf.setLineWidth(0.6);
+      if (shaded) pdf.setFillColor(253, 245, 237); else pdf.setFillColor(255, 255, 255);
+      pdf.roundedRect(x, top, w, h, 7, 7, "FD");
+    };
+    const ensure = (h: number) => {
+      if (y + h > pageHeight - margin) { pdf.addPage(); y = margin; text("Ancient Trails | Invoice " + invoiceNumber, margin, y, 9, true); y += 20; }
+    };
+    const panelLines = (items: string[], w: number) => items.flatMap(item => wrap(item, w));
+    const panels = (leftTitle: string, left: string[], rightTitle: string, right: string[]) => {
+      const a = panelLines(left, half - 24), b = panelLines(right, half - 24);
+      const h = 42 + Math.max(a.length, b.length) * 12; ensure(h);
+      box(margin, y, half, h); box(margin + half + gap, y, half, h);
+      text(leftTitle, margin + 12, y + 20, 9, true); text(rightTitle, margin + half + gap + 12, y + 20, 9, true);
+      a.forEach((line, i) => text(line, margin + 12, y + 38 + i * 12));
+      b.forEach((line, i) => text(line, margin + half + gap + 12, y + 38 + i * 12)); y += h + gap;
+    };
+    const logo = await loadPdfImageDataUrl(await fetchSiteLogoUrl());
+    if (logo) {
+      const image = pdf.getImageProperties(logo), w = Math.min(145, 45 * image.width / image.height);
+      pdf.addImage(logo, "PNG", margin, y, w, w * image.height / image.width);
+    } else text("Ancient Trails", margin, y + 24, 21, true, "left", true);
+    text("INVOICE", pageWidth - margin, y + 10, 10, true, "right", true);
+    text("Invoice No: " + invoiceNumber, pageWidth - margin, y + 29, 9, true, "right");
+    text("Invoice Date: " + paymentDate, pageWidth - margin, y + 43, 9, false, "right");
+    text("Booking ID: " + reference, pageWidth - margin, y + 57, 9, true, "right");
+    y += 72; pdf.setDrawColor(226, 232, 240); pdf.line(margin, y, pageWidth - margin, y); y += gap;
+    panels("ANCIENT TRAILS", [contact.officeAddress, contact.emailId ? "Email: " + contact.emailId : "",
+      "Phone: " + [...new Set([contact.primaryCalling, contact.secondaryCalling, contact.landline].filter(Boolean))].join(" | "),
+      contact.whatsapp ? "WhatsApp: " + contact.whatsapp : ""].filter(Boolean), "BILL TO", [getGuestName(leadGuest) || "Traveller",
+      "Email: " + (leadGuest?.email || "-"), "Phone: " + [leadGuest?.countryCode, leadGuest?.mobileNumber].filter(Boolean).join(" "), leadGuest?.address || "-"]);
+    const detailFields = [
+      ["Tour", getUserBookingTitle(booking)], ["Duration", getUserBookingDuration(booking)],
+      ["Departure", formatDate(booking.departure?.departureDate || booking.booking.pricingSnapshot?.departureDate)], ["Guests", getUserBookingTravellerLabel(booking)],
+      ["Return", formatDate(booking.departure?.returnDate || booking.booking.pricingSnapshot?.returnDate)], ["Destination", getUserBookingLocation(booking)],
+    ];
+    const heights = Array.from({ length: 3 }, (_, row) => Math.max(...detailFields.slice(row * 2, row * 2 + 2).map(([, v]) => wrap(v, half - 95).length)) * 12 + 12);
+    const detailHeight = 36 + heights.reduce((sum, h) => sum + h, 0); ensure(detailHeight); box(margin, y, width, detailHeight);
+    text("TOUR DETAILS", margin + 12, y + 20, 9, true); let top = y + 38;
+    detailFields.forEach(([label, value], i) => {
+      const x = margin + 12 + i % 2 * (half + gap); text(label, x, top, 8);
+      wrap(value, half - 95).forEach((line, row) => text(line, x + 75, top + row * 12, 8, true));
+      if (i % 2) top += heights[Math.floor(i / 2)];
+    }); y += detailHeight + gap;
+    const tableHeader = () => {
+      box(margin, y, width, 27, true); text("Description", margin + 12, y + 18, 9, true);
+      text("Qty", pageWidth - 185, y + 18, 9, true, "right"); text("Rate (" + currency + ")", pageWidth - 112, y + 18, 8, true, "right");
+      text("Amount (" + currency + ")", pageWidth - margin - 12, y + 18, 8, true, "right"); y += 27;
+    };
+    ensure(62); tableHeader();
+    for (const item of lineItems) {
+      const description = wrap(item.description, width - 230), h = Math.max(32, description.length * 12 + 16);
+      if (y + h > pageHeight - margin) { ensure(h + 27); tableHeader(); }
+      box(margin, y, width, h); description.forEach((line, i) => text(line, margin + 12, y + 18 + i * 12, 9, true));
+      text(String(item.quantity), pageWidth - 185, y + 18, 9, false, "right"); text(formatPdfAmount(item.rate), pageWidth - 112, y + 18, 9, false, "right");
+      text(formatPdfAmount(item.amount), pageWidth - margin - 12, y + 18, 9, true, "right"); y += h;
+    } y += gap;
+    const rows = [
+      ["Subtotal (Taxable Value)", formatPdfCurrency(booking.booking.subtotal || 0, currency)],
+      ["GST (" + (booking.booking.gstPercentage || 0) + "%)", formatPdfCurrency(booking.booking.gstAmount || 0, currency)],
+      ...(airFlightCharges > 0 ? [[booking.booking.airfareIncludedInTotal ? "Airfare (Included)" : "Additional Airfare", formatPdfCurrency(airFlightCharges, currency)]] : []),
+      [booking.booking.airfareExcluded && !booking.booking.airfareAddedAt && !airFlightCharges ? "Total (Excluding Airfare)" : "Total Payable", formatPdfCurrency(totalAmount, currency)],
+      ["Amount Paid", formatPdfCurrency(paidAmount, currency)], ["Balance Due", formatPdfCurrency(balanceAmount, currency)],
+    ];
+    const note = "This invoice covers the confirmed tour package and charges listed here. Please retain it for your records." +
+      (booking.booking.airfareExcluded && !booking.booking.airfareAddedAt && !airFlightCharges ? " " + AIRFARE_NOTE : "");
+    const noteLines = wrap(note, half - 24, 8), h = Math.max(40 + rows.length * 24, 42 + noteLines.length * 11);
+    ensure(h); box(margin, y, half, h, true); box(margin + half + gap, y, half, h);
+    text("NOTE", margin + 12, y + 20, 9, true, "left", true); noteLines.forEach((line, i) => text(line, margin + 12, y + 38 + i * 11, 8));
+    text("TOTALS", margin + half + gap + 12, y + 20, 9, true);
+    rows.forEach(([label, value], i) => {
+      text(label, margin + half + gap + 12, y + 43 + i * 24, 8, label.startsWith("Total"));
+      text(value, pageWidth - margin - 12, y + 43 + i * 24, 9, true, "right", label.startsWith("Total"));
+    }); y += h + gap;
+    panels("PAYMENT DETAILS", ["Mode: " + formatBookingPaymentMethod(booking.booking),
+      "Transaction ID: " + (booking.booking.paymentId || booking.booking.paymentOrderId || "-"), "Payment Date: " + paymentDate,
+      "Issue Date: " + issueDate, "Payment Status: FULLY PAID"], "For Ancient Trails", ["", "", "", "Authorized Signatory"]);
+    pdf.save(`${invoiceNumber}-Ancient-Trails-Final-Invoice.pdf`);
+    return;
+  } catch (error) {
+    console.error("Final invoice PDF download failed", error);
+  }
+
   const lines = [
     "Ancient Trails",
-    "Booking Invoice",
+    "Final Invoice",
     "",
     `Invoice: ${reference}`,
     `Issued: ${formatDate(booking.booking.createdAt)}`,
-    `Booking ID: ${booking.booking.id}`,
+    `Booking ID: ${getUserBookingReference(booking)}`,
     "",
     "Traveller",
     `Name: ${getGuestName(leadGuest) || "Traveller"}`,
@@ -338,16 +1245,17 @@ function downloadBookingInvoicePdf(booking: UserBooking) {
     `Travellers: ${getUserBookingTravellerLabel(booking)}`,
     "",
     "Payment Summary",
-    `Subtotal: ${formatPdfCurrency(booking.booking.subtotal, currency)}`,
-    `GST (${booking.booking.gstPercentage || 0}%): ${formatPdfCurrency(booking.booking.gstAmount, currency)}`,
+    `Tour Package Amount: ${formatPdfCurrency(getTourPackageAmount(booking), currency)}`,
+    ...(booking.booking.airfareExcluded || airFlightCharges > 0 ? [
+      booking.booking.airfareIncludedInTotal ? "Air-Flight Charges (Included in Total)" : "+ Air-Flight Charges (Additional)",
+      booking.booking.airfareAddedAt || airFlightCharges > 0 ? `Air-Flight Charges: ${formatPdfCurrency(airFlightCharges, currency)}` : "Air-Flight Charges: To Be Added",
+      ...(!booking.booking.airfareAddedAt && !airFlightCharges ? [AIRFARE_NOTE] : []),
+    ] : []),
     `Total Booking Amount: ${formatPdfCurrency(getTotalAmount(booking), currency)}`,
     `Amount Paid: ${formatPdfCurrency(getPaidAmount(booking), currency)}`,
     `Balance Amount: ${formatPdfCurrency(getBalanceAmount(booking), currency)}`,
     `Payment Status: ${booking.booking.paymentStatus || "pending"}`,
     `Payment Reference: ${booking.booking.paymentId || booking.booking.paymentOrderId || "-"}`,
-    "",
-    "Accommodation",
-    ...roomLines,
     "",
     "Traveller Details",
     ...travellers.map(
@@ -417,8 +1325,26 @@ function getTotalAmount(booking: UserBooking) {
   );
 }
 
+function getTourPackageAmount(booking: UserBooking) {
+  if (booking.booking.airfareIncludedInTotal) return getTotalAmount(booking);
+  return Math.max(
+    0,
+    getTotalAmount(booking) - (booking.booking.airFlightCharges || 0)
+  );
+}
+
 function getPaidAmount(booking: UserBooking) {
-  return booking.booking.amountPaid || booking.booking.depositAmount || 0;
+  if (booking.booking.amountPaid && booking.booking.amountPaid > 0) {
+    return booking.booking.amountPaid;
+  }
+
+  const totalAmount = getTotalAmount(booking);
+
+  if (typeof booking.booking.balanceAmount === "number" && totalAmount > 0) {
+    return Math.max(0, totalAmount - booking.booking.balanceAmount);
+  }
+
+  return 0;
 }
 
 function getBalanceAmount(booking: UserBooking) {
@@ -444,6 +1370,28 @@ function getTourDetailHref(booking: UserBooking) {
   return booking.tour
     ? getTourHref(booking.tour)
     : `/tours/${encodeURIComponent(booking.booking.tourId)}`;
+}
+
+function getBookingTravellers(booking: UserBooking): DisplayTraveller[] {
+  return booking.booking.travellers.length > 0
+    ? booking.booking.travellers
+    : booking.booking.guestDetails.map((guest, index) => ({
+        ...guest,
+        ageOnDeparture: undefined,
+        id: `guest-${index + 1}`,
+        kycDocuments: [],
+        type:
+          index < booking.booking.adultCount
+            ? ("adult" as const)
+            : ("child" as const),
+      }));
+}
+
+function isInternationalBooking(booking: UserBooking) {
+  const countryRegion = booking.destination?.countryRegion.trim().toLowerCase() || "";
+  const leadCountryCode = booking.booking.guestDetails[0]?.countryCode || "";
+
+  return Boolean(countryRegion && countryRegion !== "india") || leadCountryCode !== "+91";
 }
 
 function matchesBookingId(booking: UserBooking, bookingId: string) {
@@ -567,8 +1515,10 @@ function PaymentSummaryCard({
 }) {
   const currency = booking.booking.paymentCurrency || "INR";
   const totalAmount = getTotalAmount(booking);
+  const tourPackageAmount = getTourPackageAmount(booking);
   const paidAmount = getPaidAmount(booking);
   const balanceAmount = getBalanceAmount(booking);
+  const airFlightCharges = booking.booking.airFlightCharges || 0;
   const hasBalance = balanceAmount > 0;
   const isBusy = checkoutStatus !== "idle";
   const buttonLabel =
@@ -593,7 +1543,13 @@ function PaymentSummaryCard({
         </p>
       </div>
       <div className="px-4 py-3">
-        <SummaryRow label="Total Booking Amount" value={formatCurrency(totalAmount, currency)} />
+        <SummaryRow label="Tour Package Amount" value={formatCurrency(tourPackageAmount, currency)} />
+<AirfareDisclosure excluded={booking.booking.airfareExcluded} amount={airFlightCharges} addedAt={booking.booking.airfareAddedAt} includedInTotal={booking.booking.airfareIncludedInTotal} />
+        <SummaryRow
+          label={booking.booking.airfareExcluded && !booking.booking.airfareAddedAt && !airFlightCharges ? "Current Total (Excluding Airfare)" : "Total Booking Amount"}
+          value={formatCurrency(totalAmount, currency)}
+          valueClassName="text-secondary"
+        />
         <SummaryRow
           label="Amount Paid"
           value={formatCurrency(paidAmount, currency)}
@@ -620,6 +1576,7 @@ function PaymentSummaryCard({
         >
           {buttonLabel}
         </Button>
+        {hasBalance ? <BankTransferBalanceLink bookingId={booking.booking.id} disabled={isBusy} /> : null}
         {paymentFeedback ? (
           <p className="mt-3 rounded-[7px] border border-primary/15 bg-primary/5 px-3 py-2 text-center font-sans text-[11px] font-bold leading-[1.45] text-secondary/68">
             {paymentFeedback}
@@ -703,7 +1660,14 @@ function Timeline({ booking }: { booking: UserBooking }) {
   );
 }
 
-function HelpCard() {
+function HelpCard({ contact }: { contact: SiteContactSettings }) {
+  const callDisplay = getContactCallDisplay(contact);
+  const callNumber =
+    contact.primaryCalling ||
+    contact.landline ||
+    defaultSiteContactSettings.primaryCalling;
+  const emailAddress = getContactEmailDisplay(contact);
+
   return (
     <article className="rounded-[8px] border border-primary/15 bg-primary/5 p-4 shadow-[0_12px_28px_rgba(67,43,27,0.05)]">
       <h2 className="font-heading text-[16px] font-bold leading-tight text-secondary">
@@ -712,20 +1676,20 @@ function HelpCard() {
       <p className="mt-1.5 font-sans text-[12px] font-medium leading-[1.55] text-secondary/65">
         Contact the Ancient Trails team for assistance.
       </p>
-      <div className="mt-4 grid grid-cols-2 gap-2">
+      <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-2">
         <Link
-          href="tel:01143033003"
-          className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-border bg-white font-sans text-[12px] font-bold text-secondary transition-colors hover:border-primary hover:text-primary"
+          href={getTelephoneHref(callNumber)}
+          className="inline-flex min-h-11 min-w-0 items-center justify-start gap-2 rounded-[6px] border border-border bg-white px-3 py-2.5 font-sans text-[12px] font-bold leading-snug text-secondary transition-colors hover:border-primary hover:text-primary"
         >
-          <Phone className="size-3.5" strokeWidth={1.8} />
-          Call Us
+          <Phone className="size-3.5 shrink-0" strokeWidth={1.8} />
+          <span className="min-w-0 break-words">{callDisplay || "Call Us"}</span>
         </Link>
         <Link
-          href="mailto:Holidays@ancient.com"
-          className="inline-flex h-9 items-center justify-center gap-2 rounded-[6px] border border-border bg-white font-sans text-[12px] font-bold text-secondary transition-colors hover:border-primary hover:text-primary"
+          href={getMailtoHref(emailAddress)}
+          className="inline-flex min-h-11 min-w-0 items-center justify-start gap-2 rounded-[6px] border border-border bg-white px-3 py-2.5 font-sans text-[12px] font-bold leading-snug text-secondary transition-colors hover:border-primary hover:text-primary"
         >
-          <Mail className="size-3.5" strokeWidth={1.8} />
-          Email Us
+          <Mail className="size-3.5 shrink-0" strokeWidth={1.8} />
+          <span className="min-w-0 break-words">{emailAddress}</span>
         </Link>
       </div>
     </article>
@@ -733,18 +1697,7 @@ function HelpCard() {
 }
 
 function TravellerDetails({ booking }: { booking: UserBooking }) {
-  const travellers: DisplayTraveller[] =
-    booking.booking.travellers.length > 0
-      ? booking.booking.travellers
-      : booking.booking.guestDetails.map((guest, index) => ({
-          ...guest,
-          ageOnDeparture: undefined,
-          id: `guest-${index + 1}`,
-          type:
-            index < booking.booking.adultCount
-              ? ("adult" as const)
-              : ("child" as const),
-        }));
+  const travellers = getBookingTravellers(booking);
 
   return (
     <DetailShell icon={UsersRound} title="Traveller Details">
@@ -781,6 +1734,217 @@ function TravellerDetails({ booking }: { booking: UserBooking }) {
         })}
       </div>
     </DetailShell>
+  );
+}
+
+function TravellerKycCard({
+  documentOptions,
+  isUploading,
+  onUpload,
+  traveller,
+  travellerIndex,
+}: {
+  documentOptions: Array<{ label: string; value: KycDocumentType }>;
+  isUploading: boolean;
+  onUpload: (payload: {
+    documentType: KycDocumentType;
+    file: File;
+    travellerId: string;
+  }) => Promise<void>;
+  traveller: DisplayTraveller;
+  travellerIndex: number;
+}) {
+  const [documentType, setDocumentType] = useState<KycDocumentType>(
+    documentOptions[0]?.value || "aadhaar_card"
+  );
+  const [feedback, setFeedback] = useState("");
+  const [selectedFileName, setSelectedFileName] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const travellerName =
+    getGuestName(traveller) || `Traveller ${travellerIndex + 1}`;
+  const documents = traveller.kycDocuments || [];
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const fileName = event.target.files?.[0]?.name || "";
+    setSelectedFileName(fileName);
+    setFeedback(
+      fileName ? "File selected. Click Upload to save this document." : ""
+    );
+  }
+
+  function handleRemoveSelectedFile() {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
+    setSelectedFileName("");
+    setFeedback("");
+  }
+
+  async function handleUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const fileInput = form.elements.namedItem("kycFile") as HTMLInputElement | null;
+    const file = fileInput?.files?.[0];
+
+    if (!file) {
+      setFeedback("Choose a file before uploading.");
+      return;
+    }
+
+    try {
+      setFeedback("");
+      await onUpload({
+        documentType,
+        file,
+        travellerId: traveller.id,
+      });
+      form.reset();
+      setSelectedFileName("");
+      setFeedback("Document uploaded.");
+    } catch (error) {
+      setFeedback(
+        error instanceof Error ? error.message : "Document could not be uploaded."
+      );
+    }
+  }
+
+  return (
+    <article className="rounded-[7px] border border-border bg-background p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="truncate font-sans text-[13px] font-bold text-secondary">
+            {travellerName}
+          </h3>
+          <p className="mt-1 font-sans text-[11px] font-semibold text-secondary/55">
+            {traveller.type === "child" ? "Child traveller" : "Adult traveller"}
+          </p>
+        </div>
+        <span className="w-fit rounded-full border border-primary/20 bg-white px-2.5 py-1 font-sans text-[10px] font-bold text-primary">
+          {documents.length} uploaded
+        </span>
+      </div>
+
+      <div className="mt-3 grid gap-2">
+        {documents.length > 0 ? (
+          documents.map((document) => (
+            <a
+              key={document.id}
+              href={getBookingKycDocumentUrl(document.fileUrl)}
+              target="_blank"
+              rel="noreferrer"
+              className="flex min-w-0 items-center justify-between gap-3 rounded-[6px] border border-border bg-white px-3 py-2 font-sans text-[11px] font-bold text-secondary transition-colors hover:border-primary hover:text-primary"
+            >
+              <span className="min-w-0 truncate">
+                {document.documentLabel}
+                <span className="font-medium text-secondary/45">
+                  {" "}
+                  - {document.uploadedBy}
+                </span>
+              </span>
+              <ExternalLink className="size-3.5 shrink-0" strokeWidth={1.8} />
+            </a>
+          ))
+        ) : (
+          <p className="rounded-[6px] border border-dashed border-primary/20 bg-white px-3 py-2 font-sans text-[11px] font-semibold text-secondary/55">
+            No KYC document uploaded yet.
+          </p>
+        )}
+      </div>
+
+      <form onSubmit={handleUpload} className="mt-3 grid gap-2 sm:grid-cols-[150px_minmax(0,1fr)_auto]">
+        <select
+          value={documentType}
+          onChange={(event) => setDocumentType(event.target.value as KycDocumentType)}
+          className="h-9 rounded-[6px] border border-border bg-white px-2 font-sans text-[11px] font-bold text-secondary outline-none focus:border-primary focus:ring-3 focus:ring-primary/15"
+        >
+          {documentOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <input
+          name="kycFile"
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+          onChange={handleFileChange}
+          className="h-9 rounded-[6px] border border-border bg-white px-2 py-1 font-sans text-[11px] font-semibold text-secondary file:mr-2 file:rounded-[5px] file:border-0 file:bg-primary file:px-2 file:py-1 file:text-[10px] file:font-bold file:text-white"
+        />
+        <Button
+          type="submit"
+          disabled={isUploading}
+          className="h-9 gap-2 px-4 text-[12px] font-normal"
+        >
+          <Upload className="size-3.5" strokeWidth={1.8} />
+          {isUploading ? "Uploading" : "Upload"}
+        </Button>
+      </form>
+      {feedback ? (
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p
+            className={cn(
+              "font-sans text-[11px] font-semibold",
+              selectedFileName ? "text-primary" : "text-secondary/55"
+            )}
+          >
+            {feedback}
+          </p>
+          {selectedFileName ? (
+            <button
+              type="button"
+              onClick={handleRemoveSelectedFile}
+              className="flex w-fit items-center gap-1.5 font-sans text-[11px] font-bold text-secondary/55 transition-colors hover:text-primary"
+            >
+              <Trash2 className="size-3.5" strokeWidth={1.8} />
+              Remove
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function BookingKycDocuments({
+  booking,
+  isUploading,
+  onUpload,
+}: {
+  booking: UserBooking;
+  isUploading: boolean;
+  onUpload: (payload: {
+    documentType: KycDocumentType;
+    file: File;
+    travellerId: string;
+  }) => Promise<void>;
+}) {
+  const travellers = getBookingTravellers(booking);
+  const documentOptions = isInternationalBooking(booking)
+    ? internationalKycDocumentOptions
+    : domesticKycDocumentOptions;
+
+  return (
+    <div id="kyc-documents" className="scroll-mt-5">
+      <DetailShell icon={FileText} title="KYC Documents">
+        <div className="grid gap-3">
+          <p className="font-sans text-[12px] font-semibold leading-[1.55] text-secondary/62">
+            Upload identity documents for each traveller in this booking.
+          </p>
+          {travellers.map((traveller, index) => (
+            <TravellerKycCard
+              key={traveller.id || index}
+              documentOptions={documentOptions}
+              isUploading={isUploading}
+              onUpload={onUpload}
+              traveller={traveller}
+              travellerIndex={index}
+            />
+          ))}
+        </div>
+      </DetailShell>
+    </div>
   );
 }
 
@@ -845,11 +2009,14 @@ function PaymentHistory({ booking }: { booking: UserBooking }) {
 
   return (
     <DetailShell icon={WalletCards} title="Payment History">
+      {(booking.booking.collectionHistory || []).map(entry => <p key={entry.paymentId} className="mb-2 text-sm">
+        {formatCurrency(entry.amount, currency)} received | Air-Flight Charges: {formatCurrency(entry.airfareAmount, currency)} | {entry.paymentId} | {formatDate(entry.paidAt)}
+      </p>)}
       {paidAmount > 0 ? (
         <article className="flex flex-col gap-2 rounded-[7px] border border-border bg-background px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
           <span className="min-w-0">
             <strong className="block font-sans text-[13px] font-bold text-secondary">
-              {formatCurrency(paidAmount, currency)}
+              Total paid: {formatCurrency(paidAmount, currency)}
               <span className="font-medium text-secondary/55">
                 {" "}
                 - {formatDate(booking.booking.paymentCapturedAt || booking.booking.createdAt)}
@@ -874,20 +2041,27 @@ function PaymentHistory({ booking }: { booking: UserBooking }) {
 
 function BookingDocuments({ booking }: { booking: UserBooking }) {
   const balanceAmount = getBalanceAmount(booking);
+  const canDownloadInvoice = balanceAmount <= 0;
+  const canDownloadVoucher =
+    canDownloadInvoice &&
+    getPaidAmount(booking) >= getTotalAmount(booking);
 
   return (
     <DetailShell icon={FileText} title="Booking Documents">
       <div className="grid gap-3 sm:grid-cols-2">
         <article className="rounded-[7px] border border-border bg-background p-3">
           <h3 className="font-sans text-[13px] font-bold text-secondary">
-            Booking Invoice
+            Final Invoice
           </h3>
           <p className="mt-1 font-sans text-[11px] font-semibold text-secondary/55">
-            Issued {formatDate(booking.booking.createdAt)}
+            {canDownloadInvoice
+              ? `Issued ${formatDate(booking.booking.createdAt)}`
+              : "Available after final payment"}
           </p>
           <Button
             type="button"
             variant="outline"
+            disabled={!canDownloadInvoice}
             onClick={() => downloadBookingInvoicePdf(booking)}
             className="mt-4 w-full gap-2 px-5 font-normal"
           >
@@ -897,21 +2071,22 @@ function BookingDocuments({ booking }: { booking: UserBooking }) {
         </article>
         <article className="rounded-[7px] border border-border bg-background p-3">
           <h3 className="font-sans text-[13px] font-bold text-secondary">
-            Final Payment Receipt
+            Booking Voucher
           </h3>
           <p className="mt-1 font-sans text-[11px] font-semibold text-secondary/55">
-            {balanceAmount > 0
-              ? "Available after final payment"
-              : "Available for confirmed payment"}
+            {canDownloadVoucher
+              ? "Available for confirmed payment"
+              : "Available after full payment"}
           </p>
           <Button
             type="button"
             variant="outline"
-            disabled
+            disabled={!canDownloadVoucher}
+            onClick={() => downloadBookingVoucherPdf(booking)}
             className="mt-4 w-full gap-2 px-5 font-normal"
           >
             <Download className="size-3.5" strokeWidth={1.8} />
-            Download Receipt
+            Download Voucher
           </Button>
         </article>
       </div>
@@ -1010,7 +2185,11 @@ export function UserBookingDetailPage({ bookingId }: UserBookingDetailPageProps)
     useState<BalanceCheckoutStatus>("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isKycUploading, setIsKycUploading] = useState(false);
   const [paymentFeedback, setPaymentFeedback] = useState("");
+  const [siteContact, setSiteContact] = useState<SiteContactSettings>(
+    defaultSiteContactSettings
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -1046,6 +2225,30 @@ export function UserBookingDetailPage({ bookingId }: UserBookingDetailPageProps)
     }
 
     loadBookings();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSiteSettings() {
+      try {
+        const response = await getPublicSiteSettings();
+
+        if (isMounted) {
+          setSiteContact(response.data.settings.contact);
+        }
+      } catch {
+        if (isMounted) {
+          setSiteContact(defaultSiteContactSettings);
+        }
+      }
+    }
+
+    loadSiteSettings();
 
     return () => {
       isMounted = false;
@@ -1134,10 +2337,45 @@ export function UserBookingDetailPage({ bookingId }: UserBookingDetailPageProps)
     try {
       const response = await createBookingBalancePaymentOrder(booking.booking.id);
 
+      if ("paymentLinkUrl" in response.data) {
+        window.location.assign(response.data.paymentLinkUrl);
+        return;
+      }
+
       await openBalanceRazorpayCheckout(response.data, booking);
     } catch (error) {
       setCheckoutStatus("idle");
       setPaymentFeedback(getPaymentErrorMessage(error));
+    }
+  }
+
+  async function handleKycUpload(payload: {
+    documentType: KycDocumentType;
+    file: File;
+    travellerId: string;
+  }) {
+    if (!booking || isKycUploading) {
+      return;
+    }
+
+    setIsKycUploading(true);
+
+    try {
+      const response = await uploadTravellerBookingKycDocument({
+        bookingId: booking.booking.id,
+        ...payload,
+      });
+
+      setBookings((current) => replaceBooking(current, response.data.booking));
+    } catch (error) {
+      setPaymentFeedback(
+        error instanceof Error
+          ? error.message
+          : "KYC document could not be uploaded."
+      );
+      throw error;
+    } finally {
+      setIsKycUploading(false);
     }
   }
 
@@ -1168,6 +2406,11 @@ export function UserBookingDetailPage({ bookingId }: UserBookingDetailPageProps)
         <div className="grid gap-5">
           <TourSummary booking={booking} />
           <TravellerDetails booking={booking} />
+          <BookingKycDocuments
+            booking={booking}
+            isUploading={isKycUploading}
+            onUpload={handleKycUpload}
+          />
           <AccommodationDetails booking={booking} />
           <PaymentHistory booking={booking} />
           <BookingDocuments booking={booking} />
@@ -1181,7 +2424,7 @@ export function UserBookingDetailPage({ bookingId }: UserBookingDetailPageProps)
             paymentFeedback={paymentFeedback}
           />
           <Timeline booking={booking} />
-          <HelpCard />
+          <HelpCard contact={siteContact} />
         </aside>
       </div>
     </div>

@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Upload,
   MapPin,
   UsersRound,
   type LucideIcon,
@@ -81,11 +82,17 @@ function getTotalAmount(booking: UserBooking) {
 
 function getPaidAmount(booking: UserBooking) {
   if (booking.booking.paymentStatus?.toLowerCase() === "paid") {
-    return (
-      booking.booking.amountPaid ||
-      booking.booking.depositAmount ||
-      getTotalAmount(booking)
-    );
+    if (booking.booking.amountPaid && booking.booking.amountPaid > 0) {
+      return booking.booking.amountPaid;
+    }
+
+    const totalAmount = getTotalAmount(booking);
+
+    if (typeof booking.booking.balanceAmount === "number" && totalAmount > 0) {
+      return Math.max(0, totalAmount - booking.booking.balanceAmount);
+    }
+
+    return totalAmount;
   }
 
   return booking.booking.amountPaid || 0;
@@ -97,6 +104,24 @@ function getBalanceAmount(booking: UserBooking) {
   }
 
   return Math.max(0, getTotalAmount(booking) - getPaidAmount(booking));
+}
+
+function getKycDocumentSummary(booking: UserBooking) {
+  const travellers = booking.booking.travellers;
+
+  if (travellers.length === 0) {
+    return {
+      completedTravellers: 0,
+      totalTravellers: booking.booking.totalGuest || 0,
+    };
+  }
+
+  return {
+    completedTravellers: travellers.filter(
+      (traveller) => (traveller.kycDocuments || []).length > 0
+    ).length,
+    totalTravellers: travellers.length,
+  };
 }
 
 function BookingMeta({
@@ -163,6 +188,8 @@ function BookingCard({ booking }: { booking: UserBooking }) {
   const totalAmount = getTotalAmount(booking);
   const paidAmount = getPaidAmount(booking);
   const balanceAmount = getBalanceAmount(booking);
+  const kycSummary = getKycDocumentSummary(booking);
+  const kycHref = `${getUserBookingDetailHref(booking)}#kyc-documents`;
 
   return (
     <article className="relative grid w-full min-w-0 overflow-hidden rounded-[8px] border border-[#eadfd4] bg-[#fffaf4] p-3 shadow-[0_18px_42px_rgba(65,43,26,0.07)] sm:p-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)] lg:items-stretch xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.38fr)_minmax(0,1.08fr)_minmax(0,0.86fr)] xl:p-0">
@@ -251,13 +278,31 @@ function BookingCard({ booking }: { booking: UserBooking }) {
             {formatShortDate(booking.booking.balanceDueDate)}
           </p>
         </div>
-        <Link
-          href={getUserBookingDetailHref(booking)}
-          className="mt-1 inline-flex h-10 w-full items-center justify-center gap-4 rounded-[7px] bg-[linear-gradient(180deg,#c84e11_0%,#a83a05_100%)] px-5 font-sans text-[14px] font-semibold text-white shadow-[0_8px_18px_rgba(168,58,5,0.22)] transition-transform hover:-translate-y-0.5"
-        >
-          View Details
-          <ArrowRight className="size-4" strokeWidth={1.8} />
-        </Link>
+        <div className="h-px bg-[#eadfd4]" />
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+          <p className="min-w-0 truncate font-sans text-[12px] font-medium text-secondary/62">
+            KYC Docs
+          </p>
+          <p className="min-w-0 whitespace-nowrap text-right font-sans text-[12px] font-bold leading-none text-primary 2xl:text-[13px]">
+            {kycSummary.completedTravellers}/{kycSummary.totalTravellers} travellers
+          </p>
+        </div>
+        <div className="mt-1 grid gap-2">
+          <Link
+            href={kycHref}
+            className="inline-flex h-10 w-full items-center justify-center gap-3 rounded-[7px] border border-primary bg-white px-4 font-sans text-[13px] font-semibold text-primary transition-colors hover:bg-primary hover:text-white"
+          >
+            <Upload className="size-4" strokeWidth={1.8} />
+            Upload KYC
+          </Link>
+          <Link
+            href={getUserBookingDetailHref(booking)}
+            className="inline-flex h-10 w-full items-center justify-center gap-4 rounded-[7px] bg-[linear-gradient(180deg,#c84e11_0%,#a83a05_100%)] px-5 font-sans text-[14px] font-semibold text-white shadow-[0_8px_18px_rgba(168,58,5,0.22)] transition-transform hover:-translate-y-0.5"
+          >
+            View Details
+            <ArrowRight className="size-4" strokeWidth={1.8} />
+          </Link>
+        </div>
       </div>
     </article>
   );
@@ -328,7 +373,7 @@ export function UserBookingsSection() {
 
   return (
     <section className="mt-3 rounded-[8px] border border-border bg-white p-2.5 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:mt-4 sm:p-4">
-      <div className="grid grid-cols-2 gap-2 pb-2 sm:flex sm:gap-3 sm:overflow-x-auto sm:pb-3 sm:[scrollbar-width:none] sm:[&::-webkit-scrollbar]:hidden">
+      <div className="-mx-2 flex min-w-0 gap-2.5 overflow-x-auto px-2 pb-3 [scrollbar-width:none] sm:-mx-1 sm:px-1 [&::-webkit-scrollbar]:hidden">
         {bookingTabs.map((tab) => {
           const active = tab === activeTab;
 
@@ -336,8 +381,13 @@ export function UserBookingsSection() {
             <Button
               key={tab}
               type="button"
-              variant={active ? "default" : "outline"}
-              className="w-full px-3 text-[16px] font-normal sm:w-auto sm:shrink-0 sm:px-5"
+              aria-pressed={active}
+              variant="outline"
+              className={`h-10 min-w-[126px] border-primary px-5 text-[14px] font-normal leading-none sm:min-w-[132px] sm:text-[15px] ${
+                active
+                  ? "bg-primary text-white shadow-[0_8px_18px_rgba(210,107,28,0.2)] hover:bg-primary hover:text-white"
+                  : "bg-white text-primary hover:bg-white hover:text-primary"
+              }`}
               onClick={() => {
                 setActiveTab(tab);
                 setPage(1);

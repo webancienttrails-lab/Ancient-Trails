@@ -1,6 +1,21 @@
 import { Header } from "@/components/layout/header";
+import {
+  defaultSiteContactSettings,
+  getContactEmailDisplay,
+  getMailtoHref,
+  getPublicSiteSettings,
+  getTelephoneHref,
+} from "@/lib/site-settings";
 
-export default function PrivacyPolicyPage() {
+export default async function PrivacyPolicyPage() {
+  const contact = await getPublicSiteSettings()
+    .then((response) => response.data.settings.contact)
+    .catch(() => defaultSiteContactSettings);
+  const phone = contact.primaryCalling || defaultSiteContactSettings.primaryCalling;
+  const email = getContactEmailDisplay(contact);
+  const officeAddress =
+    contact.officeAddress || defaultSiteContactSettings.officeAddress;
+
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
@@ -189,27 +204,25 @@ export default function PrivacyPolicyPage() {
                 <p className="font-semibold text-secondary">
                   Mrs. Kavita Gokhale
                 </p>
-                <p>387/1, Narayan Peth, Vinayak Apartments</p>
-                <p>Near Modi Ganpati Temple</p>
-                <p>Pune - 411030, Maharashtra</p>
+                <p>{officeAddress}</p>
 
                 <p className="mt-3">
                   Phone:{" "}
                   <a
-                    href="tel:+917272900606"
+                    href={getTelephoneHref(phone)}
                     className="font-medium text-primary"
                   >
-                    +91 7272 90 0606
+                    {phone}
                   </a>
                 </p>
 
                 <p>
                   Email:{" "}
                   <a
-                    href="mailto:admin@ancient-trails.com"
+                    href={getMailtoHref(email)}
                     className="font-medium text-primary"
                   >
-                    admin@ancient-trails.com
+                    {email}
                   </a>
                 </p>
               </div>

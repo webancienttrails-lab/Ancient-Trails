@@ -131,14 +131,6 @@
     overflow-x: hidden;
   }
 
-  .tour-tabs-docked .tour-detail-tabs {
-    left: 1rem;
-    position: fixed;
-    right: 1rem;
-    top: 60px;
-    width: auto;
-  }
-
   :root {
     --font-size-description: 14px;
     --font-size-eyebrow: 12px;
@@ -183,6 +175,22 @@ a.bg-primary,
 button.bg-primary,
 [role="button"].bg-primary {
   font-size: 17px;
+}
+
+button,
+[type="button"],
+[type="submit"],
+[type="reset"],
+[role="button"] {
+  cursor: pointer;
+}
+
+button:disabled,
+[type="button"]:disabled,
+[type="submit"]:disabled,
+[type="reset"]:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
 }
 
 .text-header {

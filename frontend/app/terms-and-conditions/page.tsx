@@ -1,6 +1,20 @@
 import { Header } from "@/components/layout/header";
+import {
+  defaultSiteContactSettings,
+  getContactCallDisplay,
+  getContactEmailDisplay,
+  getMailtoHref,
+  getPublicSiteSettings,
+} from "@/lib/site-settings";
 
-export default function TermsAndConditionsPage() {
+export default async function TermsAndConditionsPage() {
+  const contact = await getPublicSiteSettings()
+    .then((response) => response.data.settings.contact)
+    .catch(() => defaultSiteContactSettings);
+  const email = getContactEmailDisplay(contact);
+  const contactNumbers =
+    getContactCallDisplay(contact) || defaultSiteContactSettings.primaryCalling;
+
   return (
     <div className="min-h-screen bg-white">
       <div className="mx-auto w-full max-w-325 px-5 py-4 sm:px-6 lg:px-0">
@@ -473,17 +487,14 @@ export default function TermsAndConditionsPage() {
                 Questions, complaints or enquiries about these Terms and
                 Conditions may be sent to{" "}
                 <a
-                  href="mailto:travelwith@ancient-trails.com"
+                  href={getMailtoHref(email)}
                   className="font-medium text-primary"
                 >
-                  travelwith@ancient-trails.com
+                  {email}
                 </a>
                 .
               </p>
-              <p>
-                Contact numbers:  +91 7272 90 0202, +91 7272 90 0606 and 020
-                24441323.
-              </p>
+              <p>Contact numbers: {contactNumbers}.</p>
             </Section>
           </div>
         </div>

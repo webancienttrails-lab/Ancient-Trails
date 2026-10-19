@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchSiteLogoUrl } from "@/lib/site-logo";
 import { createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -19,15 +20,6 @@ import {
   type PublicTour,
   type PublicTourDeparture,
 } from "@/lib/home-travel";
-import type { AccommodationOption } from "@/lib/tour-booking";
-
-type BookingPaymentOption = "advance" | "full";
-
-type TravellerCounts = {
-  adults: number;
-  children: number;
-  infants: number;
-};
 
 type ItineraryDay = {
   dayNumber: number;
@@ -40,24 +32,12 @@ type ItineraryDay = {
 };
 
 type DownloadItineraryButtonProps = {
-  accommodationOptions: AccommodationOption[];
-  balanceAmount: number;
-  balanceDueDate: Date | null;
-  canBook: boolean;
-  depositAmount: number;
   departures: PublicTourDeparture[];
   destinations: PublicDestination[];
   expert: PublicExpert;
-  gstAmount: number;
   gstPercentage: number;
   itineraryDays: ItineraryDay[];
-  paymentOption: BookingPaymentOption;
-  price: number;
-  selectedAccommodationOption?: AccommodationOption;
-  selectedDeparture?: PublicTourDeparture;
-  subtotal: number;
   tour: PublicTour;
-  travellerCounts: TravellerCounts;
 };
 
 type JsPdfDoc = import("jspdf").jsPDF;
@@ -73,11 +53,6 @@ const numberFormatter = new Intl.NumberFormat("en-IN", {
 
 const shortDateFormatter = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
-
-const monthFormatter = new Intl.DateTimeFormat("en-GB", {
   month: "short",
   year: "numeric",
 });
@@ -180,31 +155,6 @@ function formatDate(value: string | null | undefined) {
   return shortDateFormatter.format(date).replace(",", "");
 }
 
-function formatDateFromDate(value: Date | null) {
-  if (!value || Number.isNaN(value.getTime())) return "To be confirmed";
-  return shortDateFormatter.format(value).replace(",", "");
-}
-
-function formatMonthYear(value: string | null | undefined) {
-  if (!value) return "TBA";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "TBA";
-  return monthFormatter.format(date).replace(",", "");
-}
-
-function getDayOfMonth(value: string | null | undefined) {
-  if (!value) return "--";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "--";
-  return String(date.getDate()).padStart(2, "0");
-}
-
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
 function parseDurationDays(duration: string) {
   const dayMatch = duration.match(/(\d+)\s*(?:d|day)/i);
   const numericMatch = dayMatch || duration.match(/(\d+)/);
@@ -222,10 +172,6 @@ function getDifficultyLabel(tour: PublicTour) {
   return tour.difficulty || "Moderate";
 }
 
-function getDepartureIdentifier(departure: PublicTourDeparture) {
-  return departure.id || departure.departureId || departure.departureDate || "";
-}
-
 function getDateValue(value: string | null | undefined) {
   if (!value) return 0;
   const timestamp = new Date(value).getTime();
@@ -239,29 +185,6 @@ function sortDeparturesByDate(departures: PublicTourDeparture[]) {
       (left, right) =>
         getDateValue(left.departureDate) - getDateValue(right.departureDate)
     );
-}
-
-function hasTravellerInfo(counts?: TravellerCounts | null) {
-  if (!counts) return false;
-  return [counts.adults, counts.children, counts.infants].some(
-    (value) => Number.isFinite(value) && value > 0
-  );
-}
-
-function formatTravellerSummary(counts: TravellerCounts) {
-  return [
-    counts.adults
-      ? `${counts.adults} ${counts.adults === 1 ? "Adult" : "Adults"}`
-      : "",
-    counts.children
-      ? `${counts.children} ${counts.children === 1 ? "Child" : "Children"}`
-      : "",
-    counts.infants
-      ? `${counts.infants} ${counts.infants === 1 ? "Infant" : "Infants"}`
-      : "",
-  ]
-    .filter(Boolean)
-    .join(", ");
 }
 
 function getExpertRole(expert: PublicExpert) {
@@ -318,7 +241,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
 async function loadPdfFonts(doc: JsPdfDoc): Promise<PdfFontFamily> {
   try {
     const [regular, semibold, bold, script] = await Promise.all(
-      Object.values(PDF_FONT_PATHS).map(async (path) => {
+      [PDF_FONT_PATHS.regular, PDF_FONT_PATHS.semibold, PDF_FONT_PATHS.bold, PDF_FONT_PATHS.script].map(async (path) => {
         const response = await fetch(path);
         if (!response.ok) throw new Error(`Font not found: ${path}`);
         return response.arrayBuffer();
@@ -836,15 +759,6 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
   const drawSightseeingIcon = (x: number, y: number) =>
     drawPdfIcon(pdfIcons.sightseeing, x, y, 28);
 
-  const drawMealMetaIcon = (x: number, y: number) =>
-    drawPdfIcon(pdfIcons.meals, x, y, 13, colors.textMuted);
-
-  const drawBedMetaIcon = (x: number, y: number) =>
-    drawPdfIcon(pdfIcons.bed, x, y, 13, colors.textMuted);
-
-  const drawWalkMetaIcon = (x: number, y: number) =>
-    drawPdfIcon(pdfIcons.walk, x, y, 13, colors.textMuted);
-
   const drawCheckIcon = (x: number, y: number) =>
     drawPdfIcon(pdfIcons.check, x, y, 10, colors.primary);
 
@@ -971,7 +885,7 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
   const gallerySources = getTourGallerySources(payload.tour, payload.destinations);
 
   const [logoImage, ...galleryImages] = await Promise.all([
-    getImageDataUrl("/Header Logo.png", {
+    getImageDataUrl(await fetchSiteLogoUrl(), {
       maxWidth: 900,
       maxHeight: 300,
       preserveTransparency: true,
@@ -1074,18 +988,10 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
   const stateNames = getTourStates(payload.destinations);
   const sortedDepartures = sortDeparturesByDate(payload.departures);
   const highlights = getTourHighlights(payload.itineraryDays);
-  const selectedDepartureId = payload.selectedDeparture
-    ? getDepartureIdentifier(payload.selectedDeparture)
-    : "";
-  const selectedDeparture = payload.selectedDeparture;
-  const startDate = selectedDeparture?.departureDate
-    ? new Date(selectedDeparture.departureDate)
-    : null;
-  const safeStartDate =
-    startDate && !Number.isNaN(startDate.getTime()) ? startDate : null;
-  const travellerSummary = hasTravellerInfo(payload.travellerCounts)
-    ? formatTravellerSummary(payload.travellerCounts)
-    : "";
+  const adultPrices = sortedDepartures
+    .map((departure) => departure.priceAdult)
+    .filter((price) => Number.isFinite(price) && price > 0);
+  const brochurePrice = adultPrices.length ? Math.min(...adultPrices) : 0;
 
   // ---------------------------------------------------------------------------
   // COVER PAGE - inspired by the Rajasthan Marwad brochure structure, but fully
@@ -1256,7 +1162,7 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
     align: "center",
   });
   setBold(34, colors.primary);
-  doc.text(formatCoverPrice(payload.price), pageWidth / 2, priceY + 35, {
+  doc.text(formatCoverPrice(brochurePrice), pageWidth / 2, priceY + 35, {
     align: "center",
   });
   setBody(10.5, colors.ink);
@@ -1305,18 +1211,13 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
   const detailCardWidth = contentWidth - priceCardWidth - overviewGap;
   const cardTop = y;
 
-  const departureDateText = selectedDeparture
-    ? `${formatDate(selectedDeparture.departureDate)} - ${formatDate(
-        selectedDeparture.returnDate
-      )}`
-    : sortedDepartures.length
-      ? `${formatDate(sortedDepartures[0].departureDate)} onwards`
-      : "Coming Soon";
+  const departureDateText = sortedDepartures.length
+    ? formatDate(sortedDepartures[0].departureDate) + " onwards"
+    : "Coming Soon";
 
   const priceSummaryRows: Array<[string, string]> = [
-    ["From", `${formatCurrency(payload.price)} / person`],
-    ["GST", `${payload.gstPercentage || 0}% (${formatCurrency(payload.gstAmount)})`],
-    ...(travellerSummary ? [["Travellers", travellerSummary] as [string, string]] : []),
+    ["From", formatCurrency(brochurePrice) + " / person"],
+    ["GST", (payload.gstPercentage || 0) + "% additional"],
   ];
 
   const priceCardHeight = drawSummaryCard(
@@ -1336,11 +1237,9 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
       ["Tour Expert", payload.expert.fullName],
       [
         "Availability",
-        selectedDeparture?.seatsAvailable
-          ? `${selectedDeparture.seatsAvailable} seats available`
-          : payload.canBook
-            ? "Open for booking"
-            : "Please enquire",
+        sortedDepartures.some((departure) => departure.status === "scheduled" && departure.seatsAvailable > 0)
+          ? "Open for booking"
+          : "Please enquire",
       ],
     ],
     margin + priceCardWidth + overviewGap,
@@ -1351,18 +1250,23 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
   y += Math.max(priceCardHeight, detailCardHeight) + 18;
 
   if (highlights.length) {
-    drawSectionTitle("Key Highlights", {
-      eyebrow: "What you will experience",
-      keepWithNext: 52,
-    });
     const colGap = 18;
     const colWidth = (contentWidth - colGap) / 2;
     const leftItems = highlights.filter((_, index) => index % 2 === 0);
     const rightItems = highlights.filter((_, index) => index % 2 === 1);
     const maxRows = Math.max(leftItems.length, rightItems.length);
+    setBody(8.5, colors.ink);
+    const firstRowHeight = Math.max(22, ...[leftItems[0], rightItems[0]]
+      .filter(Boolean)
+      .map((item) => wrapTextNoBreak(item, colWidth - 14).length * 11 + 8));
+    drawSectionTitle("Key Highlights", { keepWithNext: firstRowHeight });
 
     for (let row = 0; row < maxRows; row += 1) {
-      ensureSpace(22, "Key Highlights");
+      setBody(8.5, colors.ink);
+      const rowHeight = Math.max(22, ...[leftItems[row], rightItems[row]]
+        .filter(Boolean)
+        .map((item) => wrapTextNoBreak(item, colWidth - 14).length * 11 + 8));
+      ensureSpace(rowHeight, "Key Highlights");
 
       [leftItems[row], rightItems[row]].forEach((item, column) => {
         if (!item) return;
@@ -1377,7 +1281,7 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
         doc.text(lines, x + 12, y);
       });
 
-      y += 22;
+      y += rowHeight;
     }
     y += 8;
   }
@@ -1385,11 +1289,6 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
   // ---------------------------------------------------------------------------
   // ITINERARY - timeline styling based on the reference brochure.
   // ---------------------------------------------------------------------------
-  drawSectionTitle("Detailed Tour Itinerary", {
-    eyebrow: "Day-by-day journey",
-    keepWithNext: 78,
-  });
-
   const drawTimelineMarker = (markerY: number) => {
     doc.setDrawColor(colors.gold);
     doc.setFillColor(colors.white);
@@ -1406,300 +1305,95 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
     doc.setLineDashPattern([], 0);
   };
 
-  const drawDayMetaItem = (
-    icon: (x: number, y: number) => void,
-    label: string,
-    value: string,
-    x: number,
-    currentY: number,
-    width: number
-  ) => {
-    icon(x, currentY - 8);
-    setBody(8, colors.textMuted);
-    const lines = wrapTextNoBreak(
-      normalizePdfText(value),
-      width - 20
-    ) as string[];
-    doc.text(lines, x + 20, currentY);
-    return Math.max(14, lines.length * 10) + 6;
-  };
+  const getDayMetadata = (day: ItineraryDay): Array<[string, string]> => [
+    ...(day.placesVisited?.length ? [["Sightseeing", day.placesVisited.filter(Boolean).join("; ")] as [string, string]] : []),
+    ...(day.meals ? [["Meals", day.meals] as [string, string]] : []),
+    ...(day.hotels ? [["Accommodation", day.hotels] as [string, string]] : []),
+    ...(day.walkingDifficulty ? [["Walking", day.walkingDifficulty] as [string, string]] : []),
+  ];
 
   const estimateItineraryDayHeight = (day: ItineraryDay) => {
     const dayWidth = contentWidth - 22;
-    const colGap = 22;
-    const leftWidth = (dayWidth - colGap) * 0.55;
-    const rightWidth = dayWidth - colGap - leftWidth;
-
     setSemiBold(10.5, colors.deep);
-    const titleLines = wrapTextNoBreak(day.title, dayWidth - 120);
-
+    const titleHeight = Math.max(22, wrapTextNoBreak(day.title, dayWidth - 80).length * 13 + 6);
     setBody(8.5, colors.ink);
-    const summaryLines = wrapTextNoBreak(day.summary, dayWidth);
-
-    let leftHeight = 0;
-    const places = day.placesVisited?.filter(Boolean) || [];
-    if (places.length) {
-      leftHeight = 15;
-      setBody(7.9, colors.textMuted);
-      places.forEach((place) => {
-        leftHeight += Math.max(13, wrapTextNoBreak(place, leftWidth - 14).length * 10);
-      });
-    }
-
-    let rightHeight = 0;
+    const summaryHeight = wrapTextNoBreak(day.summary, dayWidth).length * 11.2 + 8;
     setBody(8, colors.textMuted);
-    [day.meals, day.hotels, day.walkingDifficulty].forEach((value) => {
-      if (!value) return;
-      rightHeight += 15 + wrapTextNoBreak(value, rightWidth - 20).length * 10;
-    });
-
-    if (!day.meals && !day.hotels && !day.walkingDifficulty) {
-      rightHeight = 15 + wrapTextNoBreak(day.title, rightWidth - 20).length * 10;
-    }
-
-    const metaHeight = places.length || day.meals || day.hotels || day.walkingDifficulty
-      ? Math.max(leftHeight, rightHeight) + 14
-      : 0;
-
-    return (
-      Math.max(22, titleLines.length * 13 + 6) +
-      summaryLines.length * 11.2 +
-      8 +
-      metaHeight +
-      22
-    );
+    const metadataHeight = getDayMetadata(day).reduce((height, [label, value]) =>
+      height + wrapTextNoBreak(label + ": " + value, dayWidth).length * 11.2 + 8, 0);
+    return titleHeight + summaryHeight + metadataHeight + 20;
   };
 
-  const drawItineraryDay = (day: ItineraryDay) => {
+  const drawItineraryDay = (day: ItineraryDay, index: number) => {
     const contentX = margin + 22;
     const dayWidth = contentWidth - 22;
-    const titleDate = safeStartDate
-      ? formatDateFromDate(addDays(safeStartDate, day.dayNumber - 1))
-      : "";
     const estimatedDayHeight = estimateItineraryDayHeight(day);
     const fullPageCapacity = contentBottom - 82;
 
-    if (estimatedDayHeight <= fullPageCapacity && y + estimatedDayHeight > contentBottom) {
+    // The section title already reserves the first day's space. Oversized days
+    // flow across pages; later days stay together whenever they fit on one page.
+    if (index > 0 && estimatedDayHeight <= fullPageCapacity && y + estimatedDayHeight > contentBottom) {
       addContentPage("Detailed Tour Itinerary");
-    } else {
-      ensureSpace(54, "Detailed Tour Itinerary");
     }
-    const dayStartY = y;
+    setSemiBold(10.5, colors.deep);
+    const dayTitleLines = wrapTextNoBreak(day.title, dayWidth - 80);
+    const titleHeight = Math.max(22, dayTitleLines.length * 13 + 6);
+    ensureSpace(titleHeight + 24, "Detailed Tour Itinerary");
+    let segmentStartY = y;
     drawTimelineMarker(y - 3);
     setBody(8, colors.textMuted);
-    doc.text(`Day ${day.dayNumber}${titleDate ? ` / ${titleDate}` : ""}`, contentX, y);
+    doc.text("DAY " + day.dayNumber, contentX, y);
     setSemiBold(10.5, colors.deep);
-    const dayTitleLines = wrapTextNoBreak(
-      normalizePdfText(day.title),
-      dayWidth - 120
-    ) as string[];
-    doc.text(dayTitleLines, contentX + 112, y);
-    y += Math.max(22, dayTitleLines.length * 13 + 6);
+    doc.text(dayTitleLines, contentX + 80, y);
+    y += titleHeight;
 
-    const summaryLines = wrapTextNoBreak(
-      normalizePdfText(day.summary),
-      dayWidth
-    ) as string[];
-
-    let summaryIndex = 0;
-    while (summaryIndex < summaryLines.length) {
-      const availableLines = Math.max(
-        1,
-        Math.floor((contentBottom - y - 32) / 11.2)
-      );
-      const chunk = summaryLines.slice(
-        summaryIndex,
-        summaryIndex + availableLines
-      );
-      setBody(8.5, colors.ink);
-      doc.text(chunk, contentX, y);
-      y += chunk.length * 11.2 + 8;
-      summaryIndex += chunk.length;
-
-      if (summaryIndex < summaryLines.length) {
-        drawTimelineLine(dayStartY + 6, contentBottom - 10);
-        addContentPage("Detailed Tour Itinerary");
-        setSemiBold(8.2, colors.primary);
-        doc.text(`Day ${day.dayNumber} continued`, contentX, y);
-        y += 17;
+    const drawDayParagraph = (text: string, metadata = false) => {
+      setBody(metadata ? 8 : 8.5, metadata ? colors.textMuted : colors.ink);
+      const lines = wrapTextNoBreak(text, dayWidth);
+      let offset = 0;
+      while (offset < lines.length) {
+        if (y + 20 > contentBottom) {
+          drawTimelineLine(segmentStartY + 7, contentBottom - 10);
+          addContentPage("Detailed Tour Itinerary");
+          segmentStartY = y;
+          drawTimelineMarker(y - 3);
+          setSemiBold(8.2, colors.primary);
+          doc.text("DAY " + day.dayNumber + " continued", contentX, y);
+          y += 20;
+        }
+        const availableLines = Math.max(1, Math.floor((contentBottom - y - 12) / 11.2));
+        const chunk = lines.slice(offset, offset + availableLines);
+        setBody(metadata ? 8 : 8.5, metadata ? colors.textMuted : colors.ink);
+        doc.text(chunk, contentX, y, { lineHeightFactor: 11.2 / (metadata ? 8 : 8.5) });
+        y += chunk.length * 11.2;
+        offset += chunk.length;
       }
-    }
+      y += 8;
+    };
 
-    const places = day.placesVisited?.filter(Boolean) || [];
-    const hasMeta = places.length || day.meals || day.hotels || day.walkingDifficulty;
-
-    if (hasMeta) {
-      ensureSpace(70, "Detailed Tour Itinerary");
-      const metaTop = y + 2;
-      const colGap = 22;
-      const leftWidth = (dayWidth - colGap) * 0.55;
-      const rightWidth = dayWidth - colGap - leftWidth;
-      const leftX = contentX;
-      const rightX = contentX + leftWidth + colGap;
-
-      let leftY = metaTop;
-      if (places.length) {
-        setSemiBold(8.8, colors.deep);
-        doc.text("Today's Sightseeing", leftX, leftY);
-        leftY += 15;
-        places.forEach((place) => {
-          ensureSpace(16, "Detailed Tour Itinerary");
-          doc.setFillColor(colors.gold);
-          doc.circle(leftX + 3, leftY - 2, 1.5, "F");
-          setBody(7.9, colors.textMuted);
-          const lines = wrapTextNoBreak(
-            normalizePdfText(place),
-            leftWidth - 14
-          ) as string[];
-          doc.text(lines, leftX + 10, leftY);
-          leftY += Math.max(13, lines.length * 10);
-        });
-      }
-
-      let rightY = metaTop;
-      if (day.meals) {
-        rightY += drawDayMetaItem(
-          drawMealMetaIcon,
-          "Meals",
-          day.meals,
-          rightX,
-          rightY,
-          rightWidth
-        );
-      }
-      if (day.hotels) {
-        rightY += drawDayMetaItem(
-          drawBedMetaIcon,
-          "Hotels",
-          day.hotels,
-          rightX,
-          rightY,
-          rightWidth
-        );
-      }
-      if (day.walkingDifficulty) {
-        rightY += drawDayMetaItem(
-          drawWalkMetaIcon,
-          "Walking",
-          day.walkingDifficulty,
-          rightX,
-          rightY,
-          rightWidth
-        );
-      }
-
-      if (!day.meals && !day.hotels && !day.walkingDifficulty) {
-        drawDayMetaItem(
-          drawBedMetaIcon,
-          "Night stay",
-          day.title,
-          rightX,
-          rightY,
-          rightWidth
-        );
-      }
-
-      y = Math.max(leftY, rightY) + 10;
-    }
-
-    drawTimelineLine(dayStartY + 7, y - 5);
-    drawRule(y, contentX, pageWidth - margin);
+    drawDayParagraph(day.summary);
+    getDayMetadata(day).forEach(([label, value]) => drawDayParagraph(label + ": " + value, true));
+    drawTimelineLine(segmentStartY + 7, Math.min(y - 5, contentBottom));
+    if (y < contentBottom) drawRule(y, contentX, pageWidth - margin);
     y += 20;
   };
 
+  const firstDayHeight = payload.itineraryDays[0]
+    ? estimateItineraryDayHeight(payload.itineraryDays[0])
+    : 54;
+  drawSectionTitle("Detailed Tour Itinerary", {
+    keepWithNext: Math.min(firstDayHeight, contentBottom - 82 - 31),
+  });
   payload.itineraryDays.forEach(drawItineraryDay);
 
   // ---------------------------------------------------------------------------
-  // DEPARTURES GRID
+  // DEPARTURES AND ACCOMMODATION PRICING
   // ---------------------------------------------------------------------------
-  const selectedGuestSummary = travellerSummary || "1 Adult";
-  ensureSpace(42, "Choose Your Preferred Departure");
-  doc.setFillColor(colors.cream);
-  doc.setDrawColor(colors.border);
-  doc.roundedRect(margin, y, 230, 26, 13, 13, "FD");
-  setSemiBold(8.3, colors.secondary);
-  doc.text(`Selected guests: ${selectedGuestSummary}`, margin + 12, y + 17);
-  y += 40;
-
-  drawSectionTitle("Choose Your Preferred Departure", {
-    eyebrow: "Available dates",
-    keepWithNext: sortedDepartures.length ? 72 : 30,
-  });
-
-  if (sortedDepartures.length) {
-    const tilesPerRow = 6;
-    const gap = 8;
-    const tileWidth = (contentWidth - gap * (tilesPerRow - 1)) / tilesPerRow;
-    const tileHeight = 50;
-
-    sortedDepartures.forEach((departure, index) => {
-      const column = index % tilesPerRow;
-      if (column === 0) ensureSpace(tileHeight + 12, "More Dates & Departures");
-
-      const x = margin + column * (tileWidth + gap);
-      const selected = getDepartureIdentifier(departure) === selectedDepartureId;
-      const tileY = y;
-
-      doc.setDrawColor(selected ? colors.primary : colors.border);
-      doc.setFillColor(selected ? colors.cream : colors.soft);
-      doc.roundedRect(x, tileY, tileWidth, tileHeight, 5, 5, "FD");
-
-      setBody(6.7, colors.textMuted);
-      doc.text(formatMonthYear(departure.departureDate), x + tileWidth / 2, tileY + 14, {
-        align: "center",
-      });
-      setBold(11, selected ? colors.primary : colors.deep);
-      doc.text(getDayOfMonth(departure.departureDate), x + tileWidth / 2, tileY + 31, {
-        align: "center",
-      });
-
-      if (selected) {
-        doc.setFillColor(colors.primary);
-        doc.circle(x + tileWidth - 7, tileY + 7, 2.5, "F");
-      }
-
-      if (column === tilesPerRow - 1 || index === sortedDepartures.length - 1) {
-        y += tileHeight + 10;
-      }
-    });
-
-    y += 10;
-  } else {
-    y = drawText(
-      "New departure dates will be announced soon.",
-      margin,
-      y,
-      contentWidth,
-      { fontSize: 9.2, color: colors.textMuted }
-    );
-    y += 12;
-  }
-
-  // ---------------------------------------------------------------------------
-  // ACCOMMODATION & PRICE TABLES
-  // ---------------------------------------------------------------------------
-  drawSectionTitle("Accommodation & Pricing", {
-    eyebrow: "Room options",
-    keepWithNext: 100,
-  });
-
-  const accommodationRows = (
-    payload.accommodationOptions.length
-      ? payload.accommodationOptions
-      : payload.selectedAccommodationOption
-        ? [payload.selectedAccommodationOption]
-        : []
-  ).map((option) => ({
-    description: option.description || "Accommodation option",
-    price: option.total,
-    title: option.title,
-  }));
-
   const drawTable = (
     headers: string[],
     rows: string[][],
     columnWidths: number[],
-    options: { title?: string } = {}
+    options: { title?: string; sectionTitle?: string } = {}
   ) => {
     const x = margin;
     const rowPad = 9;
@@ -1723,7 +1417,12 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
 
     const titleHeight = options.title ? 24 : 0;
     const firstRowHeight = preparedRows[0]?.rowHeight ?? 30;
-    ensureSpace(titleHeight + headerHeight + firstRowHeight + 6, options.title);
+    const tableStartHeight = titleHeight + headerHeight + firstRowHeight + 6;
+    if (options.sectionTitle) {
+      drawSectionTitle(options.sectionTitle, { keepWithNext: tableStartHeight });
+    } else {
+      ensureSpace(tableStartHeight, options.title);
+    }
 
     const drawTableTitle = (continued = false) => {
       if (!options.title) return;
@@ -1788,52 +1487,67 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
     y += 16;
   };
 
-  if (accommodationRows.length) {
+  if (sortedDepartures.length) {
     drawTable(
-      ["Room / Occupancy", "Description", "Price"],
-      accommodationRows.map((row) => [
-        row.title,
-        row.description,
-        formatCurrency(row.price),
+      ["Departure", "Return", "Availability"],
+      sortedDepartures.map((departure) => [
+        formatDate(departure.departureDate),
+        formatDate(departure.returnDate),
+        departure.status === "scheduled"
+          ? departure.seatsAvailable > 0 ? "Open for booking" : "Sold out"
+          : departure.status === "coming_soon" ? "Coming soon"
+            : departure.status === "cancelled" ? "Cancelled" : "Closed",
       ]),
-      [150, contentWidth - 150 - 105, 105],
-      { title: "Available Accommodation Options" }
+      [contentWidth * 0.34, contentWidth * 0.34, contentWidth * 0.32],
+      { sectionTitle: "All Departures" }
     );
   } else {
-    y = drawText(
-      "Accommodation options will be shown after you select a departure and traveller combination on the website.",
-      margin,
-      y,
-      contentWidth,
-      { fontSize: 8.8, color: colors.textMuted }
-    );
+    drawSectionTitle("All Departures", { keepWithNext: 30 });
+    y = drawText("New departure dates will be announced soon.", margin, y, contentWidth,
+      { fontSize: 9.2, color: colors.textMuted });
     y += 18;
   }
 
-  drawTable(
-    ["Price Component", "Amount"],
-    [
-      ["Tour subtotal", formatCurrency(payload.subtotal)],
-      [`GST (${payload.gstPercentage || 0}%)`, formatCurrency(payload.gstAmount)],
-      [
-        "Selected accommodation",
-        payload.selectedAccommodationOption
-          ? `${payload.selectedAccommodationOption.title} - ${formatCurrency(
-              payload.selectedAccommodationOption.total
-            )}`
-          : "Not selected",
-      ],
-      [
-        "Payment choice",
-        payload.paymentOption === "advance" ? "Advance payment" : "Full payment",
-      ],
-      ["Pay now", formatCurrency(payload.depositAmount)],
-      ["Balance", formatCurrency(payload.balanceAmount)],
-      ["Balance due", formatDateFromDate(payload.balanceDueDate)],
-    ],
-    [contentWidth * 0.55, contentWidth * 0.45],
-    { title: "Current Booking Selection" }
-  );
+  const rateLabel = (amount: number, allowed = true) =>
+    allowed && Number.isFinite(amount) && amount > 0
+      ? formatCurrency(amount)
+      : "Not available";
+
+  if (sortedDepartures.length) {
+    sortedDepartures.forEach((departure, index) => {
+      const childRules = departure.childPricingRules || [];
+      const allowsExtraBed = departure.roomPolicy?.allowExtraBed !== false;
+      const allowsChildSharing = departure.roomPolicy?.allowChildBedSharing !== false;
+      const rows = [
+        ["Double / Twin sharing", "Per adult sharing a room", rateLabel(departure.priceAdult)],
+        ["Single occupancy", "Per person in a single room", rateLabel(departure.singleOccupancy)],
+        ["Extra bed", "Per person using an extra bed", rateLabel(departure.priceExtraBed, allowsExtraBed)],
+        ["Child without extra bed", "Per child sharing an existing bed", rateLabel(
+          departure.priceChildWithoutExtraBed,
+          allowsChildSharing && (!childRules.length || childRules.some((rule) => rule.allowWithoutExtraBed))
+        )],
+      ];
+      drawTable(
+        ["Accommodation", "Rate basis", "Price"], rows,
+        [contentWidth * 0.35, contentWidth * 0.40, contentWidth * 0.25],
+        {
+          sectionTitle: index === 0 ? "Accommodation & Pricing" : undefined,
+          title: formatDate(departure.departureDate) + " - " + formatDate(departure.returnDate),
+        }
+      );
+    });
+    ensureSpace(40, "Accommodation & Pricing");
+    y = drawText(
+      "Rates are per person. GST (" + (payload.gstPercentage || 0) + "%) is additional. Child rates are subject to the applicable age and room policies. Final availability and charges are confirmed at booking.",
+      margin, y, contentWidth, { fontSize: 8.2, color: colors.textMuted }
+    );
+    y += 18;
+  } else {
+    drawSectionTitle("Accommodation & Pricing", { keepWithNext: 30 });
+    y = drawText("Accommodation rates will be announced with the departure dates.",
+      margin, y, contentWidth, { fontSize: 8.8, color: colors.textMuted });
+    y += 18;
+  }
 
   // ---------------------------------------------------------------------------
   // INCLUSIONS / EXCLUSIONS
@@ -1843,10 +1557,11 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
     items: string[],
     mode: "include" | "exclude"
   ) => {
-    drawSectionTitle(title, {
-      eyebrow: mode === "include" ? "Included in your journey" : "Please note",
-      keepWithNext: 48,
-    });
+    setBody(8.3, colors.ink);
+    const firstItemHeight = items[0]
+      ? Math.max(20, wrapTextNoBreak(normalizePdfText(items[0]), contentWidth - 24).length * 11 + 8)
+      : 0;
+    drawSectionTitle(title, { keepWithNext: firstItemHeight });
 
     items.forEach((item) => {
       const lines = wrapTextNoBreak(
@@ -1866,6 +1581,9 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
     y += 8;
   };
 
+  if (payload.tour.accommodationDetails?.length) {
+    drawBulletSection("Accommodation Details", payload.tour.accommodationDetails, "include");
+  }
   drawBulletSection("Inclusions", getTourInclusions(payload.tour), "include");
   drawBulletSection("Exclusions", getTourExclusions(payload.tour), "exclude");
 
@@ -1937,9 +1655,6 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
   const notes = [
     "The itinerary sequence may change due to local conditions, monument timings, weather, operational requirements or other circumstances beyond our control.",
     "Hotel details shown at the time of booking remain subject to availability and final confirmation.",
-    ...(travellerSummary
-      ? [`Your current traveller selection is ${travellerSummary}. Traveller names, identity details and emergency contact information are completed on the live booking flow.`]
-      : []),
     "Please review the live website for the latest cancellation terms, payment conditions, final inclusions, exclusions and any tour-specific advisories before payment.",
   ];
 

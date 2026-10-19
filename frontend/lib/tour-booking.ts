@@ -40,6 +40,7 @@ export type PricedDeparture = {
   destinationId: string;
   departureDate: string | null;
   returnDate: string | null;
+  totalSeats?: number;
   seatsAvailable: number;
   priceAdult: number;
   priceExtraBed: number;

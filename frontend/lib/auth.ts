@@ -1,3 +1,4 @@
+import { disableBrowserPush } from "@/lib/notification-push";
 import { apiRequest } from "@/lib/api";
 
 export type TravellerUser = {
@@ -254,6 +255,10 @@ export function clearTravellerSession(): void {
     return;
   }
 
+  const pushToken = window.localStorage.getItem(travellerTokenKey);
+  let pushUserId = "";
+  try { pushUserId = JSON.parse(window.localStorage.getItem(travellerUserKey) || "{}").id || ""; } catch {}
+  if (pushToken && pushUserId) void disableBrowserPush({ token: pushToken, user: { id: pushUserId } });
   window.localStorage.removeItem(travellerTokenKey);
   window.localStorage.removeItem(travellerUserKey);
   window.dispatchEvent(new Event(travellerSessionEvent));

@@ -1,11 +1,10 @@
 "use client";
 
-import Image from "next/image";
+import { SiteLogo } from "@/components/site-logo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import {
-  Bell,
   CalendarCheck,
   ChevronDown,
   Heart,
@@ -52,10 +51,15 @@ import {
   listenForProfilePhotoChanges,
 } from "@/lib/profile-photo";
 import {
-  getUserBookingTripStatus,
-  listTravellerBookings,
-} from "@/lib/user-bookings";
-import { ApiError } from "@/lib/api";
+  defaultSiteContactSettings,
+  getContactCallDisplay,
+  getContactEmailDisplay,
+  getMailtoHref,
+  getPublicSiteSettings,
+  getTelephoneHref,
+  type SiteContactSettings,
+} from "@/lib/site-settings";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 
 const navItems = [
   { label: "Home", href: "/" },
@@ -334,12 +338,14 @@ function AccountPopup({
 
 function MobileDashboardDrawer({
   isOpen,
+  siteContact,
   traveller,
   profilePhoto,
   onClose,
   onSignOut,
 }: {
   isOpen: boolean;
+  siteContact: SiteContactSettings;
   traveller: TravellerUser | null;
   profilePhoto: string;
   onClose: () => void;
@@ -348,6 +354,12 @@ function MobileDashboardDrawer({
   const displayName = getTravellerDisplayName(traveller);
   const displayEmail = getTravellerEmail(traveller);
   const initials = getTravellerInitials(traveller);
+  const callDisplay = getContactCallDisplay(siteContact);
+  const callNumber =
+    siteContact.primaryCalling ||
+    siteContact.landline ||
+    defaultSiteContactSettings.primaryCalling;
+  const emailAddress = getContactEmailDisplay(siteContact);
 
   const drawer = (
     <div
@@ -372,8 +384,7 @@ function MobileDashboardDrawer({
       >
         <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
           <Link href="/" aria-label="Ancient Trails home" onClick={onClose}>
-            <Image
-              src="/Header Logo.png"
+            <SiteLogo
               alt="Ancient Trails"
               width={218}
               height={86}
@@ -440,18 +451,18 @@ function MobileDashboardDrawer({
             </p>
             <div className="mt-2 space-y-1.5">
               <a
-                href="tel:18003135555"
+                href={getTelephoneHref(callNumber)}
                 className="flex items-center gap-2.5 font-sans text-[12px] font-semibold text-secondary"
               >
                 <Phone className="size-3.5 text-secondary/80" strokeWidth={1.8} />
-                1800 313 5555
+                {callDisplay || callNumber}
               </a>
               <a
-                href="mailto:travel@ancienttrails.com"
+                href={getMailtoHref(emailAddress)}
                 className="flex min-w-0 items-center gap-2.5 font-sans text-[12px] font-semibold text-secondary"
               >
                 <Mail className="size-3.5 shrink-0 text-secondary/80" strokeWidth={1.8} />
-                <span className="truncate">travel@ancienttrails.com</span>
+                <span className="truncate">{emailAddress}</span>
               </a>
             </div>
           </div>
@@ -484,10 +495,13 @@ export function DashboardTopBar() {
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [hoveredNavItem, setHoveredNavItem] = useState<string | null>(null);
-  const [notificationCount, setNotificationCount] = useState(0);
   const [megaMenuContent, setMegaMenuContent] =
     useState<PublicMegaMenuContent | null>(null);
+  const [siteContact, setSiteContact] = useState<SiteContactSettings>(
+    defaultSiteContactSettings
+  );
   const accountMenuCloseTimeoutRef = useRef(0);
+  const megaMenuCloseTimeoutRef = useRef(0);
   const hasConfiguredMegaMenu = hasMegaMenuSettings(megaMenuContent);
   const activeTourColumns = useMemo(() => {
     if (!hasConfiguredMegaMenu || !megaMenuContent) {
@@ -565,47 +579,35 @@ export function DashboardTopBar() {
   useEffect(() => {
     return () => {
       window.clearTimeout(accountMenuCloseTimeoutRef.current);
+      window.clearTimeout(megaMenuCloseTimeoutRef.current);
     };
   }, []);
+
+
 
   useEffect(() => {
     let isMounted = true;
 
-    async function loadNotificationCount() {
-      if (!travellerUser) {
-        if (isMounted) {
-          setNotificationCount(0);
-        }
-
-        return;
-      }
-
+    async function loadSiteSettings() {
       try {
-        const response = await listTravellerBookings();
-        const upcomingCount = response.data.bookings.filter(
-          (booking) => getUserBookingTripStatus(booking) === "Upcoming"
-        ).length;
+        const response = await getPublicSiteSettings();
 
         if (isMounted) {
-          setNotificationCount(upcomingCount);
+          setSiteContact(response.data.settings.contact);
         }
-      } catch (error) {
-        if (error instanceof ApiError && error.statusCode === 401) {
-          clearTravellerSession();
-        }
-
+      } catch {
         if (isMounted) {
-          setNotificationCount(0);
+          setSiteContact(defaultSiteContactSettings);
         }
       }
     }
 
-    loadNotificationCount();
+    loadSiteSettings();
 
     return () => {
       isMounted = false;
     };
-  }, [travellerUser]);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -641,10 +643,23 @@ export function DashboardTopBar() {
 
   const displayName = getTravellerDisplayName(travellerUser);
   const initials = getTravellerInitials(travellerUser);
-  const notificationCountLabel =
-    notificationCount > 99 ? "99+" : String(notificationCount);
+  const keepMegaMenuOpen = () => {
+    window.clearTimeout(megaMenuCloseTimeoutRef.current);
+  };
+  const openMegaMenu = (label: string) => {
+    keepMegaMenuOpen();
+    setIsAccountMenuOpen(false);
+    setHoveredNavItem(label);
+  };
+  const closeMegaMenu = () => {
+    window.clearTimeout(megaMenuCloseTimeoutRef.current);
+    megaMenuCloseTimeoutRef.current = window.setTimeout(() => {
+      setHoveredNavItem(null);
+    }, 180);
+  };
   const openAccountMenu = () => {
     window.clearTimeout(accountMenuCloseTimeoutRef.current);
+    window.clearTimeout(megaMenuCloseTimeoutRef.current);
     setHoveredNavItem(null);
     setIsAccountMenuOpen(Boolean(travellerUser));
   };
@@ -662,10 +677,37 @@ export function DashboardTopBar() {
     toast.success("Logged out", "You have been signed out successfully.");
     router.push("/");
   };
+  const isMegaMenuOpen =
+    hoveredNavItem === "Tours" || hoveredNavItem === "Destinations";
+  const megaMenuLayer = (
+    <div
+      onMouseEnter={keepMegaMenuOpen}
+      onMouseLeave={closeMegaMenu}
+      className={`fixed left-0 right-0 top-[78px] z-[2147483647] hidden h-0 lg:block ${
+        isMegaMenuOpen ? "pointer-events-auto" : "pointer-events-none"
+      }`}
+    >
+      <ToursMegaMenu
+        isOpen={hoveredNavItem === "Tours"}
+        tourMenuColumns={activeTourColumns}
+        onMouseEnter={keepMegaMenuOpen}
+        onMouseLeave={closeMegaMenu}
+      />
+      <DestinationsMegaMenu
+        cityItems={activeTopCities}
+        indianItems={activeIndianDestinations}
+        internationalItems={activeInternationalDestinations}
+        isOpen={hoveredNavItem === "Destinations"}
+        onMouseEnter={keepMegaMenuOpen}
+        onMouseLeave={closeMegaMenu}
+      />
+    </div>
+  );
 
   return (
     <header
-      onMouseLeave={() => setHoveredNavItem(null)}
+      onMouseEnter={keepMegaMenuOpen}
+      onMouseLeave={closeMegaMenu}
       className="sticky top-0 isolate z-[120] border-b border-border bg-white/95 backdrop-blur"
     >
       <div className="flex min-h-[78px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
@@ -680,8 +722,7 @@ export function DashboardTopBar() {
           >
             <Menu className="size-5" strokeWidth={1.9} />
           </Button>
-          <Image
-            src="/Header Logo.png"
+          <SiteLogo
             alt="Ancient Trails"
             width={218}
             height={86}
@@ -696,18 +737,28 @@ export function DashboardTopBar() {
                 <Link
                   href={item.href}
                   onMouseEnter={() => {
-                    setHoveredNavItem(
+                    const megaMenuLabel =
                       item.label === "Tours" || item.label === "Destinations"
                         ? item.label
-                        : null
-                    );
+                        : null;
+
+                    if (megaMenuLabel) {
+                      openMegaMenu(megaMenuLabel);
+                    } else {
+                      setHoveredNavItem(null);
+                    }
                   }}
                   onFocus={() => {
-                    setHoveredNavItem(
+                    const megaMenuLabel =
                       item.label === "Tours" || item.label === "Destinations"
                         ? item.label
-                        : null
-                    );
+                        : null;
+
+                    if (megaMenuLabel) {
+                      openMegaMenu(megaMenuLabel);
+                    } else {
+                      setHoveredNavItem(null);
+                    }
                   }}
                   className={`transition-colors hover:text-primary ${
                     item.label === hoveredNavItem ? "text-primary" : ""
@@ -725,33 +776,11 @@ export function DashboardTopBar() {
           className={`absolute left-0 right-0 top-full h-4 ${
             hoveredNavItem ? "block" : "hidden"
           }`}
-        />
-        <ToursMegaMenu
-          isOpen={hoveredNavItem === "Tours"}
-          tourMenuColumns={activeTourColumns}
-        />
-        <DestinationsMegaMenu
-          cityItems={activeTopCities}
-          indianItems={activeIndianDestinations}
-          internationalItems={activeInternationalDestinations}
-          isOpen={hoveredNavItem === "Destinations"}
+          onMouseEnter={keepMegaMenuOpen}
         />
 
         <div className="ml-auto flex items-center gap-4">
-          <Button
-            type="button"
-            aria-label={`Notifications${notificationCount > 0 ? ` (${notificationCountLabel})` : ""}`}
-            variant="ghost"
-            size="icon-lg"
-            className="relative rounded-full text-secondary hover:text-primary"
-          >
-            <Bell className="size-5" strokeWidth={1.9} />
-            {notificationCount > 0 ? (
-              <span className="absolute right-1.5 top-1 grid size-5 place-items-center rounded-full bg-primary text-[11px] font-bold leading-none text-white">
-                {notificationCountLabel}
-              </span>
-            ) : null}
-          </Button>
+          <NotificationBell />
           <div
             className="relative hidden sm:block"
             onMouseEnter={openAccountMenu}
@@ -803,11 +832,15 @@ export function DashboardTopBar() {
 
       <MobileDashboardDrawer
         isOpen={isMobileMenuOpen}
+        siteContact={siteContact}
         traveller={travellerUser}
         profilePhoto={profilePhoto}
         onClose={() => setIsMobileMenuOpen(false)}
         onSignOut={handleSignOut}
       />
+      {typeof document === "undefined"
+        ? null
+        : createPortal(megaMenuLayer, document.body)}
     </header>
   );
 }

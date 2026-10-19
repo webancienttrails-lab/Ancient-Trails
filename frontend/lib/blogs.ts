@@ -17,6 +17,7 @@ export type PublicBlog = {
   category: BlogCategory;
   content: string;
   quote: string;
+  relatedTourIds: string[];
   authorName: string;
   heroImage: string;
   seoTitle: string;
@@ -46,7 +47,12 @@ export type PublicBlogsResponse = {
   total: number;
 };
 
+export type BlogRelatedTour = {
+  tourId: string; tourName: string; durationDn: string; thumbnailImage: string; bannerImage: string;
+};
+
 export type PublicBlogResponse = {
+  relatedTours: BlogRelatedTour[];
   blog: PublicBlog;
   popularPosts: PublicBlog[];
   adjacentPosts: PublicBlog[];

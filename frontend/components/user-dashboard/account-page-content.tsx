@@ -5,14 +5,14 @@ import {
   CalendarDays,
   Camera,
   CheckCircle2,
-  ChevronRight,
-  FileText,
+  ExternalLink,
   IdCard,
   Loader2,
   Mail,
   Phone,
   ShieldCheck,
   Trash2,
+  Upload,
   UserRound,
 } from "lucide-react";
 import {
@@ -56,21 +56,45 @@ import {
   removeStoredProfilePhoto,
   saveStoredProfilePhoto,
 } from "@/lib/profile-photo";
-
-const kycDocuments = [
-  {
-    title: "Aadhaar Card",
-    note: "If Aadhaar is not available, please upload any other document from below",
-  },
-  { title: "Passport" },
-  { title: "PAN Card" },
-  { title: "Voter Card" },
-  { title: "Birth Certificate" },
-  { title: "Driver License" },
-];
+import type { BookingKycDocument } from "@/lib/booking-payment";
+import {
+  getBookingKycDocumentUrl,
+  getUserBookingReference,
+  listTravellerBookings,
+  uploadTravellerBookingKycDocument,
+  type UserBooking,
+} from "@/lib/user-bookings";
+import { cn } from "@/lib/utils";
 
 type ProfileGender = "" | "Male" | "Female";
 type NationalitySelection = "" | "Indian" | "Other";
+type KycDocumentType = BookingKycDocument["documentType"];
+
+type AccountKycTraveller = {
+  firstName?: string;
+  id: string;
+  kycDocuments?: BookingKycDocument[];
+  lastName?: string;
+  title?: string;
+  type: "adult" | "child";
+};
+
+const domesticKycDocumentOptions: Array<{
+  label: string;
+  value: KycDocumentType;
+}> = [
+  { label: "Aadhaar Card", value: "aadhaar_card" },
+  { label: "Driving License", value: "driving_license" },
+  { label: "Voter ID", value: "voter_id" },
+];
+
+const internationalKycDocumentOptions: Array<{
+  label: string;
+  value: KycDocumentType;
+}> = [
+  { label: "Passport", value: "passport" },
+  { label: "PAN Card", value: "pan_card" },
+];
 
 type ProfileFormState = {
   firstName: string;
@@ -108,6 +132,47 @@ function getTravellerInitials(user: TravellerUser | null) {
   }
 
   return (parts[0] || user.email || "TR").slice(0, 2);
+}
+
+function getGuestName(guest?: {
+  firstName?: string;
+  lastName?: string;
+  title?: string;
+}) {
+  return [guest?.title, guest?.firstName, guest?.lastName]
+    .map((value) => value?.trim() || "")
+    .filter(Boolean)
+    .join(" ");
+}
+
+function getBookingTravellers(booking: UserBooking): AccountKycTraveller[] {
+  return booking.booking.travellers.length > 0
+    ? booking.booking.travellers.map((traveller) => ({
+        firstName: traveller.firstName,
+        id: traveller.id,
+        kycDocuments: traveller.kycDocuments || [],
+        lastName: traveller.lastName,
+        title: traveller.title,
+        type: traveller.type,
+      }))
+    : booking.booking.guestDetails.map((guest, index) => ({
+        firstName: guest.firstName,
+        id: `guest-${index + 1}`,
+        kycDocuments: [],
+        lastName: guest.lastName,
+        title: guest.title,
+        type:
+          index < booking.booking.adultCount
+            ? ("adult" as const)
+            : ("child" as const),
+      }));
+}
+
+function isInternationalBooking(booking: UserBooking) {
+  const countryRegion = booking.destination?.countryRegion.trim().toLowerCase() || "";
+  const leadCountryCode = booking.booking.guestDetails[0]?.countryCode || "";
+
+  return Boolean(countryRegion && countryRegion !== "india") || leadCountryCode !== "+91";
 }
 
 function getProfileGender(gender?: string): ProfileGender {
@@ -305,41 +370,271 @@ function TextInput({
   );
 }
 
-function DocumentRow({
-  document,
-  highlighted,
+function BookingKycTravellerCard({
+  documentOptions,
+  isUploading,
+  onUpload,
+  traveller,
+  travellerIndex,
 }: {
-  document: (typeof kycDocuments)[number];
-  highlighted?: boolean;
+  documentOptions: Array<{ label: string; value: KycDocumentType }>;
+  isUploading: boolean;
+  onUpload: (payload: {
+    documentType: KycDocumentType;
+    file: File;
+    travellerId: string;
+  }) => Promise<void>;
+  traveller: AccountKycTraveller;
+  travellerIndex: number;
 }) {
+  const [documentType, setDocumentType] = useState<KycDocumentType>(
+    documentOptions[0]?.value || "aadhaar_card"
+  );
+  const [feedback, setFeedback] = useState("");
+  const [selectedFileName, setSelectedFileName] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const travellerName =
+    getGuestName(traveller) || `Traveller ${travellerIndex + 1}`;
+  const documents = traveller.kycDocuments || [];
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const fileName = event.target.files?.[0]?.name || "";
+    setSelectedFileName(fileName);
+    setFeedback(
+      fileName ? "File selected. Click Upload to save this document." : ""
+    );
+  }
+
+  function handleRemoveSelectedFile() {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
+    setSelectedFileName("");
+    setFeedback("");
+  }
+
+  async function handleUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const fileInput = form.elements.namedItem("kycFile") as HTMLInputElement | null;
+    const file = fileInput?.files?.[0];
+
+    if (!file) {
+      setFeedback("Choose a file before uploading.");
+      return;
+    }
+
+    try {
+      setFeedback("");
+      await onUpload({
+        documentType,
+        file,
+        travellerId: traveller.id,
+      });
+      form.reset();
+      setSelectedFileName("");
+      setFeedback("Document uploaded.");
+    } catch (error) {
+      setFeedback(getErrorMessage(error));
+    }
+  }
+
   return (
-    <button
-      type="button"
-      className={`grid w-full grid-cols-[32px_minmax(0,1fr)_18px] items-center gap-3 border-b border-border px-2 py-4 text-left transition-colors last:border-b-0 hover:bg-primary/5 sm:grid-cols-[36px_minmax(0,1fr)_auto_18px] ${
-        highlighted ? "bg-primary/5" : ""
-      }`}
-    >
-      <span className="grid size-8 place-items-center rounded-full bg-primary/10 text-primary">
-        <FileText className="size-4" strokeWidth={1.8} />
-      </span>
-      <span className="min-w-0">
-        <span className="block font-heading text-[15px] font-bold leading-none text-secondary">
-          {document.title}
+    <article className="rounded-[7px] border border-border bg-background p-3 sm:p-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="truncate font-heading text-[15px] font-bold leading-tight text-secondary">
+            {travellerName}
+          </h3>
+          <p className="mt-1 font-sans text-[11px] font-semibold text-secondary/55">
+            {traveller.type === "child" ? "Child traveller" : "Adult traveller"}
+          </p>
+        </div>
+        <span className="w-fit rounded-full bg-[#fff4e8] px-3 py-1 font-sans text-[10px] font-bold text-primary">
+          {documents.length > 0 ? `${documents.length} Uploaded` : "Not Uploaded"}
         </span>
-        {document.note ? (
-          <span className="mt-1 block truncate font-sans text-[11px] text-primary/80">
-            {document.note}
-          </span>
-        ) : null}
-      </span>
-      <span className="col-start-2 w-fit rounded-full bg-[#fff4e8] px-3 py-1 font-sans text-[10px] font-bold text-primary sm:col-start-auto">
-        Not Uploaded
-      </span>
-      <ChevronRight
-        className="col-start-3 row-start-1 size-4 text-secondary/50 sm:col-start-auto sm:row-start-auto"
-        strokeWidth={1.9}
-      />
-    </button>
+      </div>
+
+      <div className="mt-3 grid gap-2">
+        {documents.length > 0 ? (
+          documents.map((document) => (
+            <a
+              key={document.id}
+              href={getBookingKycDocumentUrl(document.fileUrl)}
+              target="_blank"
+              rel="noreferrer"
+              className="flex min-w-0 items-center justify-between gap-3 rounded-[6px] border border-border bg-white px-3 py-2 font-sans text-[11px] font-bold text-secondary transition-colors hover:border-primary hover:text-primary"
+            >
+              <span className="min-w-0 truncate">
+                {document.documentLabel}
+                <span className="font-medium text-secondary/45">
+                  {" "}
+                  - {document.uploadedBy}
+                </span>
+              </span>
+              <ExternalLink className="size-3.5 shrink-0" strokeWidth={1.8} />
+            </a>
+          ))
+        ) : (
+          <p className="rounded-[6px] border border-dashed border-primary/20 bg-white px-3 py-2 font-sans text-[11px] font-semibold text-secondary/55">
+            No KYC document uploaded yet.
+          </p>
+        )}
+      </div>
+
+      <form onSubmit={handleUpload} className="mt-3 grid gap-2 lg:grid-cols-[180px_minmax(0,1fr)_auto]">
+        <select
+          value={documentType}
+          onChange={(event) => setDocumentType(event.target.value as KycDocumentType)}
+          className="h-10 rounded-[6px] border border-border bg-white px-3 font-sans text-[12px] font-semibold text-secondary outline-none focus:border-primary focus:ring-3 focus:ring-primary/15"
+        >
+          {documentOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <input
+          name="kycFile"
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+          onChange={handleFileChange}
+          className="h-10 rounded-[6px] border border-border bg-white px-3 py-2 font-sans text-[11px] font-semibold text-secondary file:mr-2 file:rounded-[5px] file:border-0 file:bg-primary file:px-3 file:py-1 file:text-[10px] file:font-bold file:text-white"
+        />
+        <Button
+          type="submit"
+          disabled={isUploading}
+          className="h-10 gap-2 px-5 text-[13px] font-normal"
+        >
+          <Upload className="size-4" strokeWidth={1.8} />
+          {isUploading ? "Uploading" : "Upload"}
+        </Button>
+      </form>
+      {feedback ? (
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p
+            className={cn(
+              "font-sans text-[11px] font-semibold",
+              selectedFileName ? "text-primary" : "text-secondary/55"
+            )}
+          >
+            {feedback}
+          </p>
+          {selectedFileName ? (
+            <button
+              type="button"
+              onClick={handleRemoveSelectedFile}
+              className="flex w-fit items-center gap-1.5 font-sans text-[11px] font-bold text-secondary/55 transition-colors hover:text-primary"
+            >
+              <Trash2 className="size-3.5" strokeWidth={1.8} />
+              Remove
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function BookingKycSection({
+  bookings,
+  isLoading,
+  isUploading,
+  onSelectBooking,
+  onUpload,
+  selectedBooking,
+}: {
+  bookings: UserBooking[];
+  isLoading: boolean;
+  isUploading: boolean;
+  onSelectBooking: (bookingId: string) => void;
+  onUpload: (payload: {
+    documentType: KycDocumentType;
+    file: File;
+    travellerId: string;
+  }) => Promise<void>;
+  selectedBooking: UserBooking | null;
+}) {
+  const travellers = selectedBooking ? getBookingTravellers(selectedBooking) : [];
+  const documentOptions =
+    selectedBooking && isInternationalBooking(selectedBooking)
+      ? internationalKycDocumentOptions
+      : domesticKycDocumentOptions;
+
+  return (
+    <section className="mt-4 rounded-[8px] border border-border bg-white p-4 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:mt-6 sm:p-6">
+      <div className="flex items-start gap-3">
+        <IdCard className="mt-0.5 size-5 text-primary" strokeWidth={1.8} />
+        <div>
+          <h2 className="font-heading text-[17px] font-bold text-secondary">
+            KYC Documents
+          </h2>
+          <p className="mt-1 font-sans text-[12px] text-secondary/70">
+            Upload identity related documents for each traveller in a booking.
+          </p>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="mt-5 rounded-[7px] border border-border bg-background px-4 py-8 text-center">
+          <Loader2 className="mx-auto size-5 animate-spin text-primary" strokeWidth={2} />
+          <p className="mt-2 font-sans text-[12px] font-semibold text-secondary/60">
+            Loading your bookings...
+          </p>
+        </div>
+      ) : null}
+
+      {!isLoading && bookings.length === 0 ? (
+        <div className="mt-5 rounded-[7px] border border-dashed border-primary/25 bg-primary/5 px-4 py-8 text-center">
+          <p className="font-sans text-[13px] font-bold text-secondary">
+            No bookings found
+          </p>
+          <p className="mt-1 font-sans text-[12px] leading-[1.5] text-secondary/62">
+            KYC uploads will appear here after you book a tour.
+          </p>
+        </div>
+      ) : null}
+
+      {!isLoading && bookings.length > 0 ? (
+        <>
+          <div className="mt-5">
+            <FieldLabel>Select Booking</FieldLabel>
+            <select
+              value={selectedBooking?.booking.id || ""}
+              onChange={(event) => onSelectBooking(event.target.value)}
+              className="mt-2 h-11 w-full rounded-[6px] border border-border bg-white px-4 font-sans text-[13px] font-semibold text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+            >
+              {bookings.map((booking) => (
+                <option key={booking.booking.id} value={booking.booking.id}>
+                  {getUserBookingReference(booking)} -{" "}
+                  {booking.tour?.tourName || booking.booking.tourId}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mt-5 grid gap-3">
+            {travellers.map((traveller, index) => (
+              <BookingKycTravellerCard
+                key={traveller.id || index}
+                documentOptions={documentOptions}
+                isUploading={isUploading}
+                onUpload={onUpload}
+                traveller={traveller}
+                travellerIndex={index}
+              />
+            ))}
+          </div>
+
+          <p className="mt-4 rounded-[7px] border border-primary/15 bg-primary/5 px-3 py-2 font-sans text-[11px] font-semibold leading-[1.5] text-secondary/62">
+            Once documents are uploaded for every traveller in this booking, the
+            Ancient Trails admin team will be notified by email.
+          </p>
+        </>
+      ) : null}
+    </section>
   );
 }
 
@@ -360,7 +655,10 @@ export function AccountPageContent() {
   const [mobileOtp, setMobileOtp] = useState("");
   const [mobileOtpTarget, setMobileOtpTarget] = useState("");
   const [mobileOtpCooldownSeconds, setMobileOtpCooldownSeconds] = useState(0);
-  const [otherDocumentType, setOtherDocumentType] = useState("");
+  const [kycBookings, setKycBookings] = useState<UserBooking[]>([]);
+  const [selectedKycBookingId, setSelectedKycBookingId] = useState("");
+  const [isKycLoading, setIsKycLoading] = useState(true);
+  const [isKycUploading, setIsKycUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mobileOtpAutoVerifyTimeoutRef = useRef<number | null>(null);
 
@@ -392,6 +690,13 @@ export function AccountPageContent() {
     getComparableProfileForm(savedProfileForm).mobileNumber;
   const isAddingInitialMobileNumber =
     isMobileNumberChanged && !getComparableProfileForm(savedProfileForm).mobileNumber;
+  const selectedKycBooking = useMemo(
+    () =>
+      kycBookings.find((booking) => booking.booking.id === selectedKycBookingId) ||
+      kycBookings[0] ||
+      null,
+    [kycBookings, selectedKycBookingId]
+  );
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -412,6 +717,42 @@ export function AccountPageContent() {
       window.cancelAnimationFrame(frameId);
     };
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadKycBookings() {
+      setIsKycLoading(true);
+
+      try {
+        const response = await listTravellerBookings();
+
+        if (!isMounted) {
+          return;
+        }
+
+        const bookings = response.data.bookings;
+
+        setKycBookings(bookings);
+        setSelectedKycBookingId((current) => current || bookings[0]?.booking.id || "");
+      } catch (error) {
+        if (isMounted) {
+          setKycBookings([]);
+          toast.error("KYC bookings unavailable", getErrorMessage(error));
+        }
+      } finally {
+        if (isMounted) {
+          setIsKycLoading(false);
+        }
+      }
+    }
+
+    loadKycBookings();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [toast]);
 
   useEffect(() => {
     return () => {
@@ -536,13 +877,45 @@ export function AccountPageContent() {
     toast.info("Photo removed", "Your profile avatar has been reset.");
   };
 
-  const handleOtherDocumentUpload = () => {
-    if (!otherDocumentType) {
-      toast.warning("Select document type", "Choose a document type before uploading.");
+  const handleKycUpload = async (payload: {
+    documentType: KycDocumentType;
+    file: File;
+    travellerId: string;
+  }) => {
+    if (!selectedKycBooking || isKycUploading) {
       return;
     }
 
-    toast.info("Upload selected", `${otherDocumentType} document upload is ready.`);
+    setIsKycUploading(true);
+
+    try {
+      const response = await uploadTravellerBookingKycDocument({
+        bookingId: selectedKycBooking.booking.id,
+        ...payload,
+      });
+
+      setKycBookings((current) =>
+        current.map((booking) =>
+          booking.booking.id === response.data.booking.id
+            ? {
+                ...booking,
+                booking: response.data.booking,
+              }
+            : booking
+        )
+      );
+      toast.success(
+        "KYC document uploaded",
+        "Your document has been saved with this booking."
+      );
+    } catch (error) {
+      const message = getErrorMessage(error);
+
+      toast.error("KYC upload failed", message);
+      throw error;
+    } finally {
+      setIsKycUploading(false);
+    }
   };
 
   const validateProfileDraft = () => {
@@ -1122,59 +1495,14 @@ export function AccountPageContent() {
               </form>
             </section>
 
-            <section className="mt-4 rounded-[8px] border border-border bg-white p-4 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:mt-6 sm:p-6">
-              <div className="flex items-start gap-3">
-                <IdCard className="mt-0.5 size-5 text-primary" strokeWidth={1.8} />
-                <div>
-                  <h2 className="font-heading text-[17px] font-bold text-secondary">
-                    KYC Documents
-                  </h2>
-                  <p className="mt-1 font-sans text-[12px] text-secondary/70">
-                    Upload identity related documents.
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-5 overflow-hidden rounded-[7px] border border-border">
-                {kycDocuments.map((document, index) => (
-                  <DocumentRow
-                    key={document.title}
-                    document={document}
-                    highlighted={index === 0}
-                  />
-                ))}
-              </div>
-
-              <div className="mt-8">
-                <h3 className="font-heading text-[16px] font-bold text-secondary">
-                  Other Documents
-                </h3>
-                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                  <div className="sm:w-[360px]">
-                    <Select
-                      value={otherDocumentType || null}
-                      onValueChange={(value) => setOtherDocumentType(value || "")}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select document type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Visa">Visa</SelectItem>
-                        <SelectItem value="Insurance">Insurance</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button
-                    type="button"
-                    onClick={handleOtherDocumentUpload}
-                    className="w-full px-6 font-normal sm:w-auto sm:min-w-[120px]"
-                  >
-                    Upload
-                  </Button>
-                </div>
-              </div>
-            </section>
+            <BookingKycSection
+              bookings={kycBookings}
+              isLoading={isKycLoading}
+              isUploading={isKycUploading}
+              onSelectBooking={setSelectedKycBookingId}
+              onUpload={handleKycUpload}
+              selectedBooking={selectedKycBooking}
+            />
           </div>
         </section>
       </div>

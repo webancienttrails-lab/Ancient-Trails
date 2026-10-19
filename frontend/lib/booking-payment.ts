@@ -32,9 +32,28 @@ export type BookingTravellerPayload = {
   address?: string;
   panNumber?: string;
   ageOnDeparture?: number;
+  kycDocuments?: BookingKycDocument[];
+};
+
+export type BookingKycDocument = {
+  id: string;
+  documentType:
+    | "aadhaar_card"
+    | "driving_license"
+    | "voter_id"
+    | "passport"
+    | "pan_card";
+  documentLabel: string;
+  fileName: string;
+  fileUrl: string;
+  mimeType: string;
+  uploadedBy: "traveller" | "admin";
+  uploadedAt: string;
 };
 
 export type BookingPayload = {
+  emergencyContactName?: string;
+  emergencyContactMobileNumber?: string;
   tourId: string;
   departureId?: string;
   selectedAccommodationOptionId?: string;
@@ -58,6 +77,10 @@ export type BookingPayload = {
 };
 
 export type BookingConfirmation = {
+  paymentMethod?: string;
+  paymentMode?: string;
+  emergencyContactName?: string;
+  emergencyContactMobileNumber?: string;
   id: string;
   bookingReference?: string;
   bookingStatus?: string;
@@ -94,6 +117,12 @@ export type BookingConfirmation = {
   gstPercentage?: number;
   gstAmount?: number;
   grandTotal?: number;
+  airFlightCharges?: number;
+  airfareIncludedInTotal?: boolean;
+  airfareExcluded?: boolean;
+  airfareAddedAt?: string | null;
+  airfareHistory?: Array<{ previousAmount: number; amount: number; changedBy: string; changedAt: string; previousIncludedInTotal?: boolean; includedInTotal?: boolean; previousTotal?: number; total?: number; reason?: string }>;
+  collectionHistory?: Array<{ paymentId: string; amount: number; airfareAmount: number; paidAt: string }>;
   depositAmount?: number;
   balanceAmount?: number;
   balanceDueDate?: string | null;
@@ -140,9 +169,20 @@ export type BookingPaymentOrder = {
   paymentSession: BookingPaymentSession;
 };
 
+export type BookingBalancePaymentOrder =
+  | BookingPaymentOrder
+  | { paymentLinkUrl: string };
+
 export type BookingPaymentVerification = {
   booking: BookingConfirmation;
   confirmationToken: string;
+};
+
+export type BookingPaymentOrderStatus = {
+  booking: BookingConfirmation | null;
+  confirmationToken?: string;
+  isConfirmed: boolean;
+  paymentSession: BookingPaymentSession;
 };
 
 export type BookingBalancePaymentVerification = {
@@ -156,6 +196,7 @@ export type BookingConfirmationData = {
     departureId: string;
     departureDate: string | null;
     returnDate: string | null;
+    totalSeats?: number;
     seatsAvailable: number;
   } | null;
   expert: {
@@ -193,6 +234,13 @@ export type BookingRecoveryData = {
   tour: BookingConfirmationData["tour"];
 };
 
+export function createOfflineBooking(payload: BookingPayload) {
+  return apiRequest<{ booking: Pick<BookingConfirmation, "id" | "bookingReference">; submissionToken: string }>("/api/bookings/offline", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function createBookingPaymentOrder(payload: BookingPayload) {
   return apiRequest<BookingPaymentOrder>("/api/bookings/payment/order", {
     method: "POST",
@@ -221,6 +269,12 @@ export function verifyBookingPayment(payload: {
   });
 }
 
+export function getBookingPaymentOrderStatus(orderId: string) {
+  return apiRequest<BookingPaymentOrderStatus>(
+    `/api/bookings/payment/orders/${encodeURIComponent(orderId)}/status`
+  );
+}
+
 function getTravellerHeaders(): HeadersInit {
   const session = getTravellerSession();
 
@@ -234,7 +288,7 @@ function getTravellerHeaders(): HeadersInit {
 }
 
 export function createBookingBalancePaymentOrder(bookingId: string) {
-  return apiRequest<BookingPaymentOrder>(
+  return apiRequest<BookingBalancePaymentOrder>(
     `/api/bookings/${encodeURIComponent(bookingId)}/balance-payment/order`,
     {
       headers: getTravellerHeaders(),
@@ -258,6 +312,13 @@ export function verifyBookingBalancePayment(
       headers: getTravellerHeaders(),
       method: "POST",
     }
+  );
+}
+
+export function getOfflineBookingSubmission(bookingId: string, token: string) {
+  return apiRequest<BookingConfirmationData>(
+    `/api/bookings/${encodeURIComponent(bookingId)}/offline-submission?token=${encodeURIComponent(token)}`,
+    { cache: "no-store" }
   );
 }
 
@@ -295,4 +356,12 @@ export function createBookingRecoveryPaymentOrder(
       method: "POST",
     }
   );
+}
+
+export function formatBookingPaymentMethod(booking: { paymentMethod?: string; paymentMode?: string; paymentProvider?: string }): string {
+  const labels: Record<string, string> = { cash: "Cash", cheque: "Cheque", neft: "NEFT", imps: "IMPS", rtgs: "RTGS", upi: "UPI", netbanking: "Netbanking", card: "Card", wallet: "Wallet", emi: "EMI", bank_transfer: "Bank Transfer", razorpay: "Razorpay" };
+  if (booking.paymentMethod) return labels[booking.paymentMethod] || booking.paymentMethod;
+  if (booking.paymentMode === "bank_transfer") return "Bank Transfer";
+  if (booking.paymentProvider === "razorpay") return "Razorpay";
+  return "Not recorded";
 }

@@ -1,6 +1,9 @@
-import { ApiError, apiRequest } from "@/lib/api";
+import { ApiError, apiBaseUrl, apiRequest, type ApiResponse } from "@/lib/api";
 import { getTravellerSession } from "@/lib/auth";
-import type { BookingConfirmation } from "@/lib/booking-payment";
+import type {
+  BookingConfirmation,
+  BookingKycDocument,
+} from "@/lib/booking-payment";
 
 export type UserBookingTripStatus = "Upcoming" | "Completed" | "Cancelled";
 
@@ -93,6 +96,72 @@ export async function listTravellerBookings() {
   });
 }
 
+async function readUploadResponse<TData>(
+  response: Response
+): Promise<ApiResponse<TData>> {
+  const contentType = response.headers.get("content-type") || "";
+  const body = contentType.includes("application/json")
+    ? ((await response.json()) as Partial<ApiResponse<TData>> | null)
+    : null;
+
+  if (!response.ok) {
+    throw new ApiError(
+      response.status,
+      body?.message || "Upload failed",
+      body?.details
+    );
+  }
+
+  if (!body) {
+    throw new ApiError(response.status, "Invalid API response");
+  }
+
+  return body as ApiResponse<TData>;
+}
+
+export function getBookingKycDocumentUrl(source = "") {
+  const trimmedSource = source.trim();
+
+  if (!trimmedSource) {
+    return "";
+  }
+
+  if (/^(https?:|data:|blob:)/i.test(trimmedSource)) {
+    return trimmedSource;
+  }
+
+  if (trimmedSource.startsWith("/uploads/")) {
+    return `${apiBaseUrl}${trimmedSource}`;
+  }
+
+  return trimmedSource;
+}
+
+export async function uploadTravellerBookingKycDocument(payload: {
+  bookingId: string;
+  documentType: BookingKycDocument["documentType"];
+  file: File;
+  travellerId: string;
+}) {
+  const formData = new FormData();
+
+  formData.append("travellerId", payload.travellerId);
+  formData.append("documentType", payload.documentType);
+  formData.append("document", payload.file);
+
+  return readUploadResponse<{ booking: BookingConfirmation }>(
+    await fetch(
+      `${apiBaseUrl}/api/bookings/${encodeURIComponent(payload.bookingId)}/kyc`,
+      {
+        method: "POST",
+        headers: getTravellerHeaders(),
+        body: formData,
+        credentials: "include",
+      }
+    )
+  );
+}
+
 export function getUserBookingTripStatus(
   item: UserBooking,
   now = new Date()
@@ -119,7 +188,7 @@ export function getUserBookingTripStatus(
 }
 
 export function getUserBookingReference(item: UserBooking) {
-  return `ATB-${item.booking.id.slice(-8).toUpperCase()}`;
+  return item.booking.bookingReference || `ATB-${item.booking.id.slice(-8).toUpperCase()}`;
 }
 
 export function getUserBookingDetailHref(item: UserBooking) {

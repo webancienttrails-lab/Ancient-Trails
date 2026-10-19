@@ -1,8 +1,9 @@
 "use client";
 
-import Image from "next/image";
+import { SiteLogo } from "@/components/site-logo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   CalendarCheck,
   Heart,
@@ -16,6 +17,15 @@ import {
 
 import { useToast } from "@/components/ui/toast";
 import { clearTravellerSession } from "@/lib/auth";
+import {
+  defaultSiteContactSettings,
+  getContactCallDisplay,
+  getContactEmailDisplay,
+  getMailtoHref,
+  getPublicSiteSettings,
+  getTelephoneHref,
+  type SiteContactSettings,
+} from "@/lib/site-settings";
 
 type UserSidebarItem = {
   label: string;
@@ -103,10 +113,43 @@ export function UserSidebar({
 }: UserSidebarProps) {
   const router = useRouter();
   const toast = useToast();
+  const [siteContact, setSiteContact] = useState<SiteContactSettings>(
+    defaultSiteContactSettings
+  );
   const sidebarItems = items.map((item) => ({
     ...item,
     active: item.active ?? item.label === activeLabel,
   }));
+  const callDisplay = getContactCallDisplay(siteContact);
+  const callNumber =
+    siteContact.primaryCalling ||
+    siteContact.landline ||
+    defaultSiteContactSettings.primaryCalling;
+  const emailAddress = getContactEmailDisplay(siteContact);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSiteSettings() {
+      try {
+        const response = await getPublicSiteSettings();
+
+        if (isMounted) {
+          setSiteContact(response.data.settings.contact);
+        }
+      } catch {
+        if (isMounted) {
+          setSiteContact(defaultSiteContactSettings);
+        }
+      }
+    }
+
+    loadSiteSettings();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSignOut = () => {
     clearTravellerSession();
@@ -118,8 +161,7 @@ export function UserSidebar({
     <aside className="hidden h-screen max-h-screen overflow-hidden border-r border-border bg-white/88 lg:sticky lg:top-0 lg:flex lg:flex-col">
       <div className="px-8 pb-4 pt-5">
         <Link href="/" aria-label="Ancient Trails home">
-          <Image
-            src="/Header Logo.png"
+          <SiteLogo
             alt="Ancient Trails"
             width={218}
             height={86}
@@ -148,18 +190,18 @@ export function UserSidebar({
           </p>
           <div className="mt-3 space-y-2.5">
             <a
-              href="tel:18003135555"
+              href={getTelephoneHref(callNumber)}
               className="flex items-center gap-3 font-sans text-[12px] font-semibold text-secondary"
             >
               <Phone className="size-4 text-secondary/80" strokeWidth={1.8} />
-              1800 313 5555
+              {callDisplay || callNumber}
             </a>
             <a
-              href="mailto:travel@ancienttrails.com"
+              href={getMailtoHref(emailAddress)}
               className="flex min-w-0 items-center gap-3 font-sans text-[12px] font-semibold text-secondary"
             >
               <Mail className="size-4 shrink-0 text-secondary/80" strokeWidth={1.8} />
-              <span className="truncate">travel@ancienttrails.com</span>
+              <span className="truncate">{emailAddress}</span>
             </a>
           </div>
         </div>
