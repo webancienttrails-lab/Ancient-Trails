@@ -21,11 +21,13 @@ export enum EnquiryStatus {
 }
 
 export interface IEnquiry {
+  enquiryReference?: string;
   name: string;
   email: string;
   phone: string;
   subject: string;
   message: string;
+  socialMediaReferral: string;
   source: EnquirySource;
   status: EnquiryStatus;
   createdAt: Date;
@@ -42,6 +44,7 @@ const trimmedString = {
 
 const enquirySchema = new Schema<IEnquiry>(
   {
+    enquiryReference: { type: String, trim: true },
     name: {
       ...trimmedString,
       maxlength: 160,
@@ -63,6 +66,10 @@ const enquirySchema = new Schema<IEnquiry>(
       ...trimmedString,
       maxlength: 3000,
     },
+    socialMediaReferral: {
+      ...trimmedString,
+      maxlength: 160,
+    },
     source: {
       type: String,
       enum: Object.values(EnquirySource),
@@ -80,6 +87,7 @@ const enquirySchema = new Schema<IEnquiry>(
   }
 );
 
+enquirySchema.index({ enquiryReference: 1 }, { unique: true, partialFilterExpression: { enquiryReference: { $type: "string" } } });
 enquirySchema.index({ status: 1 });
 enquirySchema.index({ createdAt: -1 });
 enquirySchema.index({

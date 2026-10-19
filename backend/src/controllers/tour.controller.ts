@@ -1,3 +1,4 @@
+import { queueTourUpdate } from "../services/notifications/notification-events.service";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
@@ -328,6 +329,7 @@ const tourDeparturePayloadSchema = z
     destinationId: optionalCodeField("Destination ID", 40),
     departureDate: optionalDateField("Departure date"),
     returnDate: optionalDateField("Return date"),
+    totalSeats: nonNegativeNumberField("Total seats", 100000).optional(),
     seatsAvailable: nonNegativeNumberField("Seats available", 100000),
     priceAdult: nonNegativeNumberField("Adult price", 100000000),
     priceExtraBed: nonNegativeNumberField("Extra bed price", 100000000),
@@ -496,10 +498,11 @@ function formatTourDeparture(
     normalizeSeatCount(seatCounts?.reservedSeats)
   );
   const totalSeats = Math.max(
-    departure.seatsAvailable,
+    normalizeSeatCount(departure.totalSeats),
+    normalizedFilledSeats,
     departure.seatsAvailable + normalizedReservedSeats
   );
-  const seatsAvailable = Math.max(0, totalSeats - normalizedFilledSeats);
+  const seatsAvailable = Math.max(0, departure.seatsAvailable);
 
   return {
     id: departure._id.toString(),
@@ -547,6 +550,7 @@ async function getSeatCountsByDepartureId(departureIds: string[]) {
     return new Map<string, DepartureSeatCounts>();
   }
 
+  const now = new Date();
   const bookingSeatCounts = await Booking.aggregate<{
     _id: string;
     filledSeats: number;
@@ -579,14 +583,21 @@ async function getSeatCountsByDepartureId(departureIds: string[]) {
           ],
         },
         totalGuest: 1,
+        heldSeatCount: 1,
         isPaid: {
           $and: [
             { $eq: ["$paymentStatus", "paid"] },
             { $gt: ["$amountPaid", 0] },
+            { $not: [{ $in: ["$bookingStatus", ["cancelled", "expired"]] }] },
           ],
         },
-        hasActiveReservation: {
-          $in: ["$paymentStatus", ["paid", "pending"]],
+        isActiveHold: {
+          $and: [
+            { $ne: ["$paymentStatus", "paid"] },
+            { $eq: ["$bookingStatus", "payment_pending"] },
+            { $gt: ["$heldSeatCount", 0] },
+            { $gt: ["$holdExpiresAt", now] },
+          ],
         },
       },
     },
@@ -605,7 +616,13 @@ async function getSeatCountsByDepartureId(departureIds: string[]) {
         },
         reservedSeats: {
           $sum: {
-            $cond: ["$hasActiveReservation", "$totalGuest", 0],
+            $cond: [
+              "$isPaid",
+              "$totalGuest",
+              {
+                $cond: ["$isActiveHold", "$heldSeatCount", 0],
+              },
+            ],
           },
         },
       },
@@ -760,6 +777,10 @@ async function createLinkedDeparturePayload(
   return {
     ...payload,
     destinationId: linkedDestinationId,
+    totalSeats: Math.max(
+      normalizeSeatCount(payload.totalSeats),
+      normalizeSeatCount(payload.seatsAvailable)
+    ),
   };
 }
 
@@ -876,6 +897,7 @@ export async function updateTour(
       throw new HttpError(404, "Tour not found");
     }
 
+    queueTourUpdate("tour", existingTour, tour);
     const existingDestinationIds = getTourDestinationIds(existingTour);
     const nextDestinationIds = getTourDestinationIds(tour);
 
@@ -1084,6 +1106,7 @@ export async function updateTourItinerary(
   try {
     await getLinkedTour(payload.tourId);
 
+    const beforeNotificationUpdate = await TourItinerary.findById(request.params.id);
     const itinerary = await TourItinerary.findByIdAndUpdate(
       request.params.id,
       payload,
@@ -1097,6 +1120,7 @@ export async function updateTourItinerary(
       throw new HttpError(404, "Tour itinerary not found");
     }
 
+    if (beforeNotificationUpdate) queueTourUpdate("itinerary", beforeNotificationUpdate, itinerary);
     response.status(200).json({
       success: true,
       message: "Tour itinerary updated successfully",
@@ -1235,6 +1259,7 @@ export async function updateTourDeparture(
   try {
     const linkedPayload = await createLinkedDeparturePayload(payload);
 
+    const beforeNotificationUpdate = await TourDeparture.findById(request.params.id);
     const departure = await TourDeparture.findByIdAndUpdate(
       request.params.id,
       linkedPayload,
@@ -1248,6 +1273,7 @@ export async function updateTourDeparture(
       throw new HttpError(404, "Tour departure not found");
     }
 
+    if (beforeNotificationUpdate) queueTourUpdate("departure", beforeNotificationUpdate, departure);
     response.status(200).json({
       success: true,
       message: "Tour departure updated successfully",

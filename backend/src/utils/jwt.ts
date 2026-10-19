@@ -187,3 +187,18 @@ function isTravellerGoogleRegistrationPayload(
     payload.lastName.trim().length > 0
   );
 }
+
+export function signAdminBookingLeadToken(adminId: string, mobileNumber: string): string {
+  return jwt.sign({ purpose: "admin_booking_lead", adminId, mobileNumber }, getJwtSecret(), { expiresIn: "30m" });
+}
+
+export function verifyAdminBookingLeadToken(token: string, adminId: string, mobileNumber: string): void {
+  try {
+    const payload = jwt.verify(token, getJwtSecret());
+    if (typeof payload === "string" || payload.purpose !== "admin_booking_lead" || payload.adminId !== adminId || payload.mobileNumber !== mobileNumber) {
+      throw new Error("Verification mismatch");
+    }
+  } catch {
+    throw new HttpError(400, "Verify the lead traveller's current mobile number with OTP before creating the booking");
+  }
+}

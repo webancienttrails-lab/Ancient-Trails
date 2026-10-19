@@ -1,3 +1,6 @@
+import { resolveBookingEmergencyContact } from "./booking/booking.emergency-contact";
+import { Booking } from "../models/booking.model";
+import { isAirfareExcluded, calculateAirfareTotals, airfarePaymentPortion, creditAirfarePayment } from "./booking/booking.airfare";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -527,4 +530,142 @@ test("pricing snapshots use the selected occupancy option total", () => {
   assert.equal(snapshot.grandTotal, 108098);
   assert.equal(snapshot.depositAmount, 60000);
   assert.equal(snapshot.balanceAmount, 48098);
+});
+
+test("airfare: advance booking adds tax-inclusive fare without changing package taxes", () => {
+  assert.deepEqual(calculateAirfareTotals(52500, 0, 15000, 20000), { grandTotal: 67500, balanceAmount: 47500 });
+});
+test("airfare: fully paid package becomes payable for airfare only", () => {
+  assert.deepEqual(calculateAirfareTotals(52500, 0, 15000, 52500), { grandTotal: 67500, balanceAmount: 15000 });
+});
+test("airfare: repeated save replaces rather than adds, and updates preserve paid money", () => {
+  assert.deepEqual(calculateAirfareTotals(67500, 15000, 15000, 20000), { grandTotal: 67500, balanceAmount: 47500 });
+  assert.deepEqual(calculateAirfareTotals(67500, 15000, 18000, 60000), { grandTotal: 70500, balanceAmount: 10500 });
+});
+test("airfare: reject invalid money, overflow, and reduction below paid amount", () => {
+  for (const fare of [-1, 1.5, NaN, Infinity, 1000000001]) assert.throws(() => calculateAirfareTotals(52500, 0, fare, 20000));
+  assert.throws(() => calculateAirfareTotals(67500, 15000, 5000, 65000));
+  assert.throws(() => calculateAirfareTotals(999999999, 0, 2, 0));
+});
+test("airfare: zero confirmed fare and valid downward corrections", () => {
+  assert.deepEqual(calculateAirfareTotals(67500, 15000, 10000, 20000), { grandTotal: 62500, balanceAmount: 42500 });
+  assert.deepEqual(calculateAirfareTotals(52500, 0, 0, 52500), { grandTotal: 52500, balanceAmount: 0 });
+});
+test("airfare: only explicit flight exclusions qualify, included packages take precedence", () => {
+  assert.equal(isAirfareExcluded(null), false);
+  assert.equal(isAirfareExcluded({ inclusions: ["Hotel"], exclusions: [] }), false);
+  assert.equal(isAirfareExcluded({ exclusions: ["Airfare at actual cost"] }), true);
+  assert.equal(isAirfareExcluded({ inclusions: ["Flights not included"] }), true);
+  assert.equal(isAirfareExcluded({ inclusions: ["Return flights included"], exclusions: ["Any airfare increases"] }), false);
+});
+test("airfare: payment history separates package and airfare collections", () => {
+  assert.equal(airfarePaymentPortion(67500, 15000, 20000, 47500), 15000);
+  assert.equal(airfarePaymentPortion(67500, 15000, 52500, 5000), 5000);
+  assert.equal(airfarePaymentPortion(67500, 15000, 20000, 10000), 0);
+  assert.equal(airfarePaymentPortion(67500, 15000, 67500, 10000), 0);
+});
+
+test("airfare: repeated payment verification credits the same receipt once", () => {
+  const state = { grandTotal: 67500, airfare: 15000, amountPaid: 52500, history: [] };
+  const payment = { paymentId: "pay_airfare_1", amount: 15000, paidAt: new Date("2026-10-15T00:00:00Z") };
+  const first = creditAirfarePayment(state, payment);
+  assert.equal(first.amountPaid, 67500);
+  assert.equal(first.balanceAmount, 0);
+  assert.equal(first.history[0]?.airfareAmount, 15000);
+  const replay = creditAirfarePayment({ ...state, amountPaid: first.amountPaid, history: first.history }, payment);
+  assert.equal(replay.credited, false);
+  assert.equal(replay.amountPaid, 67500);
+  assert.equal(replay.history.length, 1);
+  assert.equal(state.history.length, 0);
+});
+test("airfare: advance and additional installments keep exact outstanding balances", () => {
+  const state = { grandTotal: 67500, airfare: 15000, amountPaid: 20000, history: [] };
+  const first = creditAirfarePayment(state, { paymentId: "pay_balance_1", amount: 32500, paidAt: new Date() });
+  assert.equal(first.balanceAmount, 15000);
+  assert.equal(first.history[0]?.airfareAmount, 0);
+  const last = creditAirfarePayment({ ...state, amountPaid: first.amountPaid, history: first.history },
+    { paymentId: "pay_airfare_2", amount: 15000, paidAt: new Date() });
+  assert.equal(last.amountPaid, 67500);
+  assert.equal(last.balanceAmount, 0);
+  assert.equal(last.history[1]?.airfareAmount, 15000);
+});
+
+test("booking emergency contact is stored on the booking document", () => {
+  const contact = resolveBookingEmergencyContact({
+    emergencyContactName: " Emergency Person ",
+    emergencyContactMobileNumber: " 9876543210 ",
+  });
+  const booking = new Booking({ ...contact, tourId: "TOUR001" });
+  const stored = booking.toObject();
+  assert.equal(stored.emergencyContactName, "Emergency Person");
+  assert.equal(stored.emergencyContactMobileNumber, "9876543210");
+});
+
+test("older booking payloads derive the booking contact from the lead guest or traveller", () => {
+  const contact = { emergencyContactName: "Emergency Person", emergencyContactMobileNumber: "9876543210" };
+  assert.deepEqual(resolveBookingEmergencyContact({ guestDetails: [contact] }), contact);
+  assert.deepEqual(resolveBookingEmergencyContact({ travellers: [{ id: "adult-1", type: "adult", ...contact }] }), contact);
+});
+
+test("unrelated admin edits preserve the booking emergency contact", () => {
+  const contact = { emergencyContactName: "Emergency Person", emergencyContactMobileNumber: "9876543210" };
+  assert.deepEqual(resolveBookingEmergencyContact({ guestDetails: [{}], travellers: [] }, contact), contact);
+  assert.deepEqual(resolveBookingEmergencyContact({}, { guestDetails: [contact] }), contact);
+  const updated = { emergencyContactName: "New Contact", emergencyContactMobileNumber: "9123456780" };
+  assert.deepEqual(resolveBookingEmergencyContact(updated, contact), updated);
+});
+
+test("emergency contacts remain specific to their booking", () => {
+  const first = resolveBookingEmergencyContact({ emergencyContactName: "First Contact", emergencyContactMobileNumber: "9876543210" });
+  const second = resolveBookingEmergencyContact({ emergencyContactName: "Second Contact", emergencyContactMobileNumber: "9123456780" });
+  assert.notDeepEqual(first, second);
+  assert.deepEqual(resolveBookingEmergencyContact({}), { emergencyContactName: "", emergencyContactMobileNumber: "" });
+});
+
+test("only the lead traveller email is required on a booking", async () => {
+  const guest = {
+    title: "Mr", firstName: "Test", lastName: "Traveller",
+    countryCode: "+91", mobileNumber: "9876543210",
+    dateOfBirth: new Date("1990-01-01"), gender: "male", address: "Pune",
+  };
+  const booking = new Booking({
+    tourId: "TOUR001", totalGuest: 2, adultCount: 2, childCount: 0,
+    guestDetails: [{ ...guest, email: "lead@example.com" }, guest],
+  });
+  await booking.validate();
+  assert.equal(booking.guestDetails[1]?.email, "");
+  booking.guestDetails[0]!.email = "";
+  await assert.rejects(booking.validate(), /Lead traveller email is required/);
+});
+
+test("other traveller emails are retained when supplied", async () => {
+  const guest = {
+    title: "Ms", firstName: "Test", lastName: "Traveller",
+    countryCode: "+91", mobileNumber: "9876543210",
+    dateOfBirth: new Date("1990-01-01"), gender: "female", address: "Pune",
+  };
+  const booking = new Booking({
+    tourId: "TOUR001", totalGuest: 2, adultCount: 2, childCount: 0,
+    guestDetails: [{ ...guest, email: "lead@example.com" }, { ...guest, email: "other@example.com" }],
+  });
+  await booking.validate();
+  assert.equal(booking.guestDetails[1]?.email, "other@example.com");
+});
+
+test("included airfare: correct an additional charge without changing the amount paid", () => {
+  assert.deepEqual(calculateAirfareTotals(94550, 20000, 20000, 20000, { included: true }),
+    { grandTotal: 74550, balanceAmount: 54550 });
+});
+test("included airfare: repeated saves and amount updates do not increase the booking total", () => {
+  for (const next of [20000, 15000, 25000]) {
+    assert.deepEqual(calculateAirfareTotals(74550, 20000, next, 20000, { previousIncluded: true, included: true }),
+      { grandTotal: 74550, balanceAmount: 54550 });
+  }
+});
+test("included airfare: reject amounts above the package total and corrections below paid money", () => {
+  assert.throws(() => calculateAirfareTotals(74550, 20000, 80000, 20000, { previousIncluded: true, included: true }));
+  assert.throws(() => calculateAirfareTotals(94550, 20000, 20000, 90000, { included: true }));
+});
+test("additional airfare remains backward compatible when inclusion is not selected", () => {
+  assert.deepEqual(calculateAirfareTotals(74550, 0, 20000, 20000), { grandTotal: 94550, balanceAmount: 74550 });
 });

@@ -1,11 +1,17 @@
+import { AIRFARE_NOTE } from "./booking/booking.airfare";
 import fs from "node:fs";
 import path from "node:path";
 
 import nodemailer, { type SendMailOptions } from "nodemailer";
 
 import { HttpError } from "../utils/httpError";
+import { SiteSettings } from "../models/siteSettings.model";
 
 export type BookingConfirmationEmailPayload = {
+  airFlightCharges?: number;
+  airfareIncludedInTotal?: boolean;
+  airfareExcluded?: boolean;
+  airfareAddedAt?: Date | null;
   amountPaid: number;
   balanceAmount: number;
   balanceDueDate?: Date | string | null;
@@ -21,6 +27,8 @@ export type BookingConfirmationEmailPayload = {
   returnDate?: Date | string | null;
   supportEmail?: string;
   supportPhone?: string;
+  supportWhatsapp?: string;
+  supportOfficeAddress?: string;
   totalAmount: number;
   tourName: string;
   travellerName: string;
@@ -30,6 +38,20 @@ export type BookingConfirmationEmailPayload = {
 export type BookingAlertEmailPayload = BookingConfirmationEmailPayload & {
   travellerEmail?: string;
   travellerPhone?: string;
+  offlinePending?: boolean;
+};
+
+export type BookingKycCompletedAlertEmailPayload = {
+  bookingReference: string;
+  documentSummary: Array<{
+    documents: string[];
+    travellerName: string;
+  }>;
+  tourName: string;
+  travellerEmail?: string;
+  travellerName: string;
+  travellerPhone?: string;
+  travellersLabel: string;
 };
 
 export type BookingRecoveryEmailPayload = {
@@ -90,10 +112,6 @@ function escapeHtml(value: string | number | null | undefined): string {
 
 function escapeAttribute(value: string | null | undefined): string {
   return escapeHtml(value);
-}
-
-function stripTags(value: string): string {
-  return value.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
 }
 
 function getFrontendBaseUrl() {
@@ -259,7 +277,18 @@ function formatCurrency(value: number | null | undefined) {
   }).format(Number.isFinite(amount) ? amount : 0);
 }
 
-function renderDetailRows(rows: Array<{ label: string; value: string }>) {
+function renderDetailRows(rows: Array<{ label: string; value: string }>, tabular = false) {
+  if (tabular) {
+    return rows.map(row => `
+      <tr>
+        <th scope="row" class="detail-label" style="background:${colors.muted};border:1px solid ${colors.border};color:${colors.foreground};font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;line-height:20px;padding:12px;text-align:left;vertical-align:top;width:38%;">
+          ${escapeHtml(row.label)}
+        </th>
+        <td class="detail-value" style="border:1px solid ${colors.border};color:${colors.foreground};font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;line-height:20px;padding:12px;text-align:left;vertical-align:top;overflow-wrap:anywhere;width:62%;">
+          ${escapeHtml(row.value || "-")}
+        </td>
+      </tr>`).join("");
+  }
   return rows
     .map(
       (row) => `
@@ -304,7 +333,8 @@ function buildConfirmationUrl(payload: BookingConfirmationEmailPayload) {
 }
 
 function buildBookingConfirmationEmailContent(
-  payload: BookingConfirmationEmailPayload
+  payload: BookingConfirmationEmailPayload,
+  fullPayment = false
 ): {
   attachments: SendMailOptions["attachments"];
   html: string;
@@ -322,18 +352,25 @@ function buildBookingConfirmationEmailContent(
     process.env.SUPPORT_PHONE?.trim() ||
     "011-43033003 | 43131313";
   const confirmationUrl = buildConfirmationUrl(payload);
+  const supportWhatsapp = payload.supportWhatsapp?.trim();
+  const supportOfficeAddress = payload.supportOfficeAddress?.trim();
   const departureDate = formatDate(payload.departureDate);
   const returnDate = formatDate(payload.returnDate);
   const balanceDueDate =
     payload.balanceAmount > 0
       ? formatDate(payload.balanceDueDate, "To be shared")
       : "Paid in full";
-  const destinationText = payload.destinationName
-    ? ` in ${payload.destinationName}`
-    : "";
-  const paymentId = payload.paymentId || "Recorded against your booking";
+  const airfareNote = !payload.airfareExcluded ? ""
+    : !payload.airfareAddedAt && !payload.airFlightCharges ? AIRFARE_NOTE
+    : payload.airfareIncludedInTotal
+      ? `Note: Air-flight charges of ${formatCurrency(payload.airFlightCharges || 0)} are included in the booking total shown above.`
+      : `Note: Air-flight charges of ${formatCurrency(payload.airFlightCharges || 0)} have been added to the booking total shown above. Any unpaid amount is reflected in the outstanding balance.`;
   const confirmedAt = formatDate(payload.confirmedAt, formatDate(new Date()));
-  const previewText = `Your ${brandName} booking ${payload.bookingReference} is confirmed.`;
+  const previewText = fullPayment
+    ? `Full payment received for your ${brandName} booking ${payload.bookingReference}.`
+    : `Your ${brandName} booking ${payload.bookingReference} is confirmed.`;
+  const pendingAirfareNote = fullPayment && payload.airfareExcluded && !payload.airfareAddedAt && !payload.airFlightCharges
+    ? "This confirms payment for the confirmed tour package. Air-flight charges excluded from this package will be shared separately, with a Razorpay payment link sent on WhatsApp once those charges are finalized." : "";
 
   const detailRows = renderDetailRows([
     { label: "Tour", value: payload.tourName },
@@ -341,12 +378,14 @@ function buildBookingConfirmationEmailContent(
     { label: "Return", value: returnDate },
     { label: "Duration", value: payload.durationLabel || "-" },
     { label: "Travellers", value: payload.travellersLabel },
-  ]);
+  ], true);
   const paymentRows = renderPaymentRows([
-    { label: "Total", value: formatCurrency(payload.totalAmount) },
+    ...(payload.airfareExcluded ? [{ label: payload.airfareIncludedInTotal ? "Air-Flight Charges (Included in Total)" : "+ Air-Flight Charges (Additional)", value: payload.airfareAddedAt || (payload.airFlightCharges || 0) > 0 ? formatCurrency(payload.airFlightCharges || 0) : "Air-Flight Charges: To Be Added" }] : []),
+    { label: payload.airfareExcluded && !payload.airfareAddedAt && !payload.airFlightCharges ? "Current Total (Excluding Airfare)" : payload.airfareExcluded ? "Updated Total" : "Total", value: formatCurrency(payload.totalAmount) },
     { label: "Amount Paid", value: formatCurrency(payload.amountPaid) },
     { label: "Balance", value: formatCurrency(payload.balanceAmount) },
     { label: "Balance Due", value: balanceDueDate },
+    ...(fullPayment ? [{ label: "Payment Date", value: confirmedAt }, { label: "Payment Status", value: "FULLY PAID" }] : []),
   ]);
   const confirmationLinkHtml = confirmationUrl
     ? `
@@ -376,13 +415,14 @@ function buildBookingConfirmationEmailContent(
         .intro-text { font-size: 13px !important; line-height: 21px !important; }
         .booking-pill { font-size: 11px !important; max-width: 100% !important; white-space: normal !important; }
         .section-title { font-size: 16px !important; }
-        .detail-label, .detail-value, .payment-label, .payment-value {
+        .detail-label, .detail-value { padding:10px !important; font-size:12px !important; }
+        .payment-label, .payment-value {
           display: block !important;
           padding-bottom: 3px !important;
           text-align: left !important;
           width: 100% !important;
         }
-        .detail-value, .payment-value {
+        .payment-value {
           padding-top: 0 !important;
         }
         .payment-box { padding: 14px !important; }
@@ -413,14 +453,14 @@ function buildBookingConfirmationEmailContent(
                   </tr>
                   <tr>
                     <td align="center" style="padding:0;">
-                      <h1 class="email-title" style="color:${colors.accent};font-family:Georgia,'Times New Roman',serif;font-size:29px;font-weight:700;line-height:36px;margin:0;">Your Journey is Confirmed</h1>
+                      <h1 class="email-title" style="color:${colors.accent};font-family:Georgia,'Times New Roman',serif;font-size:29px;font-weight:700;line-height:36px;margin:0;">${fullPayment ? "Your Tour is Fully Paid" : "Your Journey is Confirmed"}</h1>
                       <p style="color:${colors.foreground};font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;line-height:20px;margin:13px 0 0;">Dear ${escapeHtml(
                         payload.travellerName
                       )},</p>
                       <p class="intro-text" style="color:${colors.foreground};font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:500;line-height:22px;margin:5px auto 0;max-width:500px;">
-                        We are delighted to confirm your booking for <strong style="color:${colors.accent};">${escapeHtml(
+                        ${fullPayment ? "We have successfully received the full payment for your upcoming tour" : "We are delighted to confirm your booking for"} <strong style="color:${colors.accent};">${escapeHtml(
                           payload.tourName
-                        )}</strong>${escapeHtml(destinationText)}.
+                        )}</strong>.
                       </p>
                     </td>
                   </tr>
@@ -435,7 +475,7 @@ function buildBookingConfirmationEmailContent(
                   <tr>
                     <td style="padding:0 0 18px;">
                       <h2 class="section-title" style="color:${colors.foreground};font-family:Georgia,'Times New Roman',serif;font-size:18px;font-weight:700;line-height:24px;margin:0 0 10px;">Booking Details</h2>
-                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">
+                      <table aria-label="Booking details" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;table-layout:fixed;">
                         ${detailRows}
                       </table>
                     </td>
@@ -445,22 +485,20 @@ function buildBookingConfirmationEmailContent(
                       <h2 class="section-title" style="color:${colors.foreground};font-family:Georgia,'Times New Roman',serif;font-size:18px;font-weight:700;line-height:24px;margin:0 0 10px;">Payment Summary</h2>
                       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">
                         ${paymentRows}
+                        ${airfareNote ? '<tr><td colspan="2" style="padding:12px;font-size:12px;line-height:20px;">' + escapeHtml([airfareNote, pendingAirfareNote].filter(Boolean).join(" ")) + '</td></tr>' : ""}
                       </table>
                     </td>
                   </tr>
                   <tr>
                     <td class="payment-box" style="background:${colors.muted};border-radius:8px;padding:18px 20px;">
-                      <p style="color:${colors.primary};font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:800;line-height:20px;margin:0 0 8px;">&#10003; Payment Received Successfully</p>
+                      <p style="color:${colors.primary};font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:800;line-height:20px;margin:0 0 8px;">&#10003; ${fullPayment ? "Full Payment Received Successfully" : "Payment Received Successfully"}</p>
                       <p style="color:${colors.foreground};font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:500;line-height:21px;margin:0;">
                         We have successfully received ${escapeHtml(
                           formatCurrency(payload.amountPaid)
-                        )} towards your booking. Your booking summary is included in this email for your reference.
+                        )} ${fullPayment ? "as the full payment for your booking. No further payment is pending for the confirmed tour package." : "towards your booking. Your booking summary is included in this email for your reference."}
                       </p>
                       <p style="color:${colors.foreground};font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:500;line-height:19px;margin:12px 0 0;">
-                        The invoice and final payment receipt will be generated and sent to your registered email once the complete booking amount has been received.
-                      </p>
-                      <p style="color:${colors.foreground};font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;line-height:19px;margin:12px 0 0;">
-                        Payment reference: ${escapeHtml(paymentId)}
+                        ${fullPayment ? "You will shortly receive the invoice and final payment receipt at your registered email address." : "The invoice and final payment receipt will be generated and sent to your registered email once the complete booking amount has been received."}
                       </p>
                     </td>
                   </tr>
@@ -482,6 +520,8 @@ function buildBookingConfirmationEmailContent(
                           supportEmail
                         )}</a><br />
                         <strong>Phone:</strong> ${escapeHtml(supportPhone)}<br />
+                        ${supportWhatsapp ? `<strong>WhatsApp:</strong> ${escapeHtml(supportWhatsapp)}<br />` : ""}
+                        ${supportOfficeAddress ? `<strong>Office Address:</strong> ${escapeHtml(supportOfficeAddress)}<br />` : ""}
                         <strong>Confirmed On:</strong> ${escapeHtml(confirmedAt)}
                       </p>
                     </td>
@@ -508,10 +548,10 @@ function buildBookingConfirmationEmailContent(
 </html>`;
 
   const textLines = [
-    `${brandName} Booking Confirmation`,
+    `${brandName} ${fullPayment ? "Full Payment Confirmation" : "Booking Confirmation"}`,
     "",
     `Dear ${payload.travellerName},`,
-    `Your journey is confirmed for ${payload.tourName}${destinationText}.`,
+    fullPayment ? `We have successfully received the full payment for your upcoming tour ${payload.tourName}. No further payment is pending for the confirmed tour package.` : `Your journey is confirmed for ${payload.tourName}.`,
     "",
     `Booking ID: ${payload.bookingReference}`,
     `Tour: ${payload.tourName}`,
@@ -521,11 +561,17 @@ function buildBookingConfirmationEmailContent(
     `Travellers: ${payload.travellersLabel}`,
     "",
     "Payment Summary",
+    ...(payload.airfareExcluded ? [
+      payload.airfareIncludedInTotal ? "Air-Flight Charges (Included in Total)" : "+ Air-Flight Charges (Additional)",
+      payload.airfareAddedAt || (payload.airFlightCharges || 0) > 0 ? `Air-Flight Charges: ${formatCurrency(payload.airFlightCharges || 0)}` : "Air-Flight Charges: To Be Added",
+    ] : []),
     `Total: ${formatCurrency(payload.totalAmount)}`,
     `Amount Paid: ${formatCurrency(payload.amountPaid)}`,
     `Balance: ${formatCurrency(payload.balanceAmount)}`,
     `Balance Due: ${balanceDueDate}`,
-    `Payment Reference: ${stripTags(paymentId)}`,
+    airfareNote,
+    pendingAirfareNote,
+    ...(fullPayment ? [`Payment Date: ${confirmedAt}`, "Payment Status: FULLY PAID", "You will shortly receive the invoice and final payment receipt at your registered email address."] : []),
     confirmationUrl ? `View Booking: ${confirmationUrl}` : "",
     "",
     "What Happens Next?",
@@ -533,6 +579,8 @@ function buildBookingConfirmationEmailContent(
     "",
     `Support Email: ${supportEmail}`,
     `Support Phone: ${supportPhone}`,
+    supportWhatsapp ? `Support WhatsApp: ${supportWhatsapp}` : "",
+    supportOfficeAddress ? `Office Address: ${supportOfficeAddress}` : "",
     `Confirmed On: ${confirmedAt}`,
     "",
     "Warm regards,",
@@ -660,7 +708,7 @@ function buildBookingAlertEmailContent(payload: BookingAlertEmailPayload): {
     payload.balanceAmount > 0
       ? formatDate(payload.balanceDueDate, "To be shared")
       : "Paid in full";
-  const confirmationUrl = buildConfirmationUrl(payload);
+  const confirmationUrl = payload.offlinePending ? payload.confirmationUrl || "" : buildConfirmationUrl(payload);
   const destinationText = payload.destinationName
     ? ` in ${payload.destinationName}`
     : "";
@@ -675,12 +723,17 @@ function buildBookingAlertEmailContent(payload: BookingAlertEmailPayload): {
     { label: "Return", value: returnDate },
     { label: "Duration", value: payload.durationLabel || "-" },
     { label: "Travellers", value: payload.travellersLabel },
-    { label: "Total", value: formatCurrency(payload.totalAmount) },
+    ...(payload.offlinePending ? [
+      { label: "Payment Method", value: "Offline (Cash / Cheque)" },
+      { label: "Payment Status", value: "Pending" },
+    ] : []),
+    ...(payload.airfareExcluded ? [{ label: "+ Air-Flight Charges (Additional)", value: payload.airfareAddedAt || (payload.airFlightCharges || 0) > 0 ? formatCurrency(payload.airFlightCharges || 0) : "Air-Flight Charges: To Be Added" }] : []),
+    { label: payload.airfareExcluded && !payload.airfareAddedAt && !payload.airFlightCharges ? "Current Total (Excluding Airfare)" : "Updated Total", value: formatCurrency(payload.totalAmount) },
     { label: "Amount Paid", value: formatCurrency(payload.amountPaid) },
     { label: "Balance", value: formatCurrency(payload.balanceAmount) },
     { label: "Balance Due", value: balanceDueDate },
     { label: "Payment Reference", value: payload.paymentId || "-" },
-    { label: "Confirmed On", value: confirmedAt },
+    { label: payload.offlinePending ? "Requested On" : "Confirmed On", value: confirmedAt },
   ]);
   const confirmationLinkHtml = confirmationUrl
     ? `<p style="margin:22px 0 0;"><a href="${escapeAttribute(
@@ -718,7 +771,7 @@ function buildBookingAlertEmailContent(payload: BookingAlertEmailPayload): {
               <td class="email-content" style="padding:30px 34px 32px;">
                 <h1 class="email-title" style="color:${colors.accent};font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:700;line-height:36px;margin:0;">New Booking Alert</h1>
                 <p style="color:${colors.foreground};font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:600;line-height:22px;margin:10px 0 22px;">
-                  A booking has been confirmed for <strong style="color:${colors.accent};">${escapeHtml(
+                  ${payload.offlinePending ? "An offline booking request is awaiting cash or cheque payment for" : "A booking has been confirmed for"} <strong style="color:${colors.accent};">${escapeHtml(
                     payload.tourName
                   )}</strong>${escapeHtml(destinationText)}.
                 </p>
@@ -735,7 +788,7 @@ function buildBookingAlertEmailContent(payload: BookingAlertEmailPayload): {
   </body>
 </html>`;
   const textLines = [
-    "New Booking Alert",
+    payload.offlinePending ? "Offline Booking Request - Payment Pending" : "New Booking Alert",
     "",
     `Booking ID: ${payload.bookingReference}`,
     `Traveller: ${payload.travellerName}`,
@@ -746,12 +799,18 @@ function buildBookingAlertEmailContent(payload: BookingAlertEmailPayload): {
     `Return: ${returnDate}`,
     `Duration: ${payload.durationLabel || "-"}`,
     `Travellers: ${payload.travellersLabel}`,
+    ...(payload.offlinePending ? ["Payment Method: Offline (Cash / Cheque)", "Payment Status: Pending"] : []),
+    ...(payload.airfareExcluded ? [
+      "+ Air-Flight Charges (Additional)",
+      payload.airfareAddedAt || (payload.airFlightCharges || 0) > 0 ? `Air-Flight Charges: ${formatCurrency(payload.airFlightCharges || 0)}` : "Air-Flight Charges: To Be Added",
+      ...(!payload.airfareAddedAt && !payload.airFlightCharges ? [AIRFARE_NOTE] : []),
+    ] : []),
     `Total: ${formatCurrency(payload.totalAmount)}`,
     `Amount Paid: ${formatCurrency(payload.amountPaid)}`,
     `Balance: ${formatCurrency(payload.balanceAmount)}`,
     `Balance Due: ${balanceDueDate}`,
     `Payment Reference: ${payload.paymentId || "-"}`,
-    `Confirmed On: ${confirmedAt}`,
+    `${payload.offlinePending ? "Requested On" : "Confirmed On"}: ${confirmedAt}`,
     confirmationUrl ? `View Booking: ${confirmationUrl}` : "",
   ].filter(Boolean);
 
@@ -759,6 +818,85 @@ function buildBookingAlertEmailContent(payload: BookingAlertEmailPayload): {
     html,
     text: textLines.join("\n"),
   };
+}
+
+function buildBookingKycCompletedAlertEmailContent(
+  payload: BookingKycCompletedAlertEmailPayload
+): {
+  html: string;
+  text: string;
+} {
+  const summaryRows = payload.documentSummary
+    .map(
+      (item) => `
+        <tr>
+          <td style="border-bottom:1px solid ${colors.border};color:${colors.foreground};font-family:Arial,sans-serif;font-size:13px;font-weight:700;padding:10px 12px;width:180px;">${escapeHtml(
+            item.travellerName
+          )}</td>
+          <td style="border-bottom:1px solid ${colors.border};color:${colors.foreground};font-family:Arial,sans-serif;font-size:13px;padding:10px 12px;">${escapeHtml(
+            item.documents.join(", ") || "-"
+          )}</td>
+        </tr>`
+    )
+    .join("");
+  const detailRows = renderDetailRows([
+    { label: "Booking ID", value: payload.bookingReference },
+    { label: "Lead Traveller", value: payload.travellerName },
+    { label: "Email", value: payload.travellerEmail || "-" },
+    { label: "Phone", value: payload.travellerPhone || "-" },
+    { label: "Tour", value: payload.tourName },
+    { label: "Travellers", value: payload.travellersLabel },
+  ]);
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1" name="viewport" />
+    <title>KYC documents uploaded - ${escapeHtml(payload.bookingReference)}</title>
+  </head>
+  <body style="margin:0;padding:0;background:${colors.background};">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${colors.background};border-collapse:collapse;margin:0;padding:0;width:100%;">
+      <tr>
+        <td align="center" style="padding:16px 8px;">
+          <table role="presentation" width="640" cellspacing="0" cellpadding="0" border="0" style="background:${colors.white};border-collapse:separate;border-radius:8px;box-shadow:0 12px 32px rgba(50,50,50,0.08);overflow:hidden;width:640px;">
+            <tr>
+              <td style="padding:30px 34px 32px;">
+                <h1 style="color:${colors.accent};font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:700;line-height:36px;margin:0;">KYC Documents Uploaded</h1>
+                <p style="color:${colors.foreground};font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:600;line-height:22px;margin:10px 0 22px;">
+                  The traveller has uploaded KYC documents for every traveller in this booking.
+                </p>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">
+                  ${detailRows}
+                </table>
+                <h2 style="color:${colors.foreground};font-family:Arial,sans-serif;font-size:14px;margin:22px 0 8px;">Uploaded Documents</h2>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid ${colors.border};border-bottom:0;border-collapse:collapse;">
+                  ${summaryRows}
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+  const text = [
+    "KYC Documents Uploaded",
+    "",
+    `Booking ID: ${payload.bookingReference}`,
+    `Lead Traveller: ${payload.travellerName}`,
+    `Email: ${payload.travellerEmail || "-"}`,
+    `Phone: ${payload.travellerPhone || "-"}`,
+    `Tour: ${payload.tourName}`,
+    `Travellers: ${payload.travellersLabel}`,
+    "",
+    "Uploaded Documents:",
+    ...payload.documentSummary.map(
+      (item) => `${item.travellerName}: ${item.documents.join(", ") || "-"}`
+    ),
+  ].join("\n");
+
+  return { html, text };
 }
 
 function buildBookingRecoveryEmailContent(payload: BookingRecoveryEmailPayload): {
@@ -866,8 +1004,9 @@ function buildBookingRecoveryEmailContent(payload: BookingRecoveryEmailPayload):
   };
 }
 
-export async function sendBookingConfirmationEmail(
-  payload: BookingConfirmationEmailPayload
+async function sendBrandedBookingEmail(
+  payload: BookingConfirmationEmailPayload,
+  fullPayment = false
 ): Promise<{
   messageId: string;
 }> {
@@ -877,16 +1016,36 @@ export async function sendBookingConfirmationEmail(
     throw new HttpError(400, "Booking confirmation recipient email is missing");
   }
 
+  let supportEmail = payload.supportEmail;
+  let supportPhone = payload.supportPhone;
+  let supportWhatsapp = payload.supportWhatsapp;
+  let supportOfficeAddress = payload.supportOfficeAddress;
+  try {
+    const settings = await SiteSettings.findOne({ key: "site" });
+    const contact = settings?.contact;
+    supportEmail = contact?.emailId?.trim() || supportEmail;
+    const phoneNumbers = [contact?.primaryCalling, contact?.secondaryCalling, contact?.landline]
+      .map(value => value?.trim()).filter((value): value is string => Boolean(value));
+    supportPhone = [...new Set(phoneNumbers)].join(" | ") || supportPhone;
+    supportWhatsapp = contact?.whatsapp?.trim() || supportWhatsapp;
+    supportOfficeAddress = contact?.officeAddress?.trim() || supportOfficeAddress;
+  } catch {
+    console.error("[booking-email] Unable to load admin support contacts; using configured fallback.");
+  }
   const { attachments, html, text } = buildBookingConfirmationEmailContent({
     ...payload,
     recipientEmail,
-  });
+    supportEmail,
+    supportPhone,
+    supportWhatsapp,
+    supportOfficeAddress,
+  }, fullPayment);
   const { from, transporter } = getTransporter();
   const info = await transporter.sendMail({
     attachments,
     from,
     html,
-    subject: `${brandName} booking confirmed - ${payload.bookingReference}`,
+    subject: fullPayment ? `Full payment received - ${payload.bookingReference}` : `${brandName} booking confirmed - ${payload.bookingReference}`,
     text,
     to: recipientEmail,
   });
@@ -894,6 +1053,14 @@ export async function sendBookingConfirmationEmail(
   return {
     messageId: info.messageId || "",
   };
+}
+
+export function sendBookingConfirmationEmail(payload: BookingConfirmationEmailPayload) {
+  return sendBrandedBookingEmail(payload);
+}
+
+export function sendTourFullPaymentConfirmationEmail(payload: BookingConfirmationEmailPayload) {
+  return sendBrandedBookingEmail(payload, true);
 }
 
 export async function sendBookingAlertEmail(
@@ -916,7 +1083,38 @@ export async function sendBookingAlertEmail(
   const info = await transporter.sendMail({
     from,
     html,
-    subject: `New booking alert - ${payload.bookingReference}`,
+    subject: `${payload.offlinePending ? "Offline booking - payment pending" : "New booking alert"} - ${payload.bookingReference}`,
+    text,
+    to: recipients.join(","),
+  });
+
+  return {
+    messageId: info.messageId || "",
+    recipients,
+  };
+}
+
+export async function sendBookingKycCompletedAlertEmail(
+  payload: BookingKycCompletedAlertEmailPayload
+): Promise<{
+  messageId: string;
+  recipients: string[];
+}> {
+  const recipients = getBookingAlertRecipients();
+
+  if (recipients.length === 0) {
+    return {
+      messageId: "",
+      recipients,
+    };
+  }
+
+  const { html, text } = buildBookingKycCompletedAlertEmailContent(payload);
+  const { from, transporter } = getTransporter();
+  const info = await transporter.sendMail({
+    from,
+    html,
+    subject: `KYC documents uploaded - ${payload.bookingReference}`,
     text,
     to: recipients.join(","),
   });
@@ -988,3 +1186,19 @@ export async function sendTourEnquiryAlertEmail(
     recipients,
   };
 }
+
+export async function sendBankTransferEmail(payload: { recipientEmail: string; subject: string; lines: string[]; paymentUrl?: string }) {
+  if (!payload.recipientEmail) throw new HttpError(400, "Bank transfer recipient email is missing");
+  const { from, transporter } = getTransporter();
+  const text = payload.lines.join("\n");
+  return transporter.sendMail({
+    from, to: payload.recipientEmail, subject: payload.subject, text,
+    html: '<div style="font-family:Arial,sans-serif;color:#323232;max-width:640px;margin:auto;padding:24px;border:1px solid #e8ded6">' +
+      '<h2 style="color:#d47220">Ancient Trails</h2>' +
+      payload.lines.map(line => '<p style="line-height:1.6;overflow-wrap:anywhere">' + escapeHtml(line) + '</p>').join("") +
+      (payload.paymentUrl ? '<p><a href="' + escapeAttribute(payload.paymentUrl) + '" style="display:inline-block;background:#d47220;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:700">Pay Remaining Amount</a></p>' : '') +
+      '</div>',
+  });
+}
+
+export const sendBookingPaymentNoticeEmail = sendBankTransferEmail;

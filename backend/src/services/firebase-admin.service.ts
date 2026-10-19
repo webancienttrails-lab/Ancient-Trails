@@ -51,7 +51,7 @@ function hasFirebaseAdminCredential(): boolean {
   );
 }
 
-function getFirebaseApp() {
+export function getFirebaseApp() {
   const existingApp = getApps()[0];
 
   if (existingApp) {

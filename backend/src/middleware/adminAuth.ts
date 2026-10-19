@@ -15,7 +15,7 @@ function getBearerToken(request: Request): string {
   return token;
 }
 
-function isAdminRole(role: string): boolean {
+export function isAdminRole(role: string): boolean {
   return (
     role === "admin" ||
     role === "expert" ||

@@ -135,6 +135,12 @@ userSchema.index({ firebaseUid: 1 }, { unique: true, sparse: true });
 userSchema.index({ email: 1 }, { unique: true, sparse: true });
 userSchema.index({ roles: 1 });
 
+userSchema.pre("save", function () { this.$locals.pushRegistrationWasNew = this.isNew; });
+userSchema.post("save", function (doc) {
+  if (doc.db.readyState === 1 && doc.$locals.pushRegistrationWasNew && doc.roles.includes("traveller")) setImmediate(() => { void import("../services/notifications/notification-events.service.js").then(service => service.queueCustomerRegistration(doc.id)).catch(() => {}); });
+});
+userSchema.index({ createdAt: 1, _id: 1 });
+
 export const User =
   (models.User as Model<IUser> | undefined) ||
   model<IUser>("User", userSchema);

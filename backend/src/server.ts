@@ -1,4 +1,6 @@
 import "dotenv/config";
+import { runNotificationMaintenance } from "./services/notifications/notification-worker.service";
+import { notificationActivationDate } from "./services/notifications/notification-events.service";
 
 import http from "node:http";
 
@@ -6,11 +8,13 @@ import mongoose from "mongoose";
 
 import app from "./app";
 import { runBookingRecoveryMaintenance } from "./controllers/booking.controller";
+import { runSmartCollectMaintenance } from "./controllers/smartCollect.controller";
 
 const port = Number(process.env.PORT) || 5000;
 const databaseUrl = process.env.DATABASE_URL;
 
 const server = http.createServer(app);
+let notificationMaintenanceTimer: NodeJS.Timeout | null = null;
 let bookingRecoveryMaintenanceTimer: NodeJS.Timeout | null = null;
 
 async function connectDatabase(): Promise<void> {
@@ -26,6 +30,7 @@ async function connectDatabase(): Promise<void> {
 async function startServer(): Promise<void> {
   try {
     await connectDatabase();
+    await notificationActivationDate();
 
     server.listen(port, () => {
       console.log(`Ancient Trails backend running on http://localhost:${port}`);
@@ -33,8 +38,12 @@ async function startServer(): Promise<void> {
       console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
     });
 
+    void runNotificationMaintenance();
+    notificationMaintenanceTimer = setInterval(() => { void runNotificationMaintenance(); }, 15000);
     void runBookingRecoveryMaintenance();
+    void runSmartCollectMaintenance().catch(() => console.error("Smart Collect maintenance failed"));
     bookingRecoveryMaintenanceTimer = setInterval(() => {
+      void runSmartCollectMaintenance().catch(() => console.error("Smart Collect maintenance failed"));
       void runBookingRecoveryMaintenance().catch((error) => {
         console.error("Booking recovery maintenance failed:", error);
       });
@@ -51,6 +60,7 @@ async function startServer(): Promise<void> {
 async function shutdown(signal: string): Promise<void> {
   console.log(`${signal} received. Shutting down server...`);
 
+  if (notificationMaintenanceTimer) { clearInterval(notificationMaintenanceTimer); notificationMaintenanceTimer = null; }
   if (bookingRecoveryMaintenanceTimer) {
     clearInterval(bookingRecoveryMaintenanceTimer);
     bookingRecoveryMaintenanceTimer = null;

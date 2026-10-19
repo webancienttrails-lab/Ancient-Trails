@@ -23,6 +23,7 @@ export interface ITourDeparture {
   destinationId: string;
   departureDate: Date | null;
   returnDate: Date | null;
+  totalSeats?: number;
   seatsAvailable: number;
   priceAdult: number;
   priceExtraBed: number;
@@ -139,6 +140,10 @@ const tourDepartureSchema = new Schema<ITourDeparture>(
     },
     departureDate: nullableDate,
     returnDate: nullableDate,
+    totalSeats: {
+      ...nonNegativeNumber,
+      max: 100000,
+    },
     seatsAvailable: {
       ...nonNegativeNumber,
       max: 100000,

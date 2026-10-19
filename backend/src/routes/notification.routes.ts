@@ -1,0 +1,13 @@
+import { Router } from "express";
+import { requireNotificationUser, listNotifications, readNotification, readAllNotifications, getNotification, registerPush, unregisterPush, publishTourUpdate, retryFailedNotifications } from "../controllers/notification.controller";
+const router = Router(), inbox = Router({ mergeParams: true });
+inbox.get("/", listNotifications);
+inbox.patch("/read-all", readAllNotifications);
+inbox.post("/registrations", registerPush);
+inbox.delete("/registrations", unregisterPush);
+inbox.post("/tour-updates", publishTourUpdate);
+inbox.post("/retry-failed", retryFailedNotifications);
+inbox.get("/:id", getNotification);
+inbox.patch("/:id/read", readNotification);
+router.use("/:audience", requireNotificationUser, inbox);
+export default router;

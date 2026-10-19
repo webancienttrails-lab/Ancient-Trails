@@ -1,3 +1,4 @@
+import notificationRoutes from "./routes/notification.routes";
 import path from "node:path";
 
 import cookieParser from "cookie-parser";
@@ -11,10 +12,12 @@ import helmet from "helmet";
 import morgan from "morgan";
 
 import { adminAboutRoutes, publicAboutRoutes } from "./routes/about.routes";
+import { adminFaqPageRoutes, publicFaqPageRoutes } from "./routes/faqPage.routes";
 import authRoutes from "./routes/auth.routes";
 import { adminBlogRoutes, publicBlogRoutes } from "./routes/blog.routes";
 import bookingRoutes, { publicBookingRoutes } from "./routes/booking.routes";
 import { verifyRazorpayWebhook } from "./controllers/booking.controller";
+import { smartCollectWebhook } from "./controllers/smartCollect.controller";
 import dashboardRoutes from "./routes/dashboard.routes";
 import destinationRoutes from "./routes/destination.routes";
 import enquiryRoutes, { publicEnquiryRoutes } from "./routes/enquiry.routes";
@@ -31,6 +34,10 @@ import {
 import publicDestinationRoutes from "./routes/publicDestination.routes";
 import publicExperienceRoutes from "./routes/publicExperience.routes";
 import publicTourRoutes from "./routes/publicTour.routes";
+import {
+  adminSiteSettingsRoutes,
+  publicSiteSettingsRoutes,
+} from "./routes/siteSettings.routes";
 import {
   adminTourCalendarPageRoutes,
   publicTourCalendarPageRoutes,
@@ -122,6 +129,7 @@ app.post(
   verifyRazorpayWebhook
 );
 
+app.post("/api/bookings/bank-transfer/webhook", express.raw({ type: "application/json", limit: "256kb" }), smartCollectWebhook);
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 app.use(cookieParser());
@@ -187,6 +195,9 @@ app.get("/api/health", (_request: Request, response: Response) => {
  * app.use("/api/bookings", bookingRoutes);
  */
 app.use("/api/auth", authRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/faq", publicFaqPageRoutes);
+app.use("/api/admin/faq", adminFaqPageRoutes);
 app.use("/api/about", publicAboutRoutes);
 app.use("/api/admin/about", adminAboutRoutes);
 app.use("/api/blogs", publicBlogRoutes);
@@ -197,6 +208,8 @@ app.use("/api/tour-calendar", publicTourCalendarPageRoutes);
 app.use("/api/admin/tour-calendar", adminTourCalendarPageRoutes);
 app.use("/api/mega-menu", publicMegaMenuRoutes);
 app.use("/api/admin/mega-menu", adminMegaMenuRoutes);
+app.use("/api/site-settings", publicSiteSettingsRoutes);
+app.use("/api/admin/site-settings", adminSiteSettingsRoutes);
 app.use("/api/destinations", publicDestinationRoutes);
 app.use("/api/tours", publicTourRoutes);
 app.use("/api/experiences", publicExperienceRoutes);

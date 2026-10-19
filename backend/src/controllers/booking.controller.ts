@@ -1,7 +1,17 @@
+import { queueBookingNotifications, stageNotificationEvent } from "../services/notifications/notification-events.service";
+import { queueBookingPaymentLifecycle, runBookingPaymentLifecycleMaintenance, type PaymentLifecycleHooks } from "../services/booking/booking.payment-lifecycle";
+import { verifiedPaymentMethod } from "../services/booking/booking.payment-method";
+import { assertAdminLeadVerification } from "./bookingLead.controller";
+import { resolveBookingEmergencyContact } from "../services/booking/booking.emergency-contact";
+import { isAirfareExcluded, calculateAirfareTotals, creditAirfarePayment } from "../services/booking/booking.airfare";
+import { notifyOfflineBookingAdmins, retryOfflineBookingAlerts } from "../services/booking/offline-booking-alert.service";
 import crypto from "node:crypto";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 
 import type { Request, Response } from "express";
 import mongoose from "mongoose";
+import multer from "multer";
 import Razorpay from "razorpay";
 import { z } from "zod";
 
@@ -10,6 +20,8 @@ import {
   type BookingDocument,
   type IBookingChildDetails,
   type IBookingGuestDetails,
+  type IBookingKycDocument,
+  type IBookingTraveller,
 } from "../models/booking.model";
 import {
   BookingBalancePaymentSession,
@@ -20,6 +32,11 @@ import {
   type BookingDraft,
   type BookingPaymentSessionDocument,
 } from "../models/bookingPaymentSession.model";
+import {
+  BookingPaymentLinkRequest,
+  type BookingPaymentLinkPurpose,
+  type BookingPaymentLinkRequestDocument,
+} from "../models/bookingPaymentLinkRequest.model";
 import {
   Destination,
   type DestinationDocument,
@@ -44,13 +61,16 @@ import { calculateAgeOnDate } from "../services/accommodation/accommodation.vali
 import {
   sendBookingAlertEmail,
   sendBookingConfirmationEmail,
+  sendBookingKycCompletedAlertEmail,
   sendBookingRecoveryEmail,
   type BookingConfirmationEmailPayload,
 } from "../services/booking-confirmation-email.service";
 import {
   sendBookingConfirmationWhatsapp,
+  sendBookingPaymentLinkWhatsapp,
   sendBookingRecoveryWhatsapp,
 } from "../services/msg91-whatsapp.service";
+import { SmartCollectAccount, SmartCollectTransfer } from "../models/smartCollect.model";
 import { HttpError } from "../utils/httpError";
 import { verifyAuthToken } from "../utils/jwt";
 
@@ -62,11 +82,42 @@ const RECOVERY_EXPIRY_HOURS = Number(
 const RECOVERY_REMINDER_MINUTES = Number(
   process.env.BOOKING_RECOVERY_REMINDER_MINUTES || 60
 );
+const bookingKycUploadDirectory = path.resolve(
+  process.cwd(),
+  process.env.UPLOAD_PATH || "./storage",
+  "booking-kyc"
+);
+const bookingKycMimeExtensions: Record<string, string> = {
+  "application/pdf": ".pdf",
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+};
+const bookingKycDocumentLabels: Record<IBookingKycDocument["documentType"], string> = {
+  aadhaar_card: "Aadhaar Card",
+  driving_license: "Driving License",
+  voter_id: "Voter ID",
+  passport: "Passport",
+  pan_card: "PAN Card",
+};
+
+mkdirSync(bookingKycUploadDirectory, { recursive: true });
 
 const requiredTextField = (fieldName: string, max: number) =>
   z.string().trim().min(1, `${fieldName} is required`).max(max);
 
 const optionalTextField = (max: number) => z.string().trim().max(max).default("");
+
+const bookingKycUploadPayloadSchema = z.object({
+  documentType: z.enum([
+    "aadhaar_card",
+    "driving_license",
+    "voter_id",
+    "passport",
+    "pan_card",
+  ]),
+  travellerId: requiredTextField("Traveller ID", 80),
+});
 
 const optionalEmailField = z
   .string()
@@ -140,13 +191,7 @@ const guestDetailsPayloadSchema = z.object({
     /^[0-9\s-]{5,20}$/,
     "Mobile number can contain digits, spaces, and hyphens only"
   ),
-  email: z
-    .string()
-    .trim()
-    .min(1, "Email is required")
-    .email("Email must be valid")
-    .max(160)
-    .transform((value) => value.toLowerCase()),
+  email: optionalEmailField,
   emergencyContactName: optionalTextField(120),
   emergencyContactMobileNumber: optionalMobileNumberField,
   dateOfBirth: requiredDateField("Date of birth"),
@@ -203,12 +248,18 @@ const travellerPayloadSchema = z.object({
 
 const bookingPayloadSchema = z
   .object({
+    emergencyContactName: z.string().trim().max(120).optional(),
+    emergencyContactMobileNumber: optionalMobileNumberField.optional(),
     tourId: requiredCodeField("Tour ID", 40),
     departureId: requiredCodeField("Departure ID", 40).optional(),
     selectedAccommodationOptionId: z.string().trim().max(200).optional(),
     paymentOption: z.enum(["advance", "full"]).default("advance"),
-    paymentMethod: z.enum(["cash", "cheque", "neft"]).optional(),
+    paymentMethod: z.enum(["cash", "cheque", "neft", "imps", "rtgs", "upi", "netbanking", "card", "wallet", "emi", "razorpay", "bank_transfer"]).optional(),
+    paymentMode: z.enum(["online", "offline", "bank_transfer"]).optional(),
+    leadVerificationToken: z.string().optional(),
     amountPaid: z.coerce.number().min(0).max(1000000000).optional(),
+    airFlightCharges: z.coerce.number().min(0).max(1000000000).default(0),
+    airfareIncludedInTotal: z.boolean().optional(),
     totalGuest: nonNegativeIntegerField("Total guest", 1000).min(
       1,
       "Total guest must be at least 1"
@@ -229,6 +280,14 @@ const bookingPayloadSchema = z
     gstPercentage: z.coerce.number().min(0).max(100).default(0),
   })
   .superRefine((payload, context) => {
+    if (payload.guestDetails.length > 0 && !payload.guestDetails[0].email) {
+      context.addIssue({
+        code: "custom",
+        path: ["guestDetails", 0, "email"],
+        message: "Lead traveller email is required",
+      });
+    }
+
     if (payload.totalGuest !== payload.adultCount + payload.childCount) {
       context.addIssue({
         code: "custom",
@@ -312,6 +371,11 @@ const bookingPayloadSchema = z
     }
   });
 
+const airFlightChargesPayloadSchema = z.object({
+  airfareIncludedInTotal: z.boolean().optional(),
+  airFlightCharges: z.number().int("Airfare must be a whole rupee amount").min(0).max(1000000000),
+});
+
 const paymentVerificationPayloadSchema = z.object({
   razorpay_order_id: requiredTextField("Razorpay order ID", 120),
   razorpay_payment_id: requiredTextField("Razorpay payment ID", 120),
@@ -320,6 +384,25 @@ const paymentVerificationPayloadSchema = z.object({
 
 const paymentCancellationPayloadSchema = z.object({
   orderId: requiredTextField("Razorpay order ID", 120),
+});
+
+const adminPaymentLinkPurposeSchema = z.enum([
+  "final",
+  "additional",
+  "partial",
+  "custom",
+]);
+
+const adminPaymentLinkPayloadSchema = z.object({
+  additionalChargeAlreadyApplied: z.boolean().default(false),
+  amount: z.coerce
+    .number()
+    .int("Amount must be a whole number")
+    .min(1, "Amount must be greater than zero")
+    .max(1000000000, "Amount is too high")
+    .optional(),
+  description: optionalTextField(500),
+  purpose: adminPaymentLinkPurposeSchema,
 });
 
 const recoveryTokenQuerySchema = z.object({
@@ -354,6 +437,48 @@ function isCastError(error: unknown): boolean {
     (error as { name?: string }).name === "CastError"
   );
 }
+
+function createSafeKycFileName(file: Express.Multer.File): string {
+  const baseName =
+    path
+      .basename(file.originalname, path.extname(file.originalname))
+      .replace(/[^a-z0-9_-]+/gi, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || "kyc-document";
+  const extension =
+    bookingKycMimeExtensions[file.mimetype] ||
+    path.extname(file.originalname).toLowerCase() ||
+    ".pdf";
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  return `${baseName}-${suffix}${extension}`;
+}
+
+function getBookingKycUploadUrl(file: Express.Multer.File): string {
+  return `/uploads/booking-kyc/${file.filename}`;
+}
+
+export const bookingKycUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_request, _file, callback) => {
+      callback(null, bookingKycUploadDirectory);
+    },
+    filename: (_request, file, callback) => {
+      callback(null, createSafeKycFileName(file));
+    },
+  }),
+  fileFilter: (_request, file, callback) => {
+    if (file.mimetype in bookingKycMimeExtensions) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new HttpError(400, "Only PDF, JPG, PNG, and WebP files are allowed"));
+  },
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+  },
+});
 
 function getBearerToken(request: Request): string {
   const authorizationHeader = request.headers.authorization;
@@ -421,6 +546,8 @@ function createTravellerBookingFilters(traveller: UserDocument) {
     });
   });
 
+
+
   if (filters.length === 0) {
     throw new HttpError(400, "Traveller profile is missing contact details");
   }
@@ -433,17 +560,49 @@ function createTravellerBookingFilters(traveller: UserDocument) {
 function createPaidBookingFilter(): Record<string, unknown> {
   return {
     amountPaid: { $gt: 0 },
+    bookingStatus: { $nin: ["cancelled", "expired"] },
     paymentStatus: "paid",
   };
 }
 
+function getBookingDepartureId(booking: BookingDocument) {
+  return booking.departureId || booking.pricingSnapshot?.departureId || "";
+}
+
+function hasActiveSeatHold(booking: BookingDocument, now = new Date()) {
+  return (
+    (booking.heldSeatCount || 0) > 0 &&
+    Boolean(booking.holdExpiresAt) &&
+    booking.holdExpiresAt!.getTime() > now.getTime()
+  );
+}
+
+function getBookingReservedSeatCount(booking: BookingDocument, now = new Date()) {
+  const bookingStatus = booking.bookingStatus || "payment_pending";
+
+  if (
+    booking.paymentStatus === "paid" &&
+    bookingStatus !== "cancelled" &&
+    bookingStatus !== "expired"
+  ) {
+    return Math.max(0, booking.totalGuest || 0);
+  }
+
+  if (
+    booking.paymentStatus !== "paid" &&
+    bookingStatus === "payment_pending" &&
+    hasActiveSeatHold(booking, now)
+  ) {
+    return Math.max(0, booking.heldSeatCount || 0);
+  }
+
+  return 0;
+}
+
 function shouldRestoreDeletedBookingSeats(booking: BookingDocument) {
   return (
-    Boolean(booking.departureId) &&
-    ((booking.paymentStatus === "paid" && booking.totalGuest > 0) ||
-      ((booking.heldSeatCount || 0) > 0 &&
-        Boolean(booking.holdExpiresAt) &&
-        booking.holdExpiresAt!.getTime() > Date.now()))
+    Boolean(getBookingDepartureId(booking)) &&
+    getBookingReservedSeatCount(booking) > 0
   );
 }
 
@@ -470,9 +629,24 @@ function formatChildDetails(child: IBookingChildDetails) {
   };
 }
 
-function formatBooking(booking: BookingDocument) {
+function formatKycDocument(document: IBookingKycDocument) {
+  return {
+    id: document.id,
+    documentType: document.documentType,
+    documentLabel: document.documentLabel,
+    fileName: document.fileName,
+    fileUrl: document.fileUrl,
+    mimeType: document.mimeType,
+    uploadedBy: document.uploadedBy,
+    uploadedAt: document.uploadedAt,
+  };
+}
+
+export function formatBooking(booking: BookingDocument, tour?: { inclusions?: string[]; exclusions?: string[] } | null) {
   return {
     id: booking._id.toString(),
+    cancellation: booking.cancellation || null,
+    ...resolveBookingEmergencyContact(booking),
     bookingReference:
       booking.bookingReference || getBookingReference(booking),
     bookingStatus:
@@ -482,6 +656,7 @@ function formatBooking(booking: BookingDocument) {
     departureId: booking.departureId || "",
     selectedAccommodationOptionId: booking.selectedAccommodationOptionId || "",
     paymentOption: booking.paymentOption || "advance",
+    paymentMode: booking.paymentMode || "online",
     totalGuest: booking.totalGuest,
     adultCount: booking.adultCount,
     childCount: booking.childCount,
@@ -503,6 +678,7 @@ function formatBooking(booking: BookingDocument) {
       address: traveller.address,
       panNumber: traveller.panNumber,
       ageOnDeparture: traveller.ageOnDeparture,
+      kycDocuments: (traveller.kycDocuments || []).map(formatKycDocument),
     })),
     accommodationDetails: {
       singleOccupancyOneRoom:
@@ -518,6 +694,12 @@ function formatBooking(booking: BookingDocument) {
     gstPercentage: booking.gstPercentage,
     gstAmount: booking.gstAmount,
     grandTotal: booking.grandTotal,
+    airFlightCharges: booking.airFlightCharges || 0,
+    airfareIncludedInTotal: booking.airfareIncludedInTotal || false,
+    airfareExcluded: booking.airfareExcluded ?? (tour ? isAirfareExcluded(tour) : undefined),
+    airfareAddedAt: booking.airfareAddedAt,
+    airfareHistory: booking.airfareHistory || [],
+    collectionHistory: booking.collectionHistory || [],
     depositAmount: booking.depositAmount,
     balanceAmount: booking.balanceAmount,
     balanceDueDate: booking.balanceDueDate,
@@ -533,6 +715,7 @@ function formatBooking(booking: BookingDocument) {
     holdExpiresAt: booking.holdExpiresAt || null,
     recoveryExpiresAt: booking.recoveryExpiresAt || null,
     recoveryUrl: getRecoveryUrl(booking),
+    finalPaymentUrl: getFinalPaymentUrl(booking),
     recoveryEmailStatus: booking.recoveryEmailStatus || "pending",
     whatsappMarketingConsent: booking.whatsappMarketingConsent !== false,
     whatsappRecoveryStatus: booking.whatsappRecoveryStatus || "pending",
@@ -558,6 +741,7 @@ function toPricedDeparture(departure: TourDepartureDocument): PricedDeparture {
     destinationId: departure.destinationId,
     departureDate: departure.departureDate,
     returnDate: departure.returnDate,
+    totalSeats: departure.totalSeats,
     seatsAvailable: departure.seatsAvailable,
     priceAdult: departure.priceAdult,
     priceExtraBed: departure.priceExtraBed,
@@ -614,7 +798,8 @@ function toBookingTravellers(
 }
 
 async function createSnapshotPayload(
-  payload: z.infer<typeof bookingPayloadSchema>
+  payload: z.infer<typeof bookingPayloadSchema>,
+  existingBooking?: BookingDocument
 ) {
   if (
     !payload.departureId ||
@@ -633,6 +818,14 @@ async function createSnapshotPayload(
   }
 
   const pricedDeparture = toPricedDeparture(departure);
+
+  if (
+    existingBooking &&
+    getBookingDepartureId(existingBooking) === payload.departureId
+  ) {
+    pricedDeparture.seatsAvailable += getBookingReservedSeatCount(existingBooking);
+  }
+
   const departureValidation = validateDepartureForBooking(
     pricedDeparture,
     payload.totalGuest
@@ -696,15 +889,94 @@ function createScheduledDepartureReservationFilter(
   };
 }
 
-function createBookingDraft(
+export async function reserveDepartureSeats(
+  departureId: string | undefined,
+  totalGuest: number,
+  session?: mongoose.ClientSession
+) {
+  const updatedDeparture = await TourDeparture.findOneAndUpdate(
+    createScheduledDepartureReservationFilter(departureId, totalGuest),
+    {
+      $inc: {
+        seatsAvailable: -totalGuest,
+      },
+    },
+    {
+      new: true,
+      session,
+    }
+  );
+
+  if (!updatedDeparture) {
+    return null;
+  }
+
+  const seatsBeforeReservation = Math.max(
+    0,
+    (updatedDeparture.seatsAvailable || 0) + totalGuest
+  );
+
+  if ((updatedDeparture.totalSeats || 0) < seatsBeforeReservation) {
+    updatedDeparture.totalSeats = seatsBeforeReservation;
+    await updatedDeparture.save({ session });
+  }
+
+  return updatedDeparture;
+}
+
+export async function restoreDepartureSeats(
+  departureId: string | undefined,
+  seatCount: number,
+  session?: mongoose.ClientSession
+) {
+  const seatsToRestore = Math.max(0, Math.trunc(seatCount || 0));
+
+  if (!departureId || seatsToRestore <= 0) {
+    return;
+  }
+
+  const departure = await TourDeparture.findOne({ departureId }).session(
+    session || null
+  );
+
+  if (!departure) {
+    return;
+  }
+
+  const restoredSeatsAvailable = (departure.seatsAvailable || 0) + seatsToRestore;
+  const totalSeats =
+    (departure.totalSeats || 0) > 0
+      ? Math.max(0, departure.totalSeats || 0)
+      : restoredSeatsAvailable;
+
+  departure.totalSeats = totalSeats;
+  departure.seatsAvailable = Math.min(
+    restoredSeatsAvailable,
+    departure.totalSeats
+  );
+  await departure.save({ session });
+  return departure;
+}
+
+async function createBookingDraft(
   payload: BookingPayload,
-  snapshotPayload: BookingSnapshotPayload
-): BookingDraft {
-  const bookingPayload = payload;
+  snapshotPayload: BookingSnapshotPayload,
+  savedAirfareEligibility?: boolean,
+  existingBooking?: BookingDocument
+): Promise<BookingDraft> {
+  const tour = await Tour.findOne({ tourId: payload.tourId });
+  const airfareExcluded = savedAirfareEligibility ?? isAirfareExcluded(tour);
+  if (payload.airFlightCharges > 0 && !airfareExcluded) {
+    throw new HttpError(400, "Additional airfare is only allowed when flights are excluded from the tour price");
+  }
+  const airfareIncludedInTotal = existingBooking?.airfareIncludedInTotal ?? payload.airfareIncludedInTotal ?? false;
+  const bookingPayload = { ...payload, airfareExcluded, airfareIncludedInTotal, ...resolveBookingEmergencyContact(payload, existingBooking) };
+  const airFlightCharges = toPaymentAmount(payload.airFlightCharges);
 
   if (!snapshotPayload) {
     return {
       ...bookingPayload,
+      airFlightCharges,
       travellers: bookingPayload.travellers.map((traveller) => ({
         ...traveller,
         dateOfBirth: traveller.dateOfBirth
@@ -716,19 +988,96 @@ function createBookingDraft(
 
   return {
     ...bookingPayload,
+    airFlightCharges,
     travellers: snapshotPayload.travellers,
     pricingSnapshot: snapshotPayload.pricingSnapshot,
     subtotal: snapshotPayload.pricingSnapshot.subtotal,
     gstPercentage: snapshotPayload.pricingSnapshot.gstPercentage,
     gstAmount: snapshotPayload.pricingSnapshot.gstAmount,
-    grandTotal: snapshotPayload.pricingSnapshot.grandTotal,
+    grandTotal: snapshotPayload.pricingSnapshot.grandTotal + (airfareIncludedInTotal ? 0 : airFlightCharges),
     depositAmount: snapshotPayload.pricingSnapshot.depositAmount,
-    balanceAmount: snapshotPayload.pricingSnapshot.balanceAmount,
+    balanceAmount: snapshotPayload.pricingSnapshot.balanceAmount + (airfareIncludedInTotal ? 0 : airFlightCharges),
     balanceDueDate: snapshotPayload.pricingSnapshot.balanceDueDate,
   };
 }
 
-function getRazorpayCredentials() {
+function mergeTravellerKycDocuments(
+  nextTravellers: IBookingTraveller[],
+  existingTravellers: IBookingTraveller[] = []
+) {
+  const documentsByTravellerId = new Map(
+    existingTravellers.map((traveller) => [
+      traveller.id,
+      traveller.kycDocuments || [],
+    ])
+  );
+
+  return nextTravellers.map((traveller) => ({
+    ...traveller,
+    kycDocuments: documentsByTravellerId.get(traveller.id) || traveller.kycDocuments || [],
+  }));
+}
+
+function hasKycForEveryTraveller(booking: BookingDocument) {
+  return (
+    booking.travellers.length > 0 &&
+    booking.travellers.every((traveller) => (traveller.kycDocuments || []).length > 0)
+  );
+}
+
+async function sendKycCompletionAlertIfNeeded(booking: BookingDocument) {
+  if (!hasKycForEveryTraveller(booking) || booking.kycCompletionEmailSentAt) {
+    return;
+  }
+
+  booking.kycCompletionEmailAttemptedAt = new Date();
+  booking.kycCompletionEmailError = "";
+  await booking.save();
+
+  try {
+    const [tour] = await Promise.all([
+      Tour.findOne({ tourId: booking.tourId }),
+    ]);
+    const leadGuest = booking.guestDetails[0];
+    const result = await sendBookingKycCompletedAlertEmail({
+      bookingReference: getBookingReference(booking),
+      documentSummary: booking.travellers.map((traveller, index) => ({
+        documents: (traveller.kycDocuments || []).map(
+          (document) => document.documentLabel
+        ),
+        travellerName:
+          [traveller.firstName, traveller.lastName]
+            .map((value) => value?.trim() || "")
+            .filter(Boolean)
+            .join(" ") || `Traveller ${index + 1}`,
+      })),
+      tourName: tour?.tourName || booking.tourId,
+      travellerEmail: leadGuest?.email || "",
+      travellerName: getGuestFullName(leadGuest) || "Traveller",
+      travellerPhone: leadGuest
+        ? `${leadGuest.countryCode} ${leadGuest.mobileNumber}`.trim()
+        : "",
+      travellersLabel: formatTravellerCountLabel(
+        booking.adultCount,
+        booking.childCount
+      ),
+    });
+
+    booking.kycCompletionEmailSentAt =
+      result.recipients.length > 0 ? new Date() : null;
+    booking.kycCompletionEmailError = "";
+    await booking.save();
+  } catch (error) {
+    booking.kycCompletionEmailError =
+      error instanceof Error ? error.message.slice(0, 500) : "KYC alert failed";
+    await booking.save();
+    console.error(
+      `[booking-kyc-email] Failed KYC alert for booking ${booking._id.toString()}: ${booking.kycCompletionEmailError}`
+    );
+  }
+}
+
+export function getRazorpayCredentials() {
   const keyId = process.env.RAZORPAY_KEY_ID?.trim();
   const keySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
 
@@ -742,7 +1091,7 @@ function getRazorpayCredentials() {
   };
 }
 
-function createRazorpayClient() {
+export function createRazorpayClient() {
   const { keyId, keySecret } = getRazorpayCredentials();
 
   return new Razorpay({
@@ -789,19 +1138,10 @@ function getBookingDraftTotalAmount(bookingDraft: BookingDraft) {
 }
 
 function getAdminOfflineAmountPaid(bookingDraft: BookingDraft) {
-  const totalAmount = getBookingDraftTotalAmount(bookingDraft);
-
-  if (bookingDraft.paymentOption === "full" && totalAmount > 0) {
-    return totalAmount;
-  }
-
-  if (typeof bookingDraft.amountPaid === "number" && bookingDraft.amountPaid > 0) {
-    const amountPaid = toPaymentAmount(bookingDraft.amountPaid);
-
-    return totalAmount > 0 ? Math.min(amountPaid, totalAmount) : amountPaid;
-  }
-
-  return toPaymentAmount(bookingDraft.depositAmount || totalAmount);
+  const amountPaid = toPaymentAmount(bookingDraft.amountPaid || 0);
+  const total = getBookingDraftTotalAmount(bookingDraft);
+  if (total > 0 && amountPaid > total) throw new HttpError(400, "Amount received cannot exceed the booking total");
+  return amountPaid;
 }
 
 function applyAdminOfflinePaymentToDraft(
@@ -909,27 +1249,17 @@ async function createReservedBookingForPayment({
 
       if (!isActiveHold(bookingToHold, now)) {
         if ((bookingToHold.heldSeatCount || 0) > 0 && bookingToHold.departureId) {
-          await TourDeparture.updateOne(
-            { departureId: bookingToHold.departureId },
-            { $inc: { seatsAvailable: bookingToHold.heldSeatCount || 0 } },
-            { session: databaseSession }
+          await restoreDepartureSeats(
+            bookingToHold.departureId,
+            bookingToHold.heldSeatCount || 0,
+            databaseSession
           );
         }
 
-        const updatedDeparture = await TourDeparture.findOneAndUpdate(
-          createScheduledDepartureReservationFilter(
-            bookingDraft.departureId,
-            bookingDraft.totalGuest
-          ),
-          {
-            $inc: {
-              seatsAvailable: -bookingDraft.totalGuest,
-            },
-          },
-          {
-            new: true,
-            session: databaseSession,
-          }
+        const updatedDeparture = await reserveDepartureSeats(
+          bookingDraft.departureId,
+          bookingDraft.totalGuest,
+          databaseSession
         );
 
         if (!updatedDeparture) {
@@ -1019,17 +1349,19 @@ async function releasePaymentSessionReservation(
         databaseSession
       );
 
+      const departureId = booking ? getBookingDepartureId(booking) : "";
+
       if (
         releaseHeldSeats &&
         booking &&
         booking.paymentStatus !== "paid" &&
         (booking.heldSeatCount || 0) > 0 &&
-        booking.departureId
+        departureId
       ) {
-        await TourDeparture.updateOne(
-          { departureId: booking.departureId },
-          { $inc: { seatsAvailable: booking.heldSeatCount || 0 } },
-          { session: databaseSession }
+        await restoreDepartureSeats(
+          departureId,
+          booking.heldSeatCount || 0,
+          databaseSession
         );
         booking.heldSeatCount = 0;
         booking.holdExpiresAt = null;
@@ -1073,22 +1405,16 @@ async function releaseExpiredHoldForBooking(
     }
   );
 
-  if (!booking || !booking.departureId || (booking.heldSeatCount || 0) <= 0) {
+  const departureId = booking ? getBookingDepartureId(booking) : "";
+
+  if (!booking || !departureId || (booking.heldSeatCount || 0) <= 0) {
     return false;
   }
 
-  await TourDeparture.updateOne(
-    {
-      departureId: booking.departureId,
-    },
-    {
-      $inc: {
-        seatsAvailable: booking.heldSeatCount || 0,
-      },
-    },
-    {
-      session: databaseSession,
-    }
+  await restoreDepartureSeats(
+    departureId,
+    booking.heldSeatCount || 0,
+    databaseSession
   );
 
   await BookingPaymentSession.updateMany(
@@ -1135,14 +1461,16 @@ async function expireRecoveryForBooking(
     }
   );
 
-  if (
-    activeHoldBooking?.departureId &&
-    (activeHoldBooking.heldSeatCount || 0) > 0
-  ) {
-    await TourDeparture.updateOne(
-      { departureId: activeHoldBooking.departureId },
-      { $inc: { seatsAvailable: activeHoldBooking.heldSeatCount || 0 } },
-      { session: databaseSession }
+  const departureId = activeHoldBooking
+    ? getBookingDepartureId(activeHoldBooking)
+    : "";
+  const heldSeatCount = activeHoldBooking?.heldSeatCount || 0;
+
+  if (departureId && heldSeatCount > 0) {
+    await restoreDepartureSeats(
+      departureId,
+      heldSeatCount,
+      databaseSession
     );
   }
 
@@ -1217,6 +1545,8 @@ export async function runBookingRecoveryMaintenance(): Promise<void> {
   }
 
   await sendDueRecoveryEmails();
+  await retryOfflineBookingAlerts();
+  await runBookingPaymentLifecycleMaintenance(bookingPaymentLifecycleHooks());
 }
 
 async function releaseSupersededPendingPaymentReservations(payload: BookingPayload) {
@@ -1391,7 +1721,7 @@ function formatBalancePaymentSession(
   };
 }
 
-async function getAuthenticatedTravellerPaidBookingById(request: Request) {
+export async function getAuthenticatedTravellerPaidBookingById(request: Request) {
   const traveller = await getAuthenticatedTraveller(request);
   const booking = await Booking.findOne({
     _id: request.params.id,
@@ -1463,13 +1793,15 @@ async function createBalancePaymentSession({
 
 async function applyVerifiedBalancePayment({
   paymentId,
+  paymentMethod,
   signature,
   session,
 }: {
   paymentId: string;
+  paymentMethod?: string;
   signature: string;
   session: BookingBalancePaymentSessionDocument;
-}) {
+}): Promise<BookingDocument> {
   let updatedBooking: BookingDocument | null = null;
   const databaseSession = await mongoose.startSession();
 
@@ -1511,10 +1843,11 @@ async function applyVerifiedBalancePayment({
       }
 
       const { totalAmount } = getBookingEmailAmounts(booking);
-      const amountPaid = Math.min(
-        Math.round((booking.amountPaid || 0) + claimedSession.amountRupees),
-        Math.round(totalAmount)
-      );
+      const amountPaid = Math.round((booking.amountPaid || 0) + claimedSession.amountRupees);
+      if (!recordAirfareCollection(booking, paymentId, claimedSession.amountRupees)) {
+        updatedBooking = booking;
+        return;
+      }
       const balanceAmount = Math.max(0, Math.round(totalAmount - amountPaid));
 
       booking.amountPaid = amountPaid;
@@ -1523,7 +1856,10 @@ async function applyVerifiedBalancePayment({
       booking.paymentId = paymentId;
       booking.paymentOrderId = claimedSession.razorpayOrderId;
       booking.paymentProvider = "razorpay";
+      booking.paymentMethod = verifiedPaymentMethod(paymentMethod);
       booking.paymentStatus = "paid";
+      booking.paymentCapturedAt = new Date();
+      booking.balanceDueDate = balanceAmount > 0 ? booking.balanceDueDate : null;
 
       await booking.save({ session: databaseSession });
 
@@ -1537,11 +1873,145 @@ async function applyVerifiedBalancePayment({
     throw new HttpError(500, "Balance payment could not be applied");
   }
 
+  queueAirfareConfirmation(updatedBooking);
+  const confirmedBooking = updatedBooking as BookingDocument | null;
+  if (confirmedBooking?.bookingStatus === "confirmed") queueBookingConfirmationNotifications(confirmedBooking);
+  return updatedBooking;
+}
+
+async function applyVerifiedPaymentLinkRequest({
+  paymentId,
+  paymentLinkRequest,
+}: {
+  paymentId: string;
+  paymentLinkRequest: BookingPaymentLinkRequestDocument;
+}): Promise<BookingDocument | null> {
+  if (paymentLinkRequest.status === "paid") return Booking.findById(paymentLinkRequest.bookingId);
+  const razorpay = createRazorpayClient();
+  const link = await razorpay.paymentLink.fetch(paymentLinkRequest.razorpayPaymentLinkId);
+  const linkedPaymentId = getPaymentLinkPaidPaymentId(link);
+  if (link.status !== "paid" || Number(link.amount) !== paymentLinkRequest.amount
+      || Number(link.amount_paid) !== paymentLinkRequest.amount || link.currency !== paymentLinkRequest.currency
+      || !linkedPaymentId || (paymentId && linkedPaymentId !== paymentId)) {
+    throw new HttpError(400, "Payment link settlement does not match the booking payment request");
+  }
+  paymentId = linkedPaymentId;
+  const capturedPayment = await captureVerifiedPayment({ amount: paymentLinkRequest.amount, currency: paymentLinkRequest.currency,
+    paymentId, razorpay });
+  let updatedBooking: BookingDocument | null = null;
+  const databaseSession = await mongoose.startSession();
+
+  try {
+    await databaseSession.withTransaction(async () => {
+      const claimedRequest = await BookingPaymentLinkRequest.findOneAndUpdate(
+        {
+          _id: paymentLinkRequest._id,
+          status: { $in: ["created", "sent", "failed", "expired"] },
+        },
+        {
+          $set: {
+            paidAt: new Date(),
+            razorpayPaymentId: paymentId,
+            status: "paid",
+          },
+        },
+        {
+          new: true,
+          session: databaseSession,
+        }
+      );
+
+      if (!claimedRequest) {
+        updatedBooking = await Booking.findById(
+          paymentLinkRequest.bookingId
+        ).session(databaseSession);
+        return;
+      }
+
+      const booking = await Booking.findById(claimedRequest.bookingId).session(
+        databaseSession
+      );
+
+      if (!booking) {
+        throw new HttpError(404, "Booking not found");
+      }
+
+      if (booking.bookingStatus === "cancelled" || booking.bookingStatus === "expired") {
+        claimedRequest.status = "failed";
+        claimedRequest.failureReason =
+          "Payment received for cancelled or expired booking; booking was not reactivated";
+        await claimedRequest.save({ session: databaseSession });
+        updatedBooking = booking;
+        return;
+      }
+
+      const amountRupees = toPaymentAmount(claimedRequest.amountRupees);
+      const totalAmount = toPaymentAmount(booking.grandTotal || 0);
+      const currentPaid = toPaymentAmount(booking.amountPaid || 0);
+
+      if (!recordAirfareCollection(booking, paymentId, amountRupees)) {
+        updatedBooking = booking;
+        return;
+      }
+      if (claimedRequest.purpose === "additional") {
+        if (!claimedRequest.additionalChargeAppliedAt) {
+          booking.grandTotal = totalAmount + amountRupees;
+          claimedRequest.additionalChargeAppliedAt = new Date();
+        }
+
+        booking.amountPaid = currentPaid + amountRupees;
+        booking.balanceAmount = Math.max(
+          0,
+          toPaymentAmount(booking.grandTotal || 0) - booking.amountPaid
+        );
+      } else {
+        booking.amountPaid = currentPaid + amountRupees;
+        booking.balanceAmount = Math.max(0, totalAmount - booking.amountPaid);
+      }
+
+      booking.bookingStatus =
+        booking.bookingStatus === "payment_pending" || booking.bookingStatus === "draft"
+          ? "confirmed"
+          : booking.bookingStatus;
+      booking.paymentCapturedAt = new Date();
+      booking.paymentCurrency = claimedRequest.currency;
+      booking.paymentId = paymentId;
+      booking.paymentMethod = verifiedPaymentMethod(capturedPayment.method);
+      booking.paymentOrderId = claimedRequest.razorpayPaymentLinkId;
+      booking.paymentProvider = "razorpay";
+      booking.paymentStatus = "paid";
+      booking.balanceDueDate =
+        (booking.balanceAmount || 0) > 0 ? booking.balanceDueDate : null;
+      booking.confirmationToken =
+        booking.confirmationToken || createConfirmationToken();
+
+      await claimedRequest.save({ session: databaseSession });
+      await booking.save({ session: databaseSession });
+      updatedBooking = booking;
+    });
+  } finally {
+    await databaseSession.endSession();
+  }
+
+  queueAirfareConfirmation(updatedBooking);
+  const confirmedBooking = updatedBooking as BookingDocument | null;
+  if (confirmedBooking?.bookingStatus === "confirmed") queueBookingConfirmationNotifications(confirmedBooking);
   return updatedBooking;
 }
 
 function createConfirmationToken() {
   return crypto.randomBytes(24).toString("hex");
+}
+
+async function ensureBookingConfirmationToken(booking: BookingDocument) {
+  if (booking.confirmationToken) {
+    return booking.confirmationToken;
+  }
+
+  booking.confirmationToken = createConfirmationToken();
+  await booking.save();
+
+  return booking.confirmationToken;
 }
 
 function getBookingReference(booking: BookingDocument) {
@@ -1561,11 +2031,7 @@ function createRecoveryExpiry(now = new Date()) {
 }
 
 function isActiveHold(booking: BookingDocument, now = new Date()) {
-  return (
-    (booking.heldSeatCount || 0) > 0 &&
-    Boolean(booking.holdExpiresAt) &&
-    booking.holdExpiresAt!.getTime() > now.getTime()
-  );
+  return hasActiveSeatHold(booking, now);
 }
 
 function isRecoverableBooking(booking: BookingDocument, now = new Date()) {
@@ -1589,12 +2055,339 @@ function getRecoveryUrl(booking: BookingDocument) {
   )}`;
 }
 
+function getFinalPaymentUrl(booking: BookingDocument) {
+  const frontendBaseUrl = process.env.FRONTEND_URL?.trim().replace(/\/$/, "");
+
+  if (
+    !frontendBaseUrl ||
+    !isAirFlightFinalPaymentEligible(booking)
+  ) {
+    return "";
+  }
+
+  return `${frontendBaseUrl}/me/bookings/${booking._id.toString()}`;
+}
+
+const paymentLinkPurposeLabels: Record<BookingPaymentLinkPurpose, string> = {
+  additional: "Additional Charges",
+  custom: "Custom Payment",
+  final: "Final Payment",
+  partial: "Partial Payment",
+};
+
+function getPaymentLinkExpiryDate(now = new Date()) {
+  const expiryHours = Number(process.env.RAZORPAY_PAYMENT_LINK_EXPIRY_HOURS || 72);
+
+  return new Date(now.getTime() + Math.max(1, expiryHours) * 60 * 60 * 1000);
+}
+
+function getPaymentLinkReturnUrl(booking: BookingDocument) {
+  const frontendBaseUrl = process.env.FRONTEND_URL?.trim().replace(/\/$/, "");
+
+  if (!frontendBaseUrl) {
+    return undefined;
+  }
+
+  return `${frontendBaseUrl}/me/bookings/${booking._id.toString()}`;
+}
+
+function formatRupeeAmountForTemplate(amount: number) {
+  return String(Math.max(0, Math.round(amount)));
+}
+
+function getBookingOutstandingAmount(booking: BookingDocument) {
+  const { balanceAmount, totalAmount, amountPaid } = getBookingEmailAmounts(booking);
+
+  if (totalAmount > 0) {
+    return Math.max(0, Math.round(totalAmount - amountPaid));
+  }
+
+  return Math.max(0, Math.round(balanceAmount));
+}
+
+function getPaymentLinkObligationKey({
+  amountRupees,
+  description,
+  purpose,
+}: {
+  amountRupees: number;
+  description: string;
+  purpose: BookingPaymentLinkPurpose;
+}) {
+  if (purpose === "final") {
+    return "final";
+  }
+
+  const normalizedDescription = description
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .slice(0, 120);
+
+  return `${purpose}:${amountRupees}:${normalizedDescription}`;
+}
+
+function isActivePaymentLinkRequest(
+  request: BookingPaymentLinkRequestDocument,
+  now = new Date()
+) {
+  return (
+    (request.status === "created" || request.status === "sent") &&
+    Boolean(request.paymentLinkUrl) &&
+    (!request.expiresAt || request.expiresAt.getTime() > now.getTime())
+  );
+}
+
+function formatPaymentLinkRequest(request: BookingPaymentLinkRequestDocument) {
+  return {
+    id: request._id.toString(),
+    bookingId: request.bookingId.toString(),
+    purpose: request.purpose,
+    purposeLabel: request.purposeLabel,
+    amount: request.amount,
+    amountRupees: request.amountRupees,
+    currency: request.currency,
+    description: request.description || "",
+    razorpayPaymentLinkId: request.razorpayPaymentLinkId,
+    razorpayPaymentId: request.razorpayPaymentId || "",
+    paymentLinkUrl: request.paymentLinkUrl,
+    status: request.status,
+    whatsappStatus: request.whatsappStatus,
+    whatsappRecipient: request.whatsappRecipient || "",
+    whatsappRequestId: request.whatsappRequestId || "",
+    whatsappError: request.whatsappError || "",
+    expiresAt: request.expiresAt || null,
+    paidAt: request.paidAt || null,
+    cancelledAt: request.cancelledAt || null,
+    failureReason: request.failureReason || "",
+    createdAt: request.createdAt,
+    updatedAt: request.updatedAt,
+  };
+}
+
+async function listPaymentLinkRequestsForBooking(bookingId: mongoose.Types.ObjectId) {
+  return BookingPaymentLinkRequest.find({ bookingId }).sort({ createdAt: -1 });
+}
+
+async function sendWhatsappForPaymentLinkRequest({
+  booking,
+  paymentLinkRequest,
+  tour,
+}: {
+  booking: BookingDocument;
+  paymentLinkRequest: BookingPaymentLinkRequestDocument;
+  tour: TourDocument | null;
+}) {
+  const leadGuest = booking.guestDetails[0];
+  const recipientNumber = normalizeWhatsappRecipientNumber(leadGuest);
+
+  assertWhatsappLinkCanBeDelivered(paymentLinkRequest.paymentLinkUrl);
+
+  try {
+    const result = await sendBookingPaymentLinkWhatsapp({
+      amount: formatRupeeAmountForTemplate(paymentLinkRequest.amountRupees),
+      bookingReference: getBookingReference(booking),
+      crqId: `booking_payment_link_${paymentLinkRequest._id.toString()}_${crypto.randomUUID()}`,
+      paymentPurpose: paymentLinkRequest.purposeLabel,
+      paymentUrl: paymentLinkRequest.paymentLinkUrl,
+      recipientNumber,
+      tourName: tour?.tourName || booking.tourId,
+      travellerName: getGuestFullName(leadGuest) || "Traveller",
+    });
+
+    paymentLinkRequest.status =
+      paymentLinkRequest.status === "created" ? "sent" : paymentLinkRequest.status;
+    paymentLinkRequest.whatsappError = "";
+    paymentLinkRequest.whatsappRecipient = recipientNumber;
+    paymentLinkRequest.whatsappRequestId = result.requestId;
+    paymentLinkRequest.whatsappStatus = "sent";
+  } catch (error) {
+    paymentLinkRequest.whatsappError = truncateNotificationError(
+      getWhatsappErrorMessage(error)
+    );
+    paymentLinkRequest.whatsappRecipient = recipientNumber;
+    paymentLinkRequest.whatsappStatus = "failed";
+  }
+
+  await paymentLinkRequest.save();
+  return paymentLinkRequest;
+}
+
+function getPaymentLinkPaidPaymentId(
+  paymentLink: {
+    payments?: unknown;
+  },
+  fallback = ""
+) {
+  const payments = paymentLink.payments;
+
+  if (Array.isArray(payments)) {
+    const paidPayment = payments.find(
+      (item) =>
+        item &&
+        typeof item === "object" &&
+        "payment_id" in item &&
+        ((item as { status?: unknown }).status === "captured" ||
+          (item as { status?: unknown }).status === "paid")
+    ) as { payment_id?: unknown } | undefined;
+
+    return typeof paidPayment?.payment_id === "string"
+      ? paidPayment.payment_id
+      : fallback;
+  }
+
+  if (payments && typeof payments === "object" && "payment_id" in payments) {
+    const paymentId = (payments as { payment_id?: unknown }).payment_id;
+
+    return typeof paymentId === "string" ? paymentId : fallback;
+  }
+
+  return fallback;
+}
+
+async function syncPaymentLinkRequestsForBookings(
+  bookingIds: mongoose.Types.ObjectId[]
+) {
+  const uniqueBookingIds = Array.from(
+    new Set(bookingIds.map((bookingId) => bookingId.toString()))
+  );
+
+  if (uniqueBookingIds.length === 0) {
+    return;
+  }
+
+  const paymentLinkRequests = await BookingPaymentLinkRequest.find({
+    bookingId: { $in: uniqueBookingIds },
+    status: { $in: ["created", "sent", "failed", "expired"] },
+  });
+
+  if (paymentLinkRequests.length === 0) {
+    return;
+  }
+
+  let razorpay: Razorpay;
+
+  try {
+    razorpay = createRazorpayClient();
+  } catch (error) {
+    console.error("[payment-link-sync] Razorpay client is unavailable:", error);
+    return;
+  }
+
+  await Promise.all(
+    paymentLinkRequests.map(async (paymentLinkRequest) => {
+      try {
+        const paymentLink = await razorpay.paymentLink.fetch(
+          paymentLinkRequest.razorpayPaymentLinkId
+        );
+
+        if (paymentLink.status === "paid") {
+          await applyVerifiedPaymentLinkRequest({
+            paymentId: getPaymentLinkPaidPaymentId(
+              paymentLink,
+              paymentLinkRequest.razorpayPaymentId || ""
+            ),
+            paymentLinkRequest,
+          });
+          return;
+        }
+
+        if (paymentLink.status === "cancelled") {
+          await BookingPaymentLinkRequest.updateOne(
+            {
+              _id: paymentLinkRequest._id,
+              status: { $ne: "paid" },
+            },
+            {
+              $set: {
+                cancelledAt: paymentLinkRequest.cancelledAt || new Date(),
+                failureReason:
+                  paymentLinkRequest.failureReason ||
+                  "Razorpay payment link is cancelled",
+                status: "cancelled",
+              },
+            }
+          );
+          return;
+        }
+
+        if (paymentLink.status === "expired") {
+          await BookingPaymentLinkRequest.updateOne(
+            {
+              _id: paymentLinkRequest._id,
+              status: { $nin: ["paid", "cancelled"] },
+            },
+            {
+              $set: {
+                failureReason:
+                  paymentLinkRequest.failureReason ||
+                  "Razorpay payment link expired",
+                status: "expired",
+              },
+            }
+          );
+        }
+      } catch (error) {
+        console.error(
+          `[payment-link-sync] Failed to sync ${paymentLinkRequest.razorpayPaymentLinkId}:`,
+          error
+        );
+      }
+    })
+  );
+}
+
+function isPrivateHostname(hostname: string) {
+  const normalizedHostname = hostname.toLowerCase();
+
+  if (
+    normalizedHostname === "localhost" ||
+    normalizedHostname.endsWith(".localhost")
+  ) {
+    return true;
+  }
+
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalizedHostname)) {
+    const [first = 0, second = 0] = normalizedHostname
+      .split(".")
+      .map((part) => Number(part));
+
+    return (
+      first === 10 ||
+      first === 127 ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && second === 168)
+    );
+  }
+
+  return false;
+}
+
+function assertWhatsappLinkCanBeDelivered(link: string) {
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(link);
+  } catch {
+    throw new HttpError(500, "Final payment URL is invalid");
+  }
+
+  if (parsedUrl.protocol !== "https:" || isPrivateHostname(parsedUrl.hostname)) {
+    throw new HttpError(
+      400,
+      "WhatsApp payment links must use a public HTTPS FRONTEND_URL. Localhost/private URLs can be accepted by MSG91 but will not deliver correctly to travellers."
+    );
+  }
+}
+
 async function createPaidBookingFromPaymentSession({
   paymentId,
+  paymentMethod,
   signature,
   session,
 }: {
   paymentId: string;
+  paymentMethod?: string;
   signature: string;
   session: BookingPaymentSessionDocument;
 }): Promise<BookingDocument> {
@@ -1630,28 +2423,20 @@ async function createPaidBookingFromPaymentSession({
         const hasActiveHold = isActiveHold(booking, now);
 
         if (!hasActiveHold) {
-          if ((booking.heldSeatCount || 0) > 0 && booking.departureId) {
-            await TourDeparture.updateOne(
-              { departureId: booking.departureId },
-              { $inc: { seatsAvailable: booking.heldSeatCount || 0 } },
-              { session: databaseSession }
+          const departureId = getBookingDepartureId(booking);
+
+          if ((booking.heldSeatCount || 0) > 0 && departureId) {
+            await restoreDepartureSeats(
+              departureId,
+              booking.heldSeatCount || 0,
+              databaseSession
             );
           }
 
-          const updatedDeparture = await TourDeparture.findOneAndUpdate(
-            createScheduledDepartureReservationFilter(
-              booking.departureId,
-              booking.totalGuest
-            ),
-            {
-              $inc: {
-                seatsAvailable: -booking.totalGuest,
-              },
-            },
-            {
-              new: true,
-              session: databaseSession,
-            }
+          const updatedDeparture = await reserveDepartureSeats(
+            departureId,
+            booking.totalGuest,
+            databaseSession
           );
 
           if (!updatedDeparture) {
@@ -1671,6 +2456,7 @@ async function createPaidBookingFromPaymentSession({
         booking.bookingReference = getBookingReference(booking);
         booking.paymentStatus = "paid";
         booking.paymentProvider = "razorpay";
+        booking.paymentMethod = verifiedPaymentMethod(paymentMethod);
         booking.paymentOrderId = session.razorpayOrderId;
         booking.paymentId = paymentId;
         booking.paymentSignature = signature;
@@ -1810,10 +2596,18 @@ function getBookingEmailAmounts(booking: BookingDocument) {
   const snapshot = booking.pricingSnapshot;
   const totalAmount =
     toPaymentAmount(booking.grandTotal || snapshot?.grandTotal || booking.subtotal || 0);
+  const savedAmountPaid = toPaymentAmount(booking.amountPaid || 0);
+  const savedBalanceAmount = toPaymentAmount(
+    booking.balanceAmount ?? snapshot?.balanceAmount ?? 0
+  );
   const amountPaid =
-    booking.paymentOption === "full" && totalAmount > 0
-      ? totalAmount
-      : toPaymentAmount(booking.amountPaid || 0);
+    savedAmountPaid > 0
+      ? savedAmountPaid
+      : savedBalanceAmount > 0 && totalAmount > 0
+        ? Math.max(0, totalAmount - savedBalanceAmount)
+      : booking.paymentOption === "full" && totalAmount > 0
+        ? totalAmount
+        : 0;
   const calculatedBalanceAmount =
     totalAmount > 0 ? Math.max(0, totalAmount - amountPaid) : 0;
   const balanceAmount =
@@ -1828,10 +2622,85 @@ function getBookingEmailAmounts(booking: BookingDocument) {
   };
 }
 
+function getBookingPaidAmountForChargeUpdate(booking: BookingDocument) {
+  const currentTotal = toPaymentAmount(booking.grandTotal || 0);
+  const currentBalance = toPaymentAmount(booking.balanceAmount || 0);
+  const savedAmountPaid = toPaymentAmount(booking.amountPaid || 0);
+
+  if (savedAmountPaid > 0) {
+    return savedAmountPaid;
+  }
+
+  if (currentTotal > 0 && currentBalance > 0) {
+    return Math.max(0, currentTotal - currentBalance);
+  }
+
+  if (booking.paymentOption === "full" && booking.paymentStatus === "paid") {
+    return currentTotal;
+  }
+
+  return 0;
+}
+
+function isAirFlightFinalPaymentEligible(booking: BookingDocument) {
+  const airFlightCharges = toPaymentAmount(booking.airFlightCharges || 0);
+  const { amountPaid, balanceAmount, totalAmount } =
+    getBookingEmailAmounts(booking);
+  const originalPackageTotal = Math.max(0, totalAmount - airFlightCharges);
+
+  return Boolean(
+    booking.paymentStatus === "paid" &&
+      airFlightCharges > 0 &&
+      balanceAmount > 0 &&
+      originalPackageTotal > 0 &&
+      amountPaid >= originalPackageTotal
+  );
+}
+
+function applyAirFlightChargesToBooking(
+  booking: BookingDocument,
+  airFlightCharges: number,
+  includedInTotal = booking.airfareIncludedInTotal || false
+) {
+  const previousAirFlightCharges = toPaymentAmount(
+    booking.airFlightCharges || 0
+  );
+  const currentTotal = toPaymentAmount(booking.grandTotal || 0);
+  const nextAirFlightCharges = toPaymentAmount(airFlightCharges);
+  const amountPaid = getBookingPaidAmountForChargeUpdate(booking);
+  let totals;
+  try {
+    totals = calculateAirfareTotals(currentTotal, previousAirFlightCharges, nextAirFlightCharges, amountPaid, {
+      previousIncluded: booking.airfareIncludedInTotal || false, included: includedInTotal,
+    });
+  } catch (error) {
+    throw new HttpError(400, error instanceof Error ? error.message : "Invalid airfare");
+  }
+  const { grandTotal: nextTotal, balanceAmount } = totals;
+
+  booking.airfareIncludedInTotal = includedInTotal;
+  booking.airFlightCharges = nextAirFlightCharges;
+  booking.grandTotal = nextTotal;
+  booking.amountPaid = amountPaid;
+  booking.balanceAmount = balanceAmount;
+  booking.balanceDueDate =
+    balanceAmount > 0
+      ? booking.balanceDueDate ||
+        booking.pricingSnapshot?.balanceDueDate ||
+        null
+      : null;
+
+  // Updating charges does not represent another payment or booking confirmation.
+}
+
 function createBookingDraftFromBooking(booking: BookingDocument): BookingDraft {
   return {
+    ...resolveBookingEmergencyContact(booking),
     accommodationDetails: booking.accommodationDetails,
     adultCount: booking.adultCount,
+    airFlightCharges: booking.airFlightCharges || 0,
+    airfareIncludedInTotal: booking.airfareIncludedInTotal || false,
+    airfareExcluded: booking.airfareExcluded,
     amountPaid: booking.amountPaid,
     balanceAmount: booking.balanceAmount,
     balanceDueDate: booking.balanceDueDate,
@@ -2209,6 +3078,7 @@ async function sendBookingConfirmationEmailIfNeeded(
         _id: booking._id,
         emailBookingConfirmationSentAt: null,
         paymentStatus: "paid",
+        bookingStatus: "confirmed",
         $or: [
           { emailBookingConfirmationStatus: { $exists: false } },
           { emailBookingConfirmationStatus: "pending" },
@@ -2270,6 +3140,10 @@ async function sendBookingConfirmationEmailIfNeeded(
       recipientEmail,
       returnDate: returnDate || null,
       totalAmount: amounts.totalAmount,
+      airFlightCharges: claimedBooking.airFlightCharges || 0,
+      airfareIncludedInTotal: claimedBooking.airfareIncludedInTotal || false,
+      airfareExcluded: claimedBooking.airfareExcluded ?? isAirfareExcluded(tour),
+      airfareAddedAt: claimedBooking.airfareAddedAt,
       tourName: tour?.tourName || claimedBooking.tourId,
       travellerName: getGuestFullName(leadGuest) || "Traveller",
       travellersLabel: formatTravellerCountLabel(
@@ -2362,6 +3236,7 @@ async function sendBookingConfirmationWhatsappIfNeeded(
       {
         _id: booking._id,
         paymentStatus: "paid",
+        bookingStatus: "confirmed",
         whatsappBookingConfirmationSentAt: null,
         $or: [
           { whatsappBookingConfirmationStatus: { $exists: false } },
@@ -2402,7 +3277,10 @@ async function sendBookingConfirmationWhatsappIfNeeded(
     const departureDate = formatWhatsappDepartureDate(
       departure?.departureDate || claimedBooking.pricingSnapshot?.departureDate
     );
+    const { amountPaid, balanceAmount } = getBookingEmailAmounts(claimedBooking);
     const result = await sendBookingConfirmationWhatsapp({
+      amountPaid: formatRupeeAmountForTemplate(amountPaid),
+      paymentStatus: balanceAmount > 0 ? "Partially Paid" : "Paid in Full",
       crqId: `booking_confirmation_${claimedBooking._id.toString()}`,
       departureDate,
       recipientNumber,
@@ -2459,6 +3337,27 @@ async function sendBookingConfirmationWhatsappIfNeeded(
   }
 }
 
+export function queueBookingConfirmationNotifications(booking: BookingDocument) {
+  queueBookingNotifications(booking.id);
+  queueBookingPaymentLifecycle(booking, bookingPaymentLifecycleHooks());
+  void Promise.allSettled([
+    sendBookingConfirmationWhatsappIfNeeded(booking),
+    sendBookingConfirmationEmailIfNeeded(booking),
+  ]).then((results) => {
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        console.error(
+          `[booking-notification] Background ${
+            index === 0 ? "WhatsApp" : "email"
+          } confirmation task failed for booking ${booking._id.toString()}: ${
+            result.reason instanceof Error ? result.reason.message : String(result.reason)
+          }`
+        );
+      }
+    });
+  });
+}
+
 function formatPublicTour(tour: TourDocument | null) {
   if (!tour) {
     return null;
@@ -2489,6 +3388,10 @@ function formatPublicDeparture(
     departureId: departure.departureId,
     departureDate: departure.departureDate,
     returnDate: departure.returnDate,
+    totalSeats: Math.max(
+      departure.totalSeats || 0,
+      departure.seatsAvailable || 0
+    ),
     seatsAvailable: departure.seatsAvailable,
     status: departure.status,
   };
@@ -2523,11 +3426,76 @@ function formatPublicExpert(expert: ExpertDocument | null) {
   };
 }
 
+export async function createOfflineBooking(request: Request, response: Response): Promise<void> {
+  const payload = parseRequestBody(bookingPayloadSchema, {
+    ...request.body,
+    amountPaid: 0,
+    airFlightCharges: 0,
+    airfareIncludedInTotal: false,
+    paymentMethod: undefined,
+  });
+  if (!payload.departureId || !payload.selectedAccommodationOptionId) {
+    throw new HttpError(400, "Select a departure and accommodation before requesting offline payment");
+  }
+  await assertTourExists(payload.tourId);
+  const pendingBookingKey = 'offline:' + crypto.createHash('sha256').update(createPendingBookingKey(payload) + JSON.stringify(payload.guestDetails) + JSON.stringify(payload.travellers)).digest('hex');
+  let booking = await Booking.findOne({ pendingBookingKey });
+  if (!booking) {
+    const snapshot = await createSnapshotPayload(payload);
+    if (!snapshot) throw new HttpError(400, "Booking prices could not be calculated");
+    const draft = await createBookingDraft(payload, snapshot);
+    try {
+      booking = await Booking.create({
+        ...draft,
+        pendingBookingKey,
+        paymentMode: "offline",
+        offlineSubmissionToken: createConfirmationToken(),
+        amountPaid: 0,
+        balanceAmount: draft.grandTotal,
+        paymentStatus: "pending",
+        bookingStatus: "payment_pending",
+        paymentCapturedAt: null,
+        paymentCurrency: PAYMENT_CURRENCY,
+        heldSeatCount: 0,
+        holdExpiresAt: null,
+        recoveryExpiresAt: null,
+        recoveryEmailStatus: "disabled",
+        whatsappRecoveryStatus: "disabled",
+        offlineAdminEmailStatus: "pending",
+        offlineAdminWhatsappStatus: "pending",
+      });
+    } catch (error) {
+      if (!(error instanceof mongoose.mongo.MongoServerError) || error.code !== 11000) throw error;
+      booking = await Booking.findOne({ pendingBookingKey });
+      if (!booking) throw error;
+    }
+  }
+  if (!booking.offlineSubmissionToken) {
+    const updated = await Booking.findOneAndUpdate({
+      _id: booking._id,
+      $or: [{ offlineSubmissionToken: { $exists: false } }, { offlineSubmissionToken: "" }, { offlineSubmissionToken: null }],
+    }, { $set: { offlineSubmissionToken: createConfirmationToken() } }, { new: true });
+    booking = updated || await Booking.findById(booking._id);
+    if (!booking) throw new HttpError(404, "Booking request not found");
+  }
+  if (booking.paymentStatus !== "paid") {
+    void notifyOfflineBookingAdmins(booking._id.toString()).catch(error => console.error("[offline-booking-alert]", error));
+  }
+  response.status(201).json({
+    success: true,
+    message: booking.paymentStatus === "paid"
+      ? "This booking has already been paid. Please check My Bookings."
+      : "Offline payment request received. Your booking will be confirmed after our team records your payment. Seats are subject to availability until then.",
+    data: { booking: { id: booking._id.toString(), bookingReference: getBookingReference(booking) }, submissionToken: booking.offlineSubmissionToken },
+  });
+}
+
 export async function createBookingPaymentOrder(
   request: Request,
   response: Response
 ): Promise<void> {
   const payload = parseRequestBody(bookingPayloadSchema, request.body);
+  if (payload.airFlightCharges !== 0 || payload.airfareIncludedInTotal) throw new HttpError(400, "Only an administrator can add actual airfare");
   const tour = await Tour.findOne({ tourId: payload.tourId });
 
   if (!tour) {
@@ -2542,7 +3510,7 @@ export async function createBookingPaymentOrder(
     throw new HttpError(400, "Complete booking details are required for payment");
   }
 
-  const bookingDraft = createBookingDraft(payload, snapshotPayload);
+  const bookingDraft = await createBookingDraft(payload, snapshotPayload);
   const pendingBookingKey = createPendingBookingKey(payload);
   const amountRupees = getPaymentAmountRupees(
     bookingDraft,
@@ -2600,16 +3568,36 @@ export async function createBookingPaymentOrder(
   });
 }
 
-export async function createBookingBalancePaymentOrder(
+async function createBookingBalancePaymentOrderInternal(
   request: Request,
   response: Response
 ): Promise<void> {
   try {
-    const booking = await getAuthenticatedTravellerPaidBookingById(request);
+    await assertNoSmartCollectIdentifier(String(request.params.id));
+    let booking = await getAuthenticatedTravellerPaidBookingById(request);
+    await syncPaymentLinkRequestsForBookings([booking._id]);
+    booking = await getAuthenticatedTravellerPaidBookingById(request);
     const amountRupees = getBalancePaymentAmountRupees(booking);
 
     if (!Number.isFinite(amountRupees) || amountRupees <= 0) {
       throw new HttpError(400, "Balance payment is already complete");
+    }
+
+    const activePaymentLink = await BookingPaymentLinkRequest.findOne({
+      bookingId: booking._id,
+      status: { $in: ["created", "sent"] },
+      paymentLinkUrl: { $ne: "" },
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+    }).sort({ createdAt: -1 });
+
+    if (activePaymentLink && isActivePaymentLinkRequest(activePaymentLink)) {
+      assertWhatsappLinkCanBeDelivered(activePaymentLink.paymentLinkUrl);
+      response.status(200).json({
+        success: true,
+        message: "Existing payment link is available",
+        data: { paymentLinkUrl: activePaymentLink.paymentLinkUrl },
+      });
+      return;
     }
 
     const amount = amountRupees * 100;
@@ -2617,7 +3605,11 @@ export async function createBookingBalancePaymentOrder(
     const { keyId } = getRazorpayCredentials();
     const razorpay = createRazorpayClient();
     const tour = await Tour.findOne({ tourId: booking.tourId });
-    const order = await razorpay.orders.create({
+
+    const existingSession = await BookingBalancePaymentSession.findOne({
+      bookingId: booking._id, status: "pending", amount,
+    });
+    const order = existingSession ? { id: existingSession.razorpayOrderId } : await razorpay.orders.create({
       amount,
       currency: PAYMENT_CURRENCY,
       receipt,
@@ -2627,7 +3619,7 @@ export async function createBookingBalancePaymentOrder(
         tourId: booking.tourId,
       },
     });
-    const paymentSession = await createBalancePaymentSession({
+    const paymentSession = existingSession || await createBalancePaymentSession({
       amount,
       amountRupees,
       booking,
@@ -2682,15 +3674,15 @@ export async function verifyBookingPayment(
       throw new HttpError(404, "Confirmed booking not found");
     }
 
-    await sendBookingConfirmationWhatsappIfNeeded(booking);
-    await sendBookingConfirmationEmailIfNeeded(booking);
+    const confirmationToken = await ensureBookingConfirmationToken(booking);
+    queueBookingConfirmationNotifications(booking);
 
     response.status(200).json({
       success: true,
       message: "Booking already confirmed",
       data: {
         booking: formatBooking(booking),
-        confirmationToken: booking.confirmationToken,
+        confirmationToken,
       },
     });
     return;
@@ -2733,19 +3725,73 @@ export async function verifyBookingPayment(
 
   const booking = await createPaidBookingFromPaymentSession({
     paymentId: payload.razorpay_payment_id,
+    paymentMethod: capturedPayment.method,
     session: paymentSession,
     signature: payload.razorpay_signature,
   });
+  const confirmationToken = await ensureBookingConfirmationToken(booking);
 
-  await sendBookingConfirmationWhatsappIfNeeded(booking);
-  await sendBookingConfirmationEmailIfNeeded(booking);
+  queueBookingConfirmationNotifications(booking);
 
   response.status(200).json({
     success: true,
     message: "Booking confirmed successfully",
     data: {
       booking: formatBooking(booking),
-      confirmationToken: booking.confirmationToken,
+      confirmationToken,
+    },
+  });
+}
+
+export async function getBookingPaymentOrderStatus(
+  request: Request,
+  response: Response
+): Promise<void> {
+  const orderId =
+    typeof request.params.orderId === "string"
+      ? request.params.orderId.trim()
+      : "";
+
+  if (!orderId) {
+    throw new HttpError(400, "Payment order ID is required");
+  }
+
+  const paymentSession = await BookingPaymentSession.findOne({
+    razorpayOrderId: orderId,
+  });
+
+  if (!paymentSession) {
+    throw new HttpError(404, "Payment session not found");
+  }
+
+  const booking = paymentSession.bookingId
+    ? await Booking.findById(paymentSession.bookingId)
+    : null;
+  const isConfirmed = Boolean(
+    booking &&
+      paymentSession.status === "paid" &&
+      booking.paymentStatus === "paid" &&
+      (booking.bookingStatus || "payment_pending") === "confirmed"
+  );
+  const confirmationToken =
+    isConfirmed && booking
+      ? await ensureBookingConfirmationToken(booking)
+      : undefined;
+
+  if (isConfirmed && booking) {
+    queueBookingConfirmationNotifications(booking);
+  }
+
+  response.status(200).json({
+    success: true,
+    message: isConfirmed
+      ? "Booking payment is confirmed"
+      : "Booking payment is not confirmed yet",
+    data: {
+      booking: booking ? formatBooking(booking) : null,
+      confirmationToken,
+      isConfirmed,
+      paymentSession: formatPaymentSession(paymentSession),
     },
   });
 }
@@ -2826,12 +3872,17 @@ export async function verifyBookingBalancePayment(
 
     const updatedBooking = await applyVerifiedBalancePayment({
       paymentId: payload.razorpay_payment_id,
+      paymentMethod: capturedPayment.method,
       session: paymentSession,
       signature: payload.razorpay_signature,
     });
     const latestPaymentSession =
       (await BookingBalancePaymentSession.findById(paymentSession._id)) ||
       paymentSession;
+
+    if ((updatedBooking.balanceAmount || 0) <= 0) {
+      queueBookingConfirmationNotifications(updatedBooking);
+    }
 
     response.status(200).json({
       success: true,
@@ -2894,26 +3945,36 @@ export async function cancelBookingPaymentOrder(
   });
 }
 
-export async function getBookingConfirmation(
+export async function getBookingConfirmation(request: Request, response: Response): Promise<void> {
+  await getBookingResult(request, response);
+}
+
+export async function getOfflineBookingSubmission(request: Request, response: Response): Promise<void> {
+  await getBookingResult(request, response, true);
+}
+
+async function getBookingResult(
   request: Request,
-  response: Response
+  response: Response,
+  offlineSubmission = false
 ): Promise<void> {
   const token =
     typeof request.query.token === "string" ? request.query.token.trim() : "";
 
   if (!token) {
-    throw new HttpError(400, "Confirmation token is required");
+    throw new HttpError(400, offlineSubmission ? "Submission token is required" : "Confirmation token is required");
   }
 
   try {
     const booking = await Booking.findOne({
       _id: request.params.id,
-      confirmationToken: token,
-      ...createPaidBookingFilter(),
+      ...(offlineSubmission
+        ? { offlineSubmissionToken: token, paymentMode: "offline", bookingStatus: { $nin: ["cancelled", "expired"] } }
+        : { confirmationToken: token, ...createPaidBookingFilter() }),
     });
 
     if (!booking) {
-      throw new HttpError(404, "Booking confirmation not found");
+      throw new HttpError(404, offlineSubmission ? "Booking request not found" : "Booking confirmation not found");
     }
 
     const tour = await Tour.findOne({ tourId: booking.tourId });
@@ -2926,9 +3987,9 @@ export async function getBookingConfirmation(
 
     response.status(200).json({
       success: true,
-      message: "Booking confirmation fetched successfully",
+      message: offlineSubmission ? "Booking request fetched successfully" : "Booking confirmation fetched successfully",
       data: {
-        booking: formatBooking(booking),
+        booking: formatBooking(booking, tour),
         departure: formatPublicDeparture(departure),
         expert: formatPublicExpert(expert),
         tour: formatPublicTour(tour),
@@ -3159,34 +4220,520 @@ export async function sendBookingRecoveryEmailManually(
   }
 }
 
-export async function cancelPendingBooking(
+export async function sendBookingFinalPaymentWhatsappManually(
+  request: Request,
+  response: Response
+): Promise<void> {
+  await withBookingCollectionLock(request, () => createAdminBookingPaymentLinkInternal(request, response, true));
+}
+
+export async function listAdminBookingPaymentLinks(
   request: Request,
   response: Response
 ): Promise<void> {
   try {
+    const booking = await Booking.findById(request.params.id);
+
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    const paymentLinkRequests = await listPaymentLinkRequestsForBooking(
+      booking._id
+    );
+
+    response.status(200).json({
+      success: true,
+      message: "Payment link requests fetched successfully",
+      data: {
+        booking: formatBooking(booking),
+        paymentLinkRequests: paymentLinkRequests.map(formatPaymentLinkRequest),
+      },
+    });
+  } catch (error) {
+    if (isCastError(error)) {
+      throw new HttpError(400, "Invalid booking ID");
+    }
+
+    throw error;
+  }
+}
+
+export async function prepareBookingPaymentLink(
+  booking: BookingDocument,
+  payload: z.infer<typeof adminPaymentLinkPayloadSchema>,
+  options: { expiresAt?: Date } = {}
+) {
+  await assertNoSmartCollectIdentifier(booking._id.toString());
+  if (booking.bookingStatus === "cancelled" || booking.bookingStatus === "expired") {
+    throw new HttpError(
+      400,
+      "Payment links cannot be generated for cancelled or expired bookings"
+    );
+  }
+
+  if ((booking.airFlightCharges || 0) > 0 && await BookingBalancePaymentSession.exists({
+    bookingId: booking._id, status: "pending",
+  })) throw new HttpError(409, "A customer balance payment is already in progress");
+  const outstandingAmount = getBookingOutstandingAmount(booking);
+  const amountRupees =
+    payload.purpose === "final"
+      ? outstandingAmount
+      : toPaymentAmount(payload.amount || 0);
+
+  if (!Number.isFinite(amountRupees) || amountRupees <= 0) {
+    throw new HttpError(400, "Payment amount must be greater than zero");
+  }
+
+  if (
+    payload.purpose !== "additional" &&
+    amountRupees > outstandingAmount
+  ) {
+    throw new HttpError(400, "Payment amount cannot exceed the outstanding balance");
+  }
+
+  if (
+    payload.purpose === "additional" &&
+    payload.additionalChargeAlreadyApplied &&
+    amountRupees > outstandingAmount
+  ) {
+    throw new HttpError(400, "Payment amount cannot exceed the outstanding balance");
+  }
+
+  if (payload.purpose === "final" && outstandingAmount <= 0) {
+    throw new HttpError(400, "Final payment is already complete");
+  }
+
+  if (payload.additionalChargeAlreadyApplied && !(booking.airFlightCharges || 0)) {
+    throw new HttpError(400, "No airfare has been added to this booking");
+  }
+  let reservedAirfareLink: BookingPaymentLinkRequestDocument | null = null;
+  if ((booking.airFlightCharges || 0) > 0) {
+    const openLink = await BookingPaymentLinkRequest.findOne({
+      bookingId: booking._id, status: { $in: ["created", "sent"] },
+    });
+    if (openLink && payload.purpose === "additional" &&
+        Boolean(openLink.additionalChargeAppliedAt) !== payload.additionalChargeAlreadyApplied) {
+      throw new HttpError(409, "The existing payment link has a different charge basis; cancel it before creating another collection");
+    }
+    reservedAirfareLink = openLink;
+    if (openLink && (openLink.amountRupees !== amountRupees || openLink.purpose !== payload.purpose)) {
+      throw new HttpError(409, "Cancel the existing payment link before creating another collection");
+    }
+  }
+  const purposeLabel = payload.additionalChargeAlreadyApplied ? "Air-Flight Charges (Additional)" : paymentLinkPurposeLabels[payload.purpose];
+  const description =
+    payload.description ||
+    `${purposeLabel} for booking ${getBookingReference(booking)}`;
+  const obligationKey = getPaymentLinkObligationKey({
+    amountRupees,
+    description,
+    purpose: payload.purpose,
+  });
+  const existingActiveRequest = reservedAirfareLink || await BookingPaymentLinkRequest.findOne({
+    bookingId: booking._id,
+    obligationKey,
+    status: { $in: ["created", "sent"] },
+  }).sort({ createdAt: -1 });
+  const tour = await Tour.findOne({ tourId: booking.tourId });
+  let paymentLinkRequest = existingActiveRequest;
+
+  if (
+    paymentLinkRequest &&
+    payload.purpose === "final" &&
+    isActivePaymentLinkRequest(paymentLinkRequest) &&
+    (paymentLinkRequest.amountRupees !== amountRupees || Boolean(options.expiresAt && paymentLinkRequest.expiresAt && paymentLinkRequest.expiresAt < options.expiresAt))
+  ) {
+    const razorpay = createRazorpayClient();
+
+    await razorpay.paymentLink.cancel(paymentLinkRequest.razorpayPaymentLinkId);
+    paymentLinkRequest.cancelledAt = new Date();
+    paymentLinkRequest.failureReason =
+      "Superseded by a new final payment balance";
+    paymentLinkRequest.status = "cancelled";
+    await paymentLinkRequest.save();
+    paymentLinkRequest = null;
+  }
+
+  if (
+    paymentLinkRequest &&
+    !isActivePaymentLinkRequest(paymentLinkRequest)
+  ) {
+    paymentLinkRequest.status = "expired";
+    paymentLinkRequest.failureReason =
+      paymentLinkRequest.failureReason || "Payment link expired";
+    await paymentLinkRequest.save();
+    paymentLinkRequest = null;
+  }
+
+  if (!paymentLinkRequest) {
+    const leadGuest = booking.guestDetails[0];
+    const receipt = createReceipt();
+    const expiresAt = options.expiresAt || getPaymentLinkExpiryDate();
+    const razorpay = createRazorpayClient();
+    const referenceId = `ATPL-${booking._id.toString().slice(-8)}-${Date.now()
+      .toString(36)
+      .toUpperCase()}`.slice(0, 80);
+    const paymentLink = await razorpay.paymentLink.create({
+      accept_partial: false,
+      amount: amountRupees * 100,
+      callback_method: "get",
+      ...(getPaymentLinkReturnUrl(booking)
+        ? { callback_url: getPaymentLinkReturnUrl(booking) }
+        : {}),
+      currency: PAYMENT_CURRENCY,
+      customer: {
+        contact: leadGuest
+          ? `${leadGuest.countryCode}${leadGuest.mobileNumber}`.replace(
+              /[^\d+]/g,
+              ""
+            )
+          : "",
+        email: leadGuest?.email || "",
+        name: getGuestFullName(leadGuest) || "Traveller",
+      },
+      description,
+      expire_by: Math.floor(expiresAt.getTime() / 1000),
+      notes: {
+        bookingId: booking._id.toString(),
+        bookingReference: getBookingReference(booking),
+        paymentPurpose: payload.purpose,
+        receipt,
+        tourId: booking.tourId,
+      },
+      notify: {
+        email: false,
+        sms: false,
+        whatsapp: false,
+      },
+      reference_id: referenceId,
+      reminder_enable: false,
+    });
+
+    paymentLinkRequest = await BookingPaymentLinkRequest.create({
+      amount: amountRupees * 100,
+      amountRupees,
+      bookingId: booking._id,
+      currency: PAYMENT_CURRENCY,
+      description,
+      additionalChargeAppliedAt:
+        payload.purpose === "additional" &&
+        payload.additionalChargeAlreadyApplied
+          ? new Date()
+          : null,
+      expiresAt,
+      obligationKey,
+      paymentLinkUrl: paymentLink.short_url,
+      purpose: payload.purpose,
+      purposeLabel,
+      razorpayPaymentLinkId: paymentLink.id,
+      razorpayReferenceId: referenceId,
+      status: "created",
+      whatsappRecipient: "",
+      whatsappStatus: "pending",
+    });
+  }
+
+
+  return { booking, paymentLinkRequest, tour };
+}
+
+async function createAdminBookingPaymentLinkInternal(
+  request: Request,
+  response: Response,
+  finalPaymentOnly = false
+): Promise<void> {
+  try {
+    await assertNoSmartCollectIdentifier(String(request.params.id));
+    const booking = await Booking.findById(request.params.id);
+
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    if (finalPaymentOnly && !isAirFlightFinalPaymentEligible(booking)) {
+      throw new HttpError(
+        400,
+        "Final payment link is available only for fully paid bookings with pending air-flight charges"
+      );
+    }
+
+    const payload = parseRequestBody(
+      adminPaymentLinkPayloadSchema,
+      finalPaymentOnly
+        ? {
+            additionalChargeAlreadyApplied: true,
+            amount: getBookingOutstandingAmount(booking),
+            description: "Air-flight charge payment",
+            purpose: "additional",
+          }
+        : request.body
+    );
+
+    const { paymentLinkRequest, tour } = await prepareBookingPaymentLink(booking, payload);
+
+    const sentPaymentLinkRequest = await sendWhatsappForPaymentLinkRequest({
+      booking,
+      paymentLinkRequest,
+      tour,
+    });
+
+    if (finalPaymentOnly) {
+      if (sentPaymentLinkRequest.whatsappStatus !== "sent") {
+        throw new HttpError(
+          502,
+          sentPaymentLinkRequest.whatsappError || "WhatsApp payment link could not be sent"
+        );
+      }
+
+      response.status(200).json({
+        success: true,
+        message: "Final payment WhatsApp link sent successfully",
+        data: {
+          booking: formatBooking(booking),
+          finalPaymentUrl: sentPaymentLinkRequest.paymentLinkUrl,
+          requestId: sentPaymentLinkRequest.whatsappRequestId,
+        },
+      });
+      return;
+    }
+
+    response.status(201).json({
+      success: true,
+      message:
+        sentPaymentLinkRequest.whatsappStatus === "sent"
+          ? "Payment link generated and sent successfully"
+          : "Payment link generated, but WhatsApp could not be sent",
+      data: {
+        booking: formatBooking(booking),
+        paymentLinkRequest: formatPaymentLinkRequest(sentPaymentLinkRequest),
+        paymentLinkRequests: (
+          await listPaymentLinkRequestsForBooking(booking._id)
+        ).map(formatPaymentLinkRequest),
+      },
+    });
+  } catch (error) {
+    if (isCastError(error)) {
+      throw new HttpError(400, "Invalid booking ID");
+    }
+
+    throw error;
+  }
+}
+
+export async function resendAdminBookingPaymentLinkWhatsapp(
+  request: Request,
+  response: Response
+): Promise<void> {
+  try {
+    const booking = await Booking.findById(request.params.id);
+
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    const paymentLinkRequest = await BookingPaymentLinkRequest.findOne({
+      _id: request.params.linkId,
+      bookingId: booking._id,
+    });
+
+    if (!paymentLinkRequest) {
+      throw new HttpError(404, "Payment link request not found");
+    }
+
+    if (!isActivePaymentLinkRequest(paymentLinkRequest)) {
+      throw new HttpError(400, "Only active payment links can be resent");
+    }
+
+    const tour = await Tour.findOne({ tourId: booking.tourId });
+    const sentPaymentLinkRequest = await sendWhatsappForPaymentLinkRequest({
+      booking,
+      paymentLinkRequest,
+      tour,
+    });
+
+    response.status(200).json({
+      success: true,
+      message:
+        sentPaymentLinkRequest.whatsappStatus === "sent"
+          ? "Payment link WhatsApp resent successfully"
+          : "WhatsApp could not be sent",
+      data: {
+        booking: formatBooking(booking),
+        paymentLinkRequest: formatPaymentLinkRequest(sentPaymentLinkRequest),
+        paymentLinkRequests: (
+          await listPaymentLinkRequestsForBooking(booking._id)
+        ).map(formatPaymentLinkRequest),
+      },
+    });
+  } catch (error) {
+    if (isCastError(error)) {
+      throw new HttpError(400, "Invalid payment link request ID");
+    }
+
+    throw error;
+  }
+}
+
+export async function refreshAdminBookingPaymentLinkStatus(
+  request: Request,
+  response: Response
+): Promise<void> {
+  try {
+    const booking = await Booking.findById(request.params.id);
+
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    const paymentLinkRequest = await BookingPaymentLinkRequest.findOne({
+      _id: request.params.linkId,
+      bookingId: booking._id,
+    });
+
+    if (!paymentLinkRequest) {
+      throw new HttpError(404, "Payment link request not found");
+    }
+
+    const razorpay = createRazorpayClient();
+    const paymentLink = await razorpay.paymentLink.fetch(
+      paymentLinkRequest.razorpayPaymentLinkId
+    );
+
+    if (paymentLink.status === "paid") {
+      await applyVerifiedPaymentLinkRequest({
+        paymentId: getPaymentLinkPaidPaymentId(paymentLink),
+        paymentLinkRequest,
+      });
+    } else if (paymentLink.status === "cancelled") {
+      paymentLinkRequest.cancelledAt = paymentLinkRequest.cancelledAt || new Date();
+      paymentLinkRequest.status = "cancelled";
+      await paymentLinkRequest.save();
+    } else if (paymentLink.status === "expired") {
+      paymentLinkRequest.status = "expired";
+      paymentLinkRequest.failureReason =
+        paymentLinkRequest.failureReason || "Razorpay payment link expired";
+      await paymentLinkRequest.save();
+    }
+
+    const latestBooking = (await Booking.findById(booking._id)) || booking;
+
+    response.status(200).json({
+      success: true,
+      message: "Payment link status refreshed successfully",
+      data: {
+        booking: formatBooking(latestBooking),
+        paymentLinkRequests: (
+          await listPaymentLinkRequestsForBooking(booking._id)
+        ).map(formatPaymentLinkRequest),
+      },
+    });
+  } catch (error) {
+    if (isCastError(error)) {
+      throw new HttpError(400, "Invalid payment link request ID");
+    }
+
+    throw error;
+  }
+}
+
+export async function cancelAdminBookingPaymentLink(
+  request: Request,
+  response: Response
+): Promise<void> {
+  try {
+    const booking = await Booking.findById(request.params.id);
+
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    const paymentLinkRequest = await BookingPaymentLinkRequest.findOne({
+      _id: request.params.linkId,
+      bookingId: booking._id,
+    });
+
+    if (!paymentLinkRequest) {
+      throw new HttpError(404, "Payment link request not found");
+    }
+
+    if (paymentLinkRequest.status === "paid") {
+      throw new HttpError(400, "Paid payment links cannot be cancelled");
+    }
+
+    if (isActivePaymentLinkRequest(paymentLinkRequest)) {
+      const razorpay = createRazorpayClient();
+      await razorpay.paymentLink.cancel(paymentLinkRequest.razorpayPaymentLinkId);
+    }
+
+    paymentLinkRequest.cancelledAt = paymentLinkRequest.cancelledAt || new Date();
+    paymentLinkRequest.status = "cancelled";
+    paymentLinkRequest.failureReason = "Cancelled by admin";
+    await paymentLinkRequest.save();
+
+    response.status(200).json({
+      success: true,
+      message: "Payment link cancelled successfully",
+      data: {
+        booking: formatBooking(booking),
+        paymentLinkRequests: (
+          await listPaymentLinkRequestsForBooking(booking._id)
+        ).map(formatPaymentLinkRequest),
+      },
+    });
+  } catch (error) {
+    if (isCastError(error)) {
+      throw new HttpError(400, "Invalid payment link request ID");
+    }
+
+    throw error;
+  }
+}
+
+export async function cancelPendingBooking(
+  request: Request,
+  response: Response
+): Promise<void> {
+  const parsed = z.object({
+    reason: z.string().trim().min(3).max(1000),
+    chargePercentage: z.number().int().min(0).max(100),
+    requestedBy: z.enum(["Customer", "Admin", "Tour Operator"]),
+    notes: z.string().trim().max(2000).default(""),
+  }).strict().safeParse(request.body);
+  if (!parsed.success) {
+    throw new HttpError(400, "Provide a cancellation reason, charge percentage, and requested by");
+  }
+  try {
     const session = await mongoose.startSession();
     let booking: BookingDocument | null = null;
+    let releasedSeatCount = 0;
 
     try {
       await session.withTransaction(async () => {
+        releasedSeatCount = 0;
         booking = await Booking.findById(request.params.id).session(session);
 
         if (!booking) {
           throw new HttpError(404, "Booking not found");
         }
 
-        if (booking.paymentStatus === "paid") {
-          throw new HttpError(400, "Confirmed bookings cannot be cancelled here");
+        // Transaction retries and repeated clicks must never release seats twice.
+        if (booking.bookingStatus === "cancelled") return;
+        if (booking.bookingStatus === "expired") {
+          throw new HttpError(409, "Expired bookings cannot be cancelled");
+        }
+        const departureId = getBookingDepartureId(booking);
+        const reservedSeatCount = booking.paymentStatus === "paid"
+          ? Math.max(0, booking.totalGuest || 0)
+          : Math.max(0, booking.heldSeatCount || 0);
+
+        if (reservedSeatCount > 0) {
+          const departure = await restoreDepartureSeats(departureId, reservedSeatCount, session);
+          if (!departure) throw new HttpError(409, "Booking departure was not found; seats could not be released");
+          releasedSeatCount = reservedSeatCount;
         }
 
-        if ((booking.heldSeatCount || 0) > 0 && booking.departureId) {
-          await TourDeparture.updateOne(
-            { departureId: booking.departureId },
-            { $inc: { seatsAvailable: booking.heldSeatCount || 0 } },
-            { session }
-          );
-        }
-
+        booking.cancellation = { ...parsed.data, cancelledAt: new Date() };
         booking.bookingStatus = "cancelled";
         booking.heldSeatCount = 0;
         booking.holdExpiresAt = null;
@@ -3208,6 +4755,20 @@ export async function cancelPendingBooking(
           },
           { session }
         );
+
+        await BookingPaymentLinkRequest.updateMany(
+          {
+            bookingId: booking._id,
+            status: { $in: ["created", "sent"] },
+          },
+          {
+            $set: {
+              failureReason: "Booking cancelled",
+              status: "cancelled",
+            },
+          },
+          { session }
+        );
       });
     } finally {
       await session.endSession();
@@ -3217,11 +4778,19 @@ export async function cancelPendingBooking(
       throw new HttpError(404, "Booking not found");
     }
 
+    const savedBooking = booking as BookingDocument;
+    queueBookingNotifications(savedBooking.id);
+    const departureId = getBookingDepartureId(savedBooking);
+    const departure = departureId
+      ? await TourDeparture.findOne({ departureId }).select("seatsAvailable").lean()
+      : null;
+
     response.status(200).json({
       success: true,
       message: "Booking cancelled successfully",
       data: {
-        booking: formatBooking(booking),
+        booking: formatBooking(savedBooking),
+        availability: { departureId, seatsReleased: releasedSeatCount, seatsAvailable: departure?.seatsAvailable ?? null },
       },
     });
   } catch (error) {
@@ -3255,6 +4824,19 @@ export async function markPendingBookingExpired(
         booking.recoveryExpiresAt = new Date(0);
         await booking.save({ session });
         await expireRecoveryForBooking(booking._id, session);
+        await BookingPaymentLinkRequest.updateMany(
+          {
+            bookingId: booking._id,
+            status: { $in: ["created", "sent"] },
+          },
+          {
+            $set: {
+              failureReason: "Booking expired",
+              status: "expired",
+            },
+          },
+          { session }
+        );
       });
     } finally {
       await session.endSession();
@@ -3311,16 +4893,121 @@ export async function verifyRazorpayWebhook(
   const eventPayload = JSON.parse(rawBody.toString("utf8")) as {
     event?: string;
     payload?: {
-      payment?: {
+      payment_link?: {
         entity?: {
           id?: string;
+          status?: string;
+          amount?: number;
+          amount_paid?: number;
+          payments?: unknown;
+        };
+      };
+      payment?: {
+        entity?: {
+          amount?: number;
+          currency?: string;
+          id?: string;
+          method?: string;
+          notes?: Record<string, unknown>;
           order_id?: string;
           status?: string;
         };
       };
     };
   };
+  if (eventPayload.event === "refund.processed") {
+    const refund = (eventPayload.payload as unknown as { refund?: { entity?: { id?: string } } })?.refund?.entity;
+    if (!refund?.id || !/^rfnd_[a-zA-Z0-9]+$/.test(refund.id)) throw new HttpError(400, "Invalid refund event");
+    await stageNotificationEvent("refund:" + refund.id, "refund_candidate", { refundId: refund.id });
+    response.status(200).json({ success: true, message: "Refund verification queued", data: {} });
+    return;
+  }
   const payment = eventPayload.payload?.payment?.entity;
+  const paymentLink = eventPayload.payload?.payment_link?.entity;
+
+  if (paymentLink?.id) {
+    const paymentLinkRequest = await BookingPaymentLinkRequest.findOne({
+      razorpayPaymentLinkId: paymentLink.id,
+    });
+
+    if (!paymentLinkRequest) {
+      response.status(200).json({
+        success: true,
+        message: "Payment link request not found; webhook ignored",
+        data: {},
+      });
+      return;
+    }
+
+    if (
+      eventPayload.event === "payment_link.paid" ||
+      paymentLink.status === "paid" ||
+      payment?.status === "captured"
+    ) {
+      const updatedBooking = await applyVerifiedPaymentLinkRequest({
+        paymentId:
+          payment?.id || getPaymentLinkPaidPaymentId(paymentLink, ""),
+        paymentLinkRequest,
+      });
+
+      if (updatedBooking && (updatedBooking.balanceAmount || 0) <= 0) {
+        queueBookingConfirmationNotifications(updatedBooking);
+      }
+    } else if (
+      eventPayload.event === "payment_link.cancelled" ||
+      paymentLink.status === "cancelled"
+    ) {
+      await BookingPaymentLinkRequest.updateOne(
+        {
+          _id: paymentLinkRequest._id,
+          status: { $ne: "paid" },
+        },
+        {
+          $set: {
+            cancelledAt: new Date(),
+            failureReason: "Razorpay reported payment link cancellation",
+            status: "cancelled",
+          },
+        }
+      );
+    } else if (
+      eventPayload.event === "payment_link.expired" ||
+      paymentLink.status === "expired"
+    ) {
+      await BookingPaymentLinkRequest.updateOne(
+        {
+          _id: paymentLinkRequest._id,
+          status: { $nin: ["paid", "cancelled"] },
+        },
+        {
+          $set: {
+            failureReason: "Razorpay reported payment link expiry",
+            status: "expired",
+          },
+        }
+      );
+    } else if (eventPayload.event === "payment.failed" || payment?.status === "failed") {
+      await BookingPaymentLinkRequest.updateOne(
+        {
+          _id: paymentLinkRequest._id,
+          status: { $in: ["created", "sent"] },
+        },
+        {
+          $set: {
+            failureReason: "Razorpay reported payment failure",
+            status: "failed",
+          },
+        }
+      );
+    }
+
+    response.status(200).json({
+      success: true,
+      message: "Webhook processed",
+      data: {},
+    });
+    return;
+  }
 
   if (!payment?.order_id || !payment.id) {
     response.status(200).json({
@@ -3336,6 +5023,43 @@ export async function verifyRazorpayWebhook(
   });
 
   if (!paymentSession) {
+    const noteBookingId =
+      typeof payment.notes?.bookingId === "string"
+        ? payment.notes.bookingId
+        : "";
+    const paymentAmount =
+      typeof payment.amount === "number" ? payment.amount : 0;
+    const paymentLinkRequest =
+      noteBookingId && mongoose.Types.ObjectId.isValid(noteBookingId)
+        ? await BookingPaymentLinkRequest.findOne({
+            amount: paymentAmount,
+            bookingId: noteBookingId,
+            status: { $in: ["created", "sent", "failed", "expired"] },
+          }).sort({ createdAt: -1 })
+        : null;
+
+    if (
+      paymentLinkRequest &&
+      (eventPayload.event === "payment.captured" ||
+        payment.status === "captured")
+    ) {
+      const updatedBooking = await applyVerifiedPaymentLinkRequest({
+        paymentId: payment.id,
+        paymentLinkRequest,
+      });
+
+      if (updatedBooking && (updatedBooking.balanceAmount || 0) <= 0) {
+        queueBookingConfirmationNotifications(updatedBooking);
+      }
+
+      response.status(200).json({
+        success: true,
+        message: "Webhook processed",
+        data: {},
+      });
+      return;
+    }
+
     response.status(200).json({
       success: true,
       message: "Payment session not found; webhook ignored",
@@ -3347,12 +5071,12 @@ export async function verifyRazorpayWebhook(
   if (eventPayload.event === "payment.captured" || payment.status === "captured") {
     const booking = await createPaidBookingFromPaymentSession({
       paymentId: payment.id,
+      paymentMethod: payment.method,
       session: paymentSession,
       signature,
     });
 
-    await sendBookingConfirmationWhatsappIfNeeded(booking);
-    await sendBookingConfirmationEmailIfNeeded(booking);
+    queueBookingConfirmationNotifications(booking);
   } else if (eventPayload.event === "payment.failed" || payment.status === "failed") {
     await releasePaymentSessionReservation(
       paymentSession,
@@ -3367,12 +5091,138 @@ export async function verifyRazorpayWebhook(
   });
 }
 
+async function attachKycDocumentToBooking(
+  booking: BookingDocument,
+  request: Request,
+  uploadedBy: IBookingKycDocument["uploadedBy"]
+) {
+  const file = request.file;
+
+  if (!file) {
+    throw new HttpError(400, "Select a KYC document file to upload");
+  }
+
+  const payload = parseRequestBody(bookingKycUploadPayloadSchema, request.body);
+  const traveller = booking.travellers.find(
+    (item) => item.id === payload.travellerId
+  );
+
+  if (!traveller) {
+    throw new HttpError(404, "Traveller not found for this booking");
+  }
+
+  const document: IBookingKycDocument = {
+    id: crypto.randomUUID(),
+    documentType: payload.documentType,
+    documentLabel: bookingKycDocumentLabels[payload.documentType],
+    fileName: file.originalname,
+    fileUrl: getBookingKycUploadUrl(file),
+    mimeType: file.mimetype,
+    uploadedBy,
+    uploadedAt: new Date(),
+  };
+
+  traveller.kycDocuments = [
+    ...(traveller.kycDocuments || []).filter(
+      (item) => item.documentType !== document.documentType
+    ),
+    document,
+  ];
+
+  if (
+    typeof booking.pendingBookingKey === "string" &&
+    booking.pendingBookingKey.trim().length === 0
+  ) {
+    booking.pendingBookingKey = undefined;
+  }
+
+  booking.markModified("travellers");
+
+  await booking.save();
+
+  return booking;
+}
+
+export async function uploadTravellerBookingKycDocument(
+  request: Request,
+  response: Response
+): Promise<void> {
+  try {
+    const booking = await getAuthenticatedTravellerPaidBookingById(request);
+    const updatedBooking = await attachKycDocumentToBooking(
+      booking,
+      request,
+      "traveller"
+    );
+
+    await sendKycCompletionAlertIfNeeded(updatedBooking);
+
+    response.status(200).json({
+      success: true,
+      message: "KYC document uploaded successfully",
+      data: {
+        booking: formatBooking(updatedBooking),
+      },
+    });
+  } catch (error) {
+    if (isCastError(error)) {
+      throw new HttpError(400, "Invalid booking ID");
+    }
+
+    throw error;
+  }
+}
+
+export async function uploadAdminBookingKycDocument(
+  request: Request,
+  response: Response
+): Promise<void> {
+  try {
+    const booking = await Booking.findById(request.params.id);
+
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    const updatedBooking = await attachKycDocumentToBooking(
+      booking,
+      request,
+      "admin"
+    );
+
+    response.status(200).json({
+      success: true,
+      message: "KYC document uploaded successfully",
+      data: {
+        booking: formatBooking(updatedBooking),
+      },
+    });
+  } catch (error) {
+    if (isCastError(error)) {
+      throw new HttpError(400, "Invalid booking ID");
+    }
+
+    throw error;
+  }
+}
+
 export async function listTravellerBookings(
   request: Request,
   response: Response
 ): Promise<void> {
   const traveller = await getAuthenticatedTraveller(request);
-  const bookings = await Booking.find({
+  let bookings = await Booking.find({
+    ...createTravellerBookingFilters(traveller),
+    ...createPaidBookingFilter(),
+  })
+    .sort({ createdAt: -1 })
+    .limit(300);
+
+  await syncPaymentLinkRequestsForBookings(
+    bookings.map((booking) => booking._id)
+  );
+
+  bookings = await Booking.find({
     ...createTravellerBookingFilters(traveller),
     ...createPaidBookingFilter(),
   })
@@ -3432,7 +5282,7 @@ export async function listTravellerBookings(
           departure?.destinationId || tour?.destinationId || "";
 
         return {
-          booking: formatBooking(booking),
+          booking: formatBooking(booking, tour),
           departure: formatPublicDeparture(departure),
           destination: formatPublicDestination(
             destinationId ? destinationsById.get(destinationId) || null : null
@@ -3475,15 +5325,44 @@ export async function listBookings(
     filters.tourId = tourId;
   }
 
-  const bookings = await Booking.find(filters)
+  let bookings = await Booking.find(filters)
     .sort({ createdAt: -1 })
     .limit(300);
 
+  await syncPaymentLinkRequestsForBookings(
+    bookings.map((booking) => booking._id)
+  );
+
+  bookings = await Booking.find(filters)
+    .sort({ createdAt: -1 })
+    .limit(300);
+
+  const airfareTours = await Tour.find({ tourId: { $in: [...new Set(bookings.map(booking => booking.tourId))] } })
+    .select("tourId inclusions exclusions");
+  const airfareToursById = new Map(airfareTours.map(tour => [tour.tourId, tour]));
+  const bankTransferBookingIds = process.env.RAZORPAY_KEY_ID && bookings.length
+    ? await SmartCollectAccount.distinct("bookingId", {
+        bookingId: { $in: bookings.map(booking => booking._id) },
+        scope: crypto.createHash("sha256").update(process.env.RAZORPAY_KEY_ID).digest("hex"),
+      })
+    : [];
+  const bankTransferBookings = new Set(bankTransferBookingIds.map(id => String(id)));
+  const bankPaymentIds = bookings.map(booking => booking.paymentId).filter((id): id is string => Boolean(id));
+  const latestBankTransfers = process.env.RAZORPAY_KEY_ID && bankPaymentIds.length ? await SmartCollectTransfer.find({
+    scope: crypto.createHash("sha256").update(process.env.RAZORPAY_KEY_ID).digest("hex"),
+    bookingId: { $in: bookings.map(booking => booking._id) }, amountApplied: { $gt: 0 },
+    paymentId: { $in: bankPaymentIds },
+  }).select("paymentId mode") : [];
+  const bankMethods = new Map(latestBankTransfers.map(transfer => [transfer.paymentId, verifiedPaymentMethod(transfer.mode, "bank_transfer")]));
   response.status(200).json({
     success: true,
     message: "Bookings fetched successfully",
     data: {
-      bookings: bookings.map(formatBooking),
+      bookings: bookings.map(booking => ({
+        ...formatBooking(booking, airfareToursById.get(booking.tourId)),
+        paymentMethod: bankMethods.get(booking.paymentId || "") || (bankTransferBookings.has(String(booking._id)) && !(booking.amountPaid || 0) ? "bank_transfer" : booking.paymentMethod || (booking.paymentMode === "bank_transfer" ? "bank_transfer" : "")),
+        hasBankTransfer: bankTransferBookings.has(String(booking._id)),
+      })),
     },
   });
 }
@@ -3564,30 +5443,29 @@ export async function createBooking(
 ): Promise<void> {
   const payload = parseRequestBody(bookingPayloadSchema, request.body);
 
+  assertAdminLeadVerification(request, payload.guestDetails[0], payload.leadVerificationToken);
+  delete payload.leadVerificationToken;
+  const paymentMode = payload.paymentMode || (payload.paymentMethod === "bank_transfer" ? "bank_transfer" : payload.paymentMethod === "razorpay" ? "online" : "offline");
+  if (paymentMode === "offline" && !["cash", "cheque", "neft", "imps", "rtgs"].includes(payload.paymentMethod || "")) {
+    throw new HttpError(400, "Choose the actual offline payment method");
+  }
+  if (paymentMode !== "offline" && (payload.amountPaid || 0) > 0) {
+    throw new HttpError(400, "Online and bank-transfer payments must be verified by the payment provider");
+  }
   await assertTourExists(payload.tourId);
 
   const snapshotPayload = await createSnapshotPayload(payload);
   let booking!: BookingDocument;
 
-  if (snapshotPayload) {
+  if (snapshotPayload && (payload.amountPaid || 0) > 0) {
     const session = await mongoose.startSession();
 
     try {
       await session.withTransaction(async () => {
-        const updatedDeparture = await TourDeparture.findOneAndUpdate(
-          createScheduledDepartureReservationFilter(
-            payload.departureId,
-            payload.totalGuest
-          ),
-          {
-            $inc: {
-              seatsAvailable: -payload.totalGuest,
-            },
-          },
-          {
-            new: true,
-            session,
-          }
+        const updatedDeparture = await reserveDepartureSeats(
+          payload.departureId,
+          payload.totalGuest,
+          session
         );
 
         if (!updatedDeparture) {
@@ -3598,7 +5476,7 @@ export async function createBooking(
         }
 
         const bookingDraft = applyAdminOfflinePaymentToDraft(
-          createBookingDraft(payload, snapshotPayload)
+          await createBookingDraft(payload, snapshotPayload)
         );
         const createdBookings = await Booking.create(
           [
@@ -3607,6 +5485,8 @@ export async function createBooking(
               bookingStatus: "confirmed",
               paymentCapturedAt: new Date(),
               paymentCurrency: PAYMENT_CURRENCY,
+              paymentMode,
+              confirmationToken: createConfirmationToken(),
               paymentMethod: payload.paymentMethod,
               paymentStatus: "paid",
             },
@@ -3625,7 +5505,11 @@ export async function createBooking(
     const amountPaid = Math.round(payload.amountPaid || 0);
 
     booking = await Booking.create({
-      ...payload,
+      ...await createBookingDraft(payload, snapshotPayload),
+      balanceAmount: Math.max(0, (snapshotPayload?.pricingSnapshot.grandTotal || 0) + (payload.airfareIncludedInTotal ? 0 : payload.airFlightCharges) - amountPaid),
+      paymentMode,
+      confirmationToken: amountPaid > 0 ? createConfirmationToken() : undefined,
+      ...(paymentMode === "online" ? { recoveryToken: createRecoveryToken(), recoveryExpiresAt: new Date(Date.now() + RECOVERY_EXPIRY_HOURS * 3600000), recoveryEmailStatus: "pending", whatsappRecoveryStatus: "pending" } : {}),
       amountPaid,
       paymentCapturedAt: amountPaid > 0 ? new Date() : null,
       bookingStatus: amountPaid > 0 ? "confirmed" : "payment_pending",
@@ -3635,9 +5519,14 @@ export async function createBooking(
     });
   }
 
+  if ((booking.airFlightCharges || 0) > 0) {
+    booking.airfareAddedAt = new Date();
+    booking.airfareHistory = [{ previousAmount: 0, amount: booking.airFlightCharges || 0,
+      changedBy: verifyAuthToken(getBearerToken(request)).userId, changedAt: new Date() }];
+    await booking.save();
+  }
   if (booking.paymentStatus === "paid") {
-    await sendBookingConfirmationWhatsappIfNeeded(booking);
-    await sendBookingConfirmationEmailIfNeeded(booking);
+    queueBookingConfirmationNotifications(booking);
   }
 
   response.status(201).json({
@@ -3649,38 +5538,131 @@ export async function createBooking(
   });
 }
 
-export async function updateBooking(
+async function updateBookingInternal(
   request: Request,
   response: Response
 ): Promise<void> {
   const payload = parseRequestBody(bookingPayloadSchema, request.body);
 
   try {
+    await assertNoSmartCollectIdentifier(String(request.params.id));
     await assertTourExists(payload.tourId);
-    const snapshotPayload = await createSnapshotPayload(payload);
-    const updatePayload = applyAdminOfflinePaymentToDraft(
-      createBookingDraft(payload, snapshotPayload)
-    );
-    const isPaid = (updatePayload.amountPaid || 0) > 0;
+    const existingBooking = await Booking.findById(request.params.id);
 
-    const booking = await Booking.findByIdAndUpdate(
-      request.params.id,
-      {
-        ...updatePayload,
-        bookingStatus: isPaid ? "confirmed" : "payment_pending",
-        paymentCapturedAt: isPaid ? new Date() : null,
-        paymentCurrency: PAYMENT_CURRENCY,
-        paymentMethod: payload.paymentMethod,
-        paymentStatus: isPaid ? "paid" : "pending",
-      },
-      {
-        new: true,
-        runValidators: true,
-      }
+    if (!existingBooking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    if ((existingBooking.airFlightCharges || 0) !== payload.airFlightCharges) {
+      throw new HttpError(400, "Use the airfare editor to update charges and preserve the audit history");
+    }
+    const snapshotPayload = await createSnapshotPayload(payload, existingBooking);
+    if (existingBooking.paymentMode === "offline" && existingBooking.paymentStatus !== "paid" && (payload.amountPaid || 0) > 0 &&
+        !["cash", "cheque"].includes(payload.paymentMethod || "")) {
+      throw new HttpError(400, "Choose cash or cheque to record an offline payment");
+    }
+    if ((existingBooking.paymentProvider === "razorpay" || existingBooking.paymentMode === "online" && existingBooking.paymentMethod === "razorpay") && (payload.amountPaid !== existingBooking.amountPaid || payload.paymentMethod !== existingBooking.paymentMethod)) {
+      throw new HttpError(400, "Provider-verified payment details cannot be changed manually");
+    }
+    const draft = await createBookingDraft(payload, snapshotPayload, existingBooking.airfareExcluded, existingBooking);
+    const updatePayload = existingBooking.paymentMode === "offline" && !payload.amountPaid
+      ? { ...draft, amountPaid: 0, balanceAmount: draft.grandTotal }
+      : applyAdminOfflinePaymentToDraft(draft);
+
+    updatePayload.travellers = mergeTravellerKycDocuments(
+      updatePayload.travellers,
+      existingBooking.travellers
     );
+    if ((existingBooking.airFlightCharges || 0) > 0 &&
+        (updatePayload.grandTotal !== existingBooking.grandTotal || updatePayload.amountPaid !== existingBooking.amountPaid)) {
+      await assertNoOpenAirfareCollection(existingBooking);
+    }
+    updatePayload.airfareExcluded = existingBooking.airfareExcluded ?? updatePayload.airfareExcluded;
+    const isPaid = (updatePayload.amountPaid || 0) > 0;
+    const previousAirFlightCharges = toPaymentAmount(
+      existingBooking.airFlightCharges || 0
+    );
+    const nextAirFlightCharges = toPaymentAmount(
+      updatePayload.airFlightCharges || 0
+    );
+    const hasAirFlightChargeDue =
+      nextAirFlightCharges !== previousAirFlightCharges &&
+      (updatePayload.balanceAmount || 0) > 0;
+    const bookingUpdate = {
+      ...updatePayload,
+      paymentLifecyclePending: Boolean(existingBooking.paymentLifecyclePending || isPaid && ((updatePayload.amountPaid || 0) >= (updatePayload.grandTotal || 0) || updatePayload.airfareExcluded && !updatePayload.airfareIncludedInTotal && (updatePayload.airFlightCharges || 0) > 0 && (updatePayload.amountPaid || 0) >= (updatePayload.grandTotal || 0) - (updatePayload.airFlightCharges || 0))),
+      bookingStatus: isPaid ? "confirmed" : "payment_pending",
+      confirmationToken: isPaid ? existingBooking.confirmationToken || createConfirmationToken() : existingBooking.confirmationToken,
+      paymentCapturedAt: isPaid ? (updatePayload.amountPaid || 0) > (existingBooking.amountPaid || 0) ? new Date() : existingBooking.paymentCapturedAt || new Date() : null,
+      paymentCurrency: PAYMENT_CURRENCY,
+      paymentMethod: payload.paymentMethod,
+      paymentStatus: isPaid ? "paid" : "pending",
+      ...(hasAirFlightChargeDue
+        ? {
+            emailBookingConfirmationAttemptedAt: null,
+            emailBookingConfirmationSentAt: null,
+            emailBookingConfirmationStatus: "pending" as const,
+            whatsappBookingConfirmationAttemptedAt: null,
+            whatsappBookingConfirmationSentAt: null,
+            whatsappBookingConfirmationStatus: "pending" as const,
+          }
+        : {}),
+    };
+    const previousDepartureId = getBookingDepartureId(existingBooking);
+    const previousReservedSeats = getBookingReservedSeatCount(existingBooking);
+    const nextDepartureId =
+      updatePayload.departureId || updatePayload.pricingSnapshot?.departureId || "";
+    const nextReservedSeats = isPaid ? Math.max(0, updatePayload.totalGuest || 0) : 0;
+    let booking: BookingDocument | null = null;
+    const session = await mongoose.startSession();
+
+    try {
+      await session.withTransaction(async () => {
+        if (previousDepartureId && previousReservedSeats > 0) {
+          await restoreDepartureSeats(
+            previousDepartureId,
+            previousReservedSeats,
+            session
+          );
+        }
+
+        if (nextDepartureId && nextReservedSeats > 0) {
+          const updatedDeparture = await reserveDepartureSeats(
+            nextDepartureId,
+            nextReservedSeats,
+            session
+          );
+
+          if (!updatedDeparture) {
+            throw new HttpError(
+              409,
+              "Requested travellers exceed available seats."
+            );
+          }
+        }
+
+        booking = await Booking.findByIdAndUpdate(
+          request.params.id,
+          bookingUpdate,
+          {
+            new: true,
+            runValidators: true,
+            session,
+          }
+        );
+      });
+    } finally {
+      await session.endSession();
+    }
 
     if (!booking) {
       throw new HttpError(404, "Booking not found");
+    }
+
+    if (existingBooking.paymentStatus !== "paid" && isPaid) {
+      queueBookingConfirmationNotifications(booking);
+    } else if (isPaid) {
+      queueBookingPaymentLifecycle(booking, bookingPaymentLifecycleHooks());
     }
 
     response.status(200).json({
@@ -3688,6 +5670,70 @@ export async function updateBooking(
       message: "Booking updated successfully",
       data: {
         booking: formatBooking(booking),
+      },
+    });
+  } catch (error) {
+    if (isCastError(error)) {
+      throw new HttpError(400, "Invalid booking ID");
+    }
+
+    throw error;
+  }
+}
+
+async function updateBookingAirFlightChargesInternal(
+  request: Request,
+  response: Response
+): Promise<void> {
+  const payload = parseRequestBody(airFlightChargesPayloadSchema, request.body);
+
+  try {
+    const booking = await Booking.findById(request.params.id);
+
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    const isConfirmedBooking = booking.bookingStatus === "confirmed" && booking.paymentStatus === "paid";
+    const isPendingOfflineBooking = booking.paymentMode === "offline" &&
+      booking.bookingStatus === "payment_pending" && booking.paymentStatus === "pending";
+    if (!isConfirmedBooking && !isPendingOfflineBooking) {
+      throw new HttpError(400, "Airfare can only be updated on a confirmed booking or a pending offline booking");
+    }
+    const tour = await Tour.findOne({ tourId: booking.tourId });
+    if (!(booking.airfareExcluded ?? isAirfareExcluded(tour))) {
+      throw new HttpError(400, "This package does not explicitly exclude flights");
+    }
+    const previousAmount = booking.airFlightCharges || 0;
+    const previousIncludedInTotal = booking.airfareIncludedInTotal || false;
+    const includedInTotal = payload.airfareIncludedInTotal ?? previousIncludedInTotal;
+    const previousTotal = booking.grandTotal || 0;
+    if (previousAmount !== payload.airFlightCharges || includedInTotal !== previousIncludedInTotal || !booking.airfareAddedAt) {
+      await assertNoOpenAirfareCollection(booking);
+      applyAirFlightChargesToBooking(booking, payload.airFlightCharges, includedInTotal);
+      booking.airfareExcluded = true;
+      booking.airfareAddedAt = new Date();
+      booking.airfareHistory = [...(booking.airfareHistory || []), {
+        previousAmount, amount: payload.airFlightCharges,
+        previousIncludedInTotal, includedInTotal, previousTotal, total: booking.grandTotal,
+        changedBy: verifyAuthToken(getBearerToken(request)).userId, changedAt: new Date(),
+      }];
+      booking.$where = { updatedAt: booking.updatedAt };
+      try { await booking.save(); } catch (error) {
+        if (error instanceof mongoose.Error.DocumentNotFoundError) throw new HttpError(409, "Booking changed while airfare was being updated; reload and retry");
+        throw error;
+      }
+      if (!booking.airfareIncludedInTotal && isAirFlightFinalPaymentEligible(booking)) {
+        queueBookingPaymentLifecycle(booking, bookingPaymentLifecycleHooks());
+      }
+    }
+
+    response.status(200).json({
+      success: true,
+      message: "Air-flight charges updated successfully",
+      data: {
+        booking: formatBooking(booking),
+        finalPaymentUrl: getFinalPaymentUrl(booking),
       },
     });
   } catch (error) {
@@ -3754,21 +5800,12 @@ export async function deleteBooking(
       }
 
       if (shouldRestoreDeletedBookingSeats(booking)) {
-        await TourDeparture.updateOne(
-          {
-            departureId: booking.departureId,
-          },
-          {
-            $inc: {
-              seatsAvailable:
-                booking.paymentStatus === "paid"
-                  ? booking.totalGuest
-                  : booking.heldSeatCount || 0,
-            },
-          },
-          {
-            session,
-          }
+        const departureId = getBookingDepartureId(booking);
+
+        await restoreDepartureSeats(
+          departureId,
+          getBookingReservedSeatCount(booking),
+          session
         );
       }
 
@@ -3781,6 +5818,22 @@ export async function deleteBooking(
           $set: {
             failureReason: "Booking deleted before payment completion",
             status: "expired",
+          },
+        },
+        {
+          session,
+        }
+      );
+
+      await BookingPaymentLinkRequest.updateMany(
+        {
+          bookingId: booking._id,
+          status: { $in: ["created", "sent"] },
+        },
+        {
+          $set: {
+            failureReason: "Booking deleted before payment completion",
+            status: "cancelled",
           },
         },
         {
@@ -3809,4 +5862,145 @@ export async function deleteBooking(
   } finally {
     await session.endSession();
   }
+}
+
+
+export function recordAirfareCollection(booking: BookingDocument, paymentId: string, amount: number) {
+  if (!(booking.airFlightCharges || 0)) return true;
+  const credit = creditAirfarePayment({
+    grandTotal: booking.grandTotal || 0,
+    airfare: booking.airFlightCharges || 0,
+    amountPaid: booking.amountPaid || 0,
+    history: booking.collectionHistory || [],
+  }, { paymentId, amount, paidAt: new Date() });
+  if (!credit.credited) return false;
+  booking.collectionHistory = credit.history;
+  booking.emailBookingConfirmationStatus = "pending";
+  booking.emailBookingConfirmationAttemptedAt = null;
+  booking.emailBookingConfirmationSentAt = null;
+  return true;
+}
+
+async function assertNoOpenAirfareCollection(booking: BookingDocument) {
+  const [link, order, bank] = await Promise.all([
+    BookingPaymentLinkRequest.exists({ bookingId: booking._id, status: { $in: ["created", "sent"] } }),
+    BookingBalancePaymentSession.exists({ bookingId: booking._id, status: "pending" }),
+    SmartCollectAccount.exists({ bookingId: booking._id, activeKey: { $exists: true } }),
+  ]);
+  if (link || order || bank) throw new HttpError(409, "An existing payment collection must be completed or cancelled before changing airfare");
+}
+
+export async function withBookingCollectionLockById<T>(bookingId: string, action: () => Promise<T>): Promise<T> {
+  const token = crypto.randomUUID();
+  const booking = await Booking.findOneAndUpdate({
+    _id: bookingId,
+    $or: [{ collectionLockUntil: null }, { collectionLockUntil: { $lt: new Date() } }],
+  }, { $set: { collectionLockToken: token, collectionLockUntil: new Date(Date.now() + 120000) } });
+  if (!booking) throw new HttpError(409, "Booking is unavailable or another payment update is in progress; please retry");
+  try { return await action(); }
+  finally { await Booking.updateOne({ _id: bookingId, collectionLockToken: token },
+    { $unset: { collectionLockToken: "", collectionLockUntil: "" } }); }
+}
+
+export async function withBookingCollectionLock(request: Request, action: () => Promise<void>) {
+  await withBookingCollectionLockById(String(request.params.id), action);
+}
+
+export async function updateBookingAirFlightCharges(request: Request, response: Response): Promise<void> {
+  await withBookingCollectionLock(request, () => updateBookingAirFlightChargesInternal(request, response));
+}
+
+export async function createAdminBookingPaymentLink(request: Request, response: Response): Promise<void> {
+  await withBookingCollectionLock(request, () => createAdminBookingPaymentLinkInternal(request, response));
+}
+
+export async function createBookingBalancePaymentOrder(request: Request, response: Response): Promise<void> {
+  await getAuthenticatedTravellerPaidBookingById(request);
+  await withBookingCollectionLock(request, () => createBookingBalancePaymentOrderInternal(request, response));
+}
+
+export async function updateBooking(request: Request, response: Response): Promise<void> {
+  await withBookingCollectionLock(request, () => updateBookingInternal(request, response));
+}
+
+function queueAirfareConfirmation(booking: BookingDocument | null) {
+  if (booking && (booking.airFlightCharges || 0) > 0) queueBookingConfirmationNotifications(booking);
+}
+
+export async function assertNoSmartCollectIdentifier(bookingId: string) {
+  if (await SmartCollectAccount.exists({ bookingId, activeKey: { $exists: true } })) {
+    throw new HttpError(409, "Close and reconcile the active bank-transfer identifier before changing pricing or using another payment method");
+  }
+}
+
+export async function createSmartCollectBookingDraft(body: unknown, scope: string) {
+  const payload = parseRequestBody(bookingPayloadSchema, {
+    ...(body as Record<string, unknown>), amountPaid: 0, airFlightCharges: 0,
+    airfareIncludedInTotal: false, paymentMethod: undefined,
+  });
+  if (!payload.departureId || !payload.selectedAccommodationOptionId) throw new HttpError(400, "Select a departure and accommodation");
+  await assertTourExists(payload.tourId);
+  const pendingBookingKey = "bank:" + crypto.createHash("sha256")
+    .update(scope + ":" + createPendingBookingKey(payload) + JSON.stringify(payload.guestDetails) + JSON.stringify(payload.travellers)).digest("hex");
+  let booking = await Booking.findOne({ pendingBookingKey }).select("+bankTransferToken");
+  if (!booking) {
+    const snapshot = await createSnapshotPayload(payload);
+    if (!snapshot) throw new HttpError(400, "Booking prices could not be calculated");
+    const draft = await createBookingDraft(payload, snapshot);
+    try {
+      booking = await Booking.create({
+        ...draft, pendingBookingKey, paymentMode: "bank_transfer", bankTransferToken: createConfirmationToken(),
+        amountPaid: 0, balanceAmount: draft.grandTotal, paymentStatus: "pending",
+        bookingStatus: "payment_pending", paymentCapturedAt: null, paymentCurrency: PAYMENT_CURRENCY,
+        heldSeatCount: 0, holdExpiresAt: null,
+        recoveryExpiresAt: new Date(Date.now() + RECOVERY_EXPIRY_HOURS * 3600000),
+        recoveryEmailStatus: "disabled", whatsappRecoveryStatus: "disabled",
+      });
+    } catch (error) {
+      if (!(error instanceof mongoose.mongo.MongoServerError) || error.code !== 11000) throw error;
+      booking = await Booking.findOne({ pendingBookingKey }).select("+bankTransferToken");
+      if (!booking) throw error;
+    }
+  }
+  if (["cancelled", "expired"].includes(booking.bookingStatus || "") ||
+      (booking.paymentStatus !== "paid" && booking.recoveryExpiresAt && booking.recoveryExpiresAt <= new Date())) {
+    throw new HttpError(409, "This bank-transfer booking has expired; contact our team before sending payment");
+  }
+  return booking;
+}
+
+function bookingPaymentLifecycleHooks(): PaymentLifecycleHooks {
+  return {
+    withLock: withBookingCollectionLockById,
+    syncPayments: syncPaymentLinkRequestsForBookings,
+    closePaidLinks: async booking => {
+      const links = await BookingPaymentLinkRequest.find({ bookingId: booking._id, status: { $in: ["created", "sent"] },
+        $or: [{ purpose: "final" }, { purpose: "additional", additionalChargeAppliedAt: { $ne: null } }],
+      });
+      for (const link of links) {
+        if (isActivePaymentLinkRequest(link)) await createRazorpayClient().paymentLink.cancel(link.razorpayPaymentLinkId);
+        link.status = "cancelled"; link.cancelledAt = new Date();
+        link.failureReason = "Booking fully paid; remaining payment collection closed";
+        await link.save();
+      }
+    },
+    prepareLink: async (booking, airfare, expiresAt) => {
+      if (await BookingBalancePaymentSession.exists({ bookingId: booking._id, status: "pending" })) {
+        throw new HttpError(409, "An existing balance checkout must finish before another collection is created");
+      }
+      const otherCollection = await BookingPaymentLinkRequest.findOne({ bookingId: booking._id, status: { $in: ["created", "sent"] },
+        purpose: { $ne: airfare ? "additional" : "final" },
+      });
+      if (otherCollection && isActivePaymentLinkRequest(otherCollection)) {
+        throw new HttpError(409, "An existing payment collection must finish before another link is created");
+      }
+      const result = await prepareBookingPaymentLink(booking, {
+        purpose: airfare ? "additional" : "final",
+        additionalChargeAlreadyApplied: airfare,
+        amount: getBookingOutstandingAmount(booking),
+        description: airfare ? "Air-flight charge payment" : "",
+      }, { expiresAt });
+      return result.paymentLinkRequest;
+    },
+  };
 }

@@ -29,6 +29,7 @@ export interface IBlogPost {
   category: BlogCategory;
   content: string;
   quote: string;
+  relatedTourIds: string[];
   authorName: string;
   heroImage: string;
   seoTitle: string;
@@ -85,6 +86,10 @@ const blogSchema = new Schema<IBlogPost>(
     content: {
       ...trimmedString,
       maxlength: 30000,
+    },
+    relatedTourIds: {
+      type: [{ type: String, trim: true, maxlength: 40 }],
+      default: [],
     },
     quote: {
       ...trimmedString,

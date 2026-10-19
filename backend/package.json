@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "test": "tsc --pretty false && node --test --experimental-test-isolation=none dist/services/booking-rules.test.js",
+    "test": "tsc --pretty false && node --test --experimental-test-isolation=none dist/services/booking-rules.test.js tests/offline-booking.test.cjs tests/booking-reference.test.cjs tests/enquiry-reference.test.cjs tests/booking-cancellation.test.cjs tests/smart-collect.test.cjs tests/booking-confirmation-email.test.cjs tests/admin-booking-lead.test.cjs tests/payment-lifecycle.test.cjs tests/payment-lifecycle-links.test.cjs tests/faq-page.test.cjs tests/blog-related-tours.test.cjs tests/site-social-links.test.cjs tests/notifications.test.cjs tests/notification-browser.test.cjs tests/site-logo.test.cjs",
+    "migrate:enquiries": "tsx src/migrations/migrate-enquiry-references.ts",
     "migrate:departures": "tsx src/migrations/migrate-departure-pricing.ts",
     "start": "node dist/server.js"
   },

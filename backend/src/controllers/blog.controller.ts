@@ -11,6 +11,7 @@ import {
   BlogStatus,
   type BlogDocument,
 } from "../models/blog.model";
+import { Tour } from "../models/tour.model";
 import { HttpError } from "../utils/httpError";
 
 const textField = (max: number) => z.string().trim().max(max).default("");
@@ -115,6 +116,7 @@ const blogPayloadSchema = z.object({
   ]),
   content: textField(30000),
   quote: textField(500),
+  relatedTourIds: z.array(z.string().trim().min(1).max(40).transform(value => value.toUpperCase())).max(20).transform(values => [...new Set(values)]).optional(),
   authorName: textField(120).transform((value) => value || "Ancient Trails"),
   heroImage: textField(500),
   seoTitle: textField(70),
@@ -224,6 +226,7 @@ function formatBlog(blog: BlogDocument) {
     category: blog.category,
     content: blog.content,
     quote: blog.quote,
+    relatedTourIds: blog.relatedTourIds || [],
     authorName: blog.authorName,
     heroImage: blog.heroImage,
     seoTitle: blog.seoTitle || "",
@@ -240,6 +243,25 @@ function formatBlog(blog: BlogDocument) {
     createdAt: blog.createdAt,
     updatedAt: blog.updatedAt,
   };
+}
+
+async function validateRelatedTours(ids: string[], existingIds: string[] = []) {
+  const addedIds = ids.filter(id => !existingIds.includes(id));
+  if (!addedIds.length) return;
+  const tours = await Tour.find({ tourId: { $in: addedIds } }).select("tourId");
+  const available = new Set(tours.map(tour => tour.tourId));
+  if (addedIds.some(id => !available.has(id))) throw new HttpError(400, "Select related tours from the available dashboard tours");
+}
+
+async function getRelatedTours(ids: string[]) {
+  if (!ids.length) return [];
+  const tours = await Tour.find({ tourId: { $in: ids } }).select("tourId tourName durationDn thumbnailImage bannerImage");
+  const byId = new Map(tours.map(tour => [tour.tourId, tour]));
+  return ids.flatMap(id => {
+    const tour = byId.get(id);
+    return tour ? [{ tourId: tour.tourId, tourName: tour.tourName, durationDn: tour.durationDn,
+      thumbnailImage: tour.thumbnailImage || "", bannerImage: tour.bannerImage || "" }] : [];
+  });
 }
 
 function getSearchFilter(search: string) {
@@ -326,13 +348,14 @@ export async function getPublishedBlog(
     throw new HttpError(404, "Blog not found");
   }
 
-  const [popularPosts, adjacentPosts] = await Promise.all([
+  const [popularPosts, adjacentPosts, relatedTours] = await Promise.all([
     BlogPost.find({ status: BlogStatus.PUBLISHED, _id: { $ne: blog._id } })
       .sort({ popularRank: 1, publishedAt: -1, createdAt: -1 })
       .limit(5),
     BlogPost.find({ status: BlogStatus.PUBLISHED, _id: { $ne: blog._id } })
       .sort({ publishedAt: -1, createdAt: -1 })
       .limit(12),
+    getRelatedTours(blog.relatedTourIds || []),
   ]);
   const currentIndex = adjacentPosts.findIndex(
     (post) => post.publishedAt && blog.publishedAt && post.publishedAt < blog.publishedAt
@@ -343,6 +366,7 @@ export async function getPublishedBlog(
     message: "Blog fetched successfully",
     data: {
       blog: formatBlog(blog),
+      relatedTours,
       popularPosts: popularPosts.map(formatBlog),
       adjacentPosts: adjacentPosts.map(formatBlog),
       currentIndex,
@@ -421,6 +445,7 @@ export async function createBlog(
   );
 
   try {
+    await validateRelatedTours(payload.relatedTourIds || []);
     const blog = await BlogPost.create(payload);
 
     response.status(201).json({
@@ -455,7 +480,10 @@ export async function updateBlog(
   );
 
   try {
-    const blog = await BlogPost.findByIdAndUpdate(request.params.id, payload, {
+    if (payload.relatedTourIds !== undefined) await validateRelatedTours(payload.relatedTourIds, existingBlog.relatedTourIds || []);
+    const blog = await BlogPost.findByIdAndUpdate(request.params.id, {
+      ...payload, relatedTourIds: payload.relatedTourIds ?? existingBlog.relatedTourIds ?? [],
+    }, {
       new: true,
       runValidators: true,
     });

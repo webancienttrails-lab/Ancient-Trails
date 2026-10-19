@@ -7,6 +7,8 @@ import {
 } from "mongoose";
 
 import type { PricingSnapshot } from "../services/booking/booking.snapshot";
+import { Tour } from "./tour.model";
+import { allocateBookingReference } from "../services/booking/booking-reference.service";
 
 export interface IBookingGuestDetails {
   title: string;
@@ -35,6 +37,22 @@ export interface IBookingAccommodationDetails {
   tripleOccupancy: number;
 }
 
+export interface IBookingKycDocument {
+  id: string;
+  documentType:
+    | "aadhaar_card"
+    | "driving_license"
+    | "voter_id"
+    | "passport"
+    | "pan_card";
+  documentLabel: string;
+  fileName: string;
+  fileUrl: string;
+  mimeType: string;
+  uploadedBy: "traveller" | "admin";
+  uploadedAt: Date;
+}
+
 export interface IBookingTraveller {
   id: string;
   type: "adult" | "child";
@@ -51,9 +69,19 @@ export interface IBookingTraveller {
   address?: string;
   panNumber?: string;
   ageOnDeparture?: number;
+  kycDocuments?: IBookingKycDocument[];
 }
 
 export interface IBooking {
+  cancellation?: {
+    reason: string;
+    chargePercentage: number;
+    requestedBy: "Customer" | "Admin" | "Tour Operator";
+    notes: string;
+    cancelledAt: Date;
+  };
+  emergencyContactName?: string;
+  emergencyContactMobileNumber?: string;
   bookingReference?: string;
   pendingBookingKey?: string;
   bookingStatus?:
@@ -79,11 +107,30 @@ export interface IBooking {
   gstPercentage?: number;
   gstAmount?: number;
   grandTotal?: number;
+  airFlightCharges?: number;
+  airfareIncludedInTotal?: boolean;
+  airfareExcluded?: boolean;
+  airfareAddedAt?: Date | null;
+  paymentLifecyclePending?: boolean;
+  notificationOwnerId?: string;
+  collectionLockToken?: string;
+  collectionLockUntil?: Date | null;
+  airfareHistory?: Array<{ previousAmount: number; amount: number; changedBy: string; changedAt: Date; previousIncludedInTotal?: boolean; includedInTotal?: boolean; previousTotal?: number; total?: number; reason?: string }>;
+  collectionHistory?: Array<{ paymentId: string; amount: number; airfareAmount: number; paidAt: Date }>;
   depositAmount?: number;
   balanceAmount?: number;
   balanceDueDate?: Date | null;
+  paymentMode?: "online" | "offline" | "bank_transfer";
+  bankTransferToken?: string;
+  offlineSubmissionToken?: string;
+  offlineAdminEmailStatus?: "pending" | "sending" | "sent" | "failed";
+  offlineAdminWhatsappStatus?: "pending" | "sending" | "sent" | "failed";
+  offlineAdminEmailAttemptedAt?: Date | null;
+  offlineAdminWhatsappAttemptedAt?: Date | null;
+  offlineAdminEmailError?: string;
+  offlineAdminWhatsappError?: string;
   paymentStatus?: "pending" | "paid" | "failed" | "refunded";
-  paymentMethod?: "cash" | "cheque" | "neft" | "razorpay";
+  paymentMethod?: "cash" | "cheque" | "neft" | "imps" | "rtgs" | "upi" | "netbanking" | "card" | "wallet" | "emi" | "razorpay" | "bank_transfer";
   paymentProvider?: "razorpay";
   paymentOrderId?: string;
   paymentId?: string;
@@ -135,6 +182,9 @@ export interface IBooking {
   whatsappBookingConfirmationRecipient?: string;
   whatsappBookingConfirmationRequestId?: string;
   whatsappBookingConfirmationError?: string;
+  kycCompletionEmailAttemptedAt?: Date | null;
+  kycCompletionEmailSentAt?: Date | null;
+  kycCompletionEmailError?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -145,6 +195,20 @@ const trimmedString = {
   type: String,
   trim: true,
   default: "",
+};
+
+const optionalUniqueTrimmedString = {
+  type: String,
+  trim: true,
+  default: undefined,
+  set(value: unknown) {
+    if (typeof value !== "string") {
+      return value;
+    }
+
+    const trimmedValue = value.trim();
+    return trimmedValue.length > 0 ? trimmedValue : undefined;
+  },
 };
 
 const requiredTrimmedString = {
@@ -182,7 +246,7 @@ const guestDetailsSchema = new Schema<IBookingGuestDetails>(
       maxlength: 20,
     },
     email: {
-      ...requiredTrimmedString,
+      ...trimmedString,
       lowercase: true,
       maxlength: 160,
     },
@@ -223,6 +287,54 @@ const childDetailsSchema = new Schema<IBookingChildDetails>(
       required: true,
       min: 0,
       max: 17,
+    },
+  },
+  {
+    _id: false,
+  }
+);
+
+const kycDocumentSchema = new Schema<IBookingKycDocument>(
+  {
+    id: {
+      ...requiredTrimmedString,
+      maxlength: 80,
+    },
+    documentType: {
+      type: String,
+      enum: [
+        "aadhaar_card",
+        "driving_license",
+        "voter_id",
+        "passport",
+        "pan_card",
+      ],
+      required: true,
+    },
+    documentLabel: {
+      ...requiredTrimmedString,
+      maxlength: 80,
+    },
+    fileName: {
+      ...requiredTrimmedString,
+      maxlength: 180,
+    },
+    fileUrl: {
+      ...requiredTrimmedString,
+      maxlength: 500,
+    },
+    mimeType: {
+      ...requiredTrimmedString,
+      maxlength: 120,
+    },
+    uploadedBy: {
+      type: String,
+      enum: ["traveller", "admin"],
+      required: true,
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now,
     },
   },
   {
@@ -294,6 +406,10 @@ const travellerSchema = new Schema<IBookingTraveller>(
       ...nonNegativeNumber,
       max: 120,
     },
+    kycDocuments: {
+      type: [kycDocumentSchema],
+      default: [],
+    },
   },
   {
     _id: false,
@@ -330,6 +446,24 @@ const accommodationDetailsSchema = new Schema<IBookingAccommodationDetails>(
 
 const bookingSchema = new Schema<IBooking>(
   {
+    cancellation: {
+      type: new Schema({
+        reason: { type: String, trim: true, required: true, maxlength: 1000 },
+        chargePercentage: { type: Number, required: true, min: 0, max: 100 },
+        requestedBy: { type: String, enum: ["Customer", "Admin", "Tour Operator"], required: true },
+        notes: { type: String, trim: true, default: "", maxlength: 2000 },
+        cancelledAt: { type: Date, required: true },
+      }, { _id: false }),
+      default: undefined,
+    },
+    emergencyContactName: {
+      ...trimmedString,
+      maxlength: 120,
+    },
+    emergencyContactMobileNumber: {
+      ...trimmedString,
+      maxlength: 20,
+    },
     tourId: {
       ...requiredTrimmedString,
       uppercase: true,
@@ -341,7 +475,7 @@ const bookingSchema = new Schema<IBooking>(
       maxlength: 40,
     },
     pendingBookingKey: {
-      ...trimmedString,
+      ...optionalUniqueTrimmedString,
       maxlength: 128,
     },
     bookingStatus: {
@@ -429,6 +563,19 @@ const bookingSchema = new Schema<IBooking>(
       ...nonNegativeNumber,
       max: 1000000000,
     },
+    airfareIncludedInTotal: { type: Boolean, default: false },
+    airfareExcluded: { type: Boolean, default: undefined },
+    airfareAddedAt: { type: Date, default: null },
+    notificationOwnerId: { type: Schema.Types.ObjectId, ref: "User" },
+    paymentLifecyclePending: { type: Boolean, default: false },
+    collectionLockToken: { type: String, default: "" },
+    collectionLockUntil: { type: Date, default: null },
+    airfareHistory: { type: [{ _id: false, previousAmount: Number, amount: Number, changedBy: String, changedAt: Date, previousIncludedInTotal: Boolean, includedInTotal: Boolean, previousTotal: Number, total: Number, reason: String }], default: [] },
+    collectionHistory: { type: [{ _id: false, paymentId: String, amount: Number, airfareAmount: Number, paidAt: Date }], default: [] },
+    airFlightCharges: {
+      ...nonNegativeNumber,
+      max: 1000000000,
+    },
     depositAmount: {
       ...nonNegativeNumber,
       max: 1000000000,
@@ -441,6 +588,15 @@ const bookingSchema = new Schema<IBooking>(
       type: Date,
       default: null,
     },
+    paymentMode: { type: String, enum: ["online", "offline", "bank_transfer"], default: "online" },
+    bankTransferToken: { type: String, select: false },
+    offlineSubmissionToken: { ...trimmedString, maxlength: 128 },
+    offlineAdminEmailStatus: { type: String, enum: ["pending", "sending", "sent", "failed"] },
+    offlineAdminWhatsappStatus: { type: String, enum: ["pending", "sending", "sent", "failed"] },
+    offlineAdminEmailAttemptedAt: Date,
+    offlineAdminWhatsappAttemptedAt: Date,
+    offlineAdminEmailError: String,
+    offlineAdminWhatsappError: String,
     paymentStatus: {
       type: String,
       enum: ["pending", "paid", "failed", "refunded"],
@@ -448,7 +604,7 @@ const bookingSchema = new Schema<IBooking>(
     },
     paymentMethod: {
       type: String,
-      enum: ["cash", "cheque", "neft", "razorpay"],
+      enum: ["cash", "cheque", "neft", "imps", "rtgs", "upi", "netbanking", "card", "wallet", "emi", "razorpay", "bank_transfer"],
       default: undefined,
     },
     paymentProvider: {
@@ -610,16 +766,66 @@ const bookingSchema = new Schema<IBooking>(
       ...trimmedString,
       maxlength: 500,
     },
+    kycCompletionEmailAttemptedAt: {
+      type: Date,
+      default: null,
+    },
+    kycCompletionEmailSentAt: {
+      type: Date,
+      default: null,
+    },
+    kycCompletionEmailError: {
+      ...trimmedString,
+      maxlength: 500,
+    },
   },
   {
     timestamps: true,
   }
 );
 
+bookingSchema.pre("save", function queuePaymentLifecycleDelivery() {
+  if (this.bookingStatus !== "confirmed" || this.paymentStatus !== "paid" || this.archivedAt) return;
+  if (!this.isNew && !this.isModified("amountPaid") && !this.isModified("grandTotal") && !this.isModified("airFlightCharges")) return;
+  const total = this.grandTotal || 0;
+  const paid = this.amountPaid || 0;
+  const fare = this.airFlightCharges || 0;
+  // Price changes alone must not create a new full-payment confirmation.
+  const paymentReceived = this.isNew || this.isModified("amountPaid");
+  if (total > 0 && paid > 0 && (paymentReceived && paid >= total || this.airfareExcluded && !this.airfareIncludedInTotal && fare > 0 && this.airfareAddedAt && paid >= total - fare)) {
+    this.paymentLifecyclePending = true;
+  }
+});
+
+bookingSchema.pre("save", async function assignBookingReference() {
+  if (!this.isNew || this.bookingReference?.trim()) return;
+  const session = this.$session() || undefined;
+  const tour = await Tour.findOne({ tourId: this.tourId }).select("tourType").session(session || null);
+  if (!tour) throw new Error("Tour not found while generating booking ID");
+  this.bookingReference = await allocateBookingReference(tour.tourType, session);
+});
+
+bookingSchema.pre("validate", function requireLeadTravellerEmail() {
+  if (this.guestDetails.length > 0 && !this.guestDetails[0].email?.trim()) {
+    this.invalidate("guestDetails.0.email", "Lead traveller email is required");
+  }
+});
+
+bookingSchema.pre("validate", function normalizePendingBookingKey() {
+  if (
+    typeof this.pendingBookingKey === "string" &&
+    this.pendingBookingKey.trim().length === 0
+  ) {
+    this.pendingBookingKey = undefined;
+  }
+});
+
 bookingSchema.index({ tourId: 1 });
 bookingSchema.index({ bookingReference: 1 }, { sparse: true });
 bookingSchema.index({ pendingBookingKey: 1 }, { unique: true, sparse: true });
 bookingSchema.index({ bookingStatus: 1 });
+bookingSchema.index({ paymentLifecyclePending: 1, bookingStatus: 1 });
+bookingSchema.index({ balanceDueDate: 1, bookingStatus: 1 });
 bookingSchema.index({ departureId: 1 });
 bookingSchema.index({ "guestDetails.email": 1 });
 bookingSchema.index({ paymentOrderId: 1 }, { sparse: true });
@@ -632,6 +838,7 @@ bookingSchema.index({ archivedAt: 1 });
 bookingSchema.index({ emailBookingConfirmationStatus: 1 });
 bookingSchema.index({ whatsappBookingConfirmationStatus: 1 });
 bookingSchema.index({ whatsappRecoveryStatus: 1 });
+bookingSchema.index({ kycCompletionEmailSentAt: 1 });
 bookingSchema.index({
   tourId: "text",
   "guestDetails.firstName": "text",
@@ -649,6 +856,19 @@ bookingSchema.virtual("tour", {
 
 bookingSchema.set("toJSON", { virtuals: true });
 bookingSchema.set("toObject", { virtuals: true });
+
+// Queue asynchronously; source reconciliation catches a process restart between commit and enqueue.
+bookingSchema.post("save", function (doc) {
+  if (doc.db.readyState === 1) setImmediate(() => { void import("../services/notifications/notification-events.service.js").then(service => service.queueBookingNotifications(doc.id)).catch(() => {}); });
+});
+bookingSchema.post("findOneAndUpdate", function (doc) {
+  const update = this.getUpdate() as Record<string, any> | null;
+  if (!doc || doc.db.readyState !== 1 || !update) return;
+  const keys = Object.keys(update.$set || update);
+  if (!keys.some(key => ["paymentStatus", "bookingStatus", "amountPaid", "paymentCapturedAt", "cancellation"].includes(key))) return;
+  setImmediate(() => { void import("../services/notifications/notification-events.service.js").then(service => service.queueBookingNotifications(String(doc._id))).catch(() => {}); });
+});
+bookingSchema.index({ updatedAt: 1, _id: 1 });
 
 export const Booking =
   (models.Booking as Model<IBooking> | undefined) ||
