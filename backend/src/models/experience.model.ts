@@ -6,6 +6,8 @@ import {
   type Model,
 } from "mongoose";
 
+import { isGoogleReviewUrl } from "../utils/google-review-url";
+
 export enum ExperienceStatus {
   DRAFT = "Draft",
   PUBLISHED = "Published",
@@ -18,6 +20,9 @@ export interface IExperience {
   travellerEmail: string;
   title: string;
   writtenReview: string;
+  googleReviewUrl?: string;
+  googleReviewPublishedAt?: Date | null;
+  googleReviewTimeDescription?: string;
   thingsToKnow: string[];
   travellerPhotoGallery: string[];
   travellerVideos: string[];
@@ -138,6 +143,17 @@ const experienceSchema = new Schema<IExperience>(
     writtenReview: {
       ...trimmedString,
       maxlength: 3000,
+    },
+    googleReviewUrl: {
+      ...trimmedString,
+      maxlength: 2048,
+      validate: { validator: (value: string) => !value || isGoogleReviewUrl(value), message: "Enter a valid HTTPS Google review URL" },
+    },
+    googleReviewTimeDescription: { ...trimmedString, maxlength: 80 },
+    googleReviewPublishedAt: {
+      type: Date,
+      default: null,
+      validate: { validator: (value: Date | null) => !value || value.getTime() <= Date.now(), message: "Google review publication date cannot be in the future" },
     },
     thingsToKnow: trimmedStringList,
     travellerPhotoGallery: trimmedStringList,

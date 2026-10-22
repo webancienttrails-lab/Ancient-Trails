@@ -15,6 +15,8 @@ import {
 import { Tour } from "../models/tour.model";
 import { HttpError } from "../utils/httpError";
 
+import { isGoogleReviewUrl } from "../utils/google-review-url";
+
 const textField = (max: number) => z.string().trim().max(max).default("");
 const requiredTextField = (fieldName: string, max: number) =>
   z.string().trim().min(1, `${fieldName} is required`).max(max);
@@ -181,6 +183,9 @@ const experiencePayloadSchema = z.object({
     .default(""),
   title: textField(160),
   writtenReview: textField(3000),
+  googleReviewUrl: z.string().trim().max(2048).refine(value => !value || isGoogleReviewUrl(value), "Enter a valid HTTPS Google review URL").optional(),
+  googleReviewTimeDescription: z.string().trim().max(80).optional(),
+  googleReviewPublishedAt: z.iso.datetime({ offset: true }).nullable().optional().refine(value => !value || new Date(value).getTime() <= Date.now(), "Google review publication date cannot be in the future"),
   thingsToKnow: stringListSchema,
   travellerPhotoGallery: mediaListSchema,
   travellerVideos: mediaListSchema,
@@ -298,6 +303,9 @@ function formatExperience(
     travellerEmail: experience.travellerEmail,
     title: experience.title,
     writtenReview: experience.writtenReview,
+    googleReviewUrl: experience.googleReviewUrl || "",
+    googleReviewPublishedAt: experience.googleReviewPublishedAt || null,
+    googleReviewTimeDescription: experience.googleReviewTimeDescription || "",
     thingsToKnow: experience.thingsToKnow,
     travellerPhotoGallery: experience.travellerPhotoGallery,
     travellerVideos: experience.travellerVideos,
@@ -323,6 +331,9 @@ function createExperiencePayload(
     travellerName: payload.travellerName,
     travellerEmail: payload.travellerEmail,
     writtenReview: payload.writtenReview,
+    ...(payload.googleReviewUrl !== undefined ? { googleReviewUrl: payload.googleReviewUrl } : {}),
+    ...(payload.googleReviewTimeDescription !== undefined ? { googleReviewTimeDescription: payload.googleReviewTimeDescription } : {}),
+    ...(payload.googleReviewPublishedAt !== undefined ? { googleReviewPublishedAt: payload.googleReviewPublishedAt } : {}),
     thingsToKnow: payload.thingsToKnow,
     travellerPhotoGallery: payload.travellerPhotoGallery,
     travellerVideos: payload.travellerVideos,

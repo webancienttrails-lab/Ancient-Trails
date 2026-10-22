@@ -6,6 +6,8 @@ import {
   type Model,
 } from "mongoose";
 
+import { isGoogleBusinessReviewsUrl } from "../utils/google-review-url";
+
 export interface ISiteContactSettings {
   emailId: string;
   landline: string;
@@ -26,6 +28,8 @@ export const defaultSocialLinks: ISiteSocialLinks = {
 
 export interface ISiteSettings {
   logo: string;
+  googleBusinessReviewsUrl?: string;
+  googleBusinessReviewsVerified?: boolean;
   key: string;
   contact: ISiteContactSettings;
   socialLinks: ISiteSocialLinks;
@@ -83,6 +87,8 @@ const socialLinksSchema = new Schema<ISiteSocialLinks>({
 const siteSettingsSchema = new Schema<ISiteSettings>(
   {
     logo: { ...trimmedString, maxlength: 500 },
+    googleBusinessReviewsUrl: { ...trimmedString, maxlength: 2048, validate: { validator: (value: string) => !value || isGoogleBusinessReviewsUrl(value), message: "Enter a valid HTTPS Google reviews URL" } },
+    googleBusinessReviewsVerified: { type: Boolean, default: false },
     key: {
       type: String,
       required: true,

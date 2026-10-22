@@ -11,6 +11,8 @@ import {
 
 import { HttpError } from "../utils/httpError";
 
+import { isGoogleBusinessReviewsUrl } from "../utils/google-review-url";
+
 const siteSettingsKey = "site";
 
 const defaultContactSettings: ISiteContactSettings = {
@@ -51,7 +53,9 @@ const socialLinksPayloadSchema = z.object({
 const siteSettingsPayloadSchema = z.object({
   contact: contactSettingsPayloadSchema,
   socialLinks: socialLinksPayloadSchema.optional(),
-});
+  googleBusinessReviewsUrl: z.string().trim().max(2048).refine(value => !value || isGoogleBusinessReviewsUrl(value), "Enter a valid HTTPS Google reviews URL").optional(),
+  googleBusinessReviewsVerified: z.boolean().optional(),
+}).refine(payload => !payload.googleBusinessReviewsVerified || Boolean(payload.googleBusinessReviewsUrl), { path: ["googleBusinessReviewsUrl"], message: "Provide the verified Google Business Profile reviews URL" });
 
 function getContactSettings(settings?: SiteSettingsDocument | null): ISiteContactSettings {
   const contact = settings?.contact as
@@ -76,6 +80,8 @@ function getContactSettings(settings?: SiteSettingsDocument | null): ISiteContac
 function formatSiteSettings(settings?: SiteSettingsDocument | null) {
   return {
     logo: settings?.logo || "",
+    googleBusinessReviewsUrl: settings?.googleBusinessReviewsUrl || "",
+    googleBusinessReviewsVerified: settings?.googleBusinessReviewsVerified === true,
     contact: getContactSettings(settings),
     socialLinks: {
       facebook: settings?.socialLinks?.facebook ?? defaultSocialLinks.facebook,
@@ -137,6 +143,10 @@ export async function updateSiteSettings(
       $set: {
         contact: payload.contact,
         ...(payload.socialLinks !== undefined ? { socialLinks: payload.socialLinks } : {}),
+        ...(payload.googleBusinessReviewsUrl !== undefined ? {
+          googleBusinessReviewsUrl: payload.googleBusinessReviewsUrl,
+          googleBusinessReviewsVerified: payload.googleBusinessReviewsVerified === true,
+        } : payload.googleBusinessReviewsVerified !== undefined ? { googleBusinessReviewsVerified: payload.googleBusinessReviewsVerified } : {}),
         key: siteSettingsKey,
       },
     },
