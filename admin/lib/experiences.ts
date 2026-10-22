@@ -22,6 +22,9 @@ export type AdminExperience = {
   travellerEmail: string;
   title: string;
   writtenReview: string;
+  googleReviewUrl?: string;
+  googleReviewPublishedAt?: string | null;
+  googleReviewTimeDescription?: string;
   thingsToKnow: string[];
   travellerPhotoGallery: string[];
   travellerVideos: string[];
@@ -44,6 +47,9 @@ export type ExperiencePayload = {
   travellerEmail: string;
   title?: string;
   writtenReview: string;
+  googleReviewUrl?: string;
+  googleReviewPublishedAt?: string | null;
+  googleReviewTimeDescription?: string;
   thingsToKnow: string[];
   travellerPhotoGallery: string[];
   travellerVideos: string[];

@@ -1,5 +1,8 @@
 "use client";
 
+import { toGoogleReviewDateInput, toGoogleReviewDatePayload } from "@/lib/google-review-date";
+import { isGoogleReviewUrl } from "@/lib/google-review-url";
+
 import Link from "next/link";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -112,6 +115,9 @@ const emptyExperienceForm: ExperienceFormState = {
   travellerEmail: "",
   title: "",
   writtenReview: "",
+  googleReviewUrl: "",
+  googleReviewPublishedAt: "",
+  googleReviewTimeDescription: "",
   thingsToKnow: "",
   travellerPhotoGallery: "",
   travellerVideos: "",
@@ -227,6 +233,9 @@ function experienceToForm(experience: AdminExperience): ExperienceFormState {
     travellerEmail: experience.travellerEmail || "",
     title: experience.title,
     writtenReview: experience.writtenReview || "",
+    googleReviewUrl: experience.googleReviewUrl || "",
+    googleReviewPublishedAt: toGoogleReviewDateInput(experience.googleReviewPublishedAt),
+    googleReviewTimeDescription: experience.googleReviewTimeDescription || "",
     thingsToKnow: experience.thingsToKnow.join("\n"),
     travellerPhotoGallery: experience.travellerPhotoGallery.join("\n"),
     travellerVideos: experience.travellerVideos.join("\n"),
@@ -257,6 +266,9 @@ function createExperiencePayload(form: ExperienceFormState): ExperiencePayload {
     travellerEmail: form.travellerEmail.trim(),
     title: (form.title || "").trim(),
     writtenReview: form.writtenReview.trim(),
+    googleReviewUrl: (form.googleReviewUrl || "").trim(),
+    googleReviewPublishedAt: toGoogleReviewDatePayload(form.googleReviewPublishedAt),
+    googleReviewTimeDescription: (form.googleReviewTimeDescription || "").trim(),
     thingsToKnow: parseTextList(form.thingsToKnow),
     travellerPhotoGallery: parseTextList(form.travellerPhotoGallery),
     travellerVideos,
@@ -706,6 +718,10 @@ export default function ExperiencesPage() {
       return;
     }
 
+    if (experienceForm.googleReviewUrl?.trim() && !isGoogleReviewUrl(experienceForm.googleReviewUrl)) {
+      toast.error("Invalid Google Review URL", "Paste the original HTTPS Google review link.");
+      return;
+    }
     const payload = createExperiencePayload(experienceForm);
 
     setIsSavingExperience(true);
@@ -1513,6 +1529,25 @@ function ExperienceSheet({
                 className={inputClassName}
                 placeholder="traveller@example.com"
               />
+            </FormField>
+
+            <FormField className="sm:col-span-2" label="Google Review URL">
+              <input type="url" maxLength={2048} readOnly={isReadOnly} value={form.googleReviewUrl || ""}
+                onChange={event => onUpdate("googleReviewUrl", event.target.value)}
+                className={inputClassName} placeholder="Optional original Google review link" />
+            </FormField>
+
+            <FormField className="sm:col-span-2" label="Google Review Time (as shown on Google)">
+              <input maxLength={80} readOnly={isReadOnly} value={form.googleReviewTimeDescription || ""}
+                onChange={event => onUpdate("googleReviewTimeDescription", event.target.value)}
+                className={inputClassName} placeholder="e.g. a year ago" />
+            </FormField>
+
+            <FormField className="sm:col-span-2" label="Google Review Published Date">
+              <input type="datetime-local" step="0.001" readOnly={isReadOnly} value={form.googleReviewPublishedAt || ""}
+                onChange={event => onUpdate("googleReviewPublishedAt", event.target.value)}
+                className={inputClassName} />
+              <p className="text-xs text-foreground/55">Enter the original publication date shown on Google, not the date added here. Leave blank if unknown.</p>
             </FormField>
 
             <FormField className="sm:col-span-2" label="Written Reviews">

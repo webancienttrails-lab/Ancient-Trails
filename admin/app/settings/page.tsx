@@ -30,6 +30,7 @@ import {
 } from "@/lib/site-settings";
 import { SocialMediaIcon } from "@/components/ui/social-media-icon";
 import { cn } from "@/lib/utils";
+import { isGoogleBusinessReviewsUrl } from "@/lib/google-review-url";
 
 type SettingsTab = {
   icon: LucideIcon;
@@ -62,6 +63,8 @@ export default function SettingsPage() {
   const [isLogoSaving, setIsLogoSaving] = useState(false);
   const logoInput = useRef<HTMLInputElement>(null);
   const [socialLinks, setSocialLinks] = useState<SiteSocialLinks>({ facebook: "", instagram: "", linkedin: "", youtube: "" });
+  const [googleBusinessReviewsUrl, setGoogleBusinessReviewsUrl] = useState("");
+  const [googleBusinessReviewsVerified, setGoogleBusinessReviewsVerified] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   useEffect(() => {
@@ -74,6 +77,8 @@ export default function SettingsPage() {
         if (isMounted) {
           setContactSettings(response.data.settings.contact);
           setSocialLinks(response.data.settings.socialLinks);
+      setGoogleBusinessReviewsUrl(response.data.settings.googleBusinessReviewsUrl || "");
+      setGoogleBusinessReviewsVerified(response.data.settings.googleBusinessReviewsVerified === true);
           publishSiteLogo(response.data.settings.logo);
           setSettingsLoaded(true);
         }
@@ -120,6 +125,9 @@ export default function SettingsPage() {
 
   async function saveSettings(section: string) {
     if (!settingsLoaded || isSaving) return;
+    if (googleBusinessReviewsUrl.trim() && !isGoogleBusinessReviewsUrl(googleBusinessReviewsUrl)) {
+      toast.error("Invalid Google reviews link", "Enter a valid HTTPS Google Business Profile reviews URL."); return;
+    }
     for (const [platform, url] of Object.entries(socialLinks)) {
       if (!url.trim()) continue;
       try { if (!["http:", "https:"].includes(new URL(url.trim()).protocol)) throw new Error(); }
@@ -139,10 +147,14 @@ export default function SettingsPage() {
       const response = await updateAdminSiteSettings({
         contact: contactSettings,
         socialLinks,
+        googleBusinessReviewsUrl: googleBusinessReviewsUrl.trim(),
+        googleBusinessReviewsVerified: Boolean(googleBusinessReviewsUrl.trim()) && googleBusinessReviewsVerified,
       });
 
       setContactSettings(response.data.settings.contact);
       setSocialLinks(response.data.settings.socialLinks);
+      setGoogleBusinessReviewsUrl(response.data.settings.googleBusinessReviewsUrl || "");
+      setGoogleBusinessReviewsVerified(response.data.settings.googleBusinessReviewsVerified === true);
       toast.success("Settings saved", `${section} settings have been saved.`);
     } catch (error) {
       toast.error(
@@ -289,6 +301,18 @@ export default function SettingsPage() {
                         setSocialLinks((links) => ({ ...links, linkedin: value }))
                       }
                     />
+                  </div>
+                </div>
+                <div className="rounded-sm border border-border bg-stone-50/45 p-4">
+                  <h3 className="text-xs font-bold text-foreground">Google Reviews</h3>
+                  <div className="mt-4 grid gap-3">
+                    <ContactField label="Google Business Profile Reviews URL" type="url" value={googleBusinessReviewsUrl}
+                      onChange={value => { setGoogleBusinessReviewsUrl(value); setGoogleBusinessReviewsVerified(false); }} />
+                    <label className="flex items-start gap-2 text-[11px] font-medium text-foreground/60">
+                      <input type="checkbox" checked={googleBusinessReviewsVerified} disabled={!googleBusinessReviewsUrl.trim()}
+                        onChange={event => setGoogleBusinessReviewsVerified(event.target.checked)} />
+                      I verified that this link opens Ancient Trails&apos; Google Business Profile reviews. Use it when a review has no individual link.
+                    </label>
                   </div>
                 </div>
               </div>

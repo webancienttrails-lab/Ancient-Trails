@@ -14,6 +14,8 @@ export type SiteSocialLinks = { facebook: string; instagram: string; linkedin: s
 
 export type SiteSettings = {
   logo?: string;
+  googleBusinessReviewsUrl?: string;
+  googleBusinessReviewsVerified?: boolean;
   id: string;
   key: string;
   contact: SiteContactSettings;
@@ -25,6 +27,8 @@ export type SiteSettings = {
 export type SiteSettingsPayload = {
   contact: SiteContactSettings;
   socialLinks?: SiteSocialLinks;
+  googleBusinessReviewsUrl?: string;
+  googleBusinessReviewsVerified?: boolean;
 };
 
 function getAdminHeaders(): HeadersInit {

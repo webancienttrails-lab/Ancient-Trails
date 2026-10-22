@@ -1,5 +1,8 @@
 "use client";
 
+import { toGoogleReviewDateInput, toGoogleReviewDatePayload } from "@/lib/google-review-date";
+import { isGoogleReviewUrl } from "@/lib/google-review-url";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
@@ -85,6 +88,9 @@ const emptyExperienceForm: ExperienceFormState = {
   travellerName: "",
   travellerEmail: "",
   writtenReview: "",
+  googleReviewUrl: "",
+  googleReviewPublishedAt: "",
+  googleReviewTimeDescription: "",
   thingsToKnow: "",
   travellerPhotoGallery: [],
   travellerVideos: [],
@@ -253,6 +259,9 @@ function experienceToForm(experience: AdminExperience): ExperienceFormState {
     travellerName: experience.travellerName || "",
     travellerEmail: experience.travellerEmail || "",
     writtenReview: experience.writtenReview || "",
+    googleReviewUrl: experience.googleReviewUrl || "",
+    googleReviewPublishedAt: toGoogleReviewDateInput(experience.googleReviewPublishedAt),
+    googleReviewTimeDescription: experience.googleReviewTimeDescription || "",
     thingsToKnow: experience.thingsToKnow.join("\n"),
     travellerPhotoGallery: getUniqueMediaList(experience.travellerPhotoGallery),
     travellerVideos: getUniqueMediaList(experience.travellerVideos),
@@ -277,6 +286,9 @@ function createExperiencePayload(form: ExperienceFormState): ExperiencePayload {
     travellerName: form.travellerName.trim(),
     travellerEmail: form.travellerEmail.trim(),
     writtenReview: form.writtenReview.trim(),
+    googleReviewUrl: (form.googleReviewUrl || "").trim(),
+    googleReviewPublishedAt: toGoogleReviewDatePayload(form.googleReviewPublishedAt),
+    googleReviewTimeDescription: (form.googleReviewTimeDescription || "").trim(),
     thingsToKnow: parseTextList(form.thingsToKnow),
     travellerPhotoGallery: getUniqueMediaList(form.travellerPhotoGallery),
     travellerVideos: getUniqueMediaList(form.travellerVideos),
@@ -312,6 +324,8 @@ function getTourName(
 }
 
 function getBatchValidationError(entries: ExperienceFormEntry[]): string {
+  const invalidLinkIndex = entries.findIndex(entry => entry.form.googleReviewUrl?.trim() && !isGoogleReviewUrl(entry.form.googleReviewUrl));
+  if (invalidLinkIndex !== -1) return "Enter a valid HTTPS Google Review URL for Experience " + (invalidLinkIndex + 1) + ".";
   const missingTourIndex = entries.findIndex(
     (entry) => !entry.form.tourId.trim()
   );
@@ -1145,6 +1159,25 @@ function ExperienceEntryCard({
             className={inputClassName}
             placeholder="traveller@example.com"
           />
+        </FormField>
+
+        <FormField className="sm:col-span-2" label="Google Review URL">
+          <input type="url" maxLength={2048} value={entry.form.googleReviewUrl || ""}
+            onChange={event => onUpdate(entry.localId, "googleReviewUrl", event.target.value)}
+            className={inputClassName} placeholder="Optional original Google review link" />
+        </FormField>
+
+        <FormField className="sm:col-span-2" label="Google Review Time (as shown on Google)">
+          <input maxLength={80} value={entry.form.googleReviewTimeDescription || ""}
+            onChange={event => onUpdate(entry.localId, "googleReviewTimeDescription", event.target.value)}
+            className={inputClassName} placeholder="e.g. a year ago" />
+        </FormField>
+
+        <FormField className="sm:col-span-2" label="Google Review Published Date">
+          <input type="datetime-local" step="0.001" value={entry.form.googleReviewPublishedAt || ""}
+            onChange={event => onUpdate(entry.localId, "googleReviewPublishedAt", event.target.value)}
+            className={inputClassName} />
+          <p className="text-xs text-foreground/55">Enter the original publication date shown on Google, not the date added here. Leave blank if unknown.</p>
         </FormField>
 
         <FormField className="sm:col-span-2" label="Written Reviews">
