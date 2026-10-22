@@ -12,7 +12,6 @@ import {
   Landmark,
   LogOut,
   MapPin,
-  Menu,
   Mountain,
   Plane,
   Route,
@@ -23,9 +22,7 @@ import {
 } from "lucide-react";
 import {
   type CSSProperties,
-  useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -62,6 +59,7 @@ import {
   slugifyRoute,
 } from "@/lib/routes";
 import { cn } from "@/lib/utils";
+import styles from "./header.module.css";
 
 const navItems = [
   { label: "Home", href: "/" },
@@ -782,6 +780,7 @@ export function DestinationsMegaMenu({
   cityItems = topCities,
   indianItems = indianDestinations,
   internationalItems = internationalDestinations,
+  embedded = false,
   isOpen,
   onMouseEnter,
   onMouseLeave,
@@ -789,6 +788,7 @@ export function DestinationsMegaMenu({
   cityItems?: CityMenuItem[];
   indianItems?: DestinationMenuItem[];
   internationalItems?: DestinationMenuItem[];
+  embedded?: boolean;
   isOpen: boolean;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
@@ -798,7 +798,9 @@ export function DestinationsMegaMenu({
       style={headerLayerStyle}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className={`home-wide-frame absolute left-0 right-0 top-[calc(100%+12px)] z-[2147483647] mx-auto w-full origin-top transition-[opacity,transform,filter] duration-[650ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      aria-hidden={!isOpen}
+      inert={!isOpen}
+      className={`${embedded ? "relative min-w-0 w-full" : "home-wide-frame absolute left-0 right-0 top-[calc(100%+12px)] z-[2147483647] mx-auto w-full"} origin-top transition-[opacity,transform,filter] duration-[650ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isOpen
           ? "pointer-events-auto translate-y-0 scale-100 opacity-100 blur-0"
           : "pointer-events-none -translate-y-1.5 scale-[0.99] opacity-0 blur-[1px]"
@@ -931,12 +933,14 @@ export function DestinationsMegaMenu({
 
 export function ToursMegaMenu({
   featuredItems = featuredTours,
+  embedded = false,
   isOpen,
   onMouseEnter,
   onMouseLeave,
   tourMenuColumns = tourColumns,
 }: {
   featuredItems?: typeof featuredTours;
+  embedded?: boolean;
   isOpen: boolean;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
@@ -947,7 +951,9 @@ export function ToursMegaMenu({
       style={headerLayerStyle}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className={`home-wide-frame absolute left-0 right-0 top-[calc(100%+12px)] z-[2147483647] mx-auto w-full origin-top transition-[opacity,transform,filter] duration-[650ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      aria-hidden={!isOpen}
+      inert={!isOpen}
+      className={`${embedded ? "relative min-w-0 w-full" : "home-wide-frame absolute left-0 right-0 top-[calc(100%+12px)] z-[2147483647] mx-auto w-full"} origin-top transition-[opacity,transform,filter] duration-[650ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isOpen
           ? "pointer-events-auto translate-y-0 scale-100 opacity-100 blur-0"
           : "pointer-events-none -translate-y-1.5 scale-[0.99] opacity-0 blur-[1px]"
@@ -1078,7 +1084,7 @@ export function ToursMegaMenu({
             </ul>
 
             <Link
-              href="/tour-calendar"
+              href={isLongTrails ? "/tours" : "/short-trails"}
               className={megaTextRevealClass(
                 isOpen,
                 "mt-8 inline-flex flex-col font-sans text-[14px] font-bold text-primary"
@@ -1101,58 +1107,22 @@ export function ToursMegaMenu({
                 key={title}
                 href={href}
                 className={cn(
-                  "group/feature grid min-h-0 grid-cols-[112px_minmax(0,1fr)] gap-4 px-5 py-5 transition-colors hover:bg-primary/5 xl:grid-cols-[128px_minmax(0,1fr)] xl:px-6",
+                  "group/feature grid min-w-0 grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)] content-start gap-x-4 gap-y-3 px-5 py-5 transition-colors hover:bg-primary/5",
                   columnIndex > 0 && "border-t border-primary/25"
                 )}
               >
-                <span className="relative block h-full min-h-[118px] overflow-hidden rounded-[7px] bg-muted ring-1 ring-primary/10">
-                  <Image
-                    src={image}
-                    alt={`${title} preview`}
-                    fill
-                    sizes="128px"
-                    className="object-cover transition-transform duration-[720ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/feature:scale-105"
-                  />
-                  <span className="absolute inset-0 bg-gradient-to-t from-secondary/30 to-transparent" />
+                <span className="col-span-2 flex min-w-0 items-center gap-3">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                    <Icon className="size-5" strokeWidth={1.7} />
+                  </span>
+                  <span className={megaTextRevealClass(isOpen, "min-w-0 font-sans text-[16px] font-semibold leading-tight text-secondary")} style={megaTextRevealStyle(isOpen, baseDelay)}>{title}</span>
                 </span>
-                <span className="flex min-w-0 flex-col justify-between">
-                  <span className="min-w-0">
-                    <span className="flex min-w-0 items-center gap-3">
-                      <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/15">
-                        <Icon className="size-5" strokeWidth={1.7} />
-                      </span>
-                      <span
-                        className={megaTextRevealClass(
-                          isOpen,
-                          "min-w-0 font-sans text-[16px] font-semibold leading-[1.15] text-secondary"
-                        )}
-                        style={megaTextRevealStyle(isOpen, baseDelay)}
-                      >
-                        {title}
-                      </span>
-                    </span>
-                    <span
-                      className={megaTextRevealClass(
-                        isOpen,
-                        "mt-4 block font-sans text-description font-bold leading-[1.15] text-primary"
-                      )}
-                      style={megaTextRevealStyle(isOpen, baseDelay + 90)}
-                    >
-                      {title}
-                    </span>
-                    <span
-                      className={megaTextRevealClass(
-                        isOpen,
-                        "mt-1 block max-w-[180px] font-sans text-[13px] font-normal leading-[1.25] text-secondary"
-                      )}
-                      style={megaTextRevealStyle(isOpen, baseDelay + 135)}
-                    >
-                      {subtitle}
-                    </span>
-                  </span>
-                  <span className="mt-3 grid size-8 shrink-0 place-items-center self-end rounded-full border border-primary text-primary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/feature:bg-primary group-hover/feature:text-white">
-                    <ArrowRight className="size-4" strokeWidth={2} />
-                  </span>
+                <span className="relative block h-[100px] min-w-0 overflow-hidden rounded-[7px] bg-muted">
+                  <Image src={image} alt={title + " preview"} fill sizes="(min-width: 1440px) 140px, 160px" className="object-cover transition-transform duration-300 group-hover/feature:scale-105" />
+                </span>
+                <span className="flex min-w-0 flex-col justify-between gap-2">
+                  <span className={megaTextRevealClass(isOpen, "font-sans text-[13px] leading-relaxed text-secondary")} style={megaTextRevealStyle(isOpen, baseDelay + 90)}>{subtitle}</span>
+                  <span className="grid size-9 shrink-0 place-items-center self-end rounded-full border border-primary text-primary transition-colors group-hover/feature:bg-primary group-hover/feature:text-white"><ArrowRight className="size-4" /></span>
                 </span>
               </Link>
             );
@@ -1287,6 +1257,30 @@ function MobileHeaderDrawer({
   onSignOut: () => void;
 }) {
   const [openChildLabel, setOpenChildLabel] = useState<string | null>(null);
+  const drawerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const frame = window.requestAnimationFrame(() => drawerRef.current?.querySelector<HTMLElement>("a, button")?.focus());
+    const trapFocus = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const controls = drawerRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])');
+      if (!controls?.length) return;
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus();
+      }
+    };
+    document.addEventListener("keydown", trapFocus);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", trapFocus);
+      previousFocus?.focus();
+    };
+  }, [isOpen]);
   const displayName = getTravellerDisplayName(traveller);
   const displayEmail = traveller?.email || "Plan your next heritage journey.";
   const tourChildGroups = tourMenuColumns
@@ -1335,6 +1329,7 @@ function MobileHeaderDrawer({
         isOpen ? "pointer-events-auto" : "pointer-events-none"
       }`}
       aria-hidden={!isOpen}
+      inert={!isOpen}
     >
       <button
         type="button"
@@ -1346,6 +1341,10 @@ function MobileHeaderDrawer({
       />
 
       <aside
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navigation menu"
         className={`absolute left-0 top-0 flex h-[100svh] max-h-[100svh] w-[min(340px,calc(100vw-1.25rem))] flex-col overflow-hidden border-r border-border bg-white text-secondary shadow-[0_26px_80px_rgba(35,24,16,0.24)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
@@ -1659,6 +1658,9 @@ export function Header() {
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isDesktopMenuOpen, setIsDesktopMenuOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [hasLoadedSearchData, setHasLoadedSearchData] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1675,18 +1677,8 @@ export function Header() {
   const [isTourTabsDocked, setIsTourTabsDocked] = useState(false);
   const [hasScrolled, setHasScrolled] = useState(false);
   const [isHeaderPortaled, setIsHeaderPortaled] = useState(false);
-  const [underlineStyle, setUnderlineStyle] = useState({
-    opacity: 0,
-    transform: "translate3d(0, 0, 0)",
-    clipPath: "inset(0 50% 0 50%)",
-  });
-  const [isUnderlineAnimating, setIsUnderlineAnimating] = useState(false);
-  const navRef = useRef<HTMLUListElement>(null);
-  const linkRefs = useRef<Record<string, HTMLAnchorElement | null>>({});
-  const underlineFrameRef = useRef(0);
   const lastScrollYRef = useRef(0);
   const scrollFrameRef = useRef(0);
-  const megaMenuCloseTimeoutRef = useRef(0);
   const accountMenuCloseTimeoutRef = useRef(0);
   const hasConfiguredMegaMenu = hasMegaMenuSettings(megaMenuContent);
   const activeTourColumns = useMemo<TourMenuColumn[]>(() => {
@@ -1755,55 +1747,32 @@ export function Header() {
     [allSearchItems, searchQuery]
   );
 
-  const updateUnderline = useCallback(() => {
-    const nav = navRef.current;
-    const currentItem = hoveredItem ?? activeItem;
-    const link = linkRefs.current[currentItem];
-
-    if (!nav || !link) {
-      return;
-    }
-
-    const navRect = nav.getBoundingClientRect();
-    const linkRect = link.getBoundingClientRect();
-    const underlineWidth = 57;
-    const left = linkRect.left - navRect.left + linkRect.width / 2 - underlineWidth / 2;
-
-    window.cancelAnimationFrame(underlineFrameRef.current);
-
-    const nextTransform = `translate3d(${left}px, 0, 0)`;
-
-    setIsUnderlineAnimating(false);
-    setUnderlineStyle({
-      opacity: 1,
-      transform: nextTransform,
-      clipPath: "inset(0 50% 0 50%)",
-    });
-
-    underlineFrameRef.current = window.requestAnimationFrame(() => {
-      underlineFrameRef.current = window.requestAnimationFrame(() => {
-        setIsUnderlineAnimating(true);
-        setUnderlineStyle({
-          opacity: 1,
-          transform: nextTransform,
-          clipPath: "inset(0 0 0 0)",
-        });
-      });
-    });
-  }, [activeItem, hoveredItem]);
-
-  useLayoutEffect(() => {
-    updateUnderline();
-
-    window.addEventListener("resize", updateUnderline);
-
-    return () => {
-      window.cancelAnimationFrame(underlineFrameRef.current);
-      window.clearTimeout(megaMenuCloseTimeoutRef.current);
-      window.clearTimeout(accountMenuCloseTimeoutRef.current);
-      window.removeEventListener("resize", updateUnderline);
+  useEffect(() => {
+    const closeMenus = (event: PointerEvent) => {
+      if (!headerRef.current?.contains(event.target as Node)) {
+        setIsDesktopMenuOpen(false);
+        setHoveredItem(null);
+        setIsAccountMenuOpen(false);
+      }
     };
-  }, [isHeaderPortaled, updateUnderline]);
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsDesktopMenuOpen(false);
+        setHoveredItem(null);
+        setIsAccountMenuOpen(false);
+        setIsMobileMenuOpen(false);
+        setIsSearchOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    };
+    window.addEventListener("pointerdown", closeMenus);
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeMenus);
+      window.removeEventListener("keydown", handleEscape);
+      window.clearTimeout(accountMenuCloseTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -1828,11 +1797,10 @@ export function Header() {
       if (currentScrollY <= 24) {
         setIsHeaderVisible(true);
       } else if (Math.abs(scrollDifference) < 4) {
-        lastScrollYRef.current = currentScrollY;
-
         return;
       } else if (scrollDifference > 0 && currentScrollY > 80) {
         setIsHeaderVisible(false);
+        setIsDesktopMenuOpen(false);
         setHoveredItem(null);
         setIsAccountMenuOpen(false);
         setIsSearchOpen(false);
@@ -1868,6 +1836,11 @@ export function Header() {
       lastScrollYRef.current = window.scrollY;
       setHasScrolled(window.scrollY > 24);
       setIsHeaderVisible(true);
+      setIsDesktopMenuOpen(false);
+      setHoveredItem(null);
+      setIsMobileMenuOpen(false);
+      setIsSearchOpen(false);
+      setIsAccountMenuOpen(false);
     });
 
     return () => {
@@ -2028,6 +2001,17 @@ export function Header() {
     };
   }, [isSearchOpen]);
 
+  useEffect(() => {
+    const breakpoint = window.matchMedia("(min-width: 1024px)");
+    const handleBreakpoint = () => {
+      setIsDesktopMenuOpen(false);
+      setIsMobileMenuOpen(false);
+      setHoveredItem(null);
+    };
+    breakpoint.addEventListener("change", handleBreakpoint);
+    return () => breakpoint.removeEventListener("change", handleBreakpoint);
+  }, []);
+
   const handleSignOut = () => {
     clearTravellerSession();
     setTravellerUser(null);
@@ -2039,23 +2023,13 @@ export function Header() {
       router.push("/");
     }
   };
-  const keepMegaMenuOpen = () => {
-    window.clearTimeout(megaMenuCloseTimeoutRef.current);
-  };
   const openMegaMenu = (label: string) => {
-    keepMegaMenuOpen();
     setIsAccountMenuOpen(false);
     setIsSearchOpen(false);
-    setHoveredItem(label);
-  };
-  const closeMegaMenu = () => {
-    window.clearTimeout(megaMenuCloseTimeoutRef.current);
-    megaMenuCloseTimeoutRef.current = window.setTimeout(() => {
-      setHoveredItem(null);
-    }, 180);
+    setHoveredItem(label === "Tours" || label === "Destinations" ? label : null);
   };
   const openAccountMenu = () => {
-    window.clearTimeout(megaMenuCloseTimeoutRef.current);
+    setIsDesktopMenuOpen(false);
     window.clearTimeout(accountMenuCloseTimeoutRef.current);
     setHoveredItem(null);
     setIsSearchOpen(false);
@@ -2068,7 +2042,7 @@ export function Header() {
     }, 160);
   };
   const toggleSearch = () => {
-    window.clearTimeout(megaMenuCloseTimeoutRef.current);
+    setIsDesktopMenuOpen(false);
     window.clearTimeout(accountMenuCloseTimeoutRef.current);
     setHoveredItem(null);
     setIsAccountMenuOpen(false);
@@ -2076,7 +2050,7 @@ export function Header() {
     setIsSearchOpen((current) => !current);
   };
   const openMobileMenu = () => {
-    window.clearTimeout(megaMenuCloseTimeoutRef.current);
+    setIsDesktopMenuOpen(false);
     window.clearTimeout(accountMenuCloseTimeoutRef.current);
     setHoveredItem(null);
     setIsAccountMenuOpen(false);
@@ -2092,108 +2066,112 @@ export function Header() {
   const shouldShowHeader =
     isHeaderReady &&
     !isTourTabsDocked &&
-    (isHeaderVisible || Boolean(hoveredItem) || isSearchOpen);
-  const headerTopClass = hasScrolled
-    ? "top-0 lg:top-[clamp(0.5rem,2vh,1rem)]"
-    : "top-0 lg:top-[clamp(1rem,4vh,2.25rem)]";
-
+    (isHeaderVisible || isDesktopMenuOpen || isMobileMenuOpen || isSearchOpen || isAccountMenuOpen);
+  const hasGlassBackground = hasScrolled || isDesktopMenuOpen || isSearchOpen || isAccountMenuOpen;
   const headerContent = (
     <header
+      ref={headerRef}
       style={headerLayerStyle}
-      onMouseEnter={keepMegaMenuOpen}
-      onMouseLeave={closeMegaMenu}
-      className={`fixed left-0 right-0 ${headerTopClass} isolate z-[2147483647] flex w-full max-w-none translate-x-0 items-center justify-between rounded-none bg-white px-4 py-2 shadow-[0_18px_55px_rgba(50,50,50,0.18)] ring-1 ring-white transition-[top,translate,opacity] duration-[520ms] ease-[cubic-bezier(0.22,1,0.36,1)] sm:py-2 md:px-5 lg:left-1/2 lg:right-auto lg:w-full lg:max-w-[1300px] lg:-translate-x-1/2 lg:rounded-[18px] lg:py-1.5 [@media(min-width:1300px)]:max-w-[min(1720px,max(1300px,calc(100vw-200px)))] [@media(max-height:600px)]:py-1.5 ${
-        shouldShowHeader
-          ? "translate-y-0 opacity-100"
-          : "lg:pointer-events-none lg:-translate-y-[calc(100%+3rem)] lg:opacity-0"
-      }`}
+      inert={!shouldShowHeader}
+      className={cn(
+        "fixed left-3 right-3 top-2 isolate flex h-[60px] items-center justify-between rounded-[24px] px-2 transition-[transform,opacity,background-color,box-shadow,backdrop-filter] duration-300 sm:left-5 sm:right-5 sm:h-[72px] sm:px-3 lg:left-8 lg:right-8 lg:top-3 lg:h-20 lg:rounded-[28px] lg:px-4 motion-reduce:transition-none",
+        hasGlassBackground ? "border border-white/10 bg-white/15 shadow-[0_12px_40px_rgba(70,40,15,0.12)] backdrop-blur-xl" : "border border-transparent bg-transparent",
+        shouldShowHeader ? "translate-y-0 opacity-100" : "pointer-events-none -translate-y-[calc(100%+3rem)] opacity-0"
+      )}
     >
+      <button
+        ref={menuButtonRef}
+        type="button"
+        aria-expanded={isDesktopMenuOpen || isMobileMenuOpen}
+        aria-controls={isDesktopMenuOpen ? "desktop-navigation" : undefined}
+        aria-label={isDesktopMenuOpen ? "Close menu" : "Open menu"}
+        onClick={() => {
+          if (window.matchMedia("(min-width: 1024px)").matches) {
+            setIsDesktopMenuOpen(current => !current);
+            setHoveredItem(null);
+            setIsSearchOpen(false);
+            setIsAccountMenuOpen(false);
+          } else {
+            openMobileMenu();
+          }
+        }}
+        className="relative z-10 grid size-11 shrink-0 place-items-center rounded-full bg-transparent text-primary lg:size-14"
+      >
+        {isDesktopMenuOpen ? <X className="size-7" strokeWidth={1.7} /> : <Image src="/menu%20(1).png" alt="" width={32} height={32} className="size-7 object-contain lg:size-8" />}
+      </button>
       <Link
         href="/"
         aria-label="Ancient Trails home"
-        className="absolute left-1/2 z-0 shrink-0 -translate-x-1/2 lg:static lg:translate-x-0"
+        className="absolute left-1/2 z-10 shrink-0 -translate-x-1/2"
       >
         <SiteLogo
           alt="Ancient Trails"
           width={218}
           height={86}
           priority
-          className="h-9 w-auto sm:h-12 [@media(max-height:600px)]:h-12"
+          className="h-11 w-auto max-w-[96px] object-contain sm:h-16 sm:max-w-none lg:h-[86px]"
         />
       </Link>
 
-      <nav aria-label="Primary navigation" className="hidden lg:block">
-        <ul
-          ref={navRef}
-          className="relative flex items-center gap-8 text-header font-medium text-accent"
+      {isDesktopMenuOpen && (
+        <div
+          id="desktop-navigation"
+          className={cn(
+            "absolute left-0 top-[calc(100%+12px)] hidden max-h-[calc(100dvh-120px)] overflow-y-auto rounded-[20px] border border-white/70 bg-[#fffdfb]/97 shadow-[0_20px_60px_rgba(60,35,15,0.18)] lg:grid",
+            hoveredItem ? "right-0 grid-cols-[180px_minmax(0,1fr)] xl:grid-cols-[210px_minmax(0,1fr)]" : "w-[240px] grid-cols-1"
+          )}
+          onClick={(event) => {
+            if ((event.target as HTMLElement).closest("a")) {
+              setIsDesktopMenuOpen(false);
+              setHoveredItem(null);
+            }
+          }}
         >
-          {navItems.map((item) => (
-            <li key={item.label}>
-              <a
-                href={item.href}
-                ref={(node) => {
-                  linkRefs.current[item.label] = node;
-                }}
-                onFocus={() => openMegaMenu(item.label)}
-                onMouseEnter={() => openMegaMenu(item.label)}
-                className={`relative transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-primary ${
-                  item.label === (hoveredItem ?? activeItem) ? "text-primary" : ""
-                }`}
-              >
-                {item.label}
-              </a>
-            </li>
-          ))}
-          <Image
-            src="/Path 5647.png"
-            alt=""
-            width={57}
-            height={3}
-            aria-hidden="true"
-            className={`pointer-events-none absolute -bottom-3 left-0 h-[3px] w-[57px] origin-center ${
-              isUnderlineAnimating
-                ? "transition-[opacity,clip-path] duration-[650ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
-                : "transition-none"
-            }`}
-            style={underlineStyle}
-          />
-        </ul>
-      </nav>
+          <nav aria-label="Primary navigation" className={cn(styles.navigationRail, "border-r border-primary/15 p-3")}>
+            <ul className="space-y-2 font-sans text-[16px] font-medium text-primary xl:text-[18px]">
+              {navItems.map(item => (
+                <li key={item.label}>
+                  {item.label === "Tours" || item.label === "Destinations" ? (
+                    <button
+                      type="button"
+                      aria-expanded={hoveredItem === item.label}
+                      aria-controls={"desktop-" + item.label.toLowerCase()}
+                      onMouseEnter={() => openMegaMenu(item.label)}
+                      onFocus={() => openMegaMenu(item.label)}
+                      onClick={() => openMegaMenu(item.label)}
+                      onKeyDown={(event) => {
+                        if (event.key === "ArrowRight") {
+                          event.preventDefault();
+                          openMegaMenu(item.label);
+                          window.requestAnimationFrame(() => document.querySelector<HTMLElement>("#desktop-" + item.label.toLowerCase() + " a")?.focus());
+                        }
+                      }}
+                      className={cn("flex min-h-12 w-full items-center justify-between gap-2 rounded-lg px-3 py-3 text-left transition-colors hover:bg-primary/10", hoveredItem === item.label && "bg-primary/10")}
+                    >
+                      {item.label}<ArrowRight className="size-4 shrink-0" />
+                    </button>
+                  ) : (
+                    <Link href={item.href} onMouseEnter={() => openMegaMenu(item.label)} className={cn("block rounded-lg px-3 py-3 transition-colors hover:bg-primary/10", item.label === activeItem && "bg-primary/10")}>
+                      {item.label}
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </nav>
+          {hoveredItem && (
+            <div id={"desktop-" + hoveredItem.toLowerCase()} data-menu={hoveredItem.toLowerCase()} className={cn(styles.megaContent, "min-w-0")}>
+              {hoveredItem === "Tours" ? (
+                <ToursMegaMenu embedded tourMenuColumns={activeTourColumns} isOpen />
+              ) : (
+                <DestinationsMegaMenu embedded cityItems={activeTopCities} indianItems={activeIndianDestinations} internationalItems={activeInternationalDestinations} isOpen />
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
-      {hoveredItem === "Tours" || hoveredItem === "Destinations" ? (
-        <span
-          aria-hidden="true"
-          className="absolute left-0 right-0 top-full h-[18px]"
-          onMouseEnter={keepMegaMenuOpen}
-        />
-      ) : null}
-      <ToursMegaMenu
-        tourMenuColumns={activeTourColumns}
-        isOpen={hoveredItem === "Tours"}
-        onMouseEnter={keepMegaMenuOpen}
-        onMouseLeave={closeMegaMenu}
-      />
-      <DestinationsMegaMenu
-        cityItems={activeTopCities}
-        indianItems={activeIndianDestinations}
-        internationalItems={activeInternationalDestinations}
-        isOpen={hoveredItem === "Destinations"}
-        onMouseEnter={keepMegaMenuOpen}
-        onMouseLeave={closeMegaMenu}
-      />
-
-      <div className="relative z-10 flex w-full items-center justify-between gap-2 lg:w-auto lg:justify-start">
-        <button
-          type="button"
-          aria-expanded={isMobileMenuOpen}
-          aria-label="Open menu"
-          title="Menu"
-          onClick={openMobileMenu}
-          className="grid size-10 shrink-0 place-items-center rounded-full border border-primary/20 bg-white text-primary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-primary hover:bg-primary hover:text-white lg:hidden"
-        >
-          <Menu className="size-5" strokeWidth={2.3} />
-        </button>
-
+      <div className="relative z-10 flex items-center gap-1 sm:gap-3">
         <button
           type="button"
           aria-expanded={isSearchOpen}
@@ -2201,7 +2179,7 @@ export function Header() {
           title="Search"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={toggleSearch}
-          className="hidden size-10 shrink-0 place-items-center rounded-full bg-white text-primary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-white lg:grid"
+          className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/15 text-primary transition-colors hover:bg-primary/25 sm:size-10 lg:size-10"
         >
           <Search className="size-5" strokeWidth={2.3} />
         </button>
@@ -2230,7 +2208,7 @@ export function Header() {
             href={accountHref}
             aria-label={travellerUser ? "Open traveller dashboard" : "Login"}
             title={travellerUser ? "My Dashboard" : "Login"}
-            className="grid size-10 shrink-0 place-items-center rounded-full border border-primary/25 bg-white font-sans text-[13px] font-bold uppercase leading-none text-primary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-primary hover:bg-primary hover:text-white"
+            className="grid size-9 shrink-0 place-items-center md:text-[10px] rounded-full bg-primary font-sans text-[12px] font-normal uppercase leading-none text-white transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary/90"
           >
             {hasCompletedTravellerName(travellerUser) ? (
               <span>{getTravellerInitials(travellerUser)}</span>

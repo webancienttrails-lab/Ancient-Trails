@@ -20,6 +20,10 @@ import {
 } from "lucide-react";
 import { createPortal } from "react-dom";
 
+import { ReviewTimestamp } from "@/components/experiences/review-timestamp";
+import { GoogleReviewCard } from "@/components/experiences/google-review-card";
+import { getPublicSiteSettings } from "@/lib/site-settings";
+import type { GoogleBusinessReviewsSettings } from "@/lib/google-review-url";
 import { Header } from "@/components/layout/header";
 import { ButtonArrow, buttonVariants } from "@/components/ui/button";
 import {
@@ -39,6 +43,7 @@ import {
   slugifyRoute,
 } from "@/lib/routes";
 import { cn } from "@/lib/utils";
+import { getExperienceGalleryImages, getExperienceMoments } from "@/lib/experience-detail";
 
 type ExperienceCategory =
   | "all"
@@ -174,15 +179,7 @@ function getDestinationImages(
   destination: PublicTour,
   experiences: PublicExperience[]
 ) {
-  const images = uniqueValues([
-    destination.bannerImage,
-    destination.thumbnailImage || "",
-    ...(destination.galleryImages || []),
-    ...experiences.flatMap((experience) => experience.travellerPhotoGallery || []),
-    ...experiences.flatMap((experience) =>
-      (experience.attractionPhotoGallery || []).map((photo) => photo.image)
-    ),
-  ])
+  const images = getExperienceGalleryImages(destination, experiences)
     .map(getHomeMediaUrl)
     .filter(Boolean);
 
@@ -208,7 +205,7 @@ function getDestinationImage(
 
 function getAverageRating(experiences: PublicExperience[]) {
   if (experiences.length === 0) {
-    return 4.9;
+    return 0;
   }
 
   const total = experiences.reduce(
@@ -231,7 +228,7 @@ function getRatingValue(
   >
 ) {
   if (experiences.length === 0) {
-    return key === "ratingAccommodation" ? 4.3 : 4.6;
+    return 0;
   }
 
   const total = experiences.reduce((sum, experience) => {
@@ -247,23 +244,6 @@ function getExperiencePhotoGallery(experience?: PublicExperience) {
   return uniqueValues(experience?.travellerPhotoGallery || [])
     .map(getHomeMediaUrl)
     .filter(Boolean);
-}
-
-function getExperienceVideo(experience?: PublicExperience) {
-  return getHomeMediaUrl(
-    (experience?.travellerVideos || []).find((video) => (video || "").trim()) || ""
-  );
-}
-
-function getAttractionName(
-  destination: PublicTour,
-  experience: PublicExperience | undefined,
-  index: number
-) {
-  return (
-    experience?.attractionPhotoGallery?.[index]?.name ||
-    destination.tourName
-  );
 }
 
 function getTourMetaLabel(tour: PublicTour) {
@@ -297,45 +277,6 @@ function getExperienceHeroSummary(tour: PublicTour, experiences: PublicExperienc
       .filter(Boolean)
       .join(" | ")
   );
-}
-
-function getExperienceStoryHeading(
-  tour: PublicTour,
-  experiences: PublicExperience[]
-) {
-  return (
-    stripText(experiences[0]?.title) ||
-    stripText(tour.tourName) ||
-    "Traveller Experience"
-  );
-}
-
-function getShortTourName(tour: PublicTour) {
-  const name = stripText(tour.tourName);
-
-  return name.length > 20 ? `${name.slice(0, 20).trim()}...` : name;
-}
-
-function getReviewMonthLabel(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "recent";
-  }
-
-  const now = new Date();
-  const months = Math.max(
-    0,
-    (now.getFullYear() - date.getFullYear()) * 12 +
-      now.getMonth() -
-      date.getMonth()
-  );
-
-  if (months === 0) {
-    return "this mon";
-  }
-
-  return `${months} mon`;
 }
 
 function getTravellerReviewCount(
@@ -810,6 +751,17 @@ export function SingleExperiencePage({
   experienceId: string;
 }) {
   const headerStats = useExperienceHeaderStats();
+  const [businessReviews, setBusinessReviews] = useState<GoogleBusinessReviewsSettings>({});
+  useEffect(() => {
+    let mounted = true;
+    getPublicSiteSettings().then(response => {
+      if (mounted) setBusinessReviews({
+        googleBusinessReviewsUrl: response.data.settings.googleBusinessReviewsUrl,
+        googleBusinessReviewsVerified: response.data.settings.googleBusinessReviewsVerified === true,
+      });
+    }).catch(() => { /* Individual review links work without optional business settings. */ });
+    return () => { mounted = false; };
+  }, []);
   const [detail, setDetail] = useState<ExperienceDetailState>({
     tour: null,
     experiences: [],
@@ -829,7 +781,7 @@ export function SingleExperiencePage({
       try {
         const [toursResponse, experiencesResponse] = await Promise.all([
           listPublicTours(),
-          listPublicExperiences().catch(() => ({ data: { experiences: [] } })),
+          listPublicExperiences(),
         ]);
         const tours = toursResponse.data.tours;
         const allExperiences = experiencesResponse.data.experiences;
@@ -866,20 +818,17 @@ export function SingleExperiencePage({
           return;
         }
 
-        const tourExperiencesResponse = await listPublicExperiences(
-          tour.tourId
-        ).catch(() => ({
-          data: {
-            experiences: allExperiences.filter(
-              (experience) => normalizeId(experience.tourId) === normalizeId(tour.tourId)
-            ),
-          },
-        }));
+        const tourExperiencesResponse = await listPublicExperiences(tour.tourId);
+        const tourExperiences = tourExperiencesResponse.data.experiences;
+        // An experience URL should feature that record first, even when the tour has newer reviews.
+        const orderedExperiences = matchedExperience
+          ? [matchedExperience, ...tourExperiences.filter(item => item.experienceId !== matchedExperience.experienceId)]
+          : tourExperiences;
 
         if (isMounted) {
           setDetail({
             tour,
-            experiences: tourExperiencesResponse.data.experiences,
+            experiences: orderedExperiences,
           });
         }
       } catch (error) {
@@ -963,7 +912,7 @@ export function SingleExperiencePage({
           experiences={detail.experiences}
           images={images}
         />
-        <ReviewsGrid experiences={detail.experiences} images={images} />
+        <ReviewsGrid experiences={detail.experiences} images={images} businessReviews={businessReviews} />
       </section>
 
       {lightboxIndex !== null ? (
@@ -992,27 +941,16 @@ function ExperienceDetailHero({
   images: string[];
   onGalleryOpen: (index: number) => void;
 }) {
-  const featuredExperience = experiences[0];
-  const heroImages = Array.from({ length: 9 }, (_item, index) =>
-    images[index] || fallbackImages[index % fallbackImages.length]
-  );
-  const albumCards = heroImages.slice(0, 6).map((image, index) => ({
-    image,
-    title:
-      index === 0
-        ? getAttractionName(destination, featuredExperience, 0)
-        : getAttractionName(destination, featuredExperience, index) ||
-          `${destination.tourName} album`,
-  }));
+  const attractionPhotos = experiences.flatMap(experience => experience.attractionPhotoGallery || []);
+  const albumCards = Array.from({ length: 6 }, (_item, index) => {
+    const image = images[index % images.length];
+    return {
+      image,
+      title: attractionPhotos.find(photo => getHomeMediaUrl(photo.image) === image)?.name || destination.tourName,
+    };
+  });
   const reviewCount = experiences.length;
   const heroSummary = getExperienceHeroSummary(destination, experiences);
-  const destinationIntro =
-    stripText(destination.description) ||
-    stripText(experiences[0]?.writtenReview) ||
-    heroSummary;
-  const storyHeading = getExperienceStoryHeading(destination, experiences);
-  const shortTourName = getShortTourName(destination);
-  const tourLabel = `${destination.tourName} tour`;
 
   return (
     <section>
@@ -1398,34 +1336,17 @@ function TravellerMomentsSection({
   const [activeMomentIndex, setActiveMomentIndex] = useState<number | null>(null);
   const [mobileMomentIndex, setMobileMomentIndex] = useState(0);
 
-  const availableVideos = uniqueValues(
-    experiences.flatMap((experience) => experience.travellerVideos)
-  ).map(getHomeMediaUrl);
   const momentLayouts = [
-    "lg:col-span-2",
-    "lg:col-span-1",
-    "lg:col-span-1",
-    "lg:col-span-2",
-    "lg:col-span-1",
+    "lg:col-span-2", "lg:col-span-1", "lg:col-span-1", "lg:col-span-2", "lg:col-span-1",
   ];
-  const moments = Array.from({ length: 5 }, (_item, index) => {
-    const experience = experiences[index % Math.max(experiences.length, 1)];
-    const photo =
-      getExperiencePhotoGallery(experience)[0] ||
-      images[index % images.length] ||
-      fallbackImages[index % fallbackImages.length];
-
-    return {
-      image: photo,
-      title:
-        experience?.travellerVideoTitles[0] ||
-        experience?.title ||
-        `${destination.tourName} moment`,
-      video:
-        availableVideos[index % availableVideos.length] ||
-        getExperienceVideo(experience),
-    };
-  });
+  const moments = getExperienceMoments(experiences, destination.tourName).map(moment => ({
+    ...moment,
+    image: getHomeMediaUrl(moment.image) || images[0] || fallbackImages[0],
+    video: getHomeMediaUrl(moment.video),
+  }));
+  if (moments.length === 0) {
+    return <EmptyState title="Traveller Moments" message="Traveller videos for this tour will appear here when they are published." />;
+  }
   const activeMoment =
     activeMomentIndex === null ? null : moments[activeMomentIndex] || null;
   const activeMobileMoment = moments[mobileMomentIndex] || moments[0];
@@ -1703,20 +1624,19 @@ function ExperiencePlanTripCta({
 }
 
 function ReviewsGrid({
+  businessReviews,
   experiences,
   images,
 }: {
   experiences: PublicExperience[];
+  businessReviews?: GoogleBusinessReviewsSettings;
   images: string[];
 }) {
   const [visibleReviewCount, setVisibleReviewCount] = useState(12);
   const [mobileVisibleReviewCount, setMobileVisibleReviewCount] = useState(2);
   const reviewsPerLoad = 4;
   const mobileReviewsPerLoad = 2;
-  const reviewItems =
-    experiences.length > 0
-      ? experiences
-      : Array.from({ length: 0 }) as PublicExperience[];
+  const reviewItems = experiences.filter(experience => experience.writtenReview.trim());
 
   if (reviewItems.length === 0) {
     return (
@@ -1727,9 +1647,9 @@ function ReviewsGrid({
     );
   }
 
-  const masonryReviews = Array.from({ length: visibleReviewCount }, (_item, index) => ({
-    experience: reviewItems[index % reviewItems.length],
-    key: `${reviewItems[index % reviewItems.length].id || reviewItems[index % reviewItems.length].experienceId}-${index}`,
+  const masonryReviews = reviewItems.slice(0, Math.max(visibleReviewCount, mobileVisibleReviewCount)).map(experience => ({
+    experience,
+    key: experience.id || experience.experienceId,
   }));
   const reviewLayouts = [
     "lg:min-h-[190px]",
@@ -1773,11 +1693,12 @@ function ReviewsGrid({
             className={reviewLayouts[index % reviewLayouts.length]}
             experience={experience}
             experiences={experiences}
+            businessReviews={businessReviews}
             fallbackImage={images[index % images.length] || fallbackImages[0]}
             lineClampClass={reviewLineClamps[index % reviewLineClamps.length]}
           />
         ))}
-        <div className="mt-2 flex justify-center">
+        {mobileVisibleReviewCount < reviewItems.length && <div className="mt-2 flex justify-center">
           <button
             type="button"
             onClick={() =>
@@ -1789,22 +1710,23 @@ function ReviewsGrid({
           >
             Load more
           </button>
-        </div>
+        </div>}
       </div>
 
       <div className="mt-7 hidden gap-6 sm:block sm:columns-2 lg:columns-4">
-        {masonryReviews.map(({ experience, key }, index) => (
+        {masonryReviews.slice(0, visibleReviewCount).map(({ experience, key }, index) => (
           <ReviewCard
             key={key}
             className={reviewLayouts[index % reviewLayouts.length]}
             experience={experience}
             experiences={experiences}
+            businessReviews={businessReviews}
             fallbackImage={images[index % images.length] || fallbackImages[0]}
             lineClampClass={reviewLineClamps[index % reviewLineClamps.length]}
           />
         ))}
       </div>
-      <div className="absolute inset-x-0 bottom-0 hidden h-64 items-center justify-center bg-gradient-to-t from-background via-background/80 to-transparent pb-2 sm:flex">
+      {visibleReviewCount < reviewItems.length && <div className="absolute inset-x-0 bottom-0 hidden h-64 items-center justify-center bg-gradient-to-t from-background via-background/80 to-transparent pb-2 sm:flex">
         <button
           type="button"
           onClick={() =>
@@ -1816,12 +1738,13 @@ function ReviewsGrid({
         >
           Load more
         </button>
-      </div>
+      </div>}
     </section>
   );
 }
 
 function ReviewCard({
+  businessReviews,
   className,
   experience,
   experiences,
@@ -1831,6 +1754,7 @@ function ReviewCard({
   className?: string;
   experience: PublicExperience;
   experiences: PublicExperience[];
+  businessReviews?: GoogleBusinessReviewsSettings;
   fallbackImage: string;
   lineClampClass?: string;
 }) {
@@ -1840,7 +1764,10 @@ function ReviewCard({
   const photoCount = photoGallery.length;
 
   return (
-    <article
+    <GoogleReviewCard
+      googleReviewUrl={experience.googleReviewUrl}
+      businessReviews={businessReviews}
+      reviewerName={name}
       className={cn(
         "mb-6 flex break-inside-avoid flex-col rounded-[10px] border border-[#eee8e2] bg-white px-5 py-5 ",
         className
@@ -1852,9 +1779,13 @@ function ReviewCard({
           className="text-[#ffbd00]"
           starClassName="size-3"
         />
-        <span className="font-sans text-eyebrow font-medium text-secondary/62">
-          {getReviewMonthLabel(experience.createdAt)}
-        </span>
+        <ReviewTimestamp
+          googleReviewPublishedAt={experience.googleReviewPublishedAt}
+          googleReviewTimeDescription={experience.googleReviewTimeDescription}
+          googleReviewUrl={experience.googleReviewUrl}
+          createdAt={experience.createdAt}
+          className="font-sans text-eyebrow font-medium text-secondary/62"
+        />
       </div>
 
       <p
@@ -1882,12 +1813,12 @@ function ReviewCard({
             {name}
           </strong>
           <span className="block truncate text-eyebrow font-medium text-[14px] leading-tight text-secondary/62">
-            Local Guide - {getTravellerReviewCount(experience, experiences)} reviews
+            {getTravellerReviewCount(experience, experiences)} reviews
             - {photoCount} photos
           </span>
         </span>
       </div>
-    </article>
+    </GoogleReviewCard>
   );
 }
 

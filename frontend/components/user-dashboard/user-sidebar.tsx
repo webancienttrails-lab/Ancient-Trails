@@ -166,7 +166,7 @@ export function UserSidebar({
             width={218}
             height={86}
             priority
-            className="h-12 w-auto"
+            className="h-[72px] w-auto max-w-full object-contain"
           />
         </Link>
       </div>

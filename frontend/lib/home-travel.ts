@@ -163,6 +163,9 @@ export type PublicExperience = {
   travellerEmail: string;
   title?: string;
   writtenReview: string;
+  googleReviewUrl?: string;
+  googleReviewPublishedAt?: string | null;
+  googleReviewTimeDescription?: string;
   thingsToKnow: string[];
   travellerPhotoGallery: string[];
   travellerVideos: string[];
@@ -968,7 +971,8 @@ export async function listPublicExperiences(tourId = "") {
     : "";
 
   return apiRequest<{ experiences: PublicExperience[] }>(
-    `/api/experiences${query}`
+    `/api/experiences${query}`,
+    { cache: "no-store" }
   );
 }
 

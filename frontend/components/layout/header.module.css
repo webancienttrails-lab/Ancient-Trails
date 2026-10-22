@@ -1,0 +1,94 @@
+/* Keep the existing menu content inside the shared navigation panel. */
+.megaContent > div > div {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  --tw-ring-shadow: 0 0 #0000;
+  background-color: transparent;
+}
+
+.megaContent[data-menu="tours"] > div > div {
+  grid-template-columns: 240px minmax(0, 1.3fr) minmax(0, 1.05fr) minmax(0, 1.1fr);
+}
+
+.megaContent[data-menu="destinations"] > div > div > div {
+  grid-template-columns: 240px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.megaContent > div > div > div,
+.megaContent[data-menu="destinations"] > div > div > div > div {
+  min-width: 0;
+}
+
+.megaContent[data-menu="tours"] > div > div > div {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .megaContent[data-menu="tours"] > div > div,
+  .megaContent[data-menu="destinations"] > div > div > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .megaContent[data-menu="tours"] > div > div > div:first-child,
+  .megaContent[data-menu="destinations"] > div > div > div > div:first-child {
+    grid-column: 1 / -1;
+    padding: 20px;
+  }
+
+  .megaContent[data-menu="tours"] > div > div > div:first-child p {
+    max-width: none;
+  }
+
+  .megaContent[data-menu="tours"] > div > div > div:first-child a,
+  .megaContent[data-menu="destinations"] > div > div > div > div:first-child a {
+    margin-top: 16px;
+  }
+
+  .megaContent[data-menu="tours"] > div > div > div:last-child {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: none;
+    border-top: 1px solid rgb(224 116 25 / 20%);
+  }
+
+  .megaContent[data-menu="destinations"] > div > div > div > div:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+.navigationRail li > a,
+.navigationRail li > button {
+  min-height: 48px;
+  border-radius: 10px;
+  line-height: 1.4;
+}
+
+/* Reserve enough room for the introduction and keep its CTA inside the column. */
+.megaContent[data-menu="tours"] > div > div > div:first-child p,
+.megaContent[data-menu="destinations"] > div > div > div > div:first-child p {
+  max-width: none;
+}
+
+.megaContent[data-menu="tours"] > div > div > div:first-child > a,
+.megaContent[data-menu="destinations"] > div > div > div > div:first-child > a {
+  width: min(100%, 210px);
+  max-width: 100%;
+  gap: 8px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.megaContent[data-menu="tours"] > div > div > div:nth-child(2) ul,
+.megaContent[data-menu="tours"] > div > div > div:nth-child(3) ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: 16px;
+}
+
+.megaContent[data-menu="tours"] > div > div > div:nth-child(2) li,
+.megaContent[data-menu="tours"] > div > div > div:nth-child(3) li {
+  min-width: 0;
+  margin: 0;
+}
