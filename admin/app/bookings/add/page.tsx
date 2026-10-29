@@ -237,7 +237,6 @@ const domesticKycDocumentOptions: Array<{
   label: string;
   value: KycDocumentType;
 }> = [
-  { label: "Aadhaar Card", value: "aadhaar_card" },
   { label: "Driving License", value: "driving_license" },
   { label: "Voter ID", value: "voter_id" },
 ];
@@ -1149,7 +1148,7 @@ function AdminKycDocumentsSection({
         documentType:
           selectedTypes[travellerId] ||
           documentOptions[0]?.value ||
-          "aadhaar_card",
+          "driving_license",
         file,
         travellerId,
       });
