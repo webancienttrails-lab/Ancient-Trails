@@ -113,7 +113,6 @@ const optionalTextField = (max: number) => z.string().trim().max(max).default(""
 
 const bookingKycUploadPayloadSchema = z.object({
   documentType: z.enum([
-    "aadhaar_card",
     "driving_license",
     "voter_id",
     "passport",
