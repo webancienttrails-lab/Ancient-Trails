@@ -1,9 +1,10 @@
 import { Router } from "express";
 
-import { listPublishedExperiences } from "../controllers/experience.controller";
+import { getPublishedExperience, listPublishedExperiences } from "../controllers/experience.controller";
 
 const router = Router();
 
 router.get("/", listPublishedExperiences);
+router.get("/:reference", getPublishedExperience);
 
 export default router;

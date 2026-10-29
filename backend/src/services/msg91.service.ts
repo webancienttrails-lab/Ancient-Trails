@@ -1,6 +1,7 @@
 import axios from "axios";
 
 import { HttpError } from "../utils/httpError";
+import { guardedOtpSend, guardedOtpVerification } from "./otp-security.service";
 
 type Msg91Response = {
   type?: string;
@@ -33,15 +34,7 @@ function getMsg91Config(): Msg91Config {
 }
 
 function hasSuccessResponse(data: Msg91Response): boolean {
-  const type = data.type?.toLowerCase();
-  const message = data.message?.toLowerCase() || "";
-
-  return (
-    type === "success" ||
-    message.includes("otp verified") ||
-    message.includes("verified success") ||
-    message.includes("successfully")
-  );
+  return typeof data.type === "string" && data.type.toLowerCase() === "success";
 }
 
 function extractMsg91Message(data: unknown, fallback: string): string {
@@ -58,6 +51,9 @@ function extractMsg91Message(data: unknown, fallback: string): string {
 
 function toHttpError(error: unknown, fallback: string): HttpError {
   if (error instanceof HttpError) {
+    if (/already\s+verified/i.test(error.message)) {
+      return new HttpError(401, "This OTP has already been used. Request a new OTP to continue.");
+    }
     return error;
   }
 
@@ -65,13 +61,21 @@ function toHttpError(error: unknown, fallback: string): HttpError {
     const statusCode = error.response?.status || 502;
     const message = extractMsg91Message(error.response?.data, fallback);
 
+    if (/already\s+verified/i.test(message)) {
+      return new HttpError(401, "This OTP has already been used. Request a new OTP to continue.");
+    }
+
     return new HttpError(statusCode >= 500 ? 502 : statusCode, message);
   }
 
   return new HttpError(502, fallback);
 }
 
-export async function sendOtp(mobileNumber: string): Promise<Msg91Response> {
+export async function sendOtp(mobileNumber: string, ip = "unknown"): Promise<Msg91Response> {
+  return guardedOtpSend(mobileNumber, ip, () => sendProviderOtp(mobileNumber));
+}
+
+async function sendProviderOtp(mobileNumber: string): Promise<Msg91Response> {
   const config = getMsg91Config();
 
   try {
@@ -83,6 +87,8 @@ export async function sendOtp(mobileNumber: string): Promise<Msg91Response> {
           template_id: config.templateId,
           mobile: mobileNumber,
           authkey: config.authKey,
+          otp_length: 6,
+          otp_expiry: 5,
         },
         headers: {
           "Content-Type": "application/json",
@@ -108,6 +114,10 @@ export async function verifyOtp(
   mobileNumber: string,
   otp: string
 ): Promise<Msg91Response> {
+  return guardedOtpVerification(mobileNumber, otp, () => verifyProviderOtp(mobileNumber, otp));
+}
+
+async function verifyProviderOtp(mobileNumber: string, otp: string): Promise<Msg91Response> {
   const config = getMsg91Config();
 
   try {

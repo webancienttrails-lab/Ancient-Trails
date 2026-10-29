@@ -4,6 +4,7 @@ import path from "node:path";
 
 import type { Request, Response } from "express";
 import multer from "multer";
+import { isValidObjectId } from "mongoose";
 import { z } from "zod";
 
 import {
@@ -290,6 +291,47 @@ function createGeneratedExperienceTitle(
   return `${payload.tourId} traveller experience`;
 }
 
+// Public fields are intentionally separate from the admin serializer.
+function formatPublicExperience(experience: ExperienceDocument, tourNameById: Map<string, string>, travellerReviewCount: number) {
+  return {
+    id: experience._id.toString(),
+    experienceId: experience.experienceId,
+    tourId: experience.tourId,
+    tourName: tourNameById.get(experience.tourId) || "",
+    travellerName: experience.travellerName,
+    travellerReviewCount,
+    title: experience.title,
+    writtenReview: experience.writtenReview,
+    googleReviewUrl: experience.googleReviewUrl || "",
+    googleReviewPublishedAt: experience.googleReviewPublishedAt || null,
+    googleReviewTimeDescription: experience.googleReviewTimeDescription || "",
+    thingsToKnow: experience.thingsToKnow,
+    travellerPhotoGallery: experience.travellerPhotoGallery,
+    travellerVideos: experience.travellerVideos,
+    travellerVideoTitles: experience.travellerVideoTitles || [],
+    attractionPhotoGallery: (experience.attractionPhotoGallery || []).map(photo => ({ image: photo.image, name: photo.name })),
+    ratingItinerary: experience.ratingItinerary,
+    ratingLocalTransport: experience.ratingLocalTransport,
+    ratingAccommodation: experience.ratingAccommodation,
+    ratingTourExpert: experience.ratingTourExpert,
+    overallRating: experience.overallRating,
+    status: experience.status,
+    createdAt: experience.createdAt,
+    updatedAt: experience.updatedAt,
+  };
+}
+
+function publicReviewCounts(experiences: ExperienceDocument[]) {
+  const key = (experience: ExperienceDocument) => (experience.travellerEmail || "").trim().toLowerCase()
+    || (experience.travellerName || "").trim().toLowerCase();
+  const counts = new Map<string, number>();
+  for (const experience of experiences) {
+    const identity = key(experience);
+    if (identity) counts.set(identity, (counts.get(identity) || 0) + 1);
+  }
+  return new Map(experiences.map(experience => [experience.id, counts.get(key(experience)) || 1]));
+}
+
 function formatExperience(
   experience: ExperienceDocument,
   tourNameById = new Map<string, string>()
@@ -440,14 +482,38 @@ export async function listPublishedExperiences(
     experiences.map((experience) => experience.tourId)
   );
 
+  const counts = publicReviewCounts(experiences);
   response.status(200).json({
     success: true,
     message: "Experiences fetched successfully",
     data: {
       experiences: experiences.map((experience) =>
-        formatExperience(experience, tourNameById)
+        formatPublicExperience(experience, tourNameById, counts.get(experience.id) || 1)
       ),
     },
+  });
+}
+
+export async function getPublishedExperience(
+  request: Request,
+  response: Response
+): Promise<void> {
+  const reference = String(request.params.reference || "").trim();
+  const identifiers: Record<string, unknown>[] = [{ experienceId: reference.toUpperCase() }];
+  if (isValidObjectId(reference)) identifiers.unshift({ _id: reference });
+  const experience = await Experience.findOne({
+    status: ExperienceStatus.PUBLISHED,
+    $or: identifiers,
+  });
+  if (!experience) throw new HttpError(404, "Experience not found");
+  const tourNameById = await createTourNameMap([experience.tourId]);
+  const related = await Experience.find({ status: ExperienceStatus.PUBLISHED, tourId: experience.tourId })
+    .sort({ updatedAt: -1, createdAt: -1 }).limit(120);
+  const counts = publicReviewCounts([experience, ...related.filter(item => item.id !== experience.id)]);
+  response.status(200).json({
+    success: true,
+    message: "Experience fetched successfully",
+    data: { experience: formatPublicExperience(experience, tourNameById, counts.get(experience.id) || 1) },
   });
 }
 

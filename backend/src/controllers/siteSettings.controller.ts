@@ -51,6 +51,7 @@ const socialLinksPayloadSchema = z.object({
 });
 
 const siteSettingsPayloadSchema = z.object({
+  quoteAssistanceTitle: z.string().trim().min(1).max(160).optional(),
   contact: contactSettingsPayloadSchema,
   socialLinks: socialLinksPayloadSchema.optional(),
   googleBusinessReviewsUrl: z.string().trim().max(2048).refine(value => !value || isGoogleBusinessReviewsUrl(value), "Enter a valid HTTPS Google reviews URL").optional(),
@@ -79,6 +80,7 @@ function getContactSettings(settings?: SiteSettingsDocument | null): ISiteContac
 
 function formatSiteSettings(settings?: SiteSettingsDocument | null) {
   return {
+    quoteAssistanceTitle: settings?.quoteAssistanceTitle || "Looking for assistance?",
     logo: settings?.logo || "",
     googleBusinessReviewsUrl: settings?.googleBusinessReviewsUrl || "",
     googleBusinessReviewsVerified: settings?.googleBusinessReviewsVerified === true,
@@ -141,6 +143,7 @@ export async function updateSiteSettings(
     { key: siteSettingsKey },
     {
       $set: {
+        ...(payload.quoteAssistanceTitle !== undefined ? { quoteAssistanceTitle: payload.quoteAssistanceTitle } : {}),
         contact: payload.contact,
         ...(payload.socialLinks !== undefined ? { socialLinks: payload.socialLinks } : {}),
         ...(payload.googleBusinessReviewsUrl !== undefined ? {

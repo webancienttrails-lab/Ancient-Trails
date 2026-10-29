@@ -171,35 +171,33 @@ test('offline email goes only to configured admins and clearly says payment is p
   assert.match(sent.text, /Amount Paid:.*0/);
   assert.doesNotMatch(sent.text, /Confirmed On/);
 });
-test('offline submission details require a token and preserve the unpaid state', async t => {
-  t.mock.method(SmartCollectAccount, "exists", async () => false);
+test('offline submission details require the lead traveller session and preserve unpaid state', async t => {
+  const { mockBookingTraveller, bookingRequest, bookingResponse } = require('./helpers/booking-access.cjs');
   const { departure, payload } = fixture();
   mockTour(t, departure);
+  mockBookingTraveller(t);
   const booking = new Booking({ ...payload, offlineSubmissionToken: 'private-token',
     paymentMode: 'offline', paymentStatus: 'pending', bookingStatus: 'payment_pending',
     amountPaid: 0, grandTotal: 46594, balanceAmount: 46594 });
   const filters = [];
-  t.mock.method(Booking, 'findOne', async filter => {
-    filters.push(filter);
-    return filter.offlineSubmissionToken === 'private-token' && filter.paymentMode === 'offline' ? booking : null;
-  });
-  const notifications = t.mock.method(Booking, 'findOneAndUpdate', () => { throw Error('Viewing a receipt must not change payment or send notifications'); });
-  await assert.rejects(getOfflineBookingSubmission({ params: { id: booking.id }, query: {} }, response()), /Submission token is required/);
+  t.mock.method(Booking, 'findOne', async filter => { filters.push(filter); return booking; });
+  const notifications = t.mock.method(Booking, 'findOneAndUpdate', () => { throw Error('Viewing a receipt must not send notifications'); });
+  await assert.rejects(getOfflineBookingSubmission(bookingRequest(booking.id, false, { query: { token: 'private-token' } }), bookingResponse()), e => e.statusCode === 401);
   assert.equal(filters.length, 0);
-  await assert.rejects(getOfflineBookingSubmission({ params: { id: booking.id }, query: { token: 'wrong-token' } }, response()), /Booking request not found/);
-  const res = response();
-  await getOfflineBookingSubmission({ params: { id: booking.id }, query: { token: 'private-token' } }, res);
+  const res = bookingResponse();
+  await getOfflineBookingSubmission(bookingRequest(booking.id), res);
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.data.booking.paymentStatus, 'pending');
   assert.equal(res.body.data.booking.amountPaid, 0);
-  assert.equal(res.body.data.booking.guestDetails[0].email, payload.guestDetails[0].email);
   assert.equal(res.body.data.tour.tourName, 'Test tour');
   assert.equal(notifications.mock.callCount(), 0);
   assert.equal(res.body.data.booking.offlineSubmissionToken, undefined);
-  await assert.rejects(getBookingConfirmation({ params: { id: booking.id }, query: { token: 'private-token' } }, response()), /Booking confirmation not found/);
-  assert.equal(filters.at(-1).paymentStatus, 'paid');
-  assert.equal(filters.at(-1).confirmationToken, 'private-token');
+  assert.equal(filters[0].offlineSubmissionToken, undefined);
+  assert.ok(filters[0]['guestDetails.0.mobileNumber']);
+  assert.equal(res.headers['Cache-Control'], 'private, no-store');
+  await assert.rejects(getBookingConfirmation(bookingRequest(booking.id), bookingResponse()), /Booking confirmation not found/);
 });
+
 test('airfare can be added and corrected on pending offline bookings without recording payment or sending confirmation', async t => {
   t.mock.method(SmartCollectAccount, "exists", async () => false);
   const { payload } = fixture();
@@ -343,5 +341,23 @@ for (const scenario of [
     assert.equal(booking.grandTotal, scenario.included ? 37275 : 45275);
     assert.equal(booking.balanceAmount, booking.grandTotal - scenario.paid);
     assert.equal(lifecycle.mock.callCount(), scenario.paid === 37275 && !scenario.included ? 1 : 0);
+  });
+}
+
+for (const gstPercentage of [0, undefined]) {
+  test('offline booking ignores client GST ' + gstPercentage + ' and retains server tax', async t => {
+    const { departure, payload } = fixture();
+    mockTour(t, departure);
+    t.mock.method(Booking, 'findOne', async () => null);
+    let saved;
+    t.mock.method(Booking, 'create', async values => {
+      saved = new Booking({ ...values, bookingReference: 'ATTEST' }); return saved;
+    });
+    t.mock.method(alerts, 'notifyOfflineBookingAdmins', async () => {});
+    await createOfflineBooking({ body: { ...payload, gstPercentage } }, response());
+    assert.equal(saved.gstPercentage, 5);
+    assert.equal(saved.gstAmount, Math.round(saved.subtotal * 0.05));
+    assert.equal(saved.grandTotal, saved.subtotal + saved.gstAmount);
+    assert.equal(saved.balanceAmount, saved.grandTotal);
   });
 }

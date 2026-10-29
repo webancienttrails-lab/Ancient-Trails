@@ -128,6 +128,38 @@ export async function createEnquiry(
   });
 }
 
+export async function createPublicCallbackEnquiry(
+  request: Request,
+  response: Response
+): Promise<void> {
+  const result = z.object({
+    name: z.string().trim().min(1).max(160),
+    phone: z.string().trim().regex(/^\+[1-9]\d{6,14}$/, "Enter a valid phone number"),
+  }).strict().safeParse(request.body);
+
+  if (!result.success) {
+    throw new HttpError(400, "Please check your name and mobile number", result.error.issues.map(issue => ({
+      path: issue.path.join("."), message: issue.message,
+    })));
+  }
+
+  await ensureEnquiryReferences();
+  const enquiry = await Enquiry.create({
+    ...result.data,
+    email: "",
+    subject: "Get Quote - callback request",
+    message: "Please call me to discuss a travel quote.",
+    enquiryReference: await allocateEnquiryReference(),
+    source: EnquirySource.WEBSITE,
+    status: EnquiryStatus.NEW,
+  });
+  response.status(201).json({
+    success: true,
+    message: "Your callback request has been sent successfully",
+    data: { enquiry: formatEnquiry(enquiry) },
+  });
+}
+
 export async function createPublicContactEnquiry(
   request: Request,
   response: Response
@@ -135,7 +167,8 @@ export async function createPublicContactEnquiry(
   const result = enquirySchema.pick({
     name: true, email: true, phone: true, subject: true, message: true,
   }).extend({
-    message: z.string().trim().min(1).max(3000),
+    name: z.string().trim().min(1, "Full Name is required.").max(160),
+    message: z.string().trim().min(1, "Your Message is required.").max(3000),
     phone: z.string().trim().regex(/^\+[1-9]\d{6,14}$/, "Enter a valid phone number"),
   }).strict().safeParse(request.body);
 

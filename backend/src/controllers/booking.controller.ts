@@ -1,3 +1,6 @@
+import { normalizeMobileNumber } from "../utils/mobileNumber";
+import { PUBLIC_BOOKING_GST_PERCENTAGE } from "../config/booking-pricing";
+import { withPaymentOrderLock } from "../services/booking/booking.order-lock";
 import { queueBookingNotifications, stageNotificationEvent } from "../services/notifications/notification-events.service";
 import { queueBookingPaymentLifecycle, runBookingPaymentLifecycleMaintenance, type PaymentLifecycleHooks } from "../services/booking/booking.payment-lifecycle";
 import { verifiedPaymentMethod } from "../services/booking/booking.payment-method";
@@ -405,10 +408,6 @@ const adminPaymentLinkPayloadSchema = z.object({
   purpose: adminPaymentLinkPurposeSchema,
 });
 
-const recoveryTokenQuerySchema = z.object({
-  token: requiredTextField("Recovery token", 128),
-});
-
 function parseRequestBody<TSchema extends z.ZodType>(
   schema: TSchema,
   body: unknown
@@ -511,6 +510,34 @@ async function getAuthenticatedTraveller(
   }
 
   return traveller;
+}
+
+// Booking result links are identifiers, not bearer credentials. Authorize the verified lead phone.
+export async function getAuthenticatedTravellerBookingById(request: Request, bookingId = String(request.params.id)) {
+  if (!mongoose.isValidObjectId(bookingId)) throw new HttpError(400, "Invalid booking ID");
+  const traveller = await getAuthenticatedTraveller(request);
+  if (!traveller.isMobileVerified) throw new HttpError(403, "Verify your mobile number to view this booking");
+  const phones = getMobileSearchValues(traveller.mobileNumber);
+  if (!phones.length) throw new HttpError(403, "A verified mobile number is required");
+  const booking = await Booking.findOne({
+    _id: bookingId,
+    "guestDetails.0.mobileNumber": { $in: phones.map(createLooseDigitsRegex) },
+  });
+  if (!booking) throw new HttpError(404, "Booking not found for this account");
+  const lead = booking.guestDetails[0];
+  const leadDigits = (lead?.mobileNumber || "").replace(/\D/g, "");
+  const countryCode = (lead?.countryCode || "").replace(/\D/g, "");
+  const leadPhone = leadDigits.length > 10 && leadDigits.startsWith(countryCode)
+    ? leadDigits : countryCode + leadDigits;
+  if (leadPhone !== normalizeMobileNumber(traveller.mobileNumber || "")) {
+    throw new HttpError(404, "Booking not found for this account");
+  }
+  return booking;
+}
+
+function setPrivateBookingHeaders(response: Response) {
+  response.setHeader("Cache-Control", "private, no-store");
+  response.setHeader("Referrer-Policy", "no-referrer");
 }
 
 function createLooseDigitsRegex(value: string): RegExp {
@@ -828,7 +855,9 @@ async function createSnapshotPayload(
 
   const departureValidation = validateDepartureForBooking(
     pricedDeparture,
-    payload.totalGuest
+    payload.totalGuest,
+    new Date(),
+    (await Tour.findOne({ tourId: departure.tourId }))?.durationDn
   );
 
   if (!departureValidation.isValid) {
@@ -1175,6 +1204,8 @@ async function createReservedBookingForPayment({
   orderId,
   pendingBookingKey,
   receipt,
+  requestHash,
+  idempotencyKey,
 }: {
   amount: number;
   amountRupees: number;
@@ -1182,6 +1213,8 @@ async function createReservedBookingForPayment({
   orderId: string;
   pendingBookingKey: string;
   receipt: string;
+  requestHash?: string;
+  idempotencyKey?: string;
 }): Promise<{
   booking: BookingDocument;
   paymentSession: BookingPaymentSessionDocument;
@@ -1284,6 +1317,8 @@ async function createReservedBookingForPayment({
             razorpayOrderId: orderId,
             receipt,
             status: "pending",
+            requestHash,
+            idempotencyKeys: idempotencyKey ? [idempotencyKey] : undefined,
           },
         ],
         {
@@ -2050,9 +2085,7 @@ function getRecoveryUrl(booking: BookingDocument) {
     return "";
   }
 
-  return `${frontendBaseUrl}/booking/recover/${booking._id.toString()}?token=${encodeURIComponent(
-    booking.recoveryToken
-  )}`;
+  return `${frontendBaseUrl}/booking/recover/${booking._id.toString()}`;
 }
 
 function getFinalPaymentUrl(booking: BookingDocument) {
@@ -2587,9 +2620,7 @@ function getBookingConfirmationUrl(booking: BookingDocument) {
     return "";
   }
 
-  return `${frontendBaseUrl}/booking-confirmed/${booking._id.toString()}?token=${encodeURIComponent(
-    booking.confirmationToken
-  )}`;
+  return `${frontendBaseUrl}/booking-confirmed/${booking._id.toString()}`;
 }
 
 function getBookingEmailAmounts(booking: BookingDocument) {
@@ -2759,17 +2790,7 @@ function formatBookingRecoveryPayload({
 }
 
 async function getRecoveryBookingOrThrow(request: Request) {
-  const { token } = parseRequestBody(recoveryTokenQuerySchema, request.query);
-  const booking = await Booking.findOne({
-    _id: request.params.id,
-    recoveryToken: token,
-  });
-
-  if (!booking) {
-    throw new HttpError(404, "Booking recovery link is invalid");
-  }
-
-  return booking;
+  return getAuthenticatedTravellerBookingById(request);
 }
 
 async function sendRecoveryEmailForBooking(booking: BookingDocument) {
@@ -3429,6 +3450,7 @@ function formatPublicExpert(expert: ExpertDocument | null) {
 export async function createOfflineBooking(request: Request, response: Response): Promise<void> {
   const payload = parseRequestBody(bookingPayloadSchema, {
     ...request.body,
+    gstPercentage: PUBLIC_BOOKING_GST_PERCENTAGE,
     amountPaid: 0,
     airFlightCharges: 0,
     airfareIncludedInTotal: false,
@@ -3494,7 +3516,9 @@ export async function createBookingPaymentOrder(
   request: Request,
   response: Response
 ): Promise<void> {
-  const payload = parseRequestBody(bookingPayloadSchema, request.body);
+  const payload = parseRequestBody(bookingPayloadSchema, {
+    ...request.body, gstPercentage: PUBLIC_BOOKING_GST_PERCENTAGE,
+  });
   if (payload.airFlightCharges !== 0 || payload.airfareIncludedInTotal) throw new HttpError(400, "Only an administrator can add actual airfare");
   const tour = await Tour.findOne({ tourId: payload.tourId });
 
@@ -3502,70 +3526,116 @@ export async function createBookingPaymentOrder(
     throw new HttpError(400, `Tour ID ${payload.tourId} does not exist`);
   }
 
-  await releaseSupersededPendingPaymentReservations(payload);
-
-  const snapshotPayload = await createSnapshotPayload(payload);
-
-  if (!snapshotPayload) {
-    throw new HttpError(400, "Complete booking details are required for payment");
+  const tourName = tour.tourName;
+  const lead = getLeadGuest(payload);
+  const scope = crypto.createHash("sha256").update([
+    payload.tourId, payload.departureId || "",
+    normalizeContactValue(lead.countryCode) + normalizeContactValue(lead.mobileNumber),
+  ].join("|")).digest("hex");
+  const rawKey = request.get("Idempotency-Key");
+  if (rawKey && !/^[a-zA-Z0-9_-]{16,128}$/.test(rawKey)) {
+    throw new HttpError(400, "Invalid Idempotency-Key");
   }
+  const idempotencyKey = rawKey
+    ? crypto.createHash("sha256").update(scope + ":" + rawKey).digest("hex") : undefined;
+  const requestHash = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 
-  const bookingDraft = await createBookingDraft(payload, snapshotPayload);
-  const pendingBookingKey = createPendingBookingKey(payload);
-  const amountRupees = getPaymentAmountRupees(
-    bookingDraft,
-    payload.paymentOption
-  );
-  const amount = amountRupees * 100;
-  const receipt = createReceipt();
-  const leadGuest = getLeadGuest(payload);
-  const { keyId } = getRazorpayCredentials();
-  const razorpay = createRazorpayClient();
+  await withPaymentOrderLock(scope, async () => {
+    let existingSession = idempotencyKey
+      ? await BookingPaymentSession.findOne({ idempotencyKeys: idempotencyKey }) : null;
+    if (existingSession && existingSession.requestHash !== requestHash) {
+      throw new HttpError(409, "This payment key was already used for different booking details");
+    }
+    if (!existingSession) {
+      existingSession = await BookingPaymentSession.findOne({ requestHash, status: "pending" });
+    }
+    if (existingSession) {
+      const booking = existingSession.bookingId ? await Booking.findById(existingSession.bookingId) : null;
+      if (existingSession.status === "pending" && booking && isActiveHold(booking)
+          && booking.bookingStatus === "payment_pending" && booking.paymentStatus !== "paid") {
+        if (idempotencyKey) {
+          await BookingPaymentSession.updateOne({ _id: existingSession._id }, { $addToSet: { idempotencyKeys: idempotencyKey } });
+        }
+        sendPaymentOrder(existingSession);
+        return;
+      }
+      if (idempotencyKey && existingSession.idempotencyKeys?.includes(idempotencyKey)) {
+        throw new HttpError(410, "This payment attempt has ended. Please start a new payment attempt.");
+      }
+    }
 
-  const order = await razorpay.orders.create({
-    amount,
-    currency: PAYMENT_CURRENCY,
-    receipt,
-    notes: {
-      tourId: payload.tourId,
-      departureId: payload.departureId || "",
-      paymentOption: payload.paymentOption,
-      travellers: payload.totalGuest,
-    },
-  });
-  const { paymentSession } = await createReservedBookingForPayment({
-    amount,
-    amountRupees,
-    bookingDraft,
-    orderId: order.id,
-    pendingBookingKey,
-    receipt,
-  });
+    await releaseSupersededPendingPaymentReservations(payload);
 
-  response.status(201).json({
-    success: true,
-    message: "Payment order created successfully",
-    data: {
-      checkout: {
-        key: keyId,
-        orderId: order.id,
-        amount,
-        amountRupees,
-        currency: PAYMENT_CURRENCY,
-        name: "Ancient Trails",
-        description: `${tour.tourName} booking payment`,
-        prefill: {
-          name: getGuestFullName(leadGuest),
-          email: leadGuest.email,
-          contact: `${leadGuest.countryCode}${leadGuest.mobileNumber}`.replace(
-            /[^\d+]/g,
-            ""
-          ),
-        },
+    const snapshotPayload = await createSnapshotPayload(payload);
+
+    if (!snapshotPayload) {
+      throw new HttpError(400, "Complete booking details are required for payment");
+    }
+
+    const bookingDraft = await createBookingDraft(payload, snapshotPayload);
+    const pendingBookingKey = createPendingBookingKey(payload);
+    const amountRupees = getPaymentAmountRupees(
+      bookingDraft,
+      payload.paymentOption
+    );
+    const amount = amountRupees * 100;
+    const receipt = createReceipt();
+    const razorpay = createRazorpayClient();
+
+    const order = await razorpay.orders.create({
+      amount,
+      currency: PAYMENT_CURRENCY,
+      receipt,
+      notes: {
+        tourId: payload.tourId,
+        departureId: payload.departureId || "",
+        paymentOption: payload.paymentOption,
+        travellers: payload.totalGuest,
       },
-      paymentSession: formatPaymentSession(paymentSession),
-    },
+    });
+    const { paymentSession } = await createReservedBookingForPayment({
+      amount,
+      amountRupees,
+      bookingDraft,
+      orderId: order.id,
+      pendingBookingKey,
+      receipt,
+      requestHash,
+      idempotencyKey,
+    });
+
+    sendPaymentOrder(paymentSession);
   });
+
+  function sendPaymentOrder(paymentSession: BookingPaymentSessionDocument) {
+    const { keyId } = getRazorpayCredentials();
+    const leadGuest = getLeadGuest(payload);
+    const { amount, amountRupees } = paymentSession;
+    response.status(201).json({
+      success: true,
+      message: "Payment order created successfully",
+      data: {
+        checkout: {
+          key: keyId,
+          orderId: paymentSession.razorpayOrderId,
+          amount,
+          amountRupees,
+          currency: PAYMENT_CURRENCY,
+          name: "Ancient Trails",
+          description: `${tourName} booking payment`,
+          prefill: {
+            name: getGuestFullName(leadGuest),
+            email: leadGuest.email,
+            contact: `${leadGuest.countryCode}${leadGuest.mobileNumber}`.replace(
+              /[^\d+]/g,
+              ""
+            ),
+          },
+        },
+        paymentSession: formatPaymentSession(paymentSession),
+      },
+    });
+  }
 }
 
 async function createBookingBalancePaymentOrderInternal(
@@ -3764,9 +3834,9 @@ export async function getBookingPaymentOrderStatus(
     throw new HttpError(404, "Payment session not found");
   }
 
-  const booking = paymentSession.bookingId
-    ? await Booking.findById(paymentSession.bookingId)
-    : null;
+  setPrivateBookingHeaders(response);
+  if (!paymentSession.bookingId) throw new HttpError(404, "Booking not found");
+  const booking = await getAuthenticatedTravellerBookingById(request, String(paymentSession.bookingId));
   const isConfirmed = Boolean(
     booking &&
       paymentSession.status === "paid" &&
@@ -3958,22 +4028,12 @@ async function getBookingResult(
   response: Response,
   offlineSubmission = false
 ): Promise<void> {
-  const token =
-    typeof request.query.token === "string" ? request.query.token.trim() : "";
-
-  if (!token) {
-    throw new HttpError(400, offlineSubmission ? "Submission token is required" : "Confirmation token is required");
-  }
-
+  setPrivateBookingHeaders(response);
   try {
-    const booking = await Booking.findOne({
-      _id: request.params.id,
-      ...(offlineSubmission
-        ? { offlineSubmissionToken: token, paymentMode: "offline", bookingStatus: { $nin: ["cancelled", "expired"] } }
-        : { confirmationToken: token, ...createPaidBookingFilter() }),
-    });
-
-    if (!booking) {
+    const booking = await getAuthenticatedTravellerBookingById(request);
+    const unavailable = ["cancelled", "expired"].includes(booking.bookingStatus || "");
+    if (unavailable || (offlineSubmission ? booking.paymentMode !== "offline"
+      : booking.paymentStatus !== "paid" || !((booking.amountPaid || 0) > 0))) {
       throw new HttpError(404, offlineSubmission ? "Booking request not found" : "Booking confirmation not found");
     }
 
@@ -4008,6 +4068,7 @@ export async function getBookingRecovery(
   request: Request,
   response: Response
 ): Promise<void> {
+  setPrivateBookingHeaders(response);
   try {
     const booking = await getRecoveryBookingOrThrow(request);
     await expireRecoveryForBooking(booking._id);
@@ -4031,7 +4092,6 @@ export async function getBookingRecovery(
             departure,
             tour,
           }),
-          confirmationToken: freshBooking.confirmationToken,
         },
       });
       return;
@@ -5387,7 +5447,9 @@ export async function listBookingAccommodationOptions(
   const totalTravellers = payload.adultCount + payload.childDetails.length;
   const departureValidation = validateDepartureForBooking(
     pricedDeparture,
-    totalTravellers
+    totalTravellers,
+    new Date(),
+    (await Tour.findOne({ tourId: departure.tourId }))?.durationDn
   );
 
   if (!departureValidation.isValid) {
@@ -5936,6 +5998,7 @@ export async function assertNoSmartCollectIdentifier(bookingId: string) {
 export async function createSmartCollectBookingDraft(body: unknown, scope: string) {
   const payload = parseRequestBody(bookingPayloadSchema, {
     ...(body as Record<string, unknown>), amountPaid: 0, airFlightCharges: 0,
+    gstPercentage: PUBLIC_BOOKING_GST_PERCENTAGE,
     airfareIncludedInTotal: false, paymentMethod: undefined,
   });
   if (!payload.departureId || !payload.selectedAccommodationOptionId) throw new HttpError(400, "Select a departure and accommodation");

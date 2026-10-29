@@ -10,7 +10,7 @@ import { BookingPaymentLinkRequest } from "../models/bookingPaymentLinkRequest.m
 import { HttpError } from "../utils/httpError";
 import {
   createSmartCollectBookingDraft, formatBooking, getRazorpayCredentials,
-  getAuthenticatedTravellerPaidBookingById, withBookingCollectionLock,
+  getAuthenticatedTravellerBookingById, withBookingCollectionLock,
   reserveDepartureSeats, restoreDepartureSeats, recordAirfareCollection, queueBookingConfirmationNotifications,
 } from "./booking.controller";
 import { createSmartCollectGateway, verifySmartCollectSignature } from "../services/smart-collect/gateway";
@@ -35,18 +35,10 @@ function validBookingId(request: Request) {
   return id;
 }
 async function customerBooking(request: Request) {
-  const id = validBookingId(request);
-  const token = typeof request.query.token === "string" ? request.query.token : "";
-  if (token) {
-    if (!/^[a-f0-9]{48}$/i.test(token)) throw new HttpError(403, "Invalid booking access token");
-    const booking = await Booking.findById(id).select("+bankTransferToken");
-    const matches = (value?: string) => !!value && value.length === token.length &&
-      crypto.timingSafeEqual(Buffer.from(value), Buffer.from(token));
-    if (!booking || !(matches(booking.bankTransferToken) || matches(booking.confirmationToken))) throw new HttpError(403, "Invalid booking access token");
-    return booking;
-  }
-  return getAuthenticatedTravellerPaidBookingById(request);
+  validBookingId(request);
+  return getAuthenticatedTravellerBookingById(request);
 }
+
 async function adminBooking(request: Request) {
   const booking = await Booking.findById(validBookingId(request)).select("+bankTransferToken");
   if (!booking) throw new HttpError(404, "Booking not found");
@@ -82,7 +74,7 @@ async function details(booking: BookingDocument) {
   return {
     booking: formatBooking(booking), environment: context.environment,
     confirmationUrl: booking.bookingStatus === "confirmed" && booking.confirmationToken
-      ? "/booking-confirmed/" + booking._id + "?token=" + encodeURIComponent(booking.confirmationToken) : undefined,
+      ? "/booking-confirmed/" + booking._id : undefined,
     outstandingAmount: outstanding(booking) / 100,
     accounts: accounts.map(account => ({
       id: String(account._id), virtualAccountId: account.virtualAccountId || "",
@@ -153,6 +145,7 @@ async function createExisting(request: Request, response: Response, admin: boole
 export const createCustomerBankTransfer = (req: Request, res: Response) => createExisting(req, res, false);
 export const createAdminBankTransfer = (req: Request, res: Response) => createExisting(req, res, true);
 export async function getCustomerBankTransfer(request: Request, response: Response) {
+  response.setHeader("Referrer-Policy", "no-referrer");
   response.setHeader("Cache-Control", "no-store");
   response.json({ success: true, message: "", data: await details(await customerBooking(request)) });
 }

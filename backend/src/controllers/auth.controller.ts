@@ -1,3 +1,4 @@
+import { issueAuthSession, refreshAuthSession, revokeAuthSession } from "../services/auth-session.service";
 import type { Request, Response } from "express";
 import { compare } from "bcryptjs";
 import { z } from "zod";
@@ -13,7 +14,7 @@ import { sendOtp, verifyOtp } from "../services/msg91.service";
 import { validateTravellerEmailAddress } from "../utils/email";
 import { HttpError } from "../utils/httpError";
 import {
-  signAuthToken,
+  signTravellerRegistrationToken,
   verifyAuthToken,
   verifyTravellerGoogleRegistrationToken,
   verifyTravellerRegistrationToken,
@@ -52,7 +53,7 @@ const verifyTravellerOtpSchema = z.object({
   otp: z
     .string()
     .trim()
-    .regex(/^\d{4,9}$/, "OTP must be 4 to 9 digits"),
+    .regex(/^\d{6}$/, "OTP must be 6 digits"),
 });
 
 const completeTravellerProfileSchema = z.object({
@@ -75,7 +76,7 @@ const completeGoogleTravellerProfileSchema = z.object({
   mobileNumberOtp: z
     .string()
     .trim()
-    .regex(/^\d{4,9}$/, "OTP must be 4 to 9 digits")
+    .regex(/^\d{6}$/, "OTP must be 6 digits")
     .optional(),
 });
 
@@ -93,7 +94,7 @@ const updateTravellerProfileSchema = z.object({
   mobileNumberOtp: z
     .string()
     .trim()
-    .regex(/^\d{4,9}$/, "OTP must be 4 to 9 digits")
+    .regex(/^\d{6}$/, "OTP must be 6 digits")
     .optional(),
   nationality: z
     .string()
@@ -113,7 +114,6 @@ const googleTravellerLoginSchema = z.object({
 });
 
 const defaultSuperAdminEmail = "web.ancienttrails@gmail.com";
-const defaultSuperAdminPassword = "trails_web@26";
 
 const adminLoginSchema = z.object({
   email: z
@@ -164,29 +164,6 @@ function formatUser(user: UserDocument) {
   };
 }
 
-async function createMobileOnlyTraveller(mobileNumber: string) {
-  try {
-    return await User.create({
-      firstName: "",
-      lastName: "",
-      mobileNumber,
-      roles: [UserRole.TRAVELLER],
-      status: UserStatus.ACTIVE,
-      isMobileVerified: true,
-      lastLoginAt: new Date(),
-    });
-  } catch (error) {
-    if (isDuplicateKeyError(error)) {
-      throw new HttpError(
-        409,
-        "Traveller already exists with this mobile number"
-      );
-    }
-
-    throw error;
-  }
-}
-
 function isDuplicateKeyError(error: unknown): boolean {
   return (
     typeof error === "object" &&
@@ -223,7 +200,8 @@ async function isValidConfiguredAdminPassword(password: string): Promise<boolean
     return password === adminPassword;
   }
 
-  return password === defaultSuperAdminPassword;
+  // Bootstrap access requires an explicitly configured credential.
+  return false;
 }
 
 function getAdminDisplayName() {
@@ -302,13 +280,13 @@ export async function loginAdminWithPassword(
     throw new HttpError(401, "Invalid admin email or password");
   }
 
-  const token = signAuthToken(admin);
+  const token = await issueAuthSession(admin, request, response, "admin");
 
   response.status(200).json({
     success: true,
     message: "Admin logged in successfully",
     data: {
-      token,
+      sessionId: verifyAuthToken(token).sid,
       user: formatUser(admin),
     },
   });
@@ -424,7 +402,7 @@ export async function requestTravellerProfileMobileChangeOtp(
     throw new HttpError(409, "Mobile number is already registered");
   }
 
-  await sendOtp(mobileNumber);
+  await sendOtp(mobileNumber, request.ip || request.socket?.remoteAddress || "unknown");
 
   response.status(200).json({
     success: true,
@@ -472,14 +450,14 @@ export async function verifyTravellerProfileMobileChangeOtp(
   traveller.lastLoginAt = new Date();
   await traveller.save();
 
-  const token = signAuthToken(traveller);
+  const token = await issueAuthSession(traveller, request, response);
 
   response.status(200).json({
     success: true,
     message: "Mobile number verified successfully",
     data: {
       mobileNumber: payload.mobileNumber,
-      token,
+      sessionId: verifyAuthToken(token).sid,
       user: formatUser(traveller),
     },
   });
@@ -561,7 +539,7 @@ export async function updateTravellerProfile(
     success: true,
     message: "Profile updated successfully",
     data: {
-      token,
+      sessionId: verifyAuthToken(token).sid,
       user: formatUser(traveller),
     },
   });
@@ -638,7 +616,7 @@ export async function requestTravellerOtp(
     throw new HttpError(403, "This traveller account is blocked");
   }
 
-  await sendOtp(mobileNumber);
+  await sendOtp(mobileNumber, request.ip || request.socket?.remoteAddress || "unknown");
 
   response.status(200).json({
     success: true,
@@ -657,31 +635,40 @@ export async function verifyTravellerOtpAndLogin(
 
   await verifyOtp(payload.mobileNumber, payload.otp);
 
-  let traveller = await User.findOne({
+  const traveller = await User.findOne({
     mobileNumber: payload.mobileNumber,
     roles: UserRole.TRAVELLER,
   });
 
-  if (!traveller) {
-    traveller = await createMobileOnlyTraveller(payload.mobileNumber);
-  } else {
-    if (traveller.status === UserStatus.BLOCKED) {
-      throw new HttpError(403, "This traveller account is blocked");
-    }
-
-    traveller.isMobileVerified = true;
-    traveller.lastLoginAt = new Date();
-    await traveller.save();
+  if (traveller?.status === UserStatus.BLOCKED) {
+    throw new HttpError(403, "This traveller account is blocked");
   }
 
-  const token = signAuthToken(traveller);
+  if (!traveller || !traveller.firstName.trim() || !traveller.lastName.trim() || !traveller.email?.trim()) {
+    response.status(200).json({
+      success: true,
+      message: "Mobile number verified. Complete your registration to continue.",
+      data: {
+        requiresProfile: true,
+        mobileNumber: payload.mobileNumber,
+        registrationToken: signTravellerRegistrationToken(payload.mobileNumber),
+      },
+    });
+    return;
+  }
+
+  traveller.isMobileVerified = true;
+  traveller.lastLoginAt = new Date();
+  await traveller.save();
+
+  const token = await issueAuthSession(traveller, request, response);
 
   response.status(200).json({
     success: true,
     message: "Traveller logged in successfully",
     data: {
       requiresProfile: false,
-      token,
+      sessionId: verifyAuthToken(token).sid,
       user: formatUser(traveller),
     },
   });
@@ -754,14 +741,14 @@ export async function loginTravellerWithGoogle(
     await attachFirebaseMobileNumberIfAvailable(traveller, mobileNumber);
     await traveller.save();
 
-    const token = signAuthToken(traveller);
+    const token = await issueAuthSession(traveller, request, response);
 
     response.status(200).json({
       success: true,
       message: "Traveller logged in with Google successfully",
       data: {
         requiresProfile: false,
-        token,
+        sessionId: verifyAuthToken(token).sid,
         user: formatUser(traveller),
       },
     });
@@ -783,14 +770,14 @@ export async function loginTravellerWithGoogle(
       lastLoginAt: new Date(),
       ...profileName,
     });
-    const token = signAuthToken(newTraveller);
+    const token = await issueAuthSession(newTraveller, request, response);
 
     response.status(201).json({
       success: true,
       message: "Traveller logged in with Google successfully",
       data: {
         requiresProfile: false,
-        token,
+        sessionId: verifyAuthToken(token).sid,
         user: formatUser(newTraveller),
       },
     });
@@ -825,7 +812,7 @@ export async function completeTravellerProfile(
     lastName: payload.lastName,
     email: payload.email,
   });
-  const token = signAuthToken(traveller);
+  const token = await issueAuthSession(traveller, request, response);
 
   response.status(isNewTraveller ? 201 : 200).json({
     success: true,
@@ -833,7 +820,7 @@ export async function completeTravellerProfile(
       ? "Traveller profile completed successfully"
       : "Traveller profile updated successfully",
     data: {
-      token,
+      sessionId: verifyAuthToken(token).sid,
       user: formatUser(traveller),
     },
   });
@@ -956,14 +943,23 @@ export async function completeGoogleTravellerProfile(
     }
   }
 
-  const token = signAuthToken(traveller);
+  const token = await issueAuthSession(traveller, request, response);
 
   response.status(201).json({
     success: true,
     message: "Traveller profile completed successfully",
     data: {
-      token,
+      sessionId: verifyAuthToken(token).sid,
       user: formatUser(traveller),
     },
   });
+}
+
+export async function refreshSession(request: Request, response: Response) {
+  const result = await refreshAuthSession(request, response);
+  response.json({ success: true, message: "Session refreshed", data: { sessionId: result.sessionId, user: formatUser(result.user) } });
+}
+export async function logoutSession(request: Request, response: Response) {
+  await revokeAuthSession(request, response);
+  response.json({ success: true, message: "Logged out successfully", data: {} });
 }

@@ -241,7 +241,7 @@ tourDepartureSchema.pre("validate", function normalizeDepartureValues() {
         "departureDate",
         "Scheduled departures require departure and return dates."
       );
-    } else if (this.returnDate.getTime() <= this.departureDate.getTime()) {
+    } else if (this.returnDate.getTime() < this.departureDate.getTime()) {
       this.invalidate("returnDate", "Return date must be after departure date.");
     }
   }

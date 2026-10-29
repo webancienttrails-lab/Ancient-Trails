@@ -1,4 +1,5 @@
 import type { PricedDeparture } from "./departure.types";
+import { validateDepartureOffer } from "./departure-offer.validation";
 
 export type DepartureValidationResult = {
   isValid: boolean;
@@ -47,7 +48,7 @@ export function validateDepartureSchedule(
 
   if (!departureDate || !returnDate) {
     errors.push("Scheduled departures require departure and return dates.");
-  } else if (returnDate.getTime() <= departureDate.getTime()) {
+  } else if (returnDate.getTime() < departureDate.getTime()) {
     errors.push("Return date must be after departure date.");
   }
 
@@ -60,7 +61,8 @@ export function validateDepartureSchedule(
 export function validateDepartureForBooking(
   departure: PricedDeparture,
   requestedTravellers: number,
-  today = new Date()
+  today = new Date(),
+  durationDn = ""
 ): DepartureValidationResult {
   const errors: string[] = [];
   const bookingDeadline = toDate(departure.bookingDeadline);
@@ -87,7 +89,10 @@ export function validateDepartureForBooking(
 
   if (departure.status === "scheduled") {
     errors.push(...validateDepartureSchedule(departure).errors);
+    errors.push(...validateDepartureOffer(departure, durationDn, today).map(issue => issue.message));
   }
+
+  if (departure.status === "completed") errors.push("This departure has been completed and cannot be booked.");
 
   if (
     bookingDeadline &&

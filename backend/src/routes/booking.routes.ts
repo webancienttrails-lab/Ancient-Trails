@@ -1,3 +1,4 @@
+import { getCancellationRequestPreview, requestBookingCancellation } from "../controllers/bookingCancellationRequest.controller";
 import { requestAdminBookingLeadOtp, verifyAdminBookingLeadOtp } from "../controllers/bookingLead.controller";
 import { Router } from "express";
 import {
@@ -54,6 +55,8 @@ publicBookingRoutes.post("/payment/verify", verifyBookingPayment);
 publicBookingRoutes.post("/payment/webhook", verifyRazorpayWebhook);
 publicBookingRoutes.get("/payment/orders/:orderId/status", getBookingPaymentOrderStatus);
 publicBookingRoutes.get("/me", listTravellerBookings);
+publicBookingRoutes.get("/:id/cancel-request", getCancellationRequestPreview);
+publicBookingRoutes.post("/:id/cancel-request", requestBookingCancellation);
 publicBookingRoutes.post(
   "/:id/kyc",
   bookingKycUpload.single("document"),

@@ -18,6 +18,8 @@ export type BookingPaymentSessionStatus =
 export type BookingDraft = Omit<IBooking, "createdAt" | "updatedAt">;
 
 export interface IBookingPaymentSession {
+  requestHash?: string;
+  idempotencyKeys?: string[];
   razorpayOrderId: string;
   razorpayPaymentId?: string;
   razorpaySignature?: string;
@@ -45,6 +47,8 @@ const trimmedString = {
 
 const bookingPaymentSessionSchema = new Schema<IBookingPaymentSession>(
   {
+    requestHash: { type: String },
+    idempotencyKeys: { type: [String], default: undefined },
     razorpayOrderId: {
       type: String,
       required: true,
@@ -115,6 +119,8 @@ const bookingPaymentSessionSchema = new Schema<IBookingPaymentSession>(
 );
 
 bookingPaymentSessionSchema.index({ bookingId: 1 }, { sparse: true });
+bookingPaymentSessionSchema.index({ requestHash: 1, status: 1 }, { sparse: true });
+bookingPaymentSessionSchema.index({ idempotencyKeys: 1 }, { unique: true, sparse: true });
 
 export const BookingPaymentSession =
   (models.BookingPaymentSession as

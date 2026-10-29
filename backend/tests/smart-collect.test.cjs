@@ -236,20 +236,28 @@ test("gateway errors never expose Basic Auth secrets to application logging",t=>
   assert.equal(thrown.config,undefined);
   assert.ok(!JSON.stringify(thrown).includes("dummy-private-secret"));
 });
-test("customer bank details require the private booking token and never return it in detail payloads",async t=>{
+test("customer bank details require the lead traveller session and ignore legacy URL tokens",async t=>{
+  const { mockBookingTraveller, bookingRequest, bookingResponse } = require('./helpers/booking-access.cjs');
   const f=fixture(t);
   f.booking.bankTransferToken="a".repeat(48);
+  f.booking.guestDetails.push({ firstName:"Test", lastName:"Traveller", countryCode:"+91", mobileNumber:"9000000000", email:"test@example.com" });
+  mockBookingTraveller(t);
+  t.mock.method(Booking,"findOne",async filter=>{
+    assert.ok(filter['guestDetails.0.mobileNumber']); return f.booking;
+  });
   const bookingController=require("../dist/controllers/booking.controller");
   t.mock.method(bookingController,"getRazorpayCredentials",()=>({keyId:"rzp_test_dummy",keySecret:"dummy"}));
   t.mock.method(Accounts,"find",()=>({sort(){return this;},async lean(){return[];}}));
   t.mock.method(Transfers,"find",()=>({sort(){return this;},async lean(){return[];}}));
   const { getCustomerBankTransfer }=require("../dist/controllers/smartCollect.controller");
-  const res={setHeader(){},json(value){this.body=value;}};
-  await assert.rejects(getCustomerBankTransfer({params:{id:f.booking.id},query:{token:"b".repeat(48)}},res),/Invalid booking access token/);
-  await getCustomerBankTransfer({params:{id:f.booking.id},query:{token:f.booking.bankTransferToken}},res);
+  const res=bookingResponse();
+  await assert.rejects(getCustomerBankTransfer(bookingRequest(f.booking.id,false,{query:{token:f.booking.bankTransferToken}}),res),e=>e.statusCode===401);
+  await getCustomerBankTransfer(bookingRequest(f.booking.id),res);
   assert.equal(res.body.data.booking.bookingReference,"AT-D0001");
   assert.ok(!JSON.stringify(res.body).includes("a".repeat(48)));
+  assert.equal(res.headers['Referrer-Policy'],'no-referrer');
 });
+
 test("bank instructions use one atomic send claim per channel",async t=>{
   const f=fixture(t);
   f.booking.bankTransferToken="a".repeat(48);
@@ -293,7 +301,7 @@ test("initial bank drafts reuse existing pricing/reference logic, resist client 
     mobileNumber:"9000000000",email:"test@example.com",dateOfBirth:"1990-01-01",gender:"Female",address:"Test city"};
   const payload={tourId:"TOURTEST",departureId:"DEPTEST",selectedAccommodationOptionId:option.id,
     paymentOption:"advance",totalGuest:1,adultCount:1,childCount:0,childDetails:[],guestDetails:[guest],
-    travellers:[{...guest,id:"adult-1",type:"adult"}],gstPercentage:5,
+    travellers:[{...guest,id:"adult-1",type:"adult"}],gstPercentage:0,
     amountPaid:999999,paymentMethod:"cash",airFlightCharges:999999};
   t.mock.method(Tour,"exists",async()=>true);
   t.mock.method(Tour,"findOne",async()=>({tourId:"TOURTEST",tourName:"Test Tour",inclusions:[],exclusions:[]}));
@@ -318,10 +326,15 @@ test("initial bank drafts reuse existing pricing/reference logic, resist client 
   assert.equal(a.bookingStatus,"payment_pending");assert.equal(a.paymentMode,"bank_transfer");
   assert.equal(a.heldSeatCount,0);assert.equal(a.holdExpiresAt,null);assert.equal(reserve.mock.callCount(),0);
   assert.match(a.bankTransferToken,/^[a-f0-9]{48}$/);
+  assert.equal(a.gstPercentage,5);
+  assert.equal(a.gstAmount,Math.round(a.subtotal*0.05));
+  assert.equal(a.grandTotal,a.subtotal+a.gstAmount);
   assert.equal(a.depositAmount,Math.round(a.grandTotal*0.4));
   assert.match(a.pendingBookingKey,/^bank:[a-f0-9]{64}$/);
   assert.ok(a.pendingBookingKey.length<=Booking.schema.path("pendingBookingKey").options.maxlength);
-  const live=await createSmartCollectBookingDraft(payload,smartCollectContext("rzp_live_dummy").scope);
+  const live=await createSmartCollectBookingDraft({...payload,gstPercentage:undefined},smartCollectContext("rzp_live_dummy").scope);
+  assert.equal(live.gstPercentage,5);
+  assert.equal(live.grandTotal,a.grandTotal);
   assert.notEqual(a.pendingBookingKey,live.pendingBookingKey);
   assert.notEqual(a.id,live.id);
   assert.equal(created,2);

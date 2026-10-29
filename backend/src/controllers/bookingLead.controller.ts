@@ -29,11 +29,11 @@ export async function requestAdminBookingLeadOtp(request: Request, response: Res
   const lead = parse(phoneSchema, request.body);
   const mobileNumber = leadMobileNumber(lead);
   await findTraveller(mobileNumber);
-  await sendOtp(mobileNumber);
+  await sendOtp(mobileNumber, request.ip || request.socket?.remoteAddress || "unknown");
   response.json({ success: true, message: "OTP sent to the lead traveller", data: { mobileNumber } });
 }
 export async function verifyAdminBookingLeadOtp(request: Request, response: Response) {
-  const lead = parse(phoneSchema.extend({ otp: z.string().trim().regex(/^\d{4,9}$/, "Enter a valid OTP") }), request.body);
+  const lead = parse(phoneSchema.extend({ otp: z.string().trim().regex(/^\d{6}$/, "Enter a 6-digit OTP") }), request.body);
   const mobileNumber = leadMobileNumber(lead);
   await verifyOtp(mobileNumber, lead.otp);
   const user = await findTraveller(mobileNumber);

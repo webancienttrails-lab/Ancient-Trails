@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import {
   createEnquiry,
+  createPublicCallbackEnquiry,
   createPublicContactEnquiry,
   createPublicTourEnquiry,
   listEnquiries,
@@ -15,6 +16,7 @@ const router = Router();
 
 publicEnquiryRoutes.post("/", createPublicTourEnquiry);
 publicEnquiryRoutes.post("/contact", createPublicContactEnquiry);
+publicEnquiryRoutes.post("/callback", createPublicCallbackEnquiry);
 
 router.use(requireAdmin);
 router.get("/", listEnquiries);

@@ -5,6 +5,7 @@ export const departureStatuses = [
   "coming_soon",
   "closed",
   "cancelled",
+  "completed",
 ] as const;
 export const pricingCategories = [
   "adult",

@@ -12,7 +12,7 @@ export async function notifyBankInstructions(accountId: string) {
   const guest = booking.guestDetails[0];
   const tour = await Tour.findOne({ tourId: booking.tourId });
   const url = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "") +
-    "/bank-transfer/" + booking._id + "?token=" + encodeURIComponent(booking.bankTransferToken);
+    "/bank-transfer/" + booking._id;
   const name = [guest?.firstName, guest?.lastName].filter(Boolean).join(" ") || "Traveller";
   const tasks = [
     { field: "emailInstructionStatus", send: () => sendBankTransferEmail({

@@ -17,10 +17,10 @@ export async function notificationActivationDate() {
   }
   return activation;
 }
-export async function stageNotificationEvent(key: string, kind: string, payload: Record<string, unknown>) {
+export async function stageNotificationEvent(key: string, kind: string, payload: Record<string, unknown>, session?: mongoose.ClientSession) {
   await NotificationEvent.updateOne({ _id: notificationKey(key) }, { $setOnInsert: {
     kind, payload, status: "pending", attempts: 0, nextAttemptAt: new Date(), createdAt: new Date(),
-  } }, { upsert: true }).catch(error => { if (error?.code !== 11000) throw error; });
+  } }, { upsert: true, ...(session ? { session } : {}) }).catch(error => { if (error?.code !== 11000) throw error; });
 }
 const pending = new Set<string>();
 function background(key: string, action: () => Promise<unknown>) {

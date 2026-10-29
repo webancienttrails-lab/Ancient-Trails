@@ -307,8 +307,14 @@ export async function listPublishedBlogs(
     filters.category = category;
   }
 
+  const page = request.query.page === undefined ? 1 : Number(request.query.page);
+  if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger((page - 1) * limit)) {
+    throw new HttpError(400, "Page must be a positive integer");
+  }
+  const sortDirection = request.query.sort === "Oldest" ? 1 : -1;
+
   const [blogs, total, categoryCounts, popularPosts] = await Promise.all([
-    BlogPost.find(filters).sort({ publishedAt: -1, createdAt: -1 }).limit(limit),
+    BlogPost.find(filters).sort({ publishedAt: sortDirection, createdAt: sortDirection, _id: sortDirection }).skip((page - 1) * limit).limit(limit),
     BlogPost.countDocuments(filters),
     BlogPost.aggregate<{ _id: BlogCategory; count: number }>([
       { $match: { status: BlogStatus.PUBLISHED } },

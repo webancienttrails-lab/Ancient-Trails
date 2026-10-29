@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import {
+  logoutSession, refreshSession,
   completeGoogleTravellerProfile,
   completeTravellerProfile,
   loginAdminWithPassword,
@@ -13,6 +14,8 @@ import {
 } from "../controllers/auth.controller";
 
 const router = Router();
+router.post("/logout", logoutSession);
+router.post("/refresh", refreshSession);
 
 router.post("/admin/login", loginAdminWithPassword);
 router.post("/traveller/request-otp", requestTravellerOtp);

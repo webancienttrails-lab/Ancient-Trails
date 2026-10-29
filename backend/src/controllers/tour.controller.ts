@@ -24,6 +24,7 @@ import {
   depositTypes,
 } from "../services/departure/departure.types";
 import { validateDepartureSchedule } from "../services/departure/departure.validation";
+import { validateDepartureOffer } from "../services/departure/departure-offer.validation";
 import { HttpError } from "../utils/httpError";
 
 const defaultTourTypeOptions = ["Domestic", "International"];
@@ -762,6 +763,8 @@ async function createLinkedDeparturePayload(
 ): Promise<TourDeparturePayloadInput & { destinationId: string }> {
   const { tourId, destinationId } = payload;
   const tour = await getLinkedTour(tourId);
+  const issues = validateDepartureOffer(payload, tour.durationDn);
+  if (issues.length) throw new HttpError(400, issues[0].message, issues);
   const linkedDestinationIds = getTourDestinationIds(tour);
   const linkedDestinationId = destinationId || linkedDestinationIds[0] || "";
 
@@ -1208,17 +1211,21 @@ export async function listTourDepartures(
   const seatCountsByDepartureId = await getSeatCountsByDepartureId(
     departures.map((departure) => departure.departureId)
   );
+  const linkedTours = await Tour.find({ tourId: { $in: departures.map(departure => departure.tourId) } })
+    .select({ tourId: 1, durationDn: 1 }).lean();
+  const durationByTour = new Map(linkedTours.map(tour => [tour.tourId, tour.durationDn]));
 
   response.status(200).json({
     success: true,
     message: "Tour departures fetched successfully",
     data: {
-      departures: departures.map((departure) =>
-        formatTourDeparture(
+      departures: departures.map((departure) => ({
+        ...formatTourDeparture(
           departure,
           seatCountsByDepartureId.get(departure.departureId)
-        )
-      ),
+        ),
+        validationErrors: validateDepartureOffer(departure, durationByTour.get(departure.tourId)),
+      })),
     },
   });
 }

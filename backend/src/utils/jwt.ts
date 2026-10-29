@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import jwt, { type JwtPayload, type SignOptions } from "jsonwebtoken";
 
 import type { UserDocument } from "../models/user.model";
@@ -16,6 +17,9 @@ export type TravellerGoogleRegistrationPayload = {
 export type AuthTokenPayload = {
   userId: string;
   roles: string[];
+  sid?: string;
+  exp?: number;
+  jti?: string;
 };
 
 function getJwtSecret(): string {
@@ -28,25 +32,26 @@ function getJwtSecret(): string {
   return jwtSecret;
 }
 
-export function signAuthToken(user: UserDocument): string {
+export function signAuthToken(user: UserDocument, sessionId?: string): string {
   const options: SignOptions = {
-    expiresIn: (process.env.JWT_EXPIRES_IN ||
-      "7d") as SignOptions["expiresIn"],
+    expiresIn: "1h",
+    jwtid: crypto.randomUUID(),
   };
 
   return jwt.sign(
     {
       userId: user._id.toString(),
       roles: user.roles,
+      ...(sessionId ? { sid: sessionId } : {}),
     },
     getJwtSecret(),
     options
   );
 }
 
-export function verifyAuthToken(token: string): AuthTokenPayload {
+export function verifyAuthToken(token: string, options: { ignoreExpiration?: boolean } = {}): AuthTokenPayload {
   try {
-    const payload = jwt.verify(token, getJwtSecret());
+    const payload = jwt.verify(token, getJwtSecret(), { ignoreExpiration: options.ignoreExpiration || false });
 
     if (typeof payload === "string" || !isAuthTokenPayload(payload)) {
       throw new HttpError(401, "Invalid auth session");
@@ -55,6 +60,9 @@ export function verifyAuthToken(token: string): AuthTokenPayload {
     return {
       userId: payload.userId,
       roles: payload.roles,
+      ...(typeof payload.sid === "string" ? { sid: payload.sid } : {}),
+      ...(typeof payload.exp === "number" ? { exp: payload.exp } : {}),
+      ...(typeof payload.jti === "string" ? { jti: payload.jti } : {}),
     };
   } catch (error) {
     if (error instanceof HttpError) {

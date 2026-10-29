@@ -1,3 +1,4 @@
+import { requireActiveAuthSession } from "./middleware/authSession";
 import notificationRoutes from "./routes/notification.routes";
 import path from "node:path";
 
@@ -47,6 +48,9 @@ import userRoutes from "./routes/user.routes";
 import { HttpError } from "./utils/httpError";
 
 const app = express();
+// Trust only local reverse proxies by default; deployments can supply proxy IPs/CIDRs.
+// Never use a client-supplied X-Forwarded-For directly for OTP throttling.
+app.set("trust proxy", process.env.TRUST_PROXY || "loopback");
 
 function parseOrigins(...values: Array<string | undefined>): string[] {
   return values
@@ -104,9 +108,12 @@ const corsOptions: CorsOptions = {
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 
   allowedHeaders: [
+    "Idempotency-Key",
     "Content-Type",
     "Authorization",
     "X-Requested-With",
+    "X-Session-Id",
+    "X-Session-Audience",
   ],
 };
 
@@ -194,6 +201,7 @@ app.get("/api/health", (_request: Request, response: Response) => {
  * app.use("/api/tours", tourRoutes);
  * app.use("/api/bookings", bookingRoutes);
  */
+app.use("/api", requireActiveAuthSession);
 app.use("/api/auth", authRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/faq", publicFaqPageRoutes);

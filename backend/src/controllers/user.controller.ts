@@ -1,6 +1,59 @@
 import type { Request, Response } from "express";
+import { isValidObjectId } from "mongoose";
+import { z } from "zod";
 
 import { User, UserRole, UserStatus, type UserDocument } from "../models/user.model";
+import { isAdminRole } from "../middleware/adminAuth";
+import { HttpError } from "../utils/httpError";
+import { verifyAuthToken } from "../utils/jwt";
+
+const userUpdateSchema = z.object({
+  firstName: z.string().trim().max(80).optional(),
+  lastName: z.string().trim().max(80).optional(),
+  email: z.string().trim().toLowerCase().email().max(254).or(z.literal("")).optional(),
+  status: z.enum([UserStatus.ACTIVE, UserStatus.BLOCKED]).optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, "No changes provided");
+
+export async function updateAdminUser(request: Request, response: Response): Promise<void> {
+  if (!isValidObjectId(request.params.id)) {
+    throw new HttpError(400, "Invalid user ID");
+  }
+  const result = userUpdateSchema.safeParse(request.body);
+  if (!result.success) {
+    throw new HttpError(400, "Validation failed", result.error.issues.map((issue) => ({
+      path: issue.path.join("."), message: issue.message,
+    })));
+  }
+  const [scheme, token] = request.headers.authorization?.split(" ") || [];
+  if (scheme !== "Bearer" || !token) throw new HttpError(401, "Please sign in to continue");
+  const actor = await User.findById(verifyAuthToken(token).userId);
+  if (!actor || actor.status !== UserStatus.ACTIVE || !actor.roles.some(isAdminRole)) {
+    throw new HttpError(403, "Admin access is required");
+  }
+  const user = await User.findById(String(request.params.id));
+  if (!user) throw new HttpError(404, "User not found");
+  if (user.roles.includes(UserRole.SUPER_ADMIN) ||
+      (user.roles.some(isAdminRole) && !actor.roles.includes(UserRole.SUPER_ADMIN))) {
+    throw new HttpError(403, "Only a super admin can manage other administrator accounts");
+  }
+  const changes = result.data;
+  if (changes.status === UserStatus.BLOCKED && user._id.toString() === actor._id.toString()) {
+    throw new HttpError(400, "You cannot deactivate your own account");
+  }
+  if (changes.firstName !== undefined) user.firstName = changes.firstName;
+  if (changes.lastName !== undefined) user.lastName = changes.lastName;
+  if (changes.email !== undefined) user.email = changes.email || undefined;
+  if (changes.status !== undefined) user.status = changes.status;
+  try {
+    await user.save();
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === 11000) {
+      throw new HttpError(409, "Email is already registered");
+    }
+    throw error;
+  }
+  response.json({ success: true, message: "User updated successfully", data: { user: formatUser(user) } });
+}
 
 function getAge(dateOfBirth: string | undefined): number | null {
   if (!dateOfBirth) {

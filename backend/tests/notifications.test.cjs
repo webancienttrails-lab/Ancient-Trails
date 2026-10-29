@@ -210,6 +210,8 @@ test("leased worker failures retry asynchronously and stop after the configured 
 });
 test("mounted HTTP notification routes enforce authentication and current audience roles", async t => {
   env(t); t.mock.method(console, "error", () => {});
+  const { RevokedAccessToken } = require("../dist/models/authSession.model");
+  t.mock.method(RevokedAccessToken, "exists", async () => null);
   const app = require("../dist/app").default;
   const server = app.listen(0, "127.0.0.1");
   await new Promise(resolve => server.once("listening", resolve));

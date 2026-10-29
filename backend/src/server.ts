@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { runNotificationMaintenance } from "./services/notifications/notification-worker.service";
 import { notificationActivationDate } from "./services/notifications/notification-events.service";
+import { completePastDepartures, millisecondsUntilNextTravelDay } from "./services/departure/departure-maintenance.service";
 
 import http from "node:http";
 
@@ -16,6 +17,16 @@ const databaseUrl = process.env.DATABASE_URL;
 const server = http.createServer(app);
 let notificationMaintenanceTimer: NodeJS.Timeout | null = null;
 let bookingRecoveryMaintenanceTimer: NodeJS.Timeout | null = null;
+let departureMaintenanceTimer: NodeJS.Timeout | null = null;
+let isShuttingDown = false;
+
+function scheduleDepartureMaintenance() {
+  departureMaintenanceTimer = setTimeout(async () => {
+    try { await completePastDepartures(); }
+    catch (error) { console.error("Departure maintenance failed:", error); }
+    finally { if (!isShuttingDown) scheduleDepartureMaintenance(); }
+  }, millisecondsUntilNextTravelDay());
+}
 
 async function connectDatabase(): Promise<void> {
   if (!databaseUrl) {
@@ -31,6 +42,8 @@ async function startServer(): Promise<void> {
   try {
     await connectDatabase();
     await notificationActivationDate();
+    await completePastDepartures();
+    scheduleDepartureMaintenance();
 
     server.listen(port, () => {
       console.log(`Ancient Trails backend running on http://localhost:${port}`);
@@ -59,6 +72,8 @@ async function startServer(): Promise<void> {
  */
 async function shutdown(signal: string): Promise<void> {
   console.log(`${signal} received. Shutting down server...`);
+  isShuttingDown = true;
+  if (departureMaintenanceTimer) { clearTimeout(departureMaintenanceTimer); departureMaintenanceTimer = null; }
 
   if (notificationMaintenanceTimer) { clearInterval(notificationMaintenanceTimer); notificationMaintenanceTimer = null; }
   if (bookingRecoveryMaintenanceTimer) {

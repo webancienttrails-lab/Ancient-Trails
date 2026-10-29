@@ -94,6 +94,11 @@ export async function materializeNotificationEvent(event: INotificationEvent) {
   if (!booking) return;
   const ref = booking.bookingReference || booking.id, tour = await Tour.findOne({ tourId: booking.tourId }), name = tour?.tourName || booking.tourId;
   switch (event.kind) {
+    case "cancellation_requested":
+      await notifyBooking(event, booking, "Cancellation request", ref + " for " + name + ": " + String(event.payload.reason || "Customer requested cancellation")
+        + (typeof event.payload.estimatedRefund === "number" ? " Estimated refund: " + currency(event.payload.estimatedRefund) + "." : " Refund requires a manual estimate.")
+        + " Review the request before cancelling or issuing a manual refund.", true);
+      break;
     case "booking_confirmed":
       if (booking.bookingStatus === "confirmed" && booking.paymentStatus === "paid") await notifyBooking(event, booking, "Booking confirmed", ref + " for " + name + " is confirmed."); break;
     case "advance_payment_received":
