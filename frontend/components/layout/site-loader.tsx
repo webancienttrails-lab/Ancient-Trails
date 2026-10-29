@@ -119,6 +119,12 @@ export function SiteLoader() {
       startedAtRef.current = window.performance.now();
       setIsLeaving(false);
       setIsVisible(true);
+      // A cancelled navigation never changes pathname to finish the loader.
+      removeTimerRef.current = window.setTimeout(() => {
+        setIsVisible(false);
+        setIsLeaving(false);
+        startedAtRef.current = 0;
+      }, 10000);
     };
 
     const handlePageClick = (event: MouseEvent) => {
@@ -150,6 +156,7 @@ export function SiteLoader() {
         url.origin !== window.location.origin ||
         link.target ||
         link.hasAttribute("download") ||
+        url.pathname === window.location.pathname ||
         nextPath === currentPath ||
         url.pathname === "/"
       ) {

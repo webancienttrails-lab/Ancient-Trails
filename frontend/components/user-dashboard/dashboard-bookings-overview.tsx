@@ -90,7 +90,7 @@ function StatCard({
         index > 0 ? "lg:border-l lg:border-border" : ""
       }`}
     >
-      <span className={`grid size-12 shrink-0 place-items-center rounded-full sm:size-16 ${tone}`}>
+      <span className={`grid size-12 shrink-0 place-items-center rounded-full max-sm:size-10 sm:size-16 ${tone}`}>
         <Icon className="size-5 sm:size-7" strokeWidth={1.8} />
       </span>
       <div className="min-w-0">
@@ -100,7 +100,7 @@ function StatCard({
         <p className="mt-1.5 font-sans text-[12px] font-semibold leading-none text-secondary sm:mt-2 sm:text-[15px]">
           {label}
         </p>
-        <p className="mt-1 truncate font-sans text-[11px] text-secondary/70 sm:text-[13px]">
+        <p className="mt-1 truncate font-sans text-[11px] text-secondary/70 max-sm:whitespace-normal sm:text-[13px]">
           {description}
         </p>
       </div>

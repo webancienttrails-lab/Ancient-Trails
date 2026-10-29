@@ -373,7 +373,7 @@ function MobileDashboardDrawer({
       />
 
       <aside
-        className={`absolute left-0 top-0 flex h-[100svh] max-h-[100svh] w-[min(340px,calc(100vw-1.25rem))] flex-col overflow-hidden border-r border-border bg-white shadow-[0_26px_80px_rgba(35,24,16,0.22)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        className={`absolute left-0 top-0 flex h-[100svh] max-h-[100svh] w-[min(340px,calc(100vw-1.25rem))] flex-col overflow-x-hidden overflow-y-auto overscroll-contain border-r border-border bg-white shadow-[0_26px_80px_rgba(35,24,16,0.22)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >

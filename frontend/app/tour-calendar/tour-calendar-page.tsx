@@ -1019,7 +1019,7 @@ function CalendarPanel({
           >
             <ChevronLeft className="size-5" />
           </button>
-          <div className="grid min-w-0 grid-cols-2 gap-1.5 sm:gap-2">
+          <div className="grid min-w-0 grid-cols-2 gap-1.5 max-sm:grid-cols-[minmax(0,1fr)_80px] sm:gap-2">
             <Select
               value={String(visibleMonth.getMonth())}
               onValueChange={(value) => {
@@ -1030,7 +1030,7 @@ function CalendarPanel({
             >
               <SelectTrigger
                 aria-label="Select month"
-                className="h-9 rounded-full border-[#e8cbaa] bg-[#fffaf4] px-2 text-[12px] font-bold sm:h-10 sm:text-[13px]"
+                className="h-9 rounded-full border-[#e8cbaa] bg-[#fffaf4] px-2 text-[12px] font-bold max-sm:gap-1 sm:h-10 sm:text-[13px]"
               >
                 <SelectValue>
                   {monthOptions.find(
@@ -1056,7 +1056,7 @@ function CalendarPanel({
             >
               <SelectTrigger
                 aria-label="Select year"
-                className="h-9 rounded-full border-[#e8cbaa] bg-[#fffaf4] px-2 text-[12px] font-bold sm:h-10 sm:text-[13px]"
+                className="h-9 rounded-full border-[#e8cbaa] bg-[#fffaf4] px-2 text-[12px] font-bold max-sm:gap-1 sm:h-10 sm:text-[13px]"
               >
                 <SelectValue />
               </SelectTrigger>

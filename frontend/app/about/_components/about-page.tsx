@@ -272,7 +272,7 @@ function HeroSection() {
       {/* <div className="absolute inset-y-0 left-0 w-[62%] bg-[linear-gradient(90deg,#fbf7ef_0%,rgba(251,247,239,0.94)_58%,rgba(251,247,239,0)_100%)]" />
       <div className="absolute inset-x-0 bottom-0 h-24 bg-[linear-gradient(180deg,rgba(251,247,239,0)_0%,#fbf7ef_100%)]" /> */}
 
-      <div className="home-wide-frame relative z-[2147483647] mx-auto flex min-h-[500px] w-full flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] max-sm:min-h-[610px] max-sm:px-4 sm:min-h-[520px] sm:px-0 lg:min-h-[430px] [@media(min-width:1300px)]:px-12">
+      <div className="home-wide-frame relative z-10 mx-auto flex min-h-[500px] w-full flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] max-sm:min-h-[610px] max-sm:px-4 sm:min-h-[520px] sm:px-0 lg:min-h-[430px] [@media(min-width:1300px)]:px-12">
         <Header />
 
         <div className="flex flex-1 items-center px-0 pb-[92px] pt-6 max-sm:items-end max-sm:pb-[82px] max-sm:pt-10 lg:pb-[86px] lg:pt-4">

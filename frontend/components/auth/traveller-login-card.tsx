@@ -425,7 +425,7 @@ export function TravellerLoginCard() {
 
   return (
     <>
-      <div className="w-full max-w-[560px] rounded-[11px] border border-white/85 bg-white/96 px-4 py-5 shadow-[0_26px_70px_rgba(50,50,50,0.16)] backdrop-blur-md sm:rounded-[13px] sm:px-[clamp(1.5rem,3.5vw,3rem)] sm:py-[clamp(1.4rem,3.5vh,2.5rem)]">
+      <div className="w-full max-w-[560px] rounded-[11px] border border-white/85 bg-white/96 px-4 py-5 shadow-[0_26px_70px_rgba(50,50,50,0.16)] backdrop-blur-md max-sm:min-w-0 sm:rounded-[13px] sm:px-[clamp(1.5rem,3.5vw,3rem)] sm:py-[clamp(1.4rem,3.5vh,2.5rem)]">
         <div className="text-center">
           <h2 className="font-heading text-[1.45rem] font-bold leading-none text-secondary sm:text-[clamp(1.55rem,3vh,1.9rem)]">
             {title}
@@ -459,9 +459,9 @@ export function TravellerLoginCard() {
                 <span className="font-sans text-[13px] font-bold text-secondary">
                   Phone Number
                 </span>
-                <span className="mt-2.5 flex h-12 items-center gap-3 rounded-[7px] border border-border bg-white px-4 text-secondary/48 shadow-[0_8px_18px_rgba(50,50,50,0.03)] transition-colors focus-within:border-primary sm:mt-3 sm:h-[clamp(3rem,6vh,3.625rem)] sm:gap-4 sm:px-5">
-                  <Phone className="size-5" strokeWidth={1.8} />
-                  <span className="border-r border-border pr-3 font-sans text-[14px] font-semibold text-secondary sm:pr-4">
+                <span className="mt-2.5 flex h-12 items-center gap-3 rounded-[7px] border border-border bg-white px-4 text-secondary/48 shadow-[0_8px_18px_rgba(50,50,50,0.03)] transition-colors focus-within:border-primary max-sm:gap-2 max-sm:px-3 sm:mt-3 sm:h-[clamp(3rem,6vh,3.625rem)] sm:gap-4 sm:px-5">
+                  <Phone className="size-5 max-sm:shrink-0" strokeWidth={1.8} />
+                  <span className="border-r border-border pr-3 font-sans text-[14px] font-semibold text-secondary max-sm:shrink-0 max-sm:pr-2 sm:pr-4">
                     +91
                   </span>
                   <input
@@ -517,7 +517,7 @@ export function TravellerLoginCard() {
               variant="outline"
               disabled={isSubmitting || isGoogleSubmitting}
               onClick={handleGoogleLogin}
-              className="h-11 w-full justify-center gap-3 px-4 text-[15px] font-normal sm:px-5"
+              className="h-11 w-full justify-center gap-3 px-4 text-[15px] font-normal max-sm:min-w-0 max-sm:gap-2 max-sm:px-3 sm:px-5"
             >
               <span className="grid size-5 place-items-center rounded-full bg-white font-sans text-[14px] font-bold text-brand-text group-hover/button:text-brand-text">
                 G

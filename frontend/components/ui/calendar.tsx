@@ -173,8 +173,11 @@ export function Calendar({
 
         <div className="grid min-w-0 flex-1 grid-cols-[1fr_86px] gap-2">
           <Select value={String(viewMonth)} onValueChange={updateViewMonth}>
-            <SelectTrigger className="h-9 rounded-[6px] px-3 text-[12px]">
-              <SelectValue>{monthNames[viewMonth] || "Month"}</SelectValue>
+            <SelectTrigger className="h-9 rounded-[6px] px-3 text-[12px] max-sm:gap-1 max-sm:px-2">
+              <SelectValue>
+                <span className="sm:hidden">{monthNames[viewMonth]?.slice(0, 3) || "Month"}</span>
+                <span className="hidden sm:inline">{monthNames[viewMonth] || "Month"}</span>
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {monthNames.map((month, index) => (
@@ -186,7 +189,7 @@ export function Calendar({
           </Select>
 
           <Select value={String(viewYear)} onValueChange={updateViewYear}>
-            <SelectTrigger className="h-9 rounded-[6px] px-3 text-[12px]">
+            <SelectTrigger className="h-9 rounded-[6px] px-3 text-[12px] max-sm:gap-1 max-sm:px-2">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -211,7 +214,7 @@ export function Calendar({
         </Button>
       </div>
 
-      <div className="mt-4 grid grid-cols-7 gap-1 text-center font-sans text-[11px] font-semibold text-secondary/55">
+      <div className="mt-4 grid grid-cols-7 gap-1 text-center font-sans text-[11px] font-semibold text-secondary/55 max-sm:gap-x-0">
         {weekDays.map((day) => (
           <span key={day} className="grid h-7 place-items-center">
             {day}
@@ -219,7 +222,7 @@ export function Calendar({
         ))}
       </div>
 
-      <div className="mt-1 grid grid-cols-7 gap-1">
+      <div className="mt-1 grid grid-cols-7 gap-1 max-sm:gap-x-0">
         {days.map((day, index) => {
           if (!day) {
             return <span key={`blank-${index}`} className="h-9" />;

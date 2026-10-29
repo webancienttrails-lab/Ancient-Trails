@@ -1256,7 +1256,7 @@ function PlannerEnquiryDialog({
               to you shortly.
             </div>
           ) : (
-            <form className="mt-5 grid grid-cols-2 gap-3 sm:gap-4" onSubmit={handleSubmit}>
+            <form className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4" onSubmit={handleSubmit}>
               <PlannerEnquiryField label="Your Name *" name="name" />
               <PlannerEnquiryField label="Email Address *" name="email" type="email" />
               <PlannerEnquiryField label="Phone Number *" name="phone" type="tel" />
@@ -1271,7 +1271,7 @@ function PlannerEnquiryDialog({
                 name="guests"
                 type="number"
               />
-              <label className="col-span-2 block font-sans text-[12px] font-bold uppercase text-secondary/58">
+              <label className="block font-sans text-[12px] font-bold uppercase text-secondary/58 sm:col-span-2">
                 Message
                 <textarea
                   name="message"
@@ -1280,7 +1280,7 @@ function PlannerEnquiryDialog({
                   className="mt-1.5 w-full resize-none rounded-[10px] border border-accent/20 bg-white px-3 py-2 font-sans text-[13px] font-medium normal-case text-secondary outline-none transition-colors placeholder:text-secondary/38 focus:border-primary focus:ring-3 focus:ring-primary/15"
                 />
               </label>
-              <Button type="submit" className="col-span-2 h-11 w-full">
+              <Button type="submit" className="h-11 w-full sm:col-span-2">
                 Submit Enquiry
               </Button>
             </form>
@@ -1306,7 +1306,7 @@ function PlannerEnquiryField({
   min?: number;
 }) {
   return (
-    <label className="block font-sans text-[12px] font-bold uppercase text-secondary/58">
+    <label className="block font-sans text-[12px] font-bold uppercase text-secondary/58 max-sm:min-w-0">
       {label}
       <input
         required
@@ -1314,7 +1314,7 @@ function PlannerEnquiryField({
         min={min}
         name={name}
         type={type}
-        className="mt-1.5 h-10 w-full rounded-[10px] border border-accent/20 bg-white px-3 font-sans text-[13px] font-medium normal-case text-secondary outline-none transition-colors placeholder:text-secondary/38 focus:border-primary focus:ring-3 focus:ring-primary/15"
+        className="mt-1.5 h-10 w-full rounded-[10px] border border-accent/20 bg-white px-3 font-sans text-[13px] font-medium normal-case text-secondary outline-none transition-colors placeholder:text-secondary/38 focus:border-primary focus:ring-3 focus:ring-primary/15 max-sm:min-w-0"
       />
     </label>
   );

@@ -411,7 +411,7 @@ function HeaderBand({
           <Header />
         </div>
         {stats.length > 0 ? (
-          <div className="flex items-center justify-center pb-6 md:pb-6">
+          <div className="hidden items-center justify-center pb-6 sm:flex md:pb-6">
             <div className="w-full max-w-[760px] text-center text-white">
               <div className="flex flex-wrap items-center justify-center gap-3 text-center">
                 {stats.map((stat, index) => (
