@@ -83,7 +83,6 @@ const domesticKycDocumentOptions: Array<{
   label: string;
   value: KycDocumentType;
 }> = [
-  { label: "Aadhaar Card", value: "aadhaar_card" },
   { label: "Driving License", value: "driving_license" },
   { label: "Voter ID", value: "voter_id" },
 ];
@@ -388,7 +387,7 @@ function BookingKycTravellerCard({
   travellerIndex: number;
 }) {
   const [documentType, setDocumentType] = useState<KycDocumentType>(
-    documentOptions[0]?.value || "aadhaar_card"
+    documentOptions[0]?.value || "driving_license"
   );
   const [feedback, setFeedback] = useState("");
   const [selectedFileName, setSelectedFileName] = useState("");
