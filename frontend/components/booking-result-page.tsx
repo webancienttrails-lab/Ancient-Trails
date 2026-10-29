@@ -1,7 +1,14 @@
+"use client";
+
+import { BookingPaymentReceipt } from "@/components/booking-payment-receipt";
+import { getBookingPaymentSummary, getBookingDocumentMessage } from "@/lib/booking-receipt";
 import { AirfareDisclosure } from "@/components/airfare-disclosure";
+import { BookingTermExplanation, BookingTermsLink } from "@/components/booking-term-help";
 import Image from "next/image";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { getTravellerSession, listenForTravellerSessionChanges } from "@/lib/auth";
+import { maskBookingEmail, maskBookingPhone } from "@/lib/booking-privacy";
 import {
   BedDouble,
   CalendarCheck,
@@ -37,9 +44,6 @@ export type BookingResultRouteProps = {
   params: Promise<{
     bookingId: string;
   }>;
-  searchParams: Promise<{
-    token?: string | string[];
-  }>;
 };
 
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
@@ -70,9 +74,6 @@ function formatDate(value?: string | null) {
     : dateFormatter.format(date).replace(",", "");
 }
 
-function getToken(value?: string | string[]) {
-  return Array.isArray(value) ? value[0] || "" : value || "";
-}
 
 function getBookingReference(bookingId: string) {
   return `ATB-${bookingId.slice(-8).toUpperCase()}`;
@@ -91,19 +92,6 @@ function getHeroImage(data: BookingConfirmationData) {
   );
 }
 
-async function loadBookingConfirmation(bookingId: string, token: string, submission: boolean) {
-  if (!bookingId || !token) {
-    return null;
-  }
-
-  try {
-    const response = await (submission ? getOfflineBookingSubmission(bookingId, token) : getBookingConfirmation(bookingId, token));
-
-    return response.data;
-  } catch {
-    return null;
-  }
-}
 
 function SummaryTile({
   icon: Icon,
@@ -123,7 +111,7 @@ function SummaryTile({
           "grid size-9 shrink-0 place-items-center rounded-[7px]",
           tone === "green"
             ? "bg-emerald-50 text-emerald-700"
-            : "bg-primary/10 text-primary"
+            : "bg-primary/10 text-brand-text"
         )}
       >
         <Icon className="size-4" strokeWidth={1.8} />
@@ -170,28 +158,50 @@ function SectionCard({
   );
 }
 
-export async function BookingResultPage({
-  params,
-  searchParams,
+export function BookingResultPage({
+  bookingId,
   variant = "confirmation",
-}: BookingResultRouteProps & { variant?: "confirmation" | "submission" }) {
-  const { bookingId } = await params;
-  const token = getToken((await searchParams).token);
-  const data = await loadBookingConfirmation(bookingId, token, variant === "submission");
+}: { bookingId: string; variant?: "confirmation" | "submission" }) {
+  const [data, setData] = useState<BookingConfirmationData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [siteContact, setSiteContact] = useState(defaultSiteContactSettings);
+  useEffect(() => {
+    let active = true;
+    let revision = 0;
+    async function load() {
+      const attempt = ++revision;
+      setData(null);
+      setLoading(true);
+      if (!getTravellerSession()?.sessionId) { setLoading(false); return; }
+      try {
+        const response = await (variant === "submission"
+          ? getOfflineBookingSubmission(bookingId) : getBookingConfirmation(bookingId));
+        if (active && attempt === revision) setData(response.data);
+      } catch {
+        // Keep personal data hidden when the session is missing or does not own the booking.
+      } finally {
+        if (active && attempt === revision) setLoading(false);
+      }
+    }
+    void load();
+    const unsubscribe = listenForTravellerSessionChanges(() => { void load(); });
+    void getPublicSiteSettings().then(response => {
+      if (active) setSiteContact(response.data.settings.contact);
+    }).catch(() => {});
+    return () => { active = false; unsubscribe(); };
+  }, [bookingId, variant]);
 
   if (!data) {
     return (
-      <main className="min-h-screen bg-background text-secondary">
+      <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-secondary">
         <Header />
         <section className="mx-auto flex min-h-[70vh] w-full max-w-[760px] flex-col items-center justify-center px-5 text-center">
-          <ShieldCheck className="size-12 text-primary" strokeWidth={1.6} />
+          <ShieldCheck className="size-12 text-brand-text" strokeWidth={1.6} />
           <h1 className="mt-4 font-heading text-[34px] font-bold leading-tight">
-            {variant === "submission" ? "Booking request unavailable" : "Booking confirmation unavailable"}
+            {loading ? "Loading booking details..." : variant === "submission" ? "Booking request unavailable" : "Booking confirmation unavailable"}
           </h1>
           <p className="mt-3 font-sans text-[15px] font-medium leading-[1.7] text-secondary/68">
-            {variant === "submission"
-              ? "This booking request link is missing or no longer available. Please contact our team with your booking reference."
-              : "The confirmation link is missing or has expired. Please contact support with your payment reference if the amount was debited."}
+            {loading ? "Please wait." : "Sign in with the lead traveller's verified mobile number to view this booking. If it is unavailable after sign-in, please contact our team with your booking reference."}
           </p>
           <Link
             href="/tours"
@@ -215,27 +225,24 @@ export async function BookingResultPage({
     data.departure?.returnDate || booking.pricingSnapshot?.returnDate;
   const heroImage = getHeroImage(data);
   const rooms = booking.pricingSnapshot?.accommodation?.rooms || [];
-  const siteContact = await getPublicSiteSettings()
-    .then((response) => response.data.settings.contact)
-    .catch(() => defaultSiteContactSettings);
   const callDisplay = getContactCallDisplay(siteContact);
   const emailAddress = getContactEmailDisplay(siteContact);
 
   return (
-    <main className="min-h-screen bg-background text-secondary">
+    <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-secondary">
       <Header />
 
       <section className="mx-auto w-full max-w-[1180px] px-5 pb-10 pt-10 lg:px-0">
         <nav className="flex flex-wrap items-center gap-2 font-sans text-[13px] font-semibold text-secondary/52">
-          <Link href="/" className="hover:text-primary">
+          <Link href="/" className="hover:text-brand-text">
             Home
           </Link>
           <span>/</span>
-          <Link href="/tours" className="hover:text-primary">
+          <Link href="/tours" className="hover:text-brand-text">
             Tours
           </Link>
           <span>/</span>
-          <span className="text-primary">{isSubmission ? "Booking Submitted" : "Booking Confirmed"}</span>
+          <span className="text-brand-text">{isSubmission ? "Booking Submitted" : "Booking Confirmed"}</span>
         </nav>
 
         <section className="mt-4 overflow-hidden rounded-[8px] border border-primary/15 bg-card shadow-[0_18px_44px_rgba(67,43,27,0.1)]">
@@ -261,7 +268,7 @@ export async function BookingResultPage({
               <p className="mt-2 max-w-[560px] font-sans text-[14px] font-semibold leading-[1.6] text-secondary/68">
                 {isSubmission
                   ? `Thank you. Your booking request for ${tourName} has been received. Payment is pending. Your seats will be confirmed after our team records your payment.`
-                  : `Thank you for booking ${tourName}. Your payment was verified and your seats are confirmed.`}
+                  : getBookingPaymentSummary(booking)}
               </p>
               <span className="mt-4 inline-flex rounded-full bg-emerald-50 px-4 py-2 font-sans text-[13px] font-bold text-emerald-700">
                 {bookingReference}
@@ -311,12 +318,12 @@ export async function BookingResultPage({
                   : "-"
               }
             />
-            <DetailLine label="Email" value={leadGuest?.email || "-"} />
+            <DetailLine label="Email" value={maskBookingEmail(leadGuest?.email)} />
             <DetailLine
               label="Phone"
               value={
                 leadGuest
-                  ? `${leadGuest.countryCode} ${leadGuest.mobileNumber}`
+                  ? maskBookingPhone(leadGuest.mobileNumber)
                   : "-"
               }
             />
@@ -333,6 +340,7 @@ export async function BookingResultPage({
               label={isSubmission ? "Payment Method" : "Razorpay Payment ID"}
               value={isSubmission ? "Offline (Cash / Cheque)" : booking.paymentId || "-"}
             />
+            {isSubmission ? <div><BookingTermExplanation term="offline" /><BookingTermsLink /></div> : null}
             <DetailLine label="Subtotal" value={formatCurrency(booking.subtotal)} />
             <DetailLine label="GST" value={formatCurrency(booking.gstAmount)} />
             <AirfareDisclosure excluded={booking.airfareExcluded} amount={booking.airFlightCharges} addedAt={booking.airfareAddedAt} includedInTotal={booking.airfareIncludedInTotal} />
@@ -346,6 +354,7 @@ export async function BookingResultPage({
                 booking.balanceDueDate
               )}`}
             />
+            {!isSubmission ? <div className="mt-3"><BookingPaymentReceipt booking={booking} tourName={tourName} /></div> : null}
           </SectionCard>
         </section>
 
@@ -367,7 +376,7 @@ export async function BookingResultPage({
                           {room.bedSummary}
                         </span>
                       </span>
-                      <BedDouble className="size-4 shrink-0 text-primary" />
+                      <BedDouble className="size-4 shrink-0 text-brand-text" />
                     </div>
                     <div className="mt-3 grid gap-2">
                       {(room.allocations || []).map((allocation) => (
@@ -409,13 +418,13 @@ export async function BookingResultPage({
                   },
                   {
                     icon: FileText,
-                    title: "Invoice & Receipt",
-                    text: "The team will share tax invoice and travel paperwork.",
+                    title: "Receipt, Invoice & Voucher",
+                    text: getBookingDocumentMessage(booking),
                   },
                   {
                     icon: CalendarCheck,
                     title: "Balance Reminder",
-                    text: "Balance payment reminders follow the tour schedule.",
+                    text: getBookingPaymentSummary(booking),
                   },
                 ]).map((item) => {
                   const Icon = item.icon;
@@ -425,7 +434,7 @@ export async function BookingResultPage({
                       key={item.title}
                       className="flex gap-3 rounded-[8px] border border-border bg-background p-3"
                     >
-                      <span className="grid size-9 shrink-0 place-items-center rounded-[7px] bg-primary/10 text-primary">
+                      <span className="grid size-9 shrink-0 place-items-center rounded-[7px] bg-primary/10 text-brand-text">
                         <Icon className="size-4" strokeWidth={1.8} />
                       </span>
                       <span>
@@ -455,7 +464,7 @@ export async function BookingResultPage({
                         className="object-cover"
                       />
                     ) : (
-                      <UserRound className="m-4 size-6 text-primary" />
+                      <UserRound className="m-4 size-6 text-brand-text" />
                     )}
                   </div>
                   <span className="min-w-0">
@@ -487,7 +496,7 @@ export async function BookingResultPage({
 
         <section className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-primary/15 bg-primary/5 px-4 py-3 font-sans">
           <span className="inline-flex min-w-0 items-center gap-2 text-[13px] font-semibold text-secondary/68">
-            <Clock3 className="size-4 shrink-0 text-primary" />
+            <Clock3 className="size-4 shrink-0 text-brand-text" />
             {isSubmission ? "Please keep this booking reference for future communication." : "Please keep this confirmation ID for future communication."}
           </span>
           <Link

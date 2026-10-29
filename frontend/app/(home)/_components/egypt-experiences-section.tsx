@@ -7,8 +7,6 @@ import { createPortal } from "react-dom";
 import {
   ChevronLeft,
   ChevronRight,
-  ImageIcon,
-  Play,
   Quote,
   Star,
   Volume2,
@@ -22,7 +20,7 @@ import {
   type HomeExperienceCard,
   type PublicExperience,
 } from "@/lib/home-travel";
-import { slugifyRoute } from "@/lib/routes";
+import { getExperienceHref } from "@/lib/routes";
 import { RevealOnView, TextReveal } from "./reveal-on-view";
 
 const egyptCards: HomeExperienceCard[] = [
@@ -154,7 +152,7 @@ function ExperienceCard({
   onOpenGallery,
   onOpenVideo,
 }: ExperienceCardProps) {
-  const wrapperClassName = `group relative block overflow-hidden rounded-[8px] border-0 p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+  const wrapperClassName = `group relative block min-w-0 overflow-hidden rounded-[8px] border-0 p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
     card.featured ? "aspect-[356/452]" : "aspect-[240/220]"
   } ${className}`;
   const content = (
@@ -184,19 +182,11 @@ function ExperienceCard({
         />
       )}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-secondary/85 via-secondary/20 to-transparent" />
-      <span className="pointer-events-none absolute left-4 top-4 inline-flex h-7 items-center gap-1.5 rounded-full bg-white px-3 text-[12px] font-semibold text-secondary">
-        {card.type === "Video" ? (
-          <Play className="size-3 fill-current" strokeWidth={0} />
-        ) : (
-          <ImageIcon className="size-3.5" strokeWidth={2} />
-        )}
-        {card.type}
-      </span>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-5 text-white">
-        <h3 className="max-w-[220px] font-sans text-description font-semibold leading-0.5">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-3 text-white sm:gap-4 sm:p-5">
+        <h3 className="min-w-0 max-w-[220px] flex-1 break-words font-sans text-description font-semibold leading-0.5">
           {card.title}
         </h3>
-        <span className="grid size-8 shrink-0 place-items-center rounded-full border border-white/70 text-white transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:bg-white group-hover:text-primary">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full border border-white/70 text-white transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:bg-white group-hover:text-brand-text">
           <ButtonArrow className="h-3 w-4 brightness-0 invert group-hover:brightness-100 group-hover:invert-0" />
         </span>
       </div>
@@ -207,6 +197,7 @@ function ExperienceCard({
     return (
       <button
         type="button"
+        aria-label={`Play ${card.title} video`}
         onClick={onOpenVideo}
         className={`${wrapperClassName} text-left`}
       >
@@ -219,6 +210,7 @@ function ExperienceCard({
     return (
       <button
         type="button"
+        aria-label={`View ${card.title} photos`}
         onClick={onOpenGallery}
         className={`${wrapperClassName} text-left`}
       >
@@ -232,7 +224,7 @@ function ExperienceCard({
   }
 
   return (
-    <Link href="/experiences" className={wrapperClassName}>
+    <Link prefetch={false} href="/experiences" className={wrapperClassName}>
       {content}
     </Link>
   );
@@ -442,14 +434,7 @@ function getSectionTitle(
 }
 
 function getExperienceDetailHref(experience: HomeExperienceCard | undefined) {
-  const routeValue = experience
-    ? slugifyRoute(experience.destinationName) ||
-      slugifyRoute(experience.title) ||
-      experience.destinationId ||
-      experience.experienceId
-    : "egypt";
-
-  return `/experiences/${encodeURIComponent(routeValue)}`;
+  return experience ? getExperienceHref(experience) : "/experiences";
 }
 
 function TravellerReviewCarousel({
@@ -500,13 +485,13 @@ function TravellerReviewCarousel({
 
   return (
     <div className="flex w-full flex-1 flex-col items-center justify-center text-center">
-      <div className="flex w-full items-center justify-center gap-7 text-primary">
+      <div className="flex w-full items-center justify-center gap-7 text-brand-text">
         <span className="h-px w-14 bg-primary/60" />
         <Quote className="size-9 fill-current" strokeWidth={0} />
         <span className="h-px w-14 bg-primary/60" />
       </div>
       <TextReveal delay={120}>
-        <p className="mt-3 text-[12px] font-semibold uppercase tracking-normal text-primary">
+        <p className="mt-3 text-[12px] font-semibold uppercase tracking-normal text-button-outline">
           Voices from our travellers
         </p>
       </TextReveal>
@@ -532,7 +517,7 @@ function TravellerReviewCarousel({
 
       <span className="mt-5 h-px w-10 bg-primary/50" />
 
-      <div className="mt-4 flex items-center justify-center gap-2 text-primary">
+      <div className="mt-4 flex items-center justify-center gap-2 text-brand-text">
         {Array.from({ length: 5 }).map((_, index) => (
           <Star
             key={index}
@@ -547,7 +532,7 @@ function TravellerReviewCarousel({
         </span>
       </div>
 
-      <p className="mt-3 text-description text-primary">
+      <p className="mt-3 text-description text-brand-text">
         {activeSlide.travellerName}
        
       </p>
@@ -558,7 +543,7 @@ function TravellerReviewCarousel({
             type="button"
             aria-label="Previous traveller review"
             onClick={showPreviousReview}
-            className="grid size-10 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:text-primary"
+            className="grid size-10 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
           >
             <ChevronLeft className="size-4" strokeWidth={2.3} />
           </button>
@@ -568,6 +553,7 @@ function TravellerReviewCarousel({
               <button
                 key={`${slide.id}-dot`}
                 type="button"
+                data-slot="carousel-dot"
                 aria-label={`Show traveller review ${index + 1}`}
                 aria-current={index === boundedIndex ? "true" : undefined}
                 onClick={() => setActiveIndex(index)}
@@ -584,7 +570,7 @@ function TravellerReviewCarousel({
             type="button"
             aria-label="Next traveller review"
             onClick={showNextReview}
-            className="grid size-10 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:text-primary"
+            className="grid size-10 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
           >
             <ChevronRight className="size-4" strokeWidth={2.3} />
           </button>
@@ -673,7 +659,7 @@ function GalleryLightbox({
             type="button"
             aria-label="Close traveller photo gallery"
             onClick={onClose}
-            className="transition-colors hover:text-primary"
+            className="transition-colors hover:text-button-outline text-button-outline"
           >
             <X className="size-7" strokeWidth={2} />
           </button>
@@ -691,7 +677,7 @@ function GalleryLightbox({
                 event.stopPropagation();
                 showPreviousImage();
               }}
-              className="absolute left-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-primary md:left-10"
+              className="absolute left-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-brand-button-dark md:left-10"
             >
               <ChevronLeft className="size-8" strokeWidth={2.4} />
             </button>
@@ -706,7 +692,6 @@ function GalleryLightbox({
               alt={`${title} traveller photo ${boundedIndex + 1}`}
               fill
               priority
-              unoptimized
               sizes="(min-width: 1280px) 1120px, calc(100vw - 3rem)"
               className="object-contain object-center drop-shadow-[0_18px_42px_rgba(0,0,0,0.26)]"
             />
@@ -720,7 +705,7 @@ function GalleryLightbox({
                 event.stopPropagation();
                 showNextImage();
               }}
-              className="absolute right-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-primary md:right-10"
+              className="absolute right-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-brand-button-dark md:right-10"
             >
               <ChevronRight className="size-8" strokeWidth={2.4} />
             </button>
@@ -793,7 +778,7 @@ function VideoLightbox({
               type="button"
               aria-label={isMuted ? "Turn video sound on" : "Turn video sound off"}
               onClick={() => setIsMuted((currentValue) => !currentValue)}
-              className="transition-colors hover:text-primary"
+              className="transition-colors hover:text-button-outline text-button-outline"
             >
               {isMuted ? (
                 <VolumeX className="size-6" strokeWidth={2} />
@@ -805,7 +790,7 @@ function VideoLightbox({
               type="button"
               aria-label="Close video"
               onClick={onClose}
-              className="transition-colors hover:text-primary"
+              className="transition-colors hover:text-button-outline text-button-outline"
             >
               <X className="size-7" strokeWidth={2} />
             </button>
@@ -876,7 +861,7 @@ export function EgyptExperiencesSection({
       ? destinationReviewState.slides
       : fallbackReviewSlides;
   const sectionTitle = getSectionTitle(displayExperiences, hasLiveExperiences);
-  const experiencesHref = getExperienceDetailHref(displayExperiences[0]);
+  const experiencesHref = getExperienceDetailHref(liveExperiences[0]);
   const openGallery =
     galleryImages.length > 0
       ? (index = 0) => setLightboxIndex(index % galleryImages.length)
@@ -939,7 +924,7 @@ export function EgyptExperiencesSection({
       <div className="home-wide-frame mx-auto grid w-full gap-8 px-5 sm:px-0 lg:grid-cols-[minmax(0,848px)_minmax(300px,356px)] lg:justify-between lg:gap-8 [@media(min-width:1300px)]:px-12">
         <div>
           <TextReveal>
-            <p className="text-description font-medium uppercase text-primary">
+            <p className="text-description font-medium uppercase text-button-outline max-lg:text-[12px]">
               Stories | Moments | Memories
             </p>
           </TextReveal>
@@ -959,8 +944,8 @@ export function EgyptExperiencesSection({
           <Button
             variant="outline"
             nativeButton={false}
-            render={<Link href={experiencesHref} />}
-            className="mt-4 h-10 w-full min-w-0 justify-between gap-3 px-5 text-[13px] font-normal lg:hidden"
+            render={<Link prefetch={false} href={experiencesHref} />}
+            className="mt-4 h-10 w-full min-w-0 justify-between gap-3 px-5 text-[16px] font-normal lg:hidden"
           >
             View All Traveller Experiences
             <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />
@@ -997,7 +982,7 @@ export function EgyptExperiencesSection({
           <Button
             variant="outline"
             nativeButton={false}
-            render={<Link href={experiencesHref} />}
+            render={<Link prefetch={false} href={experiencesHref} />}
             className="mb-8 hidden h-11 w-full min-w-0 justify-between gap-3 px-5 text-[14px] font-normal sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:mb-14 lg:flex lg:min-w-[270px]"
           >
             View All Traveller Experiences

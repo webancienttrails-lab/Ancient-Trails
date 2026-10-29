@@ -2,6 +2,40 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+.skip-link {
+  position: fixed;
+  left: 8px;
+  top: 8px;
+  z-index: 2147483647;
+  transform: translateY(calc(-100% - 16px));
+  padding: 12px 16px;
+  border-radius: 6px;
+  background: white;
+  color: #222;
+  font-weight: 600;
+}
+
+.skip-link:focus {
+  transform: none;
+  outline: 3px solid #9b4819;
+  outline-offset: 2px;
+}
+
+#site-header-slot {
+  position: relative;
+  z-index: 2147483646;
+}
+
+/* Reveals must become visible immediately when a keyboard user reaches them. */
+[data-reveal]:focus-within {
+  opacity: 1;
+  filter: none;
+  transform: none;
+  translate: none;
+  scale: none;
+  transition: none;
+}
+
 @keyframes gallery-slide {
   from {
     transform: translateX(3%);
@@ -70,7 +104,13 @@
   --color-secondary-text: var(--secondary-text);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
+  --color-primary: var(--brand-primary);
+  --color-brand-text: var(--brand-primary-text);
+  --color-brand-on-dark: #ffc18b;
+  --color-brand-button-dark: var(--brand-button-dark);
+  --color-brand-button-dark-text: var(--brand-button-dark-text);
+  /* Used explicitly by button controls; never by general website text. */
+  --color-button-outline: #d66a1a;
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -96,36 +136,111 @@
   --card-foreground: #323232;
   --popover: #ffffff;
   --popover-foreground: #323232;
-  --primary: #d47220;
-  --primary-foreground: #ffffff;
+  /* Brand backgrounds and readable text have separate contrast requirements. */
+  --brand-primary: #d47220;
+  --brand-primary-text: #d66a1a;
+  --brand-button-bg: #d47220;
+  --brand-button-text: #111111;
+  --brand-button-dark: #a95000;
+  --brand-button-dark-text: #ffffff;
+  --primary: var(--brand-button-bg);
+  --primary-foreground: var(--brand-button-text);
   --secondary: #323232;
   --secondary-foreground: #ffffff;
-  --secondary-text: #9b3b13;
+  --secondary-text: var(--brand-primary-text);
   --muted: #f7f2ee;
-  --muted-foreground: #9b3b13;
-  --accent: #9b3b13;
+  --muted-foreground: var(--brand-primary-text);
+  --accent: var(--brand-primary-text);
   --accent-foreground: #ffffff;
   --destructive: oklch(0.577 0.245 27.325);
   --border: #e8ded6;
-  --input: #e8ded6;
-  --ring: #d47220;
-  --chart-1: #d47220;
-  --chart-2: #9b3b13;
+  --input: #8a7565;
+  --ring: var(--brand-primary-text);
+  --chart-1: var(--brand-primary);
+  --chart-2: var(--brand-button-dark);
   --chart-3: #323232;
   --chart-4: #e8ded6;
   --chart-5: #f7f2ee;
   --radius: 1.5rem;
   --sidebar: #ffffff;
   --sidebar-foreground: #323232;
-  --sidebar-primary: #d47220;
-  --sidebar-primary-foreground: #ffffff;
+  --sidebar-primary: var(--brand-primary);
+  --sidebar-primary-foreground: var(--brand-button-text);
   --sidebar-accent: #f7f2ee;
-  --sidebar-accent-foreground: #9b3b13;
+  --sidebar-accent-foreground: var(--brand-primary-text);
   --sidebar-border: #e8ded6;
-  --sidebar-ring: #d47220;
+  --sidebar-ring: var(--brand-primary-text);
 }
 
 @media (max-width: 639.98px) {
+  /* Keep phone form controls readable without focus zoom. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]),
+  select,
+  textarea,
+  [role="combobox"] {
+    font-size: 16px !important;
+    min-height: 44px;
+  }
+
+  :is(main, header, [role="dialog"]) :is(button, [role="button"], [role="combobox"], [data-slot="button"], select, input[type="submit"], input[type="button"], input[type="range"]),
+  :is([role="listbox"], [role="menu"]) :is([role="option"], [role="menuitem"]) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  button[data-slot="carousel-dot"] {
+    padding: 19px;
+    background-clip: content-box;
+  }
+
+  button[data-slot="carousel-dot"] {
+    padding: 19px;
+    background-clip: content-box;
+  }
+
+  :is(main, header, [role="dialog"]) :is(input[type="checkbox"], input[type="radio"]) {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+
+  :is(main, header, [role="dialog"]) label:has(> :is(input[type="checkbox"], input[type="radio"])) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .booking-mobile-form,
+  .booking-mobile-form [data-booking-stage],
+  .booking-mobile-form [data-booking-auth],
+  .booking-mobile-form [data-booking-emergency] {
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: transparent;
+  }
+
+  .booking-mobile-form [data-booking-calendar] {
+    width: calc(100vw - 32px);
+    padding: 8px;
+  }
+
+  .booking-mobile-form [data-calendar-days] {
+    gap: 2px;
+  }
+
+  .booking-mobile-form [data-booking-calendar] > div:first-child {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .booking-mobile-form [data-booking-calendar] > div:first-child > label {
+    width: auto;
+  }
+
+  .booking-mobile-form [data-booking-calendar] > div:first-child > button:last-child {
+    justify-self: end;
+  }
+
   html,
   body {
     overflow-x: hidden;
@@ -158,6 +273,70 @@
 .text-eyebrow {
   font-size: var(--font-size-eyebrow);
   line-height: 1.2;
+}
+
+.text-eyebrow.uppercase {
+  color: var(--color-button-outline);
+}
+
+/* Scope brand interactions to controls, leaving decorative primary colors alone. */
+:is(button, a, [role="button"], input[type="submit"]):is(.bg-primary, .bg-brand-button-dark, .bg-button-outline) {
+  background-color: var(--brand-button-bg);
+  border-color: var(--color-button-outline);
+  color: #fff;
+}
+
+:is(button, a, [role="button"], input[type="submit"]):is(.bg-primary, .bg-brand-button-dark, .bg-button-outline):hover {
+  background-color: #fff;
+  border-color: var(--color-button-outline);
+  color: var(--color-button-outline);
+}
+
+:is(button, a, [role="button"]).border-button-outline:not(.bg-button-outline):not(.bg-primary):not(.bg-brand-button-dark) {
+  border-color: var(--color-button-outline);
+  color: var(--color-button-outline);
+}
+
+:is(button, a, [role="button"]).border-button-outline:not(.bg-button-outline):not(.bg-primary):not(.bg-brand-button-dark):hover {
+  background-color: var(--color-button-outline);
+  color: #fff;
+}
+
+:is(button, a, [role="button"]):is(.text-button-outline, .text-brand-text):not([class*="bg-"]):not([class*="border"]),
+:is(button, a, [role="button"]):is(.text-button-outline, .text-brand-text):not([class*="bg-"]):not([class*="border"]):hover {
+  color: var(--color-button-outline);
+}
+
+:is(button, a, [role="button"], input[type="submit"]):is(.bg-primary, .bg-brand-button-dark, .bg-button-outline, .border-button-outline, .text-button-outline),
+.group\/button {
+  transition-duration: 0.3s;
+  transition-timing-function: ease;
+}
+
+/* Defaults for simple native actions; utility classes retain custom control layouts. */
+@layer base {
+  :where(button, [role="button"]):not(:empty):not(.text-left):not([role="combobox"]):not(:has(> :is(div, p, h1, h2, h3, h4, ul, ol, section, article, figure, img, video))) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* Keep shared action contents centered across page-specific alignment utilities. */
+:where([data-slot="button"], .group\/button) {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* Use the existing arrow silhouette with the control's current text color. */
+[data-slot="button-arrow"] {
+  display: inline-block;
+  align-self: center;
+  vertical-align: middle;
+  background-color: currentColor;
+  mask: url("/arrow_right.png") center / 100% 100% no-repeat;
+  filter: none !important;
 }
 
 .text-title {
@@ -199,41 +378,52 @@ button:disabled,
 }
 
 .dark {
+  --brand-primary-text: #ffc18b;
   --background: #161616;
   --foreground: #ffffff;
   --card: #1f1f1f;
   --card-foreground: #ffffff;
   --popover: #1f1f1f;
   --popover-foreground: #ffffff;
-  --primary: #d47220;
-  --primary-foreground: #ffffff;
+  --primary: var(--brand-button-bg);
+  --primary-foreground: var(--brand-button-text);
   --secondary: #323232;
   --secondary-foreground: #ffffff;
-  --secondary-text: #d47220;
+  --secondary-text: var(--brand-primary-text);
   --muted: #2a2a2a;
-  --muted-foreground: #d47220;
-  --accent: #9b3b13;
+  --muted-foreground: var(--brand-primary-text);
+  --accent: var(--brand-primary-text);
   --accent-foreground: #ffffff;
   --destructive: oklch(0.704 0.191 22.216);
   --border: rgb(255 255 255 / 12%);
   --input: rgb(255 255 255 / 16%);
-  --ring: #d47220;
-  --chart-1: #d47220;
-  --chart-2: #9b3b13;
+  --ring: var(--brand-primary-text);
+  --chart-1: var(--brand-primary);
+  --chart-2: var(--brand-button-dark);
   --chart-3: #ffffff;
   --chart-4: #e8ded6;
   --chart-5: #323232;
   --sidebar: #1f1f1f;
   --sidebar-foreground: #ffffff;
-  --sidebar-primary: #d47220;
-  --sidebar-primary-foreground: #ffffff;
+  --sidebar-primary: var(--brand-primary);
+  --sidebar-primary-foreground: var(--brand-button-text);
   --sidebar-accent: #2a2a2a;
-  --sidebar-accent-foreground: #d47220;
+  --sidebar-accent-foreground: var(--brand-primary-text);
   --sidebar-border: rgb(255 255 255 / 12%);
-  --sidebar-ring: #d47220;
+  --sidebar-ring: var(--brand-primary-text);
 }
 
 @layer base {
+  /* Native controls and focus indicators must remain visible on cream surfaces. */
+  :where(input, select, textarea, [role="combobox"]) {
+    accent-color: var(--brand-button-dark);
+  }
+
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
@@ -253,5 +443,11 @@ button:disabled,
   }
   header {
     @apply text-header;
+  }
+}
+
+@layer utilities {
+  :where(input, select, textarea, [role="combobox"]).border-border {
+    border-color: var(--input);
   }
 }

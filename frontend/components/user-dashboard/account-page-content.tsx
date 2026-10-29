@@ -451,7 +451,7 @@ function BookingKycTravellerCard({
             {traveller.type === "child" ? "Child traveller" : "Adult traveller"}
           </p>
         </div>
-        <span className="w-fit rounded-full bg-[#fff4e8] px-3 py-1 font-sans text-[10px] font-bold text-primary">
+        <span className="w-fit rounded-full bg-[#fff4e8] px-3 py-1 font-sans text-[10px] font-bold text-brand-text">
           {documents.length > 0 ? `${documents.length} Uploaded` : "Not Uploaded"}
         </span>
       </div>
@@ -464,7 +464,7 @@ function BookingKycTravellerCard({
               href={getBookingKycDocumentUrl(document.fileUrl)}
               target="_blank"
               rel="noreferrer"
-              className="flex min-w-0 items-center justify-between gap-3 rounded-[6px] border border-border bg-white px-3 py-2 font-sans text-[11px] font-bold text-secondary transition-colors hover:border-primary hover:text-primary"
+              className="flex min-w-0 items-center justify-between gap-3 rounded-[6px] border border-button-outline bg-white px-3 py-2 font-sans text-[11px] font-bold text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
             >
               <span className="min-w-0 truncate">
                 {document.documentLabel}
@@ -501,7 +501,7 @@ function BookingKycTravellerCard({
           type="file"
           accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
           onChange={handleFileChange}
-          className="h-10 rounded-[6px] border border-border bg-white px-3 py-2 font-sans text-[11px] font-semibold text-secondary file:mr-2 file:rounded-[5px] file:border-0 file:bg-primary file:px-3 file:py-1 file:text-[10px] file:font-bold file:text-white"
+          className="h-10 rounded-[6px] border border-border bg-white px-3 py-2 font-sans text-[11px] font-semibold text-secondary file:mr-2 file:rounded-[5px] file:border-0 file:bg-brand-button-dark file:px-3 file:py-1 file:text-[10px] file:font-bold file:text-white"
         />
         <Button
           type="submit"
@@ -517,7 +517,7 @@ function BookingKycTravellerCard({
           <p
             className={cn(
               "font-sans text-[11px] font-semibold",
-              selectedFileName ? "text-primary" : "text-secondary/55"
+              selectedFileName ? "text-brand-text" : "text-secondary/55"
             )}
           >
             {feedback}
@@ -526,7 +526,7 @@ function BookingKycTravellerCard({
             <button
               type="button"
               onClick={handleRemoveSelectedFile}
-              className="flex w-fit items-center gap-1.5 font-sans text-[11px] font-bold text-secondary/55 transition-colors hover:text-primary"
+              className="flex w-fit items-center gap-1.5 font-sans text-[11px] font-bold text-button-outline transition-colors hover:text-button-outline"
             >
               <Trash2 className="size-3.5" strokeWidth={1.8} />
               Remove
@@ -566,7 +566,7 @@ function BookingKycSection({
   return (
     <section className="mt-4 rounded-[8px] border border-border bg-white p-4 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:mt-6 sm:p-6">
       <div className="flex items-start gap-3">
-        <IdCard className="mt-0.5 size-5 text-primary" strokeWidth={1.8} />
+        <IdCard className="mt-0.5 size-5 text-brand-text" strokeWidth={1.8} />
         <div>
           <h2 className="font-heading text-[17px] font-bold text-secondary">
             KYC Documents
@@ -579,7 +579,7 @@ function BookingKycSection({
 
       {isLoading ? (
         <div className="mt-5 rounded-[7px] border border-border bg-background px-4 py-8 text-center">
-          <Loader2 className="mx-auto size-5 animate-spin text-primary" strokeWidth={2} />
+          <Loader2 className="mx-auto size-5 animate-spin text-brand-text" strokeWidth={2} />
           <p className="mt-2 font-sans text-[12px] font-semibold text-secondary/60">
             Loading your bookings...
           </p>
@@ -1032,8 +1032,8 @@ export function AccountPageContent() {
     setStatusMessage("");
     setErrorMessage("");
 
-    if (!/^\d{4,9}$/.test(trimmedOtp)) {
-      const message = "OTP must be 4 to 9 digits.";
+    if (!/^\d{6}$/.test(trimmedOtp)) {
+      const message = "OTP must be 6 digits.";
 
       setErrorMessage(message);
       toast.error("Invalid OTP", message);
@@ -1055,7 +1055,7 @@ export function AccountPageContent() {
   };
 
   const handleMobileOtpChange = (value: string) => {
-    const otpValue = value.replace(/\D/g, "").slice(0, 9);
+    const otpValue = value.replace(/\D/g, "").slice(0, 6);
 
     setMobileOtp(otpValue);
 
@@ -1066,7 +1066,7 @@ export function AccountPageContent() {
     if (
       !isMobileOtpOpen ||
       isVerifyingMobileOtp ||
-      !/^\d{4,9}$/.test(otpValue)
+      !/^\d{6}$/.test(otpValue)
     ) {
       return;
     }
@@ -1105,7 +1105,7 @@ export function AccountPageContent() {
 
   return (
     <>
-      <main className="min-h-screen overflow-x-hidden bg-background text-secondary lg:overflow-x-visible">
+      <main id="main-content" tabIndex={-1} className="min-h-screen overflow-x-hidden bg-background text-secondary lg:overflow-x-visible">
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <UserSidebar activeLabel="My Account" />
 
@@ -1282,7 +1282,7 @@ export function AccountPageContent() {
 
                             {isMobileOtpOpen ? (
                               <p className="font-sans text-[11px] font-medium leading-[1.45] text-secondary/62 sm:col-span-2">
-                                Enter the OTP and your new number will save automatically.
+                                Enter the 6-digit OTP. Code valid for 5 minutes. Your new number will save automatically.
                               </p>
                             ) : null}
                           </div>
@@ -1307,8 +1307,8 @@ export function AccountPageContent() {
                               onClick={() => updateProfileForm("gender", gender)}
                               className={`h-11 px-5 text-[13px] font-medium ${
                                 profileForm.gender === gender
-                                  ? "border-primary text-primary"
-                                  : "border-border text-secondary/70 hover:border-primary hover:text-white"
+                                  ? "border-button-outline text-button-outline"
+                                  : "border-button-outline text-button-outline hover:border-button-outline hover:text-white"
                               }`}
                             >
                               {gender}
@@ -1483,7 +1483,7 @@ export function AccountPageContent() {
                           type="button"
                           variant="outline"
                           onClick={removeProfilePhoto}
-                          className="w-full justify-center gap-2 border-border px-4 font-normal text-secondary/70 hover:border-primary hover:text-white"
+                          className="w-full justify-center gap-2 border-button-outline px-4 font-normal text-button-outline hover:border-button-outline hover:text-white"
                         >
                           <Trash2 className="size-4" strokeWidth={1.8} />
                           Remove Photo

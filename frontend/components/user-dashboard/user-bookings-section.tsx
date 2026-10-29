@@ -40,7 +40,7 @@ const bookingTabs = ["All Bookings", "Upcoming", "Completed", "Cancelled"];
 const pageSize = 5;
 
 const statusClass: Record<UserBookingTripStatus, string> = {
-  Upcoming: "bg-primary/10 text-primary",
+  Upcoming: "bg-primary/10 text-brand-text",
   Completed: "bg-accent/10 text-accent",
   Cancelled: "bg-secondary/10 text-secondary/70",
 };
@@ -133,7 +133,7 @@ function BookingMeta({
 }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-2.5 font-sans text-[12px] font-medium leading-none text-secondary/78 sm:text-[13px]">
-      <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+      <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/10 text-brand-text">
         <Icon className="size-3.5" strokeWidth={1.8} />
       </span>
       <span className="truncate">{children}</span>
@@ -207,7 +207,7 @@ function BookingCard({ booking }: { booking: UserBooking }) {
         <h2 className="max-w-[520px] text-balance font-heading text-[24px] font-bold leading-[1.15] text-secondary sm:text-[28px] xl:text-[27px] 2xl:text-[30px]">
           {getUserBookingTitle(booking)}
         </h2>
-        <div className="mt-4 flex items-center gap-1.5 text-primary">
+        <div className="mt-4 flex items-center gap-1.5 text-brand-text">
           <span className="h-px w-11 bg-primary" />
           <span className="size-1.5 rotate-45 border border-primary" />
           <span className="h-px w-4 bg-primary/55" />
@@ -274,7 +274,7 @@ function BookingCard({ booking }: { booking: UserBooking }) {
           <p className="min-w-0 truncate font-sans text-[12px] font-medium text-secondary/62">
             Due Date
           </p>
-          <p className="min-w-0 whitespace-nowrap text-right font-sans text-[12px] font-bold leading-none text-primary 2xl:text-[13px]">
+          <p className="min-w-0 whitespace-nowrap text-right font-sans text-[12px] font-bold leading-none text-brand-text 2xl:text-[13px]">
             {formatShortDate(booking.booking.balanceDueDate)}
           </p>
         </div>
@@ -283,14 +283,14 @@ function BookingCard({ booking }: { booking: UserBooking }) {
           <p className="min-w-0 truncate font-sans text-[12px] font-medium text-secondary/62">
             KYC Docs
           </p>
-          <p className="min-w-0 whitespace-nowrap text-right font-sans text-[12px] font-bold leading-none text-primary 2xl:text-[13px]">
+          <p className="min-w-0 whitespace-nowrap text-right font-sans text-[12px] font-bold leading-none text-brand-text 2xl:text-[13px]">
             {kycSummary.completedTravellers}/{kycSummary.totalTravellers} travellers
           </p>
         </div>
         <div className="mt-1 grid gap-2">
           <Link
             href={kycHref}
-            className="inline-flex h-10 w-full items-center justify-center gap-3 rounded-[7px] border border-primary bg-white px-4 font-sans text-[13px] font-semibold text-primary transition-colors hover:bg-primary hover:text-white"
+            className="inline-flex h-10 w-full items-center justify-center gap-3 rounded-[7px] border border-button-outline bg-white px-4 font-sans text-[13px] font-semibold text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white"
           >
             <Upload className="size-4" strokeWidth={1.8} />
             Upload KYC
@@ -385,8 +385,8 @@ export function UserBookingsSection() {
               variant="outline"
               className={`h-10 min-w-[126px] border-primary px-5 text-[14px] font-normal leading-none sm:min-w-[132px] sm:text-[15px] ${
                 active
-                  ? "bg-primary text-white shadow-[0_8px_18px_rgba(210,107,28,0.2)] hover:bg-primary hover:text-white"
-                  : "bg-white text-primary hover:bg-white hover:text-primary"
+                  ? "bg-brand-button-dark text-white shadow-[0_8px_18px_rgba(210,107,28,0.2)] hover:bg-brand-button-dark hover:text-white"
+                  : "bg-white text-brand-text hover:bg-white hover:text-brand-text"
               }`}
               onClick={() => {
                 setActiveTab(tab);
@@ -442,7 +442,7 @@ export function UserBookingsSection() {
             aria-label="Previous page"
             variant="outline"
             size="icon-lg"
-            className="text-secondary/55 hover:text-primary"
+            className="text-button-outline hover:text-button-outline"
             disabled={currentPage <= 1}
             onClick={() => setPage((current) => Math.max(1, current - 1))}
           >
@@ -461,7 +461,7 @@ export function UserBookingsSection() {
             aria-label="Next page"
             variant="outline"
             size="icon-lg"
-            className="text-secondary/55 hover:text-primary"
+            className="text-button-outline hover:text-button-outline"
             disabled={currentPage >= totalPages}
             onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
           >

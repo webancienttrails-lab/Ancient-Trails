@@ -63,7 +63,7 @@ export function WhyChooseUsSection() {
     >
       <div className="pointer-events-none absolute -right-14 -top-[118px] hidden h-[clamp(270px,22vw,390px)] w-[clamp(250px,17vw,330px)] overflow-hidden lg:block">
         <Image
-          src="/illustration/Hampi illustration.png"
+          src="/illustration/Hampi illustration.webp"
           alt=""
           fill
           sizes="(min-width: 1024px) 15vw, 0px"
@@ -74,7 +74,7 @@ export function WhyChooseUsSection() {
 
       <div className="pointer-events-none absolute bottom-2 -left-0 hidden h-[clamp(230px,21vw,340px)] w-[clamp(170px,14vw,250px)] overflow-hidden md:block">
         <Image
-          src="/illustration/Khajuraho illustration.png"
+          src="/illustration/Khajuraho illustration.webp"
           alt=""
           fill
           sizes="(min-width: 768px) 14vw, 0px"
@@ -87,7 +87,7 @@ export function WhyChooseUsSection() {
         <div className="text-center">
           <span className="mx-auto block h-px w-[120px] bg-primary" />
           <TextReveal delay={80}>
-            <p className="mt-5 text-description font-medium uppercase text-primary">
+            <p className="mt-5 text-description font-medium uppercase text-button-outline max-lg:text-[12px]">
               Why Choose Us
             </p>
           </TextReveal>
@@ -149,6 +149,7 @@ export function WhyChooseUsSection() {
               <button
                 key={feature.title}
                 type="button"
+                data-slot="carousel-dot"
                 aria-label={`Show ${feature.title}`}
                 aria-pressed={activeFeatureIndex === index}
                 onClick={() => setActiveFeatureIndex(index)}

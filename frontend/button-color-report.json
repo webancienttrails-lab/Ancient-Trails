@@ -1,0 +1,151 @@
+{
+  "scope": "Button colors only. Existing non-button text and general theme text tokens retained.",
+  "palette": {
+    "primaryFilledBackground": "#D47220",
+    "primaryFilledText": "#FFFFFF",
+    "outlinedTextAndBorder": "#D66A1A",
+    "textOnlyButtonText": "#D66A1A"
+  },
+  "contrast": [
+    {
+      "foreground": "#FFFFFF",
+      "background": "#D47220",
+      "use": "Primary filled buttons",
+      "contrastRatio": 3.372,
+      "normalTextAA": false,
+      "largeTextAndNonTextAA": true
+    },
+    {
+      "foreground": "#D66A1A",
+      "background": "#FFFFFF",
+      "use": "Outlined/text-only buttons and inverse hover labels",
+      "contrastRatio": 3.538,
+      "normalTextAA": false,
+      "largeTextAndNonTextAA": true
+    },
+    {
+      "foreground": "#D66A1A",
+      "background": "#F7F2EE",
+      "use": "Outlined/text-only buttons and inverse hover labels",
+      "contrastRatio": 3.182,
+      "normalTextAA": false,
+      "largeTextAndNonTextAA": true
+    },
+    {
+      "foreground": "#D66A1A",
+      "background": "#FFF1E5",
+      "use": "Outlined/text-only buttons and inverse hover labels",
+      "contrastRatio": 3.195,
+      "normalTextAA": false,
+      "largeTextAndNonTextAA": true
+    },
+    {
+      "foreground": "#D66A1A",
+      "background": "#FFF8F0",
+      "use": "Outlined/text-only buttons and inverse hover labels",
+      "contrastRatio": 3.359,
+      "normalTextAA": false,
+      "largeTextAndNonTextAA": true
+    },
+    {
+      "foreground": "#D66A1A",
+      "background": "#FBF0E8",
+      "use": "Outlined/text-only buttons and inverse hover labels",
+      "contrastRatio": 3.156,
+      "normalTextAA": false,
+      "largeTextAndNonTextAA": true
+    },
+    {
+      "foreground": "#D66A1A",
+      "background": "#FCF0E1",
+      "use": "Outlined/text-only buttons and inverse hover labels",
+      "contrastRatio": 3.149,
+      "normalTextAA": false,
+      "largeTextAndNonTextAA": true
+    },
+    {
+      "foreground": "#D66A1A",
+      "background": "#EAD8C5",
+      "use": "Outlined/text-only buttons and inverse hover labels",
+      "contrastRatio": 2.548,
+      "normalTextAA": false,
+      "largeTextAndNonTextAA": false
+    },
+    {
+      "foreground": "#FFFFFF",
+      "background": "#A95000",
+      "use": "Existing dark-orange hover background",
+      "contrastRatio": 5.477,
+      "normalTextAA": true,
+      "largeTextAndNonTextAA": true
+    }
+  ],
+  "limitations": [
+    "Exact requested colors fail WCAG AA for normal-sized text on white and light cream. Colors were retained as requested.",
+    "#D66A1A also fails 3:1 for borders and large text against #EAD8C5.",
+    "Translucent, image-backed, disabled and animated states are not certified by these solid-color calculations."
+  ],
+  "verification": {
+    "productionBuild": "Passed, including TypeScript and static page generation",
+    "focusedLint": "Passed for the shared button component and updated contrast tests",
+    "customChangesLimitedToButtonClassNames": true,
+    "unexpectedChanges": [],
+    "componentStructureAndHandlers": "Unchanged against the pre-task snapshots",
+    "layoutTypographySpacingAndAnimationClasses": "Unchanged against the pre-task snapshots",
+    "regressionTests": {
+      "passed": 35,
+      "failed": 0
+    },
+    "renderedHTMLChecks": [
+      "Send OTP: bg-primary text-white",
+      "Book Now: bg-primary text-white",
+      "Send Message: bg-primary text-white"
+    ],
+    "lint": {
+      "errors": 290,
+      "warnings": 43,
+      "result": "Fails on existing repository errors. No accessibility checks were disabled."
+    }
+  },
+  "modifiedFiles": [
+    "frontend/app/(home)/_components/about-section.tsx",
+    "frontend/app/(home)/_components/egypt-experiences-section.tsx",
+    "frontend/app/about/_components/about-page.tsx",
+    "frontend/app/blog/_components/blog-pages.tsx",
+    "frontend/app/booking/recover/[bookingId]/page.tsx",
+    "frontend/app/contact/page.tsx",
+    "frontend/app/destinations/_components/destinations-page.tsx",
+    "frontend/app/destinations/_components/single-destination-page.tsx",
+    "frontend/app/experiences/_components/experiences-page.tsx",
+    "frontend/app/experts/_components/experts-page.tsx",
+    "frontend/app/faq/_components/faq-page-content.tsx",
+    "frontend/app/tour-calendar/tour-calendar-page.tsx",
+    "frontend/app/tours/[tourId]/_components/download-itinerary-button.tsx",
+    "frontend/app/tours/[tourId]/_components/single-tour-page.tsx",
+    "frontend/app/tours/_components/tours-listing-page.tsx",
+    "frontend/components/auth/profile-completion-prompt.tsx",
+    "frontend/components/bank-transfer-link.tsx",
+    "frontend/components/bank-transfer-page.tsx",
+    "frontend/components/booking-result-page.tsx",
+    "frontend/components/contact/customise-tour-dialog.tsx",
+    "frontend/components/contact/quote-dialog.tsx",
+    "frontend/components/layout/back-to-top-button.tsx",
+    "frontend/components/layout/footer.tsx",
+    "frontend/components/layout/header.tsx",
+    "frontend/components/notifications/notification-bell.tsx",
+    "frontend/components/plan-trip-launcher.tsx",
+    "frontend/components/tours/booking-flow.tsx",
+    "frontend/components/travel-empty-state.tsx",
+    "frontend/components/ui/calendar.tsx",
+    "frontend/components/ui/toast.tsx",
+    "frontend/components/user-dashboard/account-page-content.tsx",
+    "frontend/components/user-dashboard/user-booking-detail-page.tsx",
+    "frontend/components/user-dashboard/user-bookings-section.tsx",
+    "frontend/components/user-dashboard/user-sidebar.tsx",
+    "frontend/components/user-dashboard/wishlist-page-content.tsx",
+    "frontend/app/globals.css",
+    "frontend/components/ui/button.tsx",
+    "frontend/tests/brand-contrast.test.cjs",
+    "frontend/button-color-report.json"
+  ]
+}

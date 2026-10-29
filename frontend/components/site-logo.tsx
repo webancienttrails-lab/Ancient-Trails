@@ -7,5 +7,5 @@ import { defaultSiteLogo, getSiteLogoSnapshot, subscribeSiteLogo } from "@/lib/s
 export function SiteLogo(props: Omit<ImageProps, "src">) {
   const source = useSyncExternalStore(subscribeSiteLogo, getSiteLogoSnapshot, () => defaultSiteLogo);
   const [failed, setFailed] = useState("");
-  return <Image {...props} alt={props.alt} src={source === failed ? defaultSiteLogo : source} unoptimized style={{ objectFit: "contain", maxHeight: props.height ? Number(props.height) : undefined, ...props.style }} onError={event => { setFailed(source); props.onError?.(event); }} />;
+  return <Image {...props} alt={props.alt} src={source === failed ? defaultSiteLogo : source} style={{ objectFit: "contain", maxHeight: props.height ? Number(props.height) : undefined, ...props.style }} onError={event => { setFailed(source); props.onError?.(event); }} />;
 }

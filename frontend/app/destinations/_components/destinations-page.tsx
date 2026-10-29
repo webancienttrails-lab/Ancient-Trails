@@ -1,4 +1,7 @@
 "use client";
+import type { DestinationListData } from "@/lib/travel-page-data";
+
+import { TravelEmptyState } from "@/components/travel-empty-state";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -578,33 +581,50 @@ function getCategoryForRegion(
   return "india";
 }
 
+function getInitialDestinationFilters(search: string, destinations: PublicDestination[]) {
+  const regions = sortRegionOptions(removeGenericRegionOptions(createCountOptions(destinations, getRegionLabels)));
+  const countries = createCountOptions(destinations.filter(item => !isIndiaDestination(item)), getCountryLabels);
+  const region = getInitialRegionOption(search, regions);
+  const country = region ? undefined : getInitialRegionOption(search, countries);
+  const countryDestination = country && destinations.find(item => !isIndiaDestination(item) && matchesOption([country.value], getCountryLabels(item)));
+  const countryRegion = countryDestination ? getRegionLabels(countryDestination)[0] : "";
+  return {
+    search: region || country ? "" : getInitialSearchQuery(search),
+    category: region ? getCategoryForRegion(region.value, destinations) : country ? "international" as CategoryFilter : getInitialCategory(search),
+    regions: region ? [region.value] : countryRegion ? [normalizeKey(countryRegion)] : [],
+    states: country ? [country.value] : [],
+  };
+}
+
 export function DestinationsPage({
+  initialData,
   initialSearchQuery = "",
 }: {
+  initialData?: DestinationListData;
   initialSearchQuery?: string;
 }) {
-  const [destinations, setDestinations] = useState<PublicDestination[]>([]);
-  const [tours, setTours] = useState<PublicTour[]>([]);
-  const [topCityDestinationIds, setTopCityDestinationIds] = useState<string[]>([]);
-  const [searchQuery, setSearchQuery] = useState(() =>
-    getInitialSearchQuery(initialSearchQuery)
-  );
+  const [destinations, setDestinations] = useState<PublicDestination[]>(initialData?.destinations ?? []);
+  const [tours, setTours] = useState<PublicTour[]>(initialData?.tours ?? []);
+  const [topCityDestinationIds, setTopCityDestinationIds] = useState<string[]>(() => getTopCityDestinationIds(initialData?.megaMenu ?? null));
+  const initialFilters = useMemo(() => getInitialDestinationFilters(initialSearchQuery, initialData?.destinations ?? []), [initialData, initialSearchQuery]);
+  const [searchQuery, setSearchQuery] = useState(initialFilters.search);
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>(() =>
-    getInitialCategory(initialSearchQuery)
+    initialFilters.category
   );
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
-  const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
-  const [selectedStates, setSelectedStates] = useState<string[]>([]);
+  const [selectedRegions, setSelectedRegions] = useState<string[]>(initialFilters.regions);
+  const [selectedStates, setSelectedStates] = useState<string[]>(initialFilters.states);
   const [selectedFocuses, setSelectedFocuses] = useState<string[]>([]);
   const [visibleDestinationCount, setVisibleDestinationCount] =
     useState(pageSize);
   const [isMobileInterestOpen, setIsMobileInterestOpen] = useState(false);
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!initialData);
   const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
+    if (initialData) return;
     let isMounted = true;
 
     async function loadDestinations() {
@@ -616,41 +636,12 @@ export function DestinationsPage({
           await Promise.all([
           listPublicDestinations(),
           listPublicMegaMenu().catch(() => null),
-            listPublicTours().catch(() => null),
+          listPublicTours().catch(() => null),
           ]);
 
         if (isMounted) {
           const loadedDestinations = destinationsResponse.data.destinations;
-          const loadedRegionOptions = sortRegionOptions(
-            removeGenericRegionOptions(
-              createCountOptions(loadedDestinations, (destination) =>
-                getRegionLabels(destination)
-              )
-            )
-          );
-          const loadedCountryOptions = createCountOptions(
-            loadedDestinations.filter(
-              (destination) => !isIndiaDestination(destination)
-            ),
-            getCountryLabels
-          );
-          const initialRegion = getInitialRegionOption(
-            initialSearchQuery,
-            loadedRegionOptions
-          );
-          const initialCountry = initialRegion
-            ? undefined
-            : getInitialRegionOption(initialSearchQuery, loadedCountryOptions);
-          const initialCountryDestination = initialCountry
-            ? loadedDestinations.find(
-                (destination) =>
-                  !isIndiaDestination(destination) &&
-                  matchesOption([initialCountry.value], getCountryLabels(destination))
-              )
-            : undefined;
-          const initialCountryRegion = initialCountryDestination
-            ? getRegionLabels(initialCountryDestination)[0]
-            : "";
+          const filters = getInitialDestinationFilters(initialSearchQuery, loadedDestinations);
 
           setDestinations(loadedDestinations);
           setTours(toursResponse?.data.tours || []);
@@ -658,20 +649,10 @@ export function DestinationsPage({
             getTopCityDestinationIds(megaMenuResponse?.data.megaMenu || null)
           );
 
-          if (initialRegion) {
-            setSearchQuery("");
-            setSelectedRegions([initialRegion.value]);
-            setActiveCategory(
-              getCategoryForRegion(initialRegion.value, loadedDestinations)
-            );
-          } else if (initialCountry) {
-            setSearchQuery("");
-            setSelectedRegions(
-              initialCountryRegion ? [normalizeKey(initialCountryRegion)] : []
-            );
-            setSelectedStates([initialCountry.value]);
-            setActiveCategory("international");
-          }
+          setSearchQuery(filters.search);
+          setSelectedRegions(filters.regions);
+          setSelectedStates(filters.states);
+          setActiveCategory(filters.category);
         }
       } catch (error) {
         if (isMounted) {
@@ -689,7 +670,7 @@ export function DestinationsPage({
     return () => {
       isMounted = false;
     };
-  }, [initialSearchQuery]);
+  }, [initialSearchQuery, initialData]);
 
   const topCityDestinationIdSet = useMemo(
     () => new Set(topCityDestinationIds),
@@ -924,7 +905,7 @@ export function DestinationsPage({
     activeSelectedFocuses.length;
 
   return (
-    <main className="min-h-screen bg-background text-secondary">
+    <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-secondary">
       <HeaderBand />
 
       <DestinationTopBar
@@ -985,10 +966,7 @@ export function DestinationsPage({
           ) : null}
 
           {!isLoading && !loadError && filteredDestinations.length === 0 ? (
-            <EmptyState
-              title="No destinations found"
-              message="Try changing search text or unticking a filter."
-            />
+            <TravelEmptyState />
           ) : null}
 
         </section>
@@ -1022,7 +1000,7 @@ export function DestinationsPage({
 
 function HeaderBand() {
   return (
-    <section className="relative h-[120px] overflow-hidden bg-secondary">
+    <section className="relative h-[100px] overflow-hidden bg-secondary lg:h-[120px]">
       <Image
         src="/home assets/Heritage Banner.webp"
         alt="Ancient Trails heritage landscape"
@@ -1058,7 +1036,7 @@ function DestinationTopBar({
             placeholder="Search Destination"
             className="h-9 w-full rounded-full border border-primary/55 bg-white px-5 pr-10 font-sans text-[13px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/50 focus:border-primary focus:ring-3 focus:ring-primary/15"
           />
-          <Search className="pointer-events-none absolute right-4 top-1/2 size-3.5 -translate-y-1/2 text-primary" />
+          <Search className="pointer-events-none absolute right-4 top-1/2 size-3.5 -translate-y-1/2 text-brand-text" />
         </label> */}
       </div>
     </section>
@@ -1139,7 +1117,7 @@ function DestinationSidebar({
           type="button"
           disabled={!hasActiveFilters}
           onClick={onClearAll}
-          className="text-[12px] font-bold text-primary transition-colors hover:text-accent disabled:pointer-events-none disabled:text-secondary/32"
+          className="text-[12px] font-bold text-button-outline transition-colors hover:text-accent disabled:pointer-events-none disabled:text-secondary/32"
         >
           Clear all
         </button>
@@ -1254,7 +1232,7 @@ function MobileDestinationActions({
             <SheetTitle className="flex items-center gap-2 font-heading text-[22px] font-bold text-secondary">
               Pick Interest
               {selectedInterests.length > 0 ? (
-                <span className="rounded-full bg-primary px-2 py-0.5 font-sans text-[12px] font-bold text-white">
+                <span className="rounded-full bg-brand-button-dark px-2 py-0.5 font-sans text-[12px] font-bold text-white">
                   {selectedInterests.length}
                 </span>
               ) : null}
@@ -1290,7 +1268,7 @@ function MobileDestinationActions({
             <SheetTitle className="flex items-center gap-2 font-heading text-[22px] font-bold text-secondary">
               Filters
               {activeFilterCount > 0 ? (
-                <span className="rounded-full bg-primary px-2 py-0.5 font-sans text-[12px] font-bold text-white">
+                <span className="rounded-full bg-brand-button-dark px-2 py-0.5 font-sans text-[12px] font-bold text-white">
                   {activeFilterCount}
                 </span>
               ) : null}
@@ -1320,7 +1298,7 @@ function MobileDestinationActions({
             <button
               type="button"
               disabled={activeFilterCount === 0}
-              className="justify-self-center font-sans text-[15px] font-medium text-secondary underline underline-offset-2 transition-colors hover:text-primary disabled:pointer-events-none disabled:opacity-45"
+              className="justify-self-center font-sans text-[15px] font-medium text-button-outline underline underline-offset-2 transition-colors hover:text-button-outline disabled:pointer-events-none disabled:opacity-45"
               onClick={onClearDestinationFilters}
             >
               Reset Filters
@@ -1356,7 +1334,7 @@ function MobileActionButton({
       className="relative flex min-h-[44px] w-full items-center justify-center gap-1.5 bg-white px-1.5 font-sans text-[14px] font-medium leading-none text-secondary transition-colors active:bg-[#fff8f1]"
       onClick={onClick}
     >
-      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary text-white">
+      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-brand-button-dark text-white">
         <Icon className="size-3.5" strokeWidth={2.2} />
       </span>
       <span className="truncate">{label}</span>
@@ -1380,7 +1358,7 @@ function CategoryFilterGroup({
 }) {
   return (
     <section className="border-b border-[#f1ebe6] pb-4">
-      <h3 className="font-sans text-[14px] font-semibold leading-none text-primary">
+      <h3 className="font-sans text-[14px] font-semibold leading-none text-brand-text">
         Destination Type
       </h3>
       <div className="mt-3 space-y-2">
@@ -1391,12 +1369,12 @@ function CategoryFilterGroup({
             <label
               key={tab.id}
               className={cn(
-                "flex cursor-pointer items-center gap-2.5 font-sans text-[14px] font-medium leading-[1.25] text-secondary/68 transition-colors hover:text-primary",
+                "flex cursor-pointer items-center gap-2.5 font-sans text-[14px] font-medium leading-[1.25] text-secondary/68 transition-colors hover:text-brand-text",
                 variant === "mobile" &&
                   "rounded-[6px] border border-transparent px-2.5 py-2",
                 variant === "mobile" &&
                   isActive &&
-                  "border-primary/30 bg-primary/8 text-primary"
+                  "border-primary/30 bg-primary/8 text-brand-text"
               )}
             >
               <input
@@ -1461,7 +1439,7 @@ function FilterOptionGroup({
           type="button"
           aria-expanded={isOpen}
           onClick={onOpenToggle}
-          className="flex w-full items-center justify-between gap-3 font-sans text-[14px] font-semibold leading-none text-primary"
+          className="flex w-full items-center justify-between gap-3 font-sans text-[14px] font-semibold leading-none text-button-outline"
         >
           <span>{title}</span>
           <ChevronDown
@@ -1473,7 +1451,7 @@ function FilterOptionGroup({
           />
         </button>
       ) : (
-        <h3 className="font-sans text-[14px] font-semibold leading-none text-primary">
+        <h3 className="font-sans text-[14px] font-semibold leading-none text-brand-text">
           {title}
         </h3>
       )}
@@ -1487,12 +1465,12 @@ function FilterOptionGroup({
               <label
                 key={option.value}
                 className={cn(
-                  "flex cursor-pointer items-center gap-2.5 font-sans text-[14px] font-medium leading-[1.25] text-secondary/68 transition-colors hover:text-primary",
+                  "flex cursor-pointer items-center gap-2.5 font-sans text-[14px] font-medium leading-[1.25] text-secondary/68 transition-colors hover:text-brand-text",
                   variant === "mobile" &&
                     "rounded-[6px] border border-transparent px-2.5 py-2",
                   variant === "mobile" &&
                     isActive &&
-                    "border-primary/30 bg-primary/8 text-primary"
+                    "border-primary/30 bg-primary/8 text-brand-text"
                 )}
               >
                 <input
@@ -1521,7 +1499,7 @@ function FilterOptionGroup({
                 <span
                   className={cn(
                     "text-[12px] text-secondary/38",
-                    variant === "mobile" && isActive && "text-primary"
+                    variant === "mobile" && isActive && "text-brand-text"
                   )}
                 >
                   {option.count}
@@ -1563,7 +1541,7 @@ function InterestFilter({
           type="button"
           onClick={handleClearInterests}
           disabled={selectedInterests.length === 0}
-          className="font-sans text-[12px] font-bold leading-none text-secondary/55 transition-colors hover:text-secondary disabled:pointer-events-none disabled:text-secondary/30"
+          className="font-sans text-[12px] font-bold leading-none text-button-outline transition-colors hover:text-secondary disabled:pointer-events-none disabled:text-secondary/30"
         >
           Clear all
         </button>
@@ -1582,7 +1560,7 @@ function InterestFilter({
                 "inline-flex h-9 min-w-[112px] items-center justify-center gap-2 rounded-full border px-5 font-sans text-[15px] font-normal leading-none transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
                 isActive
                   ? "border-primary bg-primary text-white "
-                  : "border-primary/70 bg-white hover:bg-primary hover:text-white"
+                  : "border-button-outline bg-white hover:bg-brand-button-dark hover:text-white text-button-outline"
               )}
             >
               <span className="text-[15px] leading-none">{tab.label}</span>
@@ -1601,12 +1579,12 @@ function ResultsIntro() {
   return (
     <div className="mt-6 grid gap-5 md:grid-cols-[minmax(0,1fr)_300px] md:items-end">
       <div>
-        <p className="font-sans text-description font-medium uppercase leading-none tracking-normal text-primary">
+        <p className="font-sans text-description font-medium uppercase leading-none tracking-normal text-button-outline">
           Explore heritage beyond borders
         </p>
         <h1 className="mt-2 max-w-[420px] font-heading text-title font-bold leading-none tracking-normal text-secondary">
           <span className="block">Find your perfect</span>
-          <span className="block text-primary">experience</span>
+          <span className="block text-brand-text">experience</span>
         </h1>
       </div>
 
@@ -1684,7 +1662,7 @@ function DestinationCard({
     destinationMasonryCardClasses[index % destinationMasonryCardClasses.length];
 
   return (
-    <Link
+    <Link prefetch={false}
       href={getDestinationHref(destination)}
       aria-label={`Customize journey to ${title}`}
       className={cn("group block", masonryClassName)}
@@ -1727,7 +1705,7 @@ function DestinationCard({
             </div>
           ) : null}
           <div className="mt-4 flex items-center justify-between gap-3">
-            <span className="inline-flex h-9 min-w-[124px] items-center justify-center rounded-[24px] border border-primary bg-white px-5 font-sans text-[15px] font-normal leading-none text-secondary transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:border-primary group-hover:bg-primary group-hover:text-white">
+            <span className="inline-flex h-9 min-w-[124px] items-center justify-center rounded-[24px] border border-primary bg-white px-5 font-sans text-[15px] font-normal leading-none text-secondary transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:border-primary group-hover:bg-brand-button-dark group-hover:text-white">
               <span className="truncate">Customize</span>
             </span>
           </div>

@@ -10,7 +10,7 @@ export function SpecialisedToursSection() {
       <div className="home-wide-frame mx-auto grid w-full items-center gap-6 px-5 sm:gap-10 sm:px-0 md:grid-cols-[minmax(300px,420px)_minmax(0,1fr)] md:gap-12 lg:grid-cols-[540px_minmax(0,1fr)] lg:gap-16 [@media(min-width:1300px)]:px-12">
         <div className="grid w-full max-w-[540px] gap-7 sm:grid-cols-[1fr_1fr] lg:grid-cols-[240px_265px]">
           <div className="grid gap-7">
-            <Link
+            <Link prefetch={false}
               href="/tours"
               aria-label="View all specialised tours"
               className="group/photo relative h-[214px] overflow-hidden rounded-[8px] sm:h-[190px]"
@@ -24,7 +24,7 @@ export function SpecialisedToursSection() {
               />
             </Link>
 
-            <Link
+            <Link prefetch={false}
               href="/tours"
               aria-label="View all specialised tours"
               className="group/photo relative hidden h-[190px] overflow-hidden rounded-[8px] sm:block"
@@ -39,7 +39,7 @@ export function SpecialisedToursSection() {
             </Link>
           </div>
 
-          <Link
+          <Link prefetch={false}
             href="/tours"
             aria-label="View all specialised tours"
             className="group/photo relative hidden min-h-[320px] overflow-hidden rounded-[8px] sm:block sm:min-h-[407px]"
@@ -54,9 +54,9 @@ export function SpecialisedToursSection() {
           </Link>
         </div>
 
-        <div className="w-full max-w-[850px]">
+        <div className="min-w-0 w-full max-w-[850px]">
           <TextReveal>
-            <p className="text-description font-medium uppercase text-primary max-sm:!text-[12px]">
+            <p className="text-description font-medium uppercase text-button-outline max-sm:!text-[12px]">
               For Focused Explorers
             </p>
           </TextReveal>
@@ -85,8 +85,8 @@ export function SpecialisedToursSection() {
 
           <Button
             nativeButton={false}
-           render={<Link href="/specialised-tours" />}
-            className="mt-6 h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:mt-10 sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:mt-14 lg:min-w-[250px]"
+           render={<Link prefetch={false} href="/specialised-tours" />}
+            className="mt-6 h-auto min-h-11 w-full min-w-0 max-w-full justify-between gap-4 whitespace-normal px-5 py-2 text-left text-[15px] font-normal sm:mt-10 sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:mt-14 lg:h-11 lg:min-w-[250px] lg:whitespace-nowrap lg:py-0"
           >
             View All Specialised Tours
             <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />

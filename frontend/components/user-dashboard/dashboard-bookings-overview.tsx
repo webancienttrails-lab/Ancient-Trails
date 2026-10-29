@@ -35,7 +35,7 @@ const statConfig = [
     label: "Upcoming",
     description: "Trips booked",
     icon: BriefcaseBusiness,
-    tone: "bg-primary/12 text-primary",
+    tone: "bg-primary/12 text-brand-text",
   },
   {
     label: "Completed",
@@ -53,7 +53,7 @@ const statConfig = [
     label: "Total",
     description: "Bookings made",
     icon: Bookmark,
-    tone: "bg-primary/12 text-primary",
+    tone: "bg-primary/12 text-brand-text",
   },
 ];
 
@@ -164,7 +164,7 @@ function EmptyUpcomingTours() {
         className="pointer-events-none object-cover object-right opacity-[0.12] mix-blend-multiply"
       />
       <div className="relative mx-auto flex max-w-[640px] flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
-        <span className="grid size-16 shrink-0 place-items-center rounded-full bg-primary/12 text-primary">
+        <span className="grid size-16 shrink-0 place-items-center rounded-full bg-primary/12 text-brand-text">
           <MapPin className="size-8" strokeWidth={1.8} />
         </span>
         <div>

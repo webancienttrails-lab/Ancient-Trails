@@ -1,4 +1,11 @@
 import { Header } from "@/components/layout/header";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata({
+  title: "Privacy Policy",
+  description: "Learn how Ancient Trails collects, uses and protects your personal information when you browse tours, create an account, contact our team or make a booking.",
+  path: "/privacy-policy",
+});
 import {
   defaultSiteContactSettings,
   getContactEmailDisplay,
@@ -24,7 +31,7 @@ export default async function PrivacyPolicyPage() {
       </div>
 
       {/* Content */}
-      <main className="border-t border-primary/10">
+      <main id="main-content" tabIndex={-1} className="border-t border-primary/10">
         <div className="mx-auto w-full max-w-275 px-5 py-12 sm:px-8 lg:py-16">
           <h1 className="font-heading text-[32px] font-bold leading-tight text-secondary sm:text-[46px] sm:leading-none">
             Privacy Policy
@@ -155,7 +162,7 @@ export default async function PrivacyPolicyPage() {
                 You can opt out of receiving promotional emails by contacting{" "}
                 <a
                   href="mailto:unsubscribe@ancient-trails.com"
-                  className="font-medium text-primary"
+                  className="font-medium text-brand-text"
                 >
                   unsubscribe@ancient-trails.com
                 </a>
@@ -210,7 +217,7 @@ export default async function PrivacyPolicyPage() {
                   Phone:{" "}
                   <a
                     href={getTelephoneHref(phone)}
-                    className="font-medium text-primary"
+                    className="font-medium text-brand-text"
                   >
                     {phone}
                   </a>
@@ -220,7 +227,7 @@ export default async function PrivacyPolicyPage() {
                   Email:{" "}
                   <a
                     href={getMailtoHref(email)}
-                    className="font-medium text-primary"
+                    className="font-medium text-brand-text"
                   >
                     {email}
                   </a>

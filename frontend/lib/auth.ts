@@ -1,5 +1,5 @@
 import { disableBrowserPush } from "@/lib/notification-push";
-import { apiRequest } from "@/lib/api";
+import { ApiError, apiRequest } from "@/lib/api";
 
 export type TravellerUser = {
   id: string;
@@ -28,7 +28,7 @@ export type VerifyTravellerOtpPayload = {
 };
 
 export type TravellerSession = {
-  token: string;
+  sessionId: string;
   user: TravellerUser;
 };
 
@@ -95,6 +95,7 @@ export type UpdateTravellerProfilePayload = {
 };
 
 const travellerTokenKey = "ancient_trails_token";
+const travellerSessionIdKey = "ancient_trails_session_id";
 const travellerUserKey = "ancient_trails_user";
 const travellerSessionEvent = "ancient-trails-session-change";
 export const travellerProfileCompletionPath = "/me/account";
@@ -161,7 +162,7 @@ export async function requestTravellerProfileMobileChangeOtp(
 ) {
   const session = getTravellerSession();
 
-  if (!session?.token) {
+  if (!session?.sessionId) {
     throw new Error("Please sign in to verify your mobile number.");
   }
 
@@ -170,7 +171,7 @@ export async function requestTravellerProfileMobileChangeOtp(
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${session.token}`,
+        "X-Session-Id": session.sessionId,
       },
       body: JSON.stringify({ mobileNumber }),
     }
@@ -182,7 +183,7 @@ export async function verifyTravellerProfileMobileChangeOtp(
 ) {
   const session = getTravellerSession();
 
-  if (!session?.token) {
+  if (!session?.sessionId) {
     throw new Error("Please sign in to verify your mobile number.");
   }
 
@@ -191,7 +192,7 @@ export async function verifyTravellerProfileMobileChangeOtp(
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${session.token}`,
+        "X-Session-Id": session.sessionId,
       },
       body: JSON.stringify(payload),
     }
@@ -203,65 +204,53 @@ export async function updateTravellerProfile(
 ) {
   const session = getTravellerSession();
 
-  if (!session?.token) {
+  if (!session?.sessionId) {
     throw new Error("Please sign in to update your profile.");
   }
 
   return apiRequest<TravellerSession>("/api/auth/traveller/profile", {
     method: "PATCH",
     headers: {
-      Authorization: `Bearer ${session.token}`,
+      "X-Session-Id": session.sessionId,
     },
     body: JSON.stringify(payload),
   });
 }
 
 export function saveTravellerSession(session: TravellerSession): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(travellerTokenKey, session.token);
+  if (typeof window === "undefined") return;
+  if (!session.sessionId || !session.user?.id) throw new Error("Invalid session response. Please sign in again.");
+  // Only a non-secret identifier and display profile are cached; credentials are HttpOnly.
+  window.localStorage.removeItem(travellerTokenKey);
+  window.localStorage.setItem(travellerSessionIdKey, session.sessionId);
   window.localStorage.setItem(travellerUserKey, JSON.stringify(session.user));
   window.dispatchEvent(new Event(travellerSessionEvent));
 }
 
 export function getTravellerSession(): TravellerSession | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const token = window.localStorage.getItem(travellerTokenKey);
+  if (typeof window === "undefined") return null;
+  // Purge credentials left by older builds instead of keeping a readable JWT.
+  window.localStorage.removeItem(travellerTokenKey);
+  const sessionId = window.localStorage.getItem(travellerSessionIdKey);
   const user = window.localStorage.getItem(travellerUserKey);
-
-  if (!token || !user) {
-    return null;
-  }
-
-  try {
-    return {
-      token,
-      user: JSON.parse(user) as TravellerUser,
-    };
-  } catch {
-    clearTravellerSession();
-
-    return null;
-  }
+  if (!sessionId || !user) return null;
+  try { return { sessionId, user: JSON.parse(user) as TravellerUser }; }
+  catch { clearTravellerSession(); return null; }
 }
 
 export function clearTravellerSession(): void {
-  if (typeof window === "undefined") {
-    return;
-  }
+  if (typeof window === "undefined") return;
+  const session = getTravellerSessionForPush();
+  if (session) void disableBrowserPush(session).catch(() => {});
+  removeTravellerSessionFromBrowser();
+}
 
-  const pushToken = window.localStorage.getItem(travellerTokenKey);
-  let pushUserId = "";
-  try { pushUserId = JSON.parse(window.localStorage.getItem(travellerUserKey) || "{}").id || ""; } catch {}
-  if (pushToken && pushUserId) void disableBrowserPush({ token: pushToken, user: { id: pushUserId } });
-  window.localStorage.removeItem(travellerTokenKey);
-  window.localStorage.removeItem(travellerUserKey);
-  window.dispatchEvent(new Event(travellerSessionEvent));
+function getTravellerSessionForPush(): TravellerSession | null {
+  try {
+    const sessionId = window.localStorage.getItem(travellerSessionIdKey);
+    const user = JSON.parse(window.localStorage.getItem(travellerUserKey) || "null");
+    return sessionId && user?.id ? { sessionId, user } : null;
+  } catch { return null; }
 }
 
 export function listenForTravellerSessionChanges(listener: () => void): () => void {
@@ -270,7 +259,7 @@ export function listenForTravellerSessionChanges(listener: () => void): () => vo
   }
 
   const handleStorage = (event: StorageEvent) => {
-    if (event.key === travellerTokenKey || event.key === travellerUserKey) {
+    if (event.key === travellerTokenKey || event.key === travellerSessionIdKey || event.key === travellerUserKey) {
       listener();
     }
   };
@@ -282,4 +271,51 @@ export function listenForTravellerSessionChanges(listener: () => void): () => vo
     window.removeEventListener(travellerSessionEvent, listener);
     window.removeEventListener("storage", handleStorage);
   };
+}
+
+let refreshTravellerFlight: Promise<TravellerSession | null> | null = null;
+let logoutTravellerFlight: Promise<void> | null = null;
+
+function removeTravellerSessionFromBrowser() {
+  window.localStorage.removeItem(travellerTokenKey);
+  window.localStorage.removeItem(travellerSessionIdKey);
+  window.localStorage.removeItem(travellerUserKey);
+  window.dispatchEvent(new Event(travellerSessionEvent));
+}
+
+export async function refreshTravellerSession(expectedSessionId: string): Promise<TravellerSession | null> {
+  const current = getTravellerSession();
+  if (!current || logoutTravellerFlight || current.sessionId !== expectedSessionId) return null;
+  if (!refreshTravellerFlight) {
+    refreshTravellerFlight = (async () => {
+      try {
+        const result = await apiRequest<TravellerSession>("/api/auth/refresh", {
+          method: "POST", headers: { "X-Requested-With": "XMLHttpRequest", "X-Session-Id": expectedSessionId }, body: JSON.stringify({ audience: "traveller" }),
+        });
+        if (logoutTravellerFlight || getTravellerSession()?.sessionId !== expectedSessionId || result.data.user.id !== current.user.id || result.data.sessionId !== expectedSessionId) return null;
+        saveTravellerSession(result.data);
+        return result.data;
+      } catch (error) {
+        if (error instanceof ApiError && error.statusCode === 401 && getTravellerSession()?.sessionId === expectedSessionId) clearTravellerSession();
+        throw error;
+      }
+    })().finally(() => { refreshTravellerFlight = null; });
+  }
+  return refreshTravellerFlight;
+}
+
+export function logoutTravellerSession(): Promise<void> {
+  if (logoutTravellerFlight) return logoutTravellerFlight;
+  const session = getTravellerSession();
+  if (!session) { clearTravellerSession(); return Promise.resolve(); }
+  void disableBrowserPush(session).catch(() => {});
+  logoutTravellerFlight = (async () => {
+    try {
+      await apiRequest("/api/auth/logout", { method: "POST", headers: { "X-Session-Id": session.sessionId }, body: JSON.stringify({ audience: "traveller" }) });
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.statusCode !== 401) throw error;
+    }
+    if (!getTravellerSession() || getTravellerSession()?.sessionId === session.sessionId) removeTravellerSessionFromBrowser();
+  })().finally(() => { logoutTravellerFlight = null; });
+  return logoutTravellerFlight;
 }

@@ -1,0 +1,68 @@
+[
+  {
+    "asset": "photographers.webp",
+    "tool": "Built-in image_gen",
+    "prompt": "Generate a single photorealistic wide landscape website photograph, aspect ratio 2.6:1, ideally 1792 x 688 pixels. Scene: A professional travel photographer seen from the back-left, wearing an olive safari jacket, brown wide-brim hat and dark backpack, leaning into a DSLR camera on a tripod in the left third foreground. Behind him, monumental intricately carved ancient South Indian stone temples and shrines at Hampi stretch across the frame, under dramatic golden sunset clouds. He is photographing the temples, candid documentary travel photography. Art direction: warm golden sandstone, earthy rich browns, realistic skin and textures, premium Indian heritage travel website. Match the look of a refined editorial travel photograph, crisp and believable. Fill the entire rectangular frame edge to edge, subjects composed for a shallow panoramic crop. No text, no captions, no typography, no logo, no watermarks, no graphic overlays or badges. This is one photograph only, not a collage."
+  },
+  {
+    "asset": "dancers.webp",
+    "tool": "Built-in image_gen",
+    "prompt": "Generate a single photorealistic wide landscape website photograph, aspect ratio 2.6:1, ideally 1792 x 688 pixels. Scene: An Indian Bharatanatyam classical dancer in a vivid red and gold silk costume and traditional jewelry, graceful raised arm dance pose, standing on the right half of the frame among richly carved brown stone temple columns at an ancient South Indian heritage site. Beautiful realistic carved temple pillars and bas reliefs fill the backdrop. Candid editorial travel photograph, warm afternoon light. Art direction: warm golden sandstone, earthy rich browns, realistic skin and textures, premium Indian heritage travel website. Match the look of a refined editorial travel photograph, crisp and believable. Fill the entire rectangular frame edge to edge, subjects composed for a shallow panoramic crop. No text, no captions, no typography, no logo, no watermarks, no graphic overlays or badges. This is one photograph only, not a collage."
+  },
+  {
+    "asset": "artists.webp",
+    "tool": "Built-in image_gen",
+    "prompt": "Generate a single photorealistic wide landscape website photograph, aspect ratio 2.6:1, ideally 1792 x 688 pixels. Scene: An artist woman seen from behind-left seated at an easel outdoors on the left third of the frame, wearing a cream casual shirt and brown sunhat, painting an intricate ancient Hampi stone temple on canvas. Real ancient carved temple towers fill the midground and right of the photograph, warm golden late afternoon light. Candid editorial travel photograph with natural detail. Art direction: warm golden sandstone, earthy rich browns, realistic skin and textures, premium Indian heritage travel website. Match the look of a refined editorial travel photograph, crisp and believable. Fill the entire rectangular frame edge to edge, subjects composed for a shallow panoramic crop. No text, no captions, no typography, no logo, no watermarks, no graphic overlays or badges. This is one photograph only, not a collage."
+  },
+  {
+    "asset": "bikers.webp",
+    "tool": "Built-in image_gen",
+    "prompt": "Generate a single photorealistic wide landscape website photograph, aspect ratio 2.6:1, ideally 1792 x 688 pixels. Scene: A small group of four touring motorcyclists with protective full-face helmets and adventure motorcycle jackets riding away along a quiet paved winding road toward ancient Hampi temple ruins. Foreground rider on the right, other riders toward the left center distance. Huge rounded granite boulders, lush palms and scrubland, an ancient Dravidian temple tower in the center background, clear blue sky, sunny Indian countryside. Documentary adventure travel photography. Art direction: warm golden sandstone, earthy rich browns, realistic skin and textures, premium Indian heritage travel website. Match the look of a refined editorial travel photograph, crisp and believable. Fill the entire rectangular frame edge to edge, subjects composed for a shallow panoramic crop. No text, no captions, no typography, no logo, no watermarks, no graphic overlays or badges. This is one photograph only, not a collage."
+  },
+  {
+    "asset": "kids.webp",
+    "tool": "Built-in image_gen",
+    "prompt": "Generate a single photorealistic wide landscape website photograph, aspect ratio 2.6:1, ideally 1792 x 688 pixels. Scene: A small school group of Indian children approximately 10 to 13 years old, seen from behind with colorful school backpacks and blue school caps in the left foreground, looking attentively at intricately carved ancient South Indian stone temple walls on the right. A local heritage guide in a light shirt gestures toward the carvings. Respectful educational travel documentary photograph, natural warm daylight. Art direction: warm golden sandstone, earthy rich browns, realistic skin and textures, premium Indian heritage travel website. Match the look of a refined editorial travel photograph, crisp and believable. Fill the entire rectangular frame edge to edge, subjects composed for a shallow panoramic crop. No text, no captions, no typography, no logo, no watermarks, no graphic overlays or badges. This is one photograph only, not a collage."
+  },
+  {
+    "asset": "foreigners.webp",
+    "tool": "Built-in image_gen",
+    "prompt": "Generate a single photorealistic wide landscape website photograph, aspect ratio 2.6:1, ideally 1792 x 688 pixels. Scene: A small diverse group of five adult international travelers in casual breathable travel clothes, sun hats and backpacks, smiling and listening to their Indian heritage guide at ancient Hampi temple ruins. Travelers fill the right half foreground while intricate ancient South Indian temple stone carvings and columns fill the left and backdrop. Natural warm sunny light, premium candid editorial travel photography. Art direction: warm golden sandstone, earthy rich browns, realistic skin and textures, premium Indian heritage travel website. Match the look of a refined editorial travel photograph, crisp and believable. Fill the entire rectangular frame edge to edge, subjects composed for a shallow panoramic crop. No text, no captions, no typography, no logo, no watermarks, no graphic overlays or badges. This is one photograph only, not a collage."
+  },
+  {
+    "asset": "hero-sketch.webp",
+    "tool": "Built-in image_gen",
+    "transparent": true,
+    "prompt": "Generate a single delicate sepia fine-line travel illustration on a genuinely transparent background. Wide panoramic line drawing of an ancient South Indian stone temple complex with a central ornate temple tower, several smaller carved shrines, a few tiny flying birds and a soft extremely pale peach watercolor haze behind the stone silhouettes. Wide horizontal composition, approximately 2.5:1 aspect ratio. Style: refined architectural pencil and ink sketch, warm light copper brown strokes, understated heritage travel brochure artwork, subtle fine hatching, no solid dark fills, no strong shadows, no thick cartoon outlines. Keep the entire drawing within the image with generous transparent margin. No text, no letters, no logos, no badges, no border. This will be used as faint decorative line art on a pure white website; the background must be transparent, not white or beige paper."
+  },
+  {
+    "asset": "dancer-sketch.webp",
+    "tool": "Built-in image_gen",
+    "transparent": true,
+    "prompt": "Generate a single delicate sepia fine-line travel illustration on a genuinely transparent background. A single graceful Indian classical Bharatanatyam dancer in a traditional flowing costume, full length from head to toes, one hand raised and one arm extended, intricate fine contour linework in the fabric. Tall composition. Style: refined architectural pencil and ink sketch, warm light copper brown strokes, understated heritage travel brochure artwork, subtle fine hatching, no solid dark fills, no strong shadows, no thick cartoon outlines. Keep the entire drawing within the image with generous transparent margin. No text, no letters, no logos, no badges, no border. This will be used as faint decorative line art on a pure white website; the background must be transparent, not white or beige paper."
+  },
+  {
+    "asset": "artist-sketch.webp",
+    "tool": "Built-in image_gen",
+    "transparent": true,
+    "prompt": "Generate a single delicate sepia fine-line travel illustration on a genuinely transparent background. A small still life of three paintbrushes and two pencils standing upright in a simple artist's jar, with the faint outline of a carved Indian temple tower in the background on the right. Tall composition. Style: refined architectural pencil and ink sketch, warm light copper brown strokes, understated heritage travel brochure artwork, subtle fine hatching, no solid dark fills, no strong shadows, no thick cartoon outlines. Keep the entire drawing within the image with generous transparent margin. No text, no letters, no logos, no badges, no border. This will be used as faint decorative line art on a pure white website; the background must be transparent, not white or beige paper."
+  },
+  {
+    "asset": "biker-sketch.webp",
+    "tool": "Built-in image_gen",
+    "transparent": true,
+    "prompt": "Generate a single delicate sepia fine-line travel illustration on a genuinely transparent background. An adventure motorcyclist wearing a protective helmet and jacket, riding toward the viewer on a quiet winding road with small rocky Hampi hills behind. Delicate fine line contours, portrait composition. Style: refined architectural pencil and ink sketch, warm light copper brown strokes, understated heritage travel brochure artwork, subtle fine hatching, no solid dark fills, no strong shadows, no thick cartoon outlines. Keep the entire drawing within the image with generous transparent margin. No text, no letters, no logos, no badges, no border. This will be used as faint decorative line art on a pure white website; the background must be transparent, not white or beige paper."
+  },
+  {
+    "asset": "kids-sketch.webp",
+    "tool": "Built-in image_gen",
+    "transparent": true,
+    "prompt": "Generate a single delicate sepia fine-line travel illustration on a genuinely transparent background. Two happy Indian school children aged around ten, a boy and a girl, standing with school backpacks in front of a faint ancient Indian temple tower. Full body, charming realistic pencil line drawing, portrait composition. Style: refined architectural pencil and ink sketch, warm light copper brown strokes, understated heritage travel brochure artwork, subtle fine hatching, no solid dark fills, no strong shadows, no thick cartoon outlines. Keep the entire drawing within the image with generous transparent margin. No text, no letters, no logos, no badges, no border. This will be used as faint decorative line art on a pure white website; the background must be transparent, not white or beige paper."
+  },
+  {
+    "asset": "traveller-sketch.webp",
+    "tool": "Built-in image_gen",
+    "transparent": true,
+    "prompt": "Generate a single delicate sepia fine-line travel illustration on a genuinely transparent background. An adult traveler seen from behind, full length, wearing a brimmed sun hat and a large backpack, looking towards ancient Indian heritage ruins. Fine contour linework, portrait composition. Style: refined architectural pencil and ink sketch, warm light copper brown strokes, understated heritage travel brochure artwork, subtle fine hatching, no solid dark fills, no strong shadows, no thick cartoon outlines. Keep the entire drawing within the image with generous transparent margin. No text, no letters, no logos, no badges, no border. This will be used as faint decorative line art on a pure white website; the background must be transparent, not white or beige paper."
+  }
+]

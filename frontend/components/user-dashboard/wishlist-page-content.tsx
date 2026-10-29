@@ -1,5 +1,8 @@
 "use client";
 
+import { TourPriceNote } from "@/components/tours/tour-price-note";
+import { isAirfareExcluded } from "@/lib/airfare";
+
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -40,6 +43,7 @@ import {
 } from "@/lib/wishlist";
 
 type WishlistTourDisplay = {
+  airfareExtra?: boolean;
   categoryLabel: string;
   description: string;
   destinationLabel: string;
@@ -248,6 +252,7 @@ function buildTourDisplay({
     image: getTourImage(tour, destination?.bannerImage || fallbackImage),
     nextDepartureLabel: formatDate(nextDeparture?.departureDate || null),
     priceLabel: formatPrice(getLowestPrice(departures)),
+    airfareExtra: isAirfareExcluded(tour),
     savedAt,
     title: tour.tourName,
     totalSeatsLabel:
@@ -327,7 +332,7 @@ function WishlistCard({
           aria-pressed={true}
           variant="outline"
           size="icon-lg"
-          className="absolute right-3 top-3 rounded-full bg-white/95 text-primary shadow-[0_10px_22px_rgba(50,50,50,0.16)]"
+          className="absolute right-3 top-3 rounded-full bg-white/95 text-button-outline shadow-[0_10px_22px_rgba(50,50,50,0.16)]"
           onClick={() => onRemove(tour)}
         >
           <Heart className="size-5 fill-current" strokeWidth={0} />
@@ -336,10 +341,10 @@ function WishlistCard({
 
       <div className="min-w-0 py-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex h-6 items-center rounded-[4px] border border-primary bg-white px-3 font-sans text-[10px] font-bold uppercase text-primary">
+          <span className="inline-flex h-6 items-center rounded-[4px] border border-primary bg-white px-3 font-sans text-[10px] font-bold uppercase text-brand-text">
             Group Tour
           </span>
-          <span className="inline-flex h-6 items-center rounded-[4px] border border-primary/35 bg-[#fff2e9] px-3 font-sans text-[10px] font-bold uppercase text-primary">
+          <span className="inline-flex h-6 items-center rounded-[4px] border border-primary/35 bg-[#fff2e9] px-3 font-sans text-[10px] font-bold uppercase text-brand-text">
             {tour.tourId}
           </span>
           <span className="inline-flex h-6 items-center rounded-[4px] border border-accent/35 bg-accent/10 px-3 font-sans text-[10px] font-semibold text-accent">
@@ -353,7 +358,7 @@ function WishlistCard({
 
         <Link
           href={tour.href}
-          className="mt-3 inline-flex items-center gap-1.5 font-sans text-[12px] font-bold text-primary underline-offset-4 hover:underline"
+          className="mt-3 inline-flex items-center gap-1.5 font-sans text-[12px] font-bold text-brand-text underline-offset-4 hover:underline"
         >
           All Inclusive
           <Info className="size-3.5" strokeWidth={1.9} />
@@ -369,7 +374,7 @@ function WishlistCard({
         </div>
 
         <div className="mt-5">
-          <p className="font-sans text-[12px] font-bold text-primary">
+          <p className="font-sans text-[12px] font-bold text-brand-text">
             Tour Highlights
           </p>
           <p className="mt-2 line-clamp-2 font-sans text-[12px] leading-[1.55] text-secondary/75">
@@ -377,7 +382,7 @@ function WishlistCard({
           </p>
           <Link
             href={tour.href}
-            className="mt-1 inline-flex font-sans text-[12px] font-semibold text-secondary underline-offset-4 hover:text-primary hover:underline"
+            className="mt-1 inline-flex font-sans text-[12px] font-semibold text-secondary underline-offset-4 hover:text-brand-text hover:underline"
           >
             More
           </Link>
@@ -392,6 +397,7 @@ function WishlistCard({
           <p className="mt-2 font-sans text-[22px] font-bold leading-none text-secondary">
             {tour.priceLabel}
           </p>
+          {/\d/.test(tour.priceLabel) ? <TourPriceNote airfareExtra={tour.airfareExtra} /> : null}
           <p className="mt-5 font-sans text-[11px] font-medium text-secondary/60">
             Next departure
           </p>
@@ -415,7 +421,7 @@ function WishlistCard({
           </Link>
           <button
             type="button"
-            className="mx-auto mt-4 flex items-center justify-center gap-2 font-sans text-[12px] font-medium text-secondary/60 transition-colors hover:text-primary"
+            className="mx-auto mt-4 flex items-center justify-center gap-2 font-sans text-[12px] font-medium text-button-outline transition-colors hover:text-button-outline"
             onClick={() => onRemove(tour)}
           >
             <Trash2 className="size-3.5" strokeWidth={1.8} />
@@ -443,7 +449,7 @@ function WishlistSkeleton() {
 function EmptyWishlist({ message }: { message: string }) {
   return (
     <section className="rounded-[8px] border border-dashed border-[#ead8c5] bg-white/72 px-5 py-12 text-center">
-      <span className="mx-auto grid size-14 place-items-center rounded-full bg-primary/10 text-primary">
+      <span className="mx-auto grid size-14 place-items-center rounded-full bg-primary/10 text-brand-text">
         <Heart className="size-6" strokeWidth={1.8} />
       </span>
       <h2 className="mt-4 font-heading text-[26px] font-bold text-secondary">
@@ -579,7 +585,7 @@ export function WishlistPageContent() {
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-background text-secondary lg:overflow-x-visible">
+    <main id="main-content" tabIndex={-1} className="min-h-screen overflow-x-hidden bg-background text-secondary lg:overflow-x-visible">
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <UserSidebar activeLabel="Wishlist" />
 

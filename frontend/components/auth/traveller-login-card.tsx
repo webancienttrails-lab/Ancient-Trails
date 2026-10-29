@@ -2,7 +2,8 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { useModalFocus } from "@/lib/modal-focus";
+
 import {
   ArrowLeft,
   CheckCircle2,
@@ -26,7 +27,7 @@ import {
   verifyTravellerOtp,
   type TravellerUser,
 } from "@/lib/auth";
-import { getFirebaseAuth } from "@/lib/firebase";
+
 
 type LoginStep = "mobile" | "otp";
 type ProfileMode = "mobile" | "google";
@@ -137,8 +138,12 @@ export function TravellerLoginCard() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [isProfilePopupOpen, setIsProfilePopupOpen] = useState(false);
+  const profileDialogRef = useRef<HTMLDialogElement>(null);
+  useModalFocus(profileDialogRef, isProfilePopupOpen, () => setIsProfilePopupOpen(false), 'input[autocomplete="given-name"]');
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [mobileError, setMobileError] = useState("");
+  const [otpError, setOtpError] = useState("");
   const [profileErrorMessage, setProfileErrorMessage] = useState("");
   const [isRequestingOtp, setIsRequestingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
@@ -146,6 +151,7 @@ export function TravellerLoginCard() {
   const [isCompletingProfile, setIsCompletingProfile] = useState(false);
   const [otpCooldownSeconds, setOtpCooldownSeconds] = useState(0);
   const autoVerifiedOtpRef = useRef("");
+  const verificationRef = useRef<{ key: string; completed: boolean } | null>(null);
   const isSubmitting = isRequestingOtp || isVerifyingOtp;
 
   const title = useMemo(() => {
@@ -184,10 +190,20 @@ export function TravellerLoginCard() {
   async function sendLoginOtp() {
     setErrorMessage("");
     setStatusMessage("");
+    if (!/^[6-9]\d{9}$/.test(mobileNumber)) {
+      setMobileError("Enter a 10-digit mobile number starting with 6–9.");
+      return;
+    }
+    setMobileError("");
+    setOtpError("");
     setIsRequestingOtp(true);
 
     try {
       const response = await requestTravellerOtp(mobileNumber);
+
+      verificationRef.current = null;
+      autoVerifiedOtpRef.current = "";
+      setRegistrationToken("");
 
       setMobileNumber(removeIndiaCountryCode(response.data.mobileNumber));
       setStep("otp");
@@ -219,10 +235,23 @@ export function TravellerLoginCard() {
   }
 
   async function verifyCurrentOtp(otpValue = otp) {
+    if (!/^\d{6}$/.test(otpValue.trim())) {
+      setOtpError("Enter the 6-digit code.");
+      return;
+    }
+    setOtpError("");
+    const verificationKey = `${mobileNumber}:${otpValue.trim()}`;
+    if (verificationRef.current?.key === verificationKey) {
+      if (verificationRef.current.completed && registrationToken) {
+        setIsProfilePopupOpen(true);
+      }
+      return;
+    }
     if (isVerifyingOtp) {
       return;
     }
 
+    verificationRef.current = { key: verificationKey, completed: false };
     setErrorMessage("");
     setStatusMessage("");
     setIsVerifyingOtp(true);
@@ -234,6 +263,7 @@ export function TravellerLoginCard() {
       });
 
       if (response.data.requiresProfile) {
+        verificationRef.current = { key: verificationKey, completed: true };
         setMobileNumber(removeIndiaCountryCode(response.data.mobileNumber));
         setRegistrationToken(response.data.registrationToken);
         setProfileMode("mobile");
@@ -248,14 +278,16 @@ export function TravellerLoginCard() {
       }
 
       saveTravellerSession({
-        token: response.data.token,
+        sessionId: response.data.sessionId,
         user: response.data.user,
       });
+      verificationRef.current = { key: verificationKey, completed: true };
       setOtpCooldownSeconds(0);
       setStatusMessage(response.message);
       toast.success("Login successful", response.message);
       redirectAfterAuth(response.data.user);
     } catch (error) {
+      verificationRef.current = null;
       const message = getErrorMessage(error);
 
       setErrorMessage(message);
@@ -273,7 +305,7 @@ export function TravellerLoginCard() {
   useEffect(() => {
     if (
       step !== "otp" ||
-      otp.length !== 4 ||
+      otp.length !== 6 ||
       isVerifyingOtp ||
       autoVerifiedOtpRef.current === otp
     ) {
@@ -334,6 +366,7 @@ export function TravellerLoginCard() {
     setIsGoogleSubmitting(true);
 
     try {
+      const [{ GoogleAuthProvider, signInWithPopup }, { getFirebaseAuth }] = await Promise.all([import("firebase/auth"), import("@/lib/firebase")]);
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({
         prompt: "select_account",
@@ -371,6 +404,8 @@ export function TravellerLoginCard() {
   }
 
   function handleBackToMobile() {
+    verificationRef.current = null;
+    autoVerifiedOtpRef.current = "";
     setStep("mobile");
     setOtp("");
     setRegistrationToken("");
@@ -383,6 +418,9 @@ export function TravellerLoginCard() {
     setStatusMessage("");
     setProfileErrorMessage("");
     setOtpCooldownSeconds(0);
+    setMobileError("");
+    setOtpError("");
+    window.requestAnimationFrame(() => document.querySelector<HTMLInputElement>('input[autocomplete="tel"]')?.focus());
   }
 
   return (
@@ -415,6 +453,7 @@ export function TravellerLoginCard() {
             <form
               className="space-y-5 sm:space-y-[clamp(1rem,2.5vh,1.75rem)]"
               onSubmit={handleRequestOtp}
+              noValidate
             >
               <label className="block">
                 <span className="font-sans text-[13px] font-bold text-secondary">
@@ -430,15 +469,24 @@ export function TravellerLoginCard() {
                     inputMode="numeric"
                     autoComplete="tel"
                     value={mobileNumber}
-                    onChange={(event) =>
-                      setMobileNumber(getDisplayMobileNumber(event.target.value))
-                    }
+                    onChange={(event) => {
+                      setMobileNumber(getDisplayMobileNumber(event.target.value));
+                      setMobileError("");
+                      setErrorMessage("");
+                    }}
+                    aria-invalid={Boolean(mobileError)}
+                    aria-describedby={mobileError ? "login-mobile-error" : undefined}
                     maxLength={10}
                     placeholder="Enter mobile number"
                     className="h-full min-w-0 flex-1 bg-transparent font-sans text-[14px] text-secondary outline-none placeholder:text-secondary/42"
                     required
                   />
                 </span>
+                {mobileError ? (
+                  <span id="login-mobile-error" role="alert" className="mt-2 block font-sans text-[12px] font-semibold text-[#b33620]">
+                    {mobileError}
+                  </span>
+                ) : null}
               </label>
 
               <Button
@@ -471,7 +519,7 @@ export function TravellerLoginCard() {
               onClick={handleGoogleLogin}
               className="h-11 w-full justify-center gap-3 px-4 text-[15px] font-normal sm:px-5"
             >
-              <span className="grid size-5 place-items-center rounded-full bg-white font-sans text-[14px] font-bold text-primary group-hover/button:text-primary">
+              <span className="grid size-5 place-items-center rounded-full bg-white font-sans text-[14px] font-bold text-brand-text group-hover/button:text-brand-text">
                 G
               </span>
               Continue with Google
@@ -484,6 +532,7 @@ export function TravellerLoginCard() {
           <form
             className="mt-5 space-y-4 sm:mt-[clamp(1.25rem,3vh,2.25rem)]"
             onSubmit={handleVerifyOtp}
+            noValidate
           >
             <label className="block">
               <span className="font-sans text-[13px] font-bold text-secondary">
@@ -497,24 +546,35 @@ export function TravellerLoginCard() {
                   autoComplete="one-time-code"
                   value={otp}
                   onChange={(event) => {
-                    const nextOtp = event.target.value.replace(/\D/g, "").slice(0, 4);
+                    const nextOtp = event.target.value.replace(/\D/g, "").slice(0, 6);
 
-                    if (nextOtp.length < 4) {
+                    if (nextOtp.length < 6) {
                       autoVerifiedOtpRef.current = "";
                     }
 
                     setOtp(nextOtp);
+                    setOtpError("");
+                    setErrorMessage("");
                   }}
-                  maxLength={4}
-                  placeholder="Enter OTP"
+                  maxLength={6}
+                  pattern="[0-9]{6}"
+                  aria-invalid={Boolean(otpError)}
+                  aria-describedby={otpError ? "login-otp-validity login-otp-error" : "login-otp-validity"}
+                  placeholder="Enter 6-digit OTP"
                   className="h-full min-w-0 flex-1 bg-transparent font-sans text-[14px] text-secondary outline-none placeholder:text-secondary/42"
                   required
                 />
               </span>
+              {otpError ? (
+                <span id="login-otp-error" role="alert" className="mt-2 block font-sans text-[12px] font-semibold text-[#b33620]">
+                  {otpError}
+                </span>
+              ) : null}
             </label>
 
             <div className="flex flex-col gap-3 rounded-[7px] border border-primary/15 bg-primary/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="font-sans text-[12px] font-medium leading-[1.45] text-secondary/68">
+                <span id="login-otp-validity">Code valid for 5 minutes.</span>{" "}
                 {otpCooldownSeconds > 0
                   ? `You can resend OTP in ${otpCooldownSeconds}s.`
                   : "Did not receive the OTP?"}
@@ -568,13 +628,13 @@ export function TravellerLoginCard() {
       </div>
 
       {isProfilePopupOpen ? (
-        <div className="fixed inset-0 z-[10000] flex items-start justify-center overflow-y-auto bg-secondary/50 px-4 py-6 backdrop-blur-sm sm:items-center">
+        <dialog ref={profileDialogRef} aria-labelledby="traveller-profile-title" className="fixed inset-0 m-0 h-[100dvh] max-h-none w-screen max-w-none border-0 text-secondary z-[10000] flex items-start justify-center overflow-y-auto bg-secondary/50 px-4 py-6 backdrop-blur-sm sm:items-center">
           <form
             className="my-auto w-full max-w-[430px] rounded-[10px] border border-white/80 bg-white p-5 shadow-[0_28px_80px_rgba(0,0,0,0.22)] sm:p-6"
             onSubmit={handleCompleteProfile}
           >
             <div className="text-center">
-              <h3 className="font-heading text-[24px] font-bold leading-none text-secondary">
+              <h3 id="traveller-profile-title" className="font-heading text-[24px] font-bold leading-none text-secondary">
                 Complete Your Profile
               </h3>
               <p className="mt-2 font-sans text-[13px] leading-[1.45] text-secondary/65">
@@ -696,7 +756,7 @@ export function TravellerLoginCard() {
               {profileMode === "google" ? "Back to login" : "Use a different number"}
             </Button>
           </form>
-        </div>
+        </dialog>
       ) : null}
     </>
   );

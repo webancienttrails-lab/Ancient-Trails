@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Loader2, Mail, Phone, UserRound, X } from "lucide-react";
 
@@ -15,6 +15,8 @@ import {
   updateTravellerProfile,
   type TravellerUser,
 } from "@/lib/auth";
+
+import { suppressProfilePrompt, isProfilePromptDismissed, rememberProfilePromptDismissal } from "@/lib/profile-prompt";
 
 type CompletionForm = {
   firstName: string;
@@ -102,6 +104,7 @@ export function ProfileCompletionPrompt() {
   const [travellerUser, setTravellerUser] = useState<TravellerUser | null>(null);
   const [form, setForm] = useState<CompletionForm>(emptyForm);
   const [isOpen, setIsOpen] = useState(false);
+  const shownUserIds = useRef(new Set<string>());
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -131,16 +134,23 @@ export function ProfileCompletionPrompt() {
     if (
       !travellerUser ||
       isProfileComplete ||
-      pathname === "/login" ||
-      pathname === travellerProfileCompletionPath
+      suppressProfilePrompt(pathname) ||
+      isProfilePromptDismissed(travellerUser.id)
     ) {
       setIsOpen(false);
       return;
     }
 
+    if (shownUserIds.current.has(travellerUser.id)) return;
+    shownUserIds.current.add(travellerUser.id);
     setErrorMessage("");
     setIsOpen(true);
   }, [isProfileComplete, pathname, travellerUser]);
+
+  function dismissPrompt() {
+    if (travellerUser) rememberProfilePromptDismissal(travellerUser.id);
+    setIsOpen(false);
+  }
 
   function updateForm<TKey extends keyof CompletionForm>(
     key: TKey,
@@ -195,7 +205,7 @@ export function ProfileCompletionPrompt() {
     }
   }
 
-  if (!isOpen || !travellerUser) {
+  if (!isOpen || !travellerUser || isProfileComplete || suppressProfilePrompt(pathname)) {
     return null;
   }
 
@@ -217,8 +227,8 @@ export function ProfileCompletionPrompt() {
           <button
             type="button"
             aria-label="Close profile completion"
-            onClick={() => setIsOpen(false)}
-            className="grid size-9 shrink-0 place-items-center rounded-full border border-border text-secondary/65 transition-colors hover:border-primary hover:bg-primary hover:text-white"
+            onClick={dismissPrompt}
+            className="grid size-9 shrink-0 place-items-center rounded-full border border-button-outline text-button-outline transition-colors hover:border-button-outline hover:bg-brand-button-dark hover:text-white"
           >
             <X className="size-4" strokeWidth={2} />
           </button>
@@ -290,13 +300,8 @@ export function ProfileCompletionPrompt() {
                   <input
                     type="text"
                     inputMode="tel"
-                    value={form.countryCode}
-                    onChange={(event) =>
-                      updateForm(
-                        "countryCode",
-                        `+${getDigits(event.target.value).slice(0, 4)}`
-                      )
-                    }
+                    value="+91"
+                    readOnly
                     aria-label="Phone country code"
                     className="h-full w-11 bg-transparent font-sans text-[13px] font-semibold text-secondary outline-none"
                   />
@@ -336,7 +341,7 @@ export function ProfileCompletionPrompt() {
             type="button"
             variant="outline"
             onClick={() => {
-              setIsOpen(false);
+              dismissPrompt();
               router.push(travellerProfileCompletionPath);
             }}
             className="h-11 justify-center px-5 text-[14px] font-normal"

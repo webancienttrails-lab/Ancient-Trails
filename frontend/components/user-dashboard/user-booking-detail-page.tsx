@@ -1,4 +1,9 @@
 "use client";
+import { BookingCancellationRequestControl } from "@/components/booking-cancellation-request";
+import { PaymentRetryNotice } from "@/components/payment-retry-notice";
+import { paymentFailureMessage } from "@/lib/payment-failure";
+import { BookingPaymentReceipt } from "@/components/booking-payment-receipt";
+import { getBookingPaymentSummary, getBookingDocumentMessage, getBookingPaymentState } from "@/lib/booking-receipt";
 import { fetchSiteLogoUrl } from "@/lib/site-logo";
 import { formatBookingPaymentMethod } from "@/lib/booking-payment";
 
@@ -626,7 +631,9 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
     const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 26;
     const navy: [number, number, number] = [24, 49, 79];
-    const orange: [number, number, number] = [244, 112, 32];
+    const orange: [number, number, number] = [212, 114, 32];
+    const orangeText: [number, number, number] = [214, 106, 26];
+    const orangeDark: [number, number, number] = [169, 80, 0];
     const paleOrange: [number, number, number] = [255, 244, 236];
     const paleBlue: [number, number, number] = [238, 247, 253];
     const lineColor: [number, number, number] = [232, 222, 214];
@@ -674,7 +681,7 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
       if (logoDataUrl) {
         pdf.addImage(logoDataUrl, "PNG", margin + 12, 48, 100, 48);
       } else {
-        pdf.setFillColor(...orange);
+        pdf.setFillColor(...orangeDark);
         pdf.roundedRect(margin + 18, 50, 58, 38, 6, 6, "F");
         text("ancient", margin + 47, 66, {
           align: "center",
@@ -690,13 +697,13 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
         });
         text("A QUEST FOR", margin + 47, 101, {
           align: "center",
-          color: orange,
+          color: orangeText,
           size: 5,
           style: "bold",
         });
         text("INDIAN HERITAGE", margin + 47, 109, {
           align: "center",
-          color: orange,
+          color: orangeText,
           size: 5,
           style: "bold",
         });
@@ -708,7 +715,7 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
         style: "bold",
       });
       text("Trails", pageWidth / 2 - 4, 62, {
-        color: orange,
+        color: orangeText,
         size: 18,
         style: "bold",
       });
@@ -747,7 +754,7 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
     const footer = (pageNumber: number) => {
       pdf.setFillColor(...navy);
       pdf.rect(0, pageHeight - 24, pageWidth, 24, "F");
-      pdf.setFillColor(...orange);
+      pdf.setFillColor(...orangeDark);
       pdf.rect(0, pageHeight - 27, pageWidth, 3, "F");
       text("www.ancient-trails.com", margin + 18, pageHeight - 9, {
         color: [255, 255, 255],
@@ -822,7 +829,7 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
     const bulletList = (items: string[], x: number, y: number, maxWidth: number) => {
       let currentY = y;
       items.slice(0, 9).forEach((item) => {
-        pdf.setFillColor(...orange);
+        pdf.setFillColor(...orangeDark);
         pdf.circle(x, currentY - 3, 1.8, "F");
         const lines = pdf.splitTextToSize(item, maxWidth);
         text(lines.join("\n"), x + 8, currentY, {
@@ -1134,7 +1141,7 @@ async function downloadBookingInvoicePdf(booking: UserBooking) {
     const contact = await getPublicSiteSettings().then(r => r.data.settings.contact).catch(() => defaultSiteContactSettings);
     const text = (value: string, x: number, top: number, size = 9, bold = false, align: "left" | "right" = "left", accent = false) => {
       pdf.setFont("helvetica", bold ? "bold" : "normal"); pdf.setFontSize(size);
-      if (accent) pdf.setTextColor(212, 114, 32); else pdf.setTextColor(30, 41, 59);
+      if (accent) pdf.setTextColor(214, 106, 26); else pdf.setTextColor(30, 41, 59);
       pdf.text(value, x, top, { align });
     };
     const wrap = (value: string, w: number, size = 9): string[] => {
@@ -1442,7 +1449,7 @@ function DetailShell({
   return (
     <section className="overflow-hidden rounded-[8px] border border-border bg-white shadow-[0_14px_34px_rgba(50,50,50,0.035)]">
       <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-        <Icon className="size-4 text-primary" strokeWidth={1.8} />
+        <Icon className="size-4 text-brand-text" strokeWidth={1.8} />
         <h2 className="font-heading text-[17px] font-bold leading-tight text-secondary">
           {title}
         </h2>
@@ -1465,7 +1472,7 @@ function TourMeta({
     <span className="flex min-w-0 items-start gap-2">
       <Icon className="mt-0.5 size-4 shrink-0 text-secondary/55" strokeWidth={1.8} />
       <span className="min-w-0">
-        <span className="block font-sans text-[10px] font-bold uppercase leading-none text-primary">
+        <span className="block font-sans text-[10px] font-bold uppercase leading-none text-brand-text">
           {label}
         </span>
         <strong className="mt-1 block font-sans text-[12px] font-bold leading-tight text-secondary sm:text-[13px]">
@@ -1558,7 +1565,7 @@ function PaymentSummaryCard({
         <SummaryRow
           label="Balance Amount"
           value={formatCurrency(balanceAmount, currency)}
-          valueClassName={hasBalance ? "text-primary text-[18px]" : "text-emerald-700"}
+          valueClassName={hasBalance ? "text-brand-text text-[18px]" : "text-emerald-700"}
         />
         <SummaryRow
           label="Balance Due Date"
@@ -1617,9 +1624,9 @@ function Timeline({ booking }: { booking: UserBooking }) {
       title: "Balance Payment",
     },
     {
-      date: balanceAmount > 0 ? "After final payment" : "Ready",
-      done: balanceAmount <= 0,
-      title: "Final Payment Receipt",
+      date: getBookingPaymentState(booking.booking).canDownloadReceipt ? "Available now" : "After payment verification",
+      done: getBookingPaymentState(booking.booking).canDownloadReceipt,
+      title: "Payment Receipt",
     },
     {
       date: formatDate(departureDate),
@@ -1636,7 +1643,7 @@ function Timeline({ booking }: { booking: UserBooking }) {
             <span
               className={cn(
                 "relative z-10 mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-white",
-                item.done ? "text-primary" : "text-secondary/35"
+                item.done ? "text-brand-text" : "text-secondary/35"
               )}
             >
               {item.done ? (
@@ -1679,14 +1686,14 @@ function HelpCard({ contact }: { contact: SiteContactSettings }) {
       <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-2">
         <Link
           href={getTelephoneHref(callNumber)}
-          className="inline-flex min-h-11 min-w-0 items-center justify-start gap-2 rounded-[6px] border border-border bg-white px-3 py-2.5 font-sans text-[12px] font-bold leading-snug text-secondary transition-colors hover:border-primary hover:text-primary"
+          className="inline-flex min-h-11 min-w-0 items-center justify-start gap-2 rounded-[6px] border border-button-outline bg-white px-3 py-2.5 font-sans text-[12px] font-bold leading-snug text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
         >
           <Phone className="size-3.5 shrink-0" strokeWidth={1.8} />
           <span className="min-w-0 break-words">{callDisplay || "Call Us"}</span>
         </Link>
         <Link
           href={getMailtoHref(emailAddress)}
-          className="inline-flex min-h-11 min-w-0 items-center justify-start gap-2 rounded-[6px] border border-border bg-white px-3 py-2.5 font-sans text-[12px] font-bold leading-snug text-secondary transition-colors hover:border-primary hover:text-primary"
+          className="inline-flex min-h-11 min-w-0 items-center justify-start gap-2 rounded-[6px] border border-button-outline bg-white px-3 py-2.5 font-sans text-[12px] font-bold leading-snug text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
         >
           <Mail className="size-3.5 shrink-0" strokeWidth={1.8} />
           <span className="min-w-0 break-words">{emailAddress}</span>
@@ -1714,7 +1721,7 @@ function TravellerDetails({ booking }: { booking: UserBooking }) {
               key={traveller.id || `${guestName}-${index}`}
               className="flex min-w-0 items-center gap-3 rounded-[7px] border border-border bg-background px-3 py-3"
             >
-              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 font-sans text-[12px] font-bold text-primary">
+              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 font-sans text-[12px] font-bold text-brand-text">
                 {index + 1}
               </span>
               <span className="min-w-0 flex-1">
@@ -1726,7 +1733,7 @@ function TravellerDetails({ booking }: { booking: UserBooking }) {
                   {roomLabel}
                 </span>
               </span>
-              <span className="shrink-0 rounded-full border border-primary/25 bg-white px-2.5 py-1 font-sans text-[10px] font-bold text-primary">
+              <span className="shrink-0 rounded-full border border-primary/25 bg-white px-2.5 py-1 font-sans text-[10px] font-bold text-brand-text">
                 {travellerType}
               </span>
             </article>
@@ -1820,7 +1827,7 @@ function TravellerKycCard({
             {traveller.type === "child" ? "Child traveller" : "Adult traveller"}
           </p>
         </div>
-        <span className="w-fit rounded-full border border-primary/20 bg-white px-2.5 py-1 font-sans text-[10px] font-bold text-primary">
+        <span className="w-fit rounded-full border border-primary/20 bg-white px-2.5 py-1 font-sans text-[10px] font-bold text-brand-text">
           {documents.length} uploaded
         </span>
       </div>
@@ -1833,7 +1840,7 @@ function TravellerKycCard({
               href={getBookingKycDocumentUrl(document.fileUrl)}
               target="_blank"
               rel="noreferrer"
-              className="flex min-w-0 items-center justify-between gap-3 rounded-[6px] border border-border bg-white px-3 py-2 font-sans text-[11px] font-bold text-secondary transition-colors hover:border-primary hover:text-primary"
+              className="flex min-w-0 items-center justify-between gap-3 rounded-[6px] border border-button-outline bg-white px-3 py-2 font-sans text-[11px] font-bold text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
             >
               <span className="min-w-0 truncate">
                 {document.documentLabel}
@@ -1870,7 +1877,7 @@ function TravellerKycCard({
           type="file"
           accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
           onChange={handleFileChange}
-          className="h-9 rounded-[6px] border border-border bg-white px-2 py-1 font-sans text-[11px] font-semibold text-secondary file:mr-2 file:rounded-[5px] file:border-0 file:bg-primary file:px-2 file:py-1 file:text-[10px] file:font-bold file:text-white"
+          className="h-9 rounded-[6px] border border-border bg-white px-2 py-1 font-sans text-[11px] font-semibold text-secondary file:mr-2 file:rounded-[5px] file:border-0 file:bg-brand-button-dark file:px-2 file:py-1 file:text-[10px] file:font-bold file:text-white"
         />
         <Button
           type="submit"
@@ -1886,7 +1893,7 @@ function TravellerKycCard({
           <p
             className={cn(
               "font-sans text-[11px] font-semibold",
-              selectedFileName ? "text-primary" : "text-secondary/55"
+              selectedFileName ? "text-brand-text" : "text-secondary/55"
             )}
           >
             {feedback}
@@ -1895,7 +1902,7 @@ function TravellerKycCard({
             <button
               type="button"
               onClick={handleRemoveSelectedFile}
-              className="flex w-fit items-center gap-1.5 font-sans text-[11px] font-bold text-secondary/55 transition-colors hover:text-primary"
+              className="flex w-fit items-center gap-1.5 font-sans text-[11px] font-bold text-button-outline transition-colors hover:text-button-outline"
             >
               <Trash2 className="size-3.5" strokeWidth={1.8} />
               Remove
@@ -2048,7 +2055,9 @@ function BookingDocuments({ booking }: { booking: UserBooking }) {
 
   return (
     <DetailShell icon={FileText} title="Booking Documents">
+      <p className="mb-3 font-sans text-[12px] leading-relaxed text-secondary/65">{getBookingDocumentMessage(booking.booking)}</p>
       <div className="grid gap-3 sm:grid-cols-2">
+        <div className="sm:col-span-2"><BookingPaymentReceipt booking={booking.booking} tourName={getUserBookingTitle(booking)} /></div>
         <article className="rounded-[7px] border border-border bg-background p-3">
           <h3 className="font-sans text-[13px] font-bold text-secondary">
             Final Invoice
@@ -2114,7 +2123,7 @@ function TourSummary({ booking }: { booking: UserBooking }) {
           />
         </div>
         <div className="p-4 sm:p-5">
-          <p className="flex items-center gap-2 font-sans text-[11px] font-bold uppercase leading-none text-primary">
+          <p className="flex items-center gap-2 font-sans text-[11px] font-bold uppercase leading-none text-button-outline">
             <ReceiptText className="size-3.5" strokeWidth={1.8} />
             Tour Summary
           </p>
@@ -2150,7 +2159,7 @@ function TourSummary({ booking }: { booking: UserBooking }) {
 function LoadingState() {
   return (
     <section className="rounded-[8px] border border-border bg-white px-4 py-12 text-center shadow-[0_14px_34px_rgba(50,50,50,0.035)]">
-      <Clock3 className="mx-auto size-9 text-primary" strokeWidth={1.8} />
+      <Clock3 className="mx-auto size-9 text-brand-text" strokeWidth={1.8} />
       <p className="mt-3 font-sans text-[13px] font-bold text-secondary">
         Loading booking details...
       </p>
@@ -2161,7 +2170,7 @@ function LoadingState() {
 function ErrorState({ message }: { message: string }) {
   return (
     <section className="rounded-[8px] border border-primary/20 bg-white px-4 py-12 text-center shadow-[0_14px_34px_rgba(50,50,50,0.035)]">
-      <HelpCircle className="mx-auto size-10 text-primary" strokeWidth={1.7} />
+      <HelpCircle className="mx-auto size-10 text-brand-text" strokeWidth={1.7} />
       <h1 className="mt-3 font-heading text-[24px] font-bold text-secondary">
         Booking details unavailable
       </h1>
@@ -2187,6 +2196,7 @@ export function UserBookingDetailPage({ bookingId }: UserBookingDetailPageProps)
   const [isLoading, setIsLoading] = useState(true);
   const [isKycUploading, setIsKycUploading] = useState(false);
   const [paymentFeedback, setPaymentFeedback] = useState("");
+  const [paymentRetryMessage, setPaymentRetryMessage] = useState<string | null>(null);
   const [siteContact, setSiteContact] = useState<SiteContactSettings>(
     defaultSiteContactSettings
   );
@@ -2273,12 +2283,23 @@ export function UserBookingDetailPage({ bookingId }: UserBookingDetailPageProps)
     }
 
     let isVerifying = false;
+    let didEndPaymentAttempt = false;
+    const endPaymentAttempt = (reason?: string) => {
+      if (isVerifying || didEndPaymentAttempt) return;
+      didEndPaymentAttempt = true;
+      const message = paymentFailureMessage(reason);
+      setCheckoutStatus("idle");
+      setPaymentFeedback(message);
+      setPaymentRetryMessage(message);
+    };
     const checkout = new razorpayWindow.Razorpay({
       amount: order.checkout.amount,
       currency: order.checkout.currency,
       description: order.checkout.description,
       handler: (paymentResponse) => {
+        if (isVerifying) return;
         isVerifying = true;
+        setPaymentRetryMessage(null);
         setCheckoutStatus("verifying");
         setPaymentFeedback("Confirming your balance payment...");
 
@@ -2299,10 +2320,7 @@ export function UserBookingDetailPage({ bookingId }: UserBookingDetailPageProps)
       key: order.checkout.key,
       modal: {
         ondismiss: () => {
-          if (!isVerifying) {
-            setCheckoutStatus("idle");
-            setPaymentFeedback("Payment window closed before completion.");
-          }
+          endPaymentAttempt();
         },
       },
       name: order.checkout.name,
@@ -2314,12 +2332,7 @@ export function UserBookingDetailPage({ bookingId }: UserBookingDetailPageProps)
     });
 
     checkout.on("payment.failed", (failureResponse) => {
-      setCheckoutStatus("idle");
-      setPaymentFeedback(
-        failureResponse.error?.description ||
-          failureResponse.error?.reason ||
-          "Payment failed. Please try again."
-      );
+      endPaymentAttempt(failureResponse.error?.description || failureResponse.error?.reason);
     });
 
     setCheckoutStatus("gateway_open");
@@ -2331,6 +2344,7 @@ export function UserBookingDetailPage({ bookingId }: UserBookingDetailPageProps)
       return;
     }
 
+    setPaymentRetryMessage(null);
     setCheckoutStatus("creating");
     setPaymentFeedback("");
 
@@ -2393,14 +2407,29 @@ export function UserBookingDetailPage({ bookingId }: UserBookingDetailPageProps)
 
   return (
     <div>
+      <PaymentRetryNotice message={paymentRetryMessage} busy={checkoutStatus !== "idle"} onRetry={() => void handlePayBalance()} onDismiss={() => setPaymentRetryMessage(null)} />
       <div className="mb-4">
-        <p className="font-sans text-[12px] font-bold uppercase tracking-normal text-primary">
+        <p className="font-sans text-[12px] font-bold uppercase tracking-normal text-button-outline">
           Booking ID: {getUserBookingReference(booking)}
         </p>
         <p className="mt-2 font-sans text-[13px] font-medium leading-[1.6] text-secondary/64">
-          Manage your booking, payments and travel information from here.
+          {getBookingPaymentSummary(booking.booking)}
         </p>
       </div>
+
+      <section data-booking-management-actions className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-lg border border-primary/20 bg-white p-4">
+        <div>
+          <p className="font-sans text-sm font-bold">Balance due: {formatCurrency(getBalanceAmount(booking), booking.booking.paymentCurrency || "INR")}</p>
+          <p className="mt-1 font-sans text-xs text-secondary/65">{getBalanceAmount(booking) > 0 ? "Due " + formatDate(booking.booking.balanceDueDate, "date to be confirmed") : "Paid in full"}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {getBalanceAmount(booking) > 0 ? <div>
+            <Button type="button" disabled={checkoutStatus !== "idle"} onClick={() => void handlePayBalance()}>{checkoutStatus !== "idle" ? "Payment in progress..." : "Pay Balance " + formatCurrency(getBalanceAmount(booking), booking.booking.paymentCurrency || "INR")}</Button>
+            <BankTransferBalanceLink bookingId={booking.booking.id} disabled={checkoutStatus !== "idle"} />
+          </div> : null}
+          <BookingCancellationRequestControl booking={booking.booking} departureDate={booking.departure?.departureDate || booking.booking.pricingSnapshot?.departureDate} disabled={checkoutStatus !== "idle"} />
+        </div>
+      </section>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_400px]">
         <div className="grid gap-5">

@@ -86,7 +86,7 @@ function uniqueLabels(labels: string[]) {
 
 function HeaderBand() {
   return (
-    <section className="relative h-[200px] overflow-hidden bg-secondary">
+    <section className="relative h-[100px] overflow-hidden bg-secondary lg:h-[120px]">
       <Image
         src="/home assets/Heritage Banner.webp"
         alt="Ancient Trails heritage landscape"
@@ -105,7 +105,7 @@ function HeaderBand() {
 
 function ExpertPlaceholder({ name }: { name: string }) {
   return (
-    <div className="absolute inset-0 grid place-items-center bg-[linear-gradient(135deg,#f6e6d7,#dec8b6)] text-primary">
+    <div className="absolute inset-0 grid place-items-center bg-[linear-gradient(135deg,#f6e6d7,#dec8b6)] text-brand-text">
       <span className="grid size-16 place-items-center rounded-full bg-white/72 font-heading text-[24px] font-bold shadow-[0_12px_28px_rgba(80,50,25,0.12)]">
         {getInitials(name)}
       </span>
@@ -157,7 +157,7 @@ function ExpertTextPanel({ expert }: { expert: PublicExpert }) {
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.88)_58%,rgba(255,255,255,0.78)_100%)]" />
 
       <div className="relative z-10 max-w-[630px]">
-        <p className="font-sans text-eyebrow font-medium uppercase text-primary">
+        <p className="font-sans text-eyebrow font-medium uppercase text-button-outline">
           {getExpertRole(expert)}
         </p>
         <h2 className="mt-2 font-heading text-title font-bold leading-none text-secondary">
@@ -173,7 +173,7 @@ function ExpertTextPanel({ expert }: { expert: PublicExpert }) {
             {tags.map((tag) => (
               <span
                 key={`${expert.expertId}-${tag}`}
-                className="rounded-full border border-primary/20 bg-white px-3 py-1 font-sans text-[11px] font-semibold text-primary"
+                className="rounded-full border border-primary/20 bg-white px-3 py-1 font-sans text-[11px] font-semibold text-brand-text"
               >
                 {tag}
               </span>
@@ -218,11 +218,11 @@ function ExpertFact({
 }) {
   return (
     <div className="flex items-start gap-3 rounded-[8px] border border-primary/15 bg-white/72 p-3">
-      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-brand-text">
         <Icon className="size-4" strokeWidth={1.9} />
       </span>
       <span className="min-w-0">
-        <span className="block font-sans text-[11px] font-semibold uppercase leading-none text-primary">
+        <span className="block font-sans text-[11px] font-semibold uppercase leading-none text-brand-text">
           {label}
         </span>
         <span className="mt-1.5 block font-sans text-[13px] font-medium leading-snug text-secondary/76">
@@ -339,13 +339,13 @@ export function ExpertsPage() {
   );
 
   return (
-    <main className="min-h-screen bg-background text-secondary">
+    <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-secondary">
       <HeaderBand />
 
       <section className="home-wide-frame mx-auto w-full px-5 pb-14 pt-9 sm:px-8 lg:px-0">
         <div className="flex flex-col gap-5 border-b border-border pb-8 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+            <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-button-outline">
               Our Experts
             </p>
             <h1 className="mt-3 font-heading text-title font-bold leading-none tracking-normal text-secondary">
@@ -355,7 +355,7 @@ export function ExpertsPage() {
 
           <Link
             href="/about#team"
-            className="inline-flex h-11 w-full items-center justify-between rounded-full border border-primary bg-white px-5 font-sans text-[15px] font-medium text-primary transition-colors hover:bg-primary hover:text-white sm:w-auto sm:min-w-[180px]"
+            className="inline-flex h-11 w-full items-center justify-between rounded-full border border-button-outline bg-white px-5 font-sans text-[15px] font-medium text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white sm:w-auto sm:min-w-[180px]"
           >
             About Us
             <ArrowRight className="size-4" strokeWidth={1.9} />
@@ -367,7 +367,7 @@ export function ExpertsPage() {
             {isLoading ? "Loading experts..." : expertCountLabel}
           </p>
           {loadError ? (
-            <p className="font-sans text-[13px] font-medium text-primary">
+            <p className="font-sans text-[13px] font-medium text-brand-text">
               {loadError}
             </p>
           ) : null}

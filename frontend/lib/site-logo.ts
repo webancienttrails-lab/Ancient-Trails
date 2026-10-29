@@ -1,8 +1,8 @@
 "use client";
 
-import { apiBaseUrl, apiRequest } from "@/lib/api";
+import { apiBaseUrl, apiRequest, invalidatePublicApiCache } from "@/lib/api";
 
-export const defaultSiteLogo = "/Header Logo.png";
+export const defaultSiteLogo = "/Header Logo.webp";
 let logo = "", revision = 0;
 const listeners = new Set<() => void>();
 let timer: ReturnType<typeof setInterval> | undefined;
@@ -15,6 +15,7 @@ export function publishSiteLogo(source?: string) {
   if (logo !== (source || "")) { logo = source || ""; for (const listener of listeners) listener(); }
 }
 export function announceSiteLogo(source?: string) {
+  invalidatePublicApiCache("/api/site-settings");
   revision++; publishSiteLogo(source);
   try { localStorage.setItem(changeKey, Date.now() + ":" + Math.random()); } catch { /* Settings still work without storage. */ }
 }
@@ -26,7 +27,7 @@ export async function fetchSiteLogoUrl() {
   return loading;
 }
 const refresh = () => { if (document.visibilityState === "visible") void fetchSiteLogoUrl(); };
-const storageChanged = (event: StorageEvent) => { if (event.key === changeKey) refresh(); };
+const storageChanged = (event: StorageEvent) => { if (event.key === changeKey) { invalidatePublicApiCache("/api/site-settings"); refresh(); } };
 export function subscribeSiteLogo(listener: () => void) {
   listeners.add(listener);
   if (listeners.size === 1) {

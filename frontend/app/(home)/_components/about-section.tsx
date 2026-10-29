@@ -149,7 +149,7 @@ export function AboutSection() {
             />
             <div className="relative z-10 flex min-h-[230px] max-w-[900px] flex-col justify-center px-3 py-8 sm:px-4">
               <TextReveal>
-                <p className="text-description font-medium uppercase text-primary">
+                <p className="text-description font-medium uppercase text-button-outline max-lg:text-[12px]">
                   About Ancient Trails
                 </p>
               </TextReveal>
@@ -168,7 +168,7 @@ export function AboutSection() {
               <div className="mt-7">
                 <Button
                   nativeButton={false}
-                  render={<Link href="/about" />}
+                  render={<Link prefetch={false} href="/about" />}
                   className="h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:min-w-[190px]"
                 >
                   Know About Us
@@ -195,7 +195,7 @@ export function AboutSection() {
             type="button"
             aria-label="Close video"
             onClick={closeVideo}
-            className="absolute right-6 top-6 grid size-11 place-items-center rounded-full border border-white/40 bg-white text-secondary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-white cursor-pointer"
+            className="absolute right-6 top-6 grid size-11 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-primary-foreground cursor-pointer"
           >
             <X className="size-6" strokeWidth={2.2} />
           </button>
@@ -223,7 +223,7 @@ export function AboutSection() {
                 type="button"
                 aria-label={isPlaying ? "Pause video" : "Play video"}
                 onClick={togglePlayback}
-                className="grid size-11 place-items-center rounded-full border border-white/40 bg-white/95 text-secondary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-white cursor-pointer"
+                className="grid size-11 place-items-center rounded-full border border-button-outline bg-white/95 text-button-outline transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-primary-foreground cursor-pointer"
               >
                 {isPlaying ? (
                   <Pause className="size-5 fill-current" strokeWidth={0} />
@@ -235,7 +235,7 @@ export function AboutSection() {
                 type="button"
                 aria-label={isMuted ? "Turn sound on" : "Turn sound off"}
                 onClick={toggleSound}
-                className="flex h-11 items-center gap-2 rounded-full border border-white/40 bg-white/95 px-5 text-button text-secondary transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-white cursor-pointer"
+                className="flex h-11 items-center gap-2 rounded-full border border-button-outline bg-white/95 px-5 text-button text-button-outline transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-primary-foreground cursor-pointer"
               >
                 {isMuted ? (
                   <VolumeX className="size-5" strokeWidth={2} />

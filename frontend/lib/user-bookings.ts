@@ -1,4 +1,4 @@
-import { ApiError, apiBaseUrl, apiRequest, type ApiResponse } from "@/lib/api";
+import { sessionFetch, ApiError, apiBaseUrl, apiRequest, type ApiResponse } from "@/lib/api";
 import { getTravellerSession } from "@/lib/auth";
 import type {
   BookingConfirmation,
@@ -48,12 +48,12 @@ export type UserBooking = {
 function getTravellerHeaders(): HeadersInit {
   const session = getTravellerSession();
 
-  if (!session?.token) {
+  if (!session?.sessionId) {
     throw new ApiError(401, "Please sign in to continue");
   }
 
   return {
-    Authorization: `Bearer ${session.token}`,
+    "X-Session-Id": session.sessionId,
   };
 }
 
@@ -150,7 +150,7 @@ export async function uploadTravellerBookingKycDocument(payload: {
   formData.append("document", payload.file);
 
   return readUploadResponse<{ booking: BookingConfirmation }>(
-    await fetch(
+    await sessionFetch(
       `${apiBaseUrl}/api/bookings/${encodeURIComponent(payload.bookingId)}/kyc`,
       {
         method: "POST",

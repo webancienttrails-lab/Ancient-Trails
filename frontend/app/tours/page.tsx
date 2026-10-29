@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo";
+import { getTravelCatalogue } from "@/lib/server-travel";
 
 import { ToursListingPage } from "./_components/tours-listing-page";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/tours",
   title: "Tours",
   description:
     "Browse Ancient Trails heritage tours by destination, duration, price and availability.",
-};
+});
 
 type ToursRouteProps = {
   searchParams?: Promise<{
@@ -29,7 +32,7 @@ function parseGuestCount(value: string | undefined, fallback: number, minimum: n
 }
 
 export default async function ToursRoute({ searchParams }: ToursRouteProps) {
-  const params = await searchParams;
+  const [params, initialData] = await Promise.all([searchParams, getTravelCatalogue()]);
   const initialDestinationValue = params?.destination || "";
   const initialSearchQuery = params?.search || "";
   const initialMonthValue = params?.month || "";
@@ -38,6 +41,7 @@ export default async function ToursRoute({ searchParams }: ToursRouteProps) {
 
   return (
     <ToursListingPage
+      initialData={initialData}
       key={`${initialDestinationValue}-${initialSearchQuery}-${initialMonthValue}-${initialAdultCount}-${initialChildCount}`}
       initialAdultCount={initialAdultCount}
       initialChildCount={initialChildCount}

@@ -20,6 +20,18 @@ export function getTourHref(tour: { tourId?: string; tourName?: string; title?: 
   return `/tours/${namedRouteSegment(tour.tourName || tour.title || "", tour.tourId)}`;
 }
 
+const tourSlugAliases: Record<string, string> = {
+  "flavours-of-badami-hampi": "HAMPI",
+  "badami-hampi": "HAMPI",
+  hampi: "HAMPI",
+  "enigmatic-khajuraho": "KHAJURAHO",
+  khajuraho: "KHAJURAHO",
+};
+
+export function getRequestedTourAlias(reference: string) {
+  return tourSlugAliases[slugifyRoute(decodeURIComponent(reference))] || "";
+}
+
 export function getDestinationHref(destination: {
   destinationId?: string;
   destinationName?: string;
@@ -96,6 +108,21 @@ export function getDestinationsHref(search = "") {
   const params = new URLSearchParams({ search: trimmedSearch });
 
   return `/destinations?${params.toString()}`;
+}
+
+export function getExperiencesHref(destination?: { destinationId: string }) {
+  return destination
+    ? `/experiences?destination=${encodeURIComponent(destination.destinationId)}`
+    : "/experiences";
+}
+
+export function getExperienceHref(experience: { id?: string; experienceId?: string }) {
+  const id = experience.id?.trim() || experience.experienceId?.trim();
+  return id ? `/experiences/${encodeURIComponent(id)}` : "/experiences";
+}
+
+export function getTourExperiencesHref(tour: { tourId: string }) {
+  return `/experiences/${encodeURIComponent(tour.tourId)}`;
 }
 
 export function getToursHref({

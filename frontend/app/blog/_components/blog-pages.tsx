@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { getBlogPageHref } from "@/lib/blog-pagination";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
@@ -26,6 +28,7 @@ import {
 } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
+import { buttonVariants } from "@/components/ui/button";
 import {
   getBlogMediaUrl,
   getPublishedBlog,
@@ -33,6 +36,8 @@ import {
   type BlogCategory,
   type BlogCategoryCount,
   type PublicBlog,
+  type PublicBlogsResponse,
+  type PublicBlogResponse,
   type BlogRelatedTour,
 } from "@/lib/blogs";
 import { getTourHref } from "@/lib/routes";
@@ -78,11 +83,11 @@ const blogCategories: BlogCategory[] = [
 
 const categoryThemes: Record<BlogCategory, CategoryTheme> = {
   Heritage: {
-    badge: "border-primary/35 bg-primary/10 text-primary",
+    badge: "border-primary/35 bg-primary/10 text-brand-text",
     border: "border-primary/25",
-    icon: "bg-primary/10 text-primary",
+    icon: "bg-primary/10 text-brand-text",
     surface: "bg-primary/5",
-    text: "text-primary",
+    text: "text-brand-text",
   },
   History: {
     badge: "border-accent/30 bg-accent/10 text-accent",
@@ -92,11 +97,11 @@ const categoryThemes: Record<BlogCategory, CategoryTheme> = {
     text: "text-accent",
   },
   "Art & Culture": {
-    badge: "border-primary/35 bg-primary/10 text-primary",
+    badge: "border-primary/35 bg-primary/10 text-brand-text",
     border: "border-primary/25",
-    icon: "bg-primary/10 text-primary",
+    icon: "bg-primary/10 text-brand-text",
     surface: "bg-primary/5",
-    text: "text-primary",
+    text: "text-brand-text",
   },
   "Travel Guide": {
     badge: "border-accent/30 bg-accent/10 text-accent",
@@ -106,11 +111,11 @@ const categoryThemes: Record<BlogCategory, CategoryTheme> = {
     text: "text-accent",
   },
   Destinations: {
-    badge: "border-primary/35 bg-primary/10 text-primary",
+    badge: "border-primary/35 bg-primary/10 text-brand-text",
     border: "border-primary/25",
-    icon: "bg-primary/10 text-primary",
+    icon: "bg-primary/10 text-brand-text",
     surface: "bg-primary/5",
-    text: "text-primary",
+    text: "text-brand-text",
   },
   "Travel Tips": {
     badge: "border-accent/30 bg-accent/10 text-accent",
@@ -230,12 +235,12 @@ function Breadcrumb({
         light ? "text-white/88" : "text-secondary/70"
       )}
     >
-      <Link href="/" className="inline-flex items-center gap-1.5 hover:text-primary">
+      <Link href="/" className="inline-flex items-center gap-1.5 hover:text-brand-text">
         <Home className="size-3.5" />
         Home
       </Link>
       <ChevronRight className="size-3.5 opacity-60" />
-      <Link href="/blog" className="hover:text-primary">
+      <Link href="/blog" className="hover:text-brand-text">
         Blog
       </Link>
       {current ? (
@@ -302,7 +307,7 @@ function BlogCard({ post }: { post: PublicBlog }) {
   return (
     <Link
       href={`/blog/${post.slug}`}
-      className="group flex h-full min-h-[388px] flex-col overflow-hidden rounded-[8px] border border-border bg-white p-2 shadow-[0_14px_32px_rgba(50,50,50,0.055)] transition-[transform,box-shadow,border-color] duration-300 hover:-translate-y-1 hover:border-primary/35 hover:shadow-[0_20px_42px_rgba(50,50,50,0.11)]"
+      className="group flex h-full min-h-[388px] flex-col overflow-hidden rounded-[8px] border border-border bg-white p-2 shadow-[0_14px_32px_rgba(50,50,50,0.055)] transition-[transform,box-shadow,border-color] duration-300 hover:-translate-y-1 hover:border-button-outline hover:shadow-[0_20px_42px_rgba(50,50,50,0.11)]"
     >
       <div className="relative overflow-hidden rounded-[7px]">
         <BlogImage
@@ -316,7 +321,7 @@ function BlogCard({ post }: { post: PublicBlog }) {
         />
       </div>
       <div className="flex flex-1 flex-col px-2 pb-5 pt-5 sm:px-3">
-        <h2 className="line-clamp-2 font-heading text-[21px] font-bold leading-[1.15] tracking-normal text-secondary transition-colors group-hover:text-primary sm:text-[23px]">
+        <h2 className="line-clamp-2 font-heading text-[21px] font-bold leading-[1.15] tracking-normal text-secondary transition-colors group-hover:text-brand-text sm:text-[23px]">
           {post.title}
         </h2>
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[14px] font-medium text-secondary/55">
@@ -362,7 +367,7 @@ function ExploreToursCard({ tours = [], title = "Related Tours", viewAllHref = "
         {tours.map((tour) => (
           <article
             key={tour.href}
-            className="overflow-hidden rounded-[7px] border border-primary/20 bg-primary/5"
+            className="overflow-hidden rounded-[7px] border border-border bg-primary/5"
           >
             <BlogImage
               image={tour.image}
@@ -370,7 +375,7 @@ function ExploreToursCard({ tours = [], title = "Related Tours", viewAllHref = "
               className="h-[118px]"
             />
             <div className="p-4">
-              {tour.date ? <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase text-primary">
+              {tour.date ? <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase text-brand-text">
                 <CalendarDays className="size-3.5" />
                 {tour.date}
               </div> : null}
@@ -382,7 +387,7 @@ function ExploreToursCard({ tours = [], title = "Related Tours", viewAllHref = "
               </p>
               <Link
                 href={tour.href}
-                className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[5px] bg-primary px-4 text-[13px] font-bold text-white transition-colors hover:bg-accent"
+                className={buttonVariants({ className: "mt-4 h-10 w-full gap-2 px-4 text-[13px] font-bold" })}
               >
                 Explore
                 <ArrowRight className="size-4" />
@@ -392,7 +397,7 @@ function ExploreToursCard({ tours = [], title = "Related Tours", viewAllHref = "
         ))}
         <Link
           href={viewAllHref}
-          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[5px] border border-primary bg-white px-4 text-[13px] font-bold text-primary transition-colors hover:bg-primary hover:text-white"
+          className={buttonVariants({ variant: "outline", className: "h-10 w-full gap-2 px-4 text-[13px] font-bold" })}
         >
           View All
           <ArrowRight className="size-4" />
@@ -409,7 +414,7 @@ function PopularPostLink({ post }: { post: PublicBlog }) {
   return (
     <Link
       href={`/blog/${post.slug}`}
-      className="grid grid-cols-[44px_minmax(0,1fr)] gap-3 text-secondary transition-colors hover:text-primary"
+      className="grid grid-cols-[44px_minmax(0,1fr)] gap-3 text-secondary transition-colors hover:text-brand-text"
     >
       <span
         className={cn(
@@ -457,10 +462,10 @@ function BlogSidebar({
             const content = (
               <>
                 <span className="flex min-w-0 items-center gap-3">
-                  <Icon className="size-4 shrink-0 text-primary" />
+                  <Icon className="size-4 shrink-0 text-brand-text" />
                   <span className="truncate">{category}</span>
                 </span>
-                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">
+                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-brand-text">
                   {count}
                 </span>
               </>
@@ -471,7 +476,7 @@ function BlogSidebar({
                 <Link
                   key={category}
                   href="/blog"
-                  className="flex items-center justify-between gap-3 rounded-[6px] px-1 py-1.5 text-[14px] font-medium text-secondary transition-colors hover:text-primary"
+                  className="flex items-center justify-between gap-3 rounded-[6px] px-1 py-1.5 text-[14px] font-medium text-secondary transition-colors hover:text-brand-text"
                 >
                   {content}
                 </Link>
@@ -484,8 +489,8 @@ function BlogSidebar({
                 type="button"
                 onClick={() => onCategorySelect(category)}
                 className={cn(
-                  "flex w-full items-center justify-between gap-3 rounded-[6px] px-1 py-1.5 text-left text-[14px] font-medium text-secondary transition-colors hover:text-primary",
-                  isActive && "text-primary"
+                  "flex w-full items-center justify-between gap-3 rounded-[6px] px-1 py-1.5 text-left text-[14px] font-medium text-button-outline transition-colors hover:text-button-outline",
+                  isActive && "text-button-outline"
                 )}
               >
                 {content}
@@ -511,113 +516,64 @@ function BlogSidebar({
   );
 }
 
-function Pagination() {
+function Pagination({ currentPage, totalPages, category, sortMode }: {
+  currentPage: number; totalPages: number; category: string; sortMode: SortMode;
+}) {
+  if (totalPages <= 1) return null;
+  const pageHref = (page: number) => getBlogPageHref(page, category, sortMode);
   return (
-    <div className="mt-8 flex items-center justify-center gap-2">
-      <button
-        type="button"
+    <nav aria-label="Blog pagination" className="mt-8 flex flex-wrap items-center justify-center gap-2">
+      {currentPage > 1 ? <Link
+        href={pageHref(currentPage - 1)}
         aria-label="Previous page"
-        className="grid size-9 place-items-center rounded-[5px] border border-border bg-white text-secondary/65"
+        className={buttonVariants({ variant: "outline", size: "icon", className: "size-9" })}
       >
         <ChevronLeft className="size-4" />
-      </button>
-      {[1, 2, 3].map((page) => (
-        <button
+      </Link> : null}
+      {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+        <Link
           key={page}
-          type="button"
-          className={cn(
-            "grid size-9 place-items-center rounded-[5px] border border-border bg-white text-[13px] font-semibold text-secondary",
-            page === 1 && "border-primary bg-primary text-white"
-          )}
+          href={pageHref(page)}
+          aria-label={`Page ${page}`}
+          aria-current={page === currentPage ? "page" : undefined}
+          className={buttonVariants({
+            variant: page === currentPage ? "secondary" : "outline",
+            size: "icon",
+            className: "size-9 text-[13px] font-semibold",
+          })}
         >
           {page}
-        </button>
+        </Link>
       ))}
-      <span className="grid size-9 place-items-center text-[13px] font-semibold text-secondary/70">
-        ...
-      </span>
-      <button
-        type="button"
-        className="grid size-9 place-items-center rounded-[5px] border border-border bg-white text-[13px] font-semibold text-secondary"
-      >
-        8
-      </button>
-      <button
-        type="button"
+      {currentPage < totalPages ? <Link
+        href={pageHref(currentPage + 1)}
         aria-label="Next page"
-        className="grid size-9 place-items-center rounded-[5px] border border-border bg-white text-secondary/65"
+        className={buttonVariants({ variant: "outline", size: "icon", className: "size-9" })}
       >
         <ChevronRight className="size-4" />
-      </button>
-    </div>
+      </Link> : null}
+    </nav>
   );
 }
 
-export function BlogListPage() {
-  const [blogs, setBlogs] = useState<PublicBlog[]>([]);
-  const [popularPosts, setPopularPosts] = useState<PublicBlog[]>([]);
-  const [categoryCounts, setCategoryCounts] = useState<BlogCategoryCount[]>(() =>
-    getCategoryCounts([])
-  );
-  const [isLoadingBlogs, setIsLoadingBlogs] = useState(true);
-  const [blogLoadError, setBlogLoadError] = useState("");
-  const [sortMode, setSortMode] = useState<SortMode>("Latest");
-  const [selectedCategory, setSelectedCategory] = useState<BlogCategory | "All">(
-    "All"
-  );
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadBlogs() {
-      setIsLoadingBlogs(true);
-      setBlogLoadError("");
-
-      try {
-        const response = await listPublishedBlogs();
-        const nextBlogs = response.data.blogs;
-
-        if (isMounted) {
-          setBlogs(nextBlogs);
-          setPopularPosts(
-            response.data.popularPosts.length
-              ? response.data.popularPosts
-              : getPopularPosts(nextBlogs)
-          );
-          setCategoryCounts(getCategoryCounts(nextBlogs, response.data.categories));
-        }
-      } catch {
-        if (isMounted) {
-          setBlogs([]);
-          setPopularPosts([]);
-          setCategoryCounts(getCategoryCounts([]));
-          setBlogLoadError("Unable to load blog posts right now.");
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoadingBlogs(false);
-        }
-      }
-    }
-
-    loadBlogs();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const visibleBlogs = useMemo(() => {
-    const filteredBlogs = blogs.filter(
-      (post) => selectedCategory === "All" || post.category === selectedCategory
-    );
-
-    return getSortedBlogs(filteredBlogs, sortMode);
-  }, [blogs, selectedCategory, sortMode]);
-
+export function BlogListPage({ data, currentPage, totalPages, selectedCategory, sortMode }: {
+  data: PublicBlogsResponse;
+  currentPage: number;
+  totalPages: number;
+  selectedCategory: BlogCategory | "All";
+  sortMode: SortMode;
+}) {
+  const router = useRouter();
+  const visibleBlogs = data.blogs;
+  const popularPosts = data.popularPosts;
+  const categoryCounts = getCategoryCounts(data.blogs, data.categories);
+  const setSelectedCategory = (category: BlogCategory | "All") => router.push(getBlogPageHref(1, category, sortMode));
+  const setSortMode = (sort: SortMode) => router.push(getBlogPageHref(1, selectedCategory, sort));
   return (
-    <main className="min-h-screen bg-background text-secondary">
-      <Header />
+    <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-secondary">
+      <div className="h-[100px] lg:h-[120px]">
+        <Header />
+      </div>
       <BlogListHero />
 
       <section className="mx-auto grid w-full max-w-[1320px] items-stretch gap-8 px-4 py-8 sm:px-5 sm:py-10 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_330px]">
@@ -627,8 +583,8 @@ export function BlogListPage() {
               type="button"
               onClick={() => setSelectedCategory("All")}
               className={cn(
-                "flex w-fit items-center gap-2 text-[15px] font-bold text-primary",
-                selectedCategory !== "All" && "text-secondary/65"
+                "flex w-fit items-center gap-2 text-[15px] font-bold text-button-outline underline-offset-4 hover:underline",
+                selectedCategory !== "All" && "text-button-outline"
               )}
             >
               <BookOpen className="size-5" />
@@ -638,7 +594,7 @@ export function BlogListPage() {
               <select
                 value={sortMode}
                 onChange={(event) => setSortMode(event.target.value as SortMode)}
-                className="h-11 w-full appearance-none rounded-[5px] border border-border bg-white px-4 pr-10 text-[13px] font-medium text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+                className="h-11 w-full appearance-none rounded-[6px] border border-input bg-white px-4 pr-10 text-[13px] font-medium text-secondary outline-none transition-colors focus:border-ring focus:ring-3 focus:ring-ring/15"
               >
                 <option>Latest</option>
                 <option>Oldest</option>
@@ -647,19 +603,7 @@ export function BlogListPage() {
             </label>
           </div>
 
-          {isLoadingBlogs ? (
-            <div className="rounded-[8px] border border-border bg-white p-8 text-center text-[14px] font-medium text-secondary/65">
-              Loading blog posts...
-            </div>
-          ) : null}
-
-          {!isLoadingBlogs && blogLoadError ? (
-            <div className="rounded-[8px] border border-border bg-white p-8 text-center text-[14px] font-medium text-secondary/65">
-              {blogLoadError}
-            </div>
-          ) : null}
-
-          {!isLoadingBlogs && !blogLoadError && visibleBlogs.length > 0 ? (
+          {visibleBlogs.length > 0 ? (
             <div className="grid gap-8 md:grid-cols-2">
               {visibleBlogs.map((post) => (
                 <BlogCard key={post.slug} post={post} />
@@ -667,14 +611,14 @@ export function BlogListPage() {
             </div>
           ) : null}
 
-          {!isLoadingBlogs && !blogLoadError && visibleBlogs.length === 0 ? (
+          {visibleBlogs.length === 0 ? (
             <div className="rounded-[8px] border border-border bg-white p-8 text-center text-[14px] font-medium text-secondary/65">
               No blog posts are available in this category.
             </div>
           ) : null}
 
-          {!isLoadingBlogs && !blogLoadError && visibleBlogs.length > 0 ? (
-            <Pagination />
+          {totalPages > 1 ? (
+            <Pagination currentPage={currentPage} totalPages={totalPages} category={selectedCategory} sortMode={sortMode} />
           ) : null}
         </div>
 
@@ -819,7 +763,7 @@ function ArticleBody({ post }: { post: PublicBlog }) {
         <div
           className={cn(
             "space-y-5 sm:space-y-6",
-            "[&_a]:font-semibold [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4",
+            "[&_a]:font-semibold [&_a]:text-brand-text [&_a]:underline [&_a]:underline-offset-4",
             "[&_blockquote]:rounded-[8px] [&_blockquote]:border [&_blockquote]:border-primary/35 [&_blockquote]:bg-primary/5 [&_blockquote]:px-5 [&_blockquote]:py-4 [&_blockquote]:text-[16px] [&_blockquote]:font-medium [&_blockquote]:italic [&_blockquote]:leading-[1.65] sm:[&_blockquote]:px-7 sm:[&_blockquote]:py-5 sm:[&_blockquote]:text-[18px]",
             "[&_div]:text-[16px] [&_div]:leading-[1.72] [&_div]:text-secondary sm:[&_div]:text-[18px]",
             "[&_figcaption]:text-center [&_figcaption]:text-[13px] [&_figcaption]:font-medium [&_figcaption]:leading-[1.55] [&_figcaption]:text-secondary/60 [&_figure]:space-y-2",
@@ -879,7 +823,7 @@ function ArticleBody({ post }: { post: PublicBlog }) {
 
       {post.quote ? (
         <blockquote className="mt-8 rounded-[8px] border border-primary/35 bg-primary/5 px-5 py-4 text-[16px] font-medium italic leading-[1.65] text-secondary sm:px-7 sm:py-5 sm:text-[18px]">
-          <span className="mr-3 align-top font-heading text-[44px] font-bold leading-none text-primary">
+          <span className="mr-3 align-top font-heading text-[44px] font-bold leading-none text-brand-text">
             &ldquo;
           </span>
           {post.quote}
@@ -907,7 +851,7 @@ function ShareRow() {
           key={label}
           type="button"
           aria-label={label}
-          className="grid size-11 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:text-primary"
+          className={buttonVariants({ variant: "outline", size: "icon", className: "size-11 rounded-full" })}
         >
           <Icon className="size-4" />
         </button>
@@ -951,7 +895,7 @@ function AdjacentPostCard({
     <Link
       href={`/blog/${post.slug}`}
       className={cn(
-        "grid items-center gap-3 rounded-[6px] p-2 text-secondary transition-colors hover:bg-primary/5 hover:text-primary sm:grid-cols-[52px_minmax(0,1fr)]"
+        "grid items-center gap-3 rounded-[6px] p-2 text-secondary transition-colors hover:bg-primary/5 hover:text-brand-text sm:grid-cols-[52px_minmax(0,1fr)]"
       )}
     >
       <span
@@ -966,9 +910,9 @@ function AdjacentPostCard({
       </span>
       <span className={cn("min-w-0", !reverse && "sm:text-right")}>
         <span className="flex items-center gap-1 text-[11px] font-medium text-secondary/60 sm:justify-start">
-          {reverse ? <ChevronLeft className="size-3.5 text-primary" /> : null}
+          {reverse ? <ChevronLeft className="size-3.5 text-brand-text" /> : null}
           {label}
-          {!reverse ? <ChevronRight className="size-3.5 text-primary" /> : null}
+          {!reverse ? <ChevronRight className="size-3.5 text-brand-text" /> : null}
         </span>
         <span className="mt-1 line-clamp-2 block font-heading text-[14px] font-bold leading-[1.25]">
           {post.title}
@@ -978,15 +922,15 @@ function AdjacentPostCard({
   );
 }
 
-export function BlogDetailPage({ slug }: { slug: string }) {
-  const [relatedTours, setRelatedTours] = useState<BlogRelatedTour[]>([]);
-  const [post, setPost] = useState<PublicBlog | null>(null);
-  const [blogs, setBlogs] = useState<PublicBlog[]>([]);
-  const [popularPosts, setPopularPosts] = useState<PublicBlog[]>([]);
+export function BlogDetailPage({ slug, initialData, initialList }: { slug: string; initialData?: PublicBlogResponse; initialList?: PublicBlogsResponse }) {
+  const [relatedTours, setRelatedTours] = useState<BlogRelatedTour[]>(initialData?.relatedTours ?? []);
+  const [post, setPost] = useState<PublicBlog | null>(initialData?.blog ?? null);
+  const [blogs, setBlogs] = useState<PublicBlog[]>(initialList?.blogs ?? initialData?.adjacentPosts ?? []);
+  const [popularPosts, setPopularPosts] = useState<PublicBlog[]>(initialData?.popularPosts ?? initialList?.popularPosts ?? []);
   const [categoryCounts, setCategoryCounts] =
-    useState<BlogCategoryCount[]>(() => getCategoryCounts([]));
+    useState<BlogCategoryCount[]>(() => getCategoryCounts(initialList?.blogs ?? [], initialList?.categories));
   const [isMissing, setIsMissing] = useState(false);
-  const [isLoadingDetail, setIsLoadingDetail] = useState(true);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(!initialData);
 
   useEffect(() => {
     let isMounted = true;
@@ -1030,12 +974,12 @@ export function BlogDetailPage({ slug }: { slug: string }) {
       }
     }
 
-    loadDetail();
+    if (!initialData) loadDetail();
 
     return () => {
       isMounted = false;
     };
-  }, [slug]);
+  }, [slug, initialData]);
 
   const sortedBlogs = useMemo(() => getSortedBlogs(blogs, "Latest"), [blogs]);
   const currentIndex = post
@@ -1052,8 +996,10 @@ export function BlogDetailPage({ slug }: { slug: string }) {
 
   if (isLoadingDetail && !post) {
     return (
-      <main className="min-h-screen bg-background text-secondary">
-        <Header />
+      <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-secondary">
+        <div className="h-[100px] lg:h-[120px]">
+          <Header />
+        </div>
         <section className="mx-auto w-full max-w-[1320px] px-5 py-16">
           <Breadcrumb current="Loading blog" />
           <div className="mt-10 rounded-[8px] border border-border bg-white p-8 text-center shadow-[0_12px_34px_rgba(50,50,50,0.055)]">
@@ -1068,8 +1014,10 @@ export function BlogDetailPage({ slug }: { slug: string }) {
 
   if (isMissing || !post) {
     return (
-      <main className="min-h-screen bg-background text-secondary">
-        <Header />
+      <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-secondary">
+        <div className="h-[100px] lg:h-[120px]">
+          <Header />
+        </div>
         <section className="mx-auto w-full max-w-[1320px] px-5 py-16">
           <Breadcrumb current="Blog not found" />
           <div className="mt-10 rounded-[8px] border border-border bg-white p-8 text-center shadow-[0_12px_34px_rgba(50,50,50,0.055)]">
@@ -1081,7 +1029,7 @@ export function BlogDetailPage({ slug }: { slug: string }) {
             </p>
             <Link
               href="/blog"
-              className="mt-6 inline-flex h-11 items-center rounded-[5px] bg-primary px-6 text-[13px] font-bold text-white"
+              className={buttonVariants({ className: "mt-6 h-11 px-6 text-[13px] font-bold" })}
             >
               Back to Blog
             </Link>
@@ -1092,8 +1040,10 @@ export function BlogDetailPage({ slug }: { slug: string }) {
   }
 
   return (
-    <main className="min-h-screen bg-background text-secondary">
-      <Header />
+    <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-secondary">
+      <div className="h-[100px] lg:h-[120px]">
+        <Header />
+      </div>
       <DetailHero post={post} />
 
       <section className="mx-auto grid w-full max-w-[1320px] gap-8 px-4 py-8 sm:px-5 sm:py-10 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_330px]">

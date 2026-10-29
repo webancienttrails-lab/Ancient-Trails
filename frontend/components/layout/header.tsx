@@ -1,5 +1,8 @@
 "use client";
+import { useModalFocus } from "@/lib/modal-focus";
+import { useHeaderPopover } from "@/lib/header-popover";
 
+import { getTravellerAccountName } from "@/lib/profile-prompt";
 import { SiteLogo } from "@/components/site-logo";
 import Image from "next/image";
 import Link from "next/link";
@@ -32,7 +35,7 @@ import { createPortal } from "react-dom";
 import { ButtonArrow } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import {
-  clearTravellerSession,
+  logoutTravellerSession,
   getTravellerSession,
   listenForTravellerSessionChanges,
   type TravellerUser,
@@ -54,6 +57,7 @@ import {
 } from "@/lib/home-travel";
 import {
   getDestinationHref,
+  getExperienceHref,
   getDestinationsHref,
   getTourHref,
   slugifyRoute,
@@ -386,16 +390,6 @@ function buildCityMenuItems(
   }));
 }
 
-function getExperienceHref(experience: PublicExperience) {
-  const routeValue =
-    slugifyRoute(experience.tourName) ||
-    slugifyRoute(experience.title || "") ||
-    experience.tourId ||
-    experience.experienceId;
-
-  return `/experiences/${encodeURIComponent(routeValue)}`;
-}
-
 function uniqueSearchItems(items: HeaderSearchItem[]) {
   const seen = new Set<string>();
 
@@ -639,9 +633,9 @@ function DestinationListItem({
 }) {
   return (
     <li>
-      <Link
+      <Link prefetch={false}
         href={item.href}
-        className="group/destination grid grid-cols-[72px_minmax(0,1fr)] items-center gap-3 rounded-[5px] py-1 pr-1 text-secondary transition-colors hover:text-primary"
+        className="group/destination grid grid-cols-[72px_minmax(0,1fr)] items-center gap-3 rounded-[5px] py-1 pr-1 text-secondary transition-colors hover:text-brand-text"
       >
         <span className="relative h-[54px] overflow-hidden rounded-[5px] bg-muted ring-1 ring-primary/10">
           <Image
@@ -656,7 +650,7 @@ function DestinationListItem({
           className={megaTextRevealClass(isOpen, "block min-w-0")}
           style={megaTextRevealStyle(isOpen, delay)}
         >
-          <span className="block font-sans text-description font-semibold leading-[1.2] text-secondary transition-colors group-hover/destination:text-primary">
+          <span className="block font-sans text-description font-semibold leading-[1.2] text-secondary transition-colors group-hover/destination:text-brand-text">
             {item.title}
           </span>
           <span className="mt-1 block font-sans text-[12px] font-medium leading-[1.3] text-secondary/75">
@@ -690,7 +684,7 @@ function DestinationSection({
   return (
     <div className="px-6 py-5">
       <div className="flex items-center gap-3">
-        <span className="grid size-11 shrink-0 place-items-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/15">
+        <span className="grid size-11 shrink-0 place-items-center rounded-full bg-primary/10 text-brand-text ring-1 ring-primary/15">
           <Icon className="size-5" strokeWidth={1.7} />
         </span>
         <div>
@@ -726,11 +720,11 @@ function DestinationSection({
         ))}
       </ul>
 
-      <Link
+      <Link prefetch={false}
         href={footerHref}
         className={megaTextRevealClass(
           isOpen,
-          "mt-4 flex items-center justify-between font-sans text-[14px] font-bold text-primary"
+          "mt-4 flex items-center justify-between font-sans text-[14px] font-bold text-brand-text"
         )}
         style={megaTextRevealStyle(isOpen, baseDelay + 410)}
       >
@@ -751,7 +745,7 @@ function CityTile({
   delay: number;
 }) {
   return (
-    <Link
+    <Link prefetch={false}
       href={city.href}
       className="group/city relative h-[72px] overflow-hidden rounded-[7px] bg-muted shadow-[0_8px_18px_rgba(50,50,50,0.1)]"
     >
@@ -837,9 +831,9 @@ export function DestinationsMegaMenu({
               aria-hidden="true"
               className="pointer-events-none translate-y-24 object-cover object-left-bottom opacity-10 mix-blend-multiply"
             />
-            <Link
+            <Link prefetch={false}
               href={getDestinationsHref("UNESCO sites")}
-              className="group/button relative mt-[210px] flex h-9 w-[192px] items-center justify-between gap-2 rounded-full border border-primary bg-white px-3 font-sans text-[12px] font-semibold text-primary shadow-[0_8px_18px_rgba(212,114,32,0.16)] transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-white"
+              className="group/button relative mt-[210px] flex h-9 w-[192px] items-center justify-between gap-2 rounded-full border border-button-outline bg-white px-3 font-sans text-[12px] font-semibold text-button-outline shadow-[0_8px_18px_rgba(212,114,32,0.16)] transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-brand-button-dark hover:text-white"
             >
               <span
                 className={megaTextRevealClass(isOpen, "whitespace-nowrap")}
@@ -877,7 +871,7 @@ export function DestinationsMegaMenu({
 
           <div className="border-l border-primary/25 px-6 py-5">
             <div className="flex items-center gap-3">
-              <span className="grid size-11 shrink-0 place-items-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/15">
+              <span className="grid size-11 shrink-0 place-items-center rounded-full bg-primary/10 text-brand-text ring-1 ring-primary/15">
                 <MapPin className="size-5" strokeWidth={1.7} />
               </span>
               <div>
@@ -913,11 +907,11 @@ export function DestinationsMegaMenu({
               ))}
             </div>
 
-            <Link
+            <Link prefetch={false}
               href={getDestinationsHref("Popular cities")}
               className={megaTextRevealClass(
                 isOpen,
-                "mt-4 flex items-center justify-between font-sans text-[14px] font-bold text-primary"
+                "mt-4 flex items-center justify-between font-sans text-[14px] font-bold text-brand-text"
               )}
               style={megaTextRevealStyle(isOpen, 620)}
             >
@@ -999,9 +993,9 @@ export function ToursMegaMenu({
             aria-hidden="true"
             className="pointer-events-none object-cover object-left-bottom opacity-10 mix-blend-multiply"
           />
-          <Link
+          <Link prefetch={false}
             href="/tour-calendar"
-            className="group/button relative mt-8 flex h-9 w-full max-w-[170px] items-center justify-between gap-4 rounded-full border border-primary bg-white px-5 font-sans text-[13px] font-semibold text-primary shadow-[0_8px_18px_rgba(212,114,32,0.16)] transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary hover:text-white"
+            className="group/button relative mt-8 flex h-9 w-full max-w-[170px] items-center justify-between gap-4 rounded-full border border-button-outline bg-white px-5 font-sans text-[13px] font-semibold text-button-outline shadow-[0_8px_18px_rgba(212,114,32,0.16)] transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-brand-button-dark hover:text-white"
           >
             <span
               className={megaTextRevealClass(isOpen, "whitespace-nowrap")}
@@ -1024,7 +1018,7 @@ export function ToursMegaMenu({
             className="min-w-0 border-l border-primary/25 px-5 py-6 xl:px-6"
           >
             <div className="flex min-h-[44px] min-w-0 items-center gap-3">
-              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/15">
+              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-brand-text ring-1 ring-primary/15">
                 <Icon className="size-5" strokeWidth={1.7} />
               </span>
               <h3
@@ -1046,10 +1040,10 @@ export function ToursMegaMenu({
             >
               {visibleItems.map((item, index) => (
                 <li key={`${title}-${item.title}`}>
-                  <Link
+                  <Link prefetch={false}
                     href={item.href}
                     className={cn(
-                      "group/tour grid items-center gap-3 font-sans text-description font-medium leading-[1.25] text-secondary transition-colors hover:text-primary",
+                      "group/tour grid items-center gap-3 font-sans text-description font-medium leading-[1.25] text-secondary transition-colors hover:text-brand-text",
                       isLongTrails
                         ? "grid-cols-[44px_minmax(0,1fr)] text-[14px]"
                         : "grid-cols-[52px_minmax(0,1fr)]"
@@ -1083,11 +1077,11 @@ export function ToursMegaMenu({
               ))}
             </ul>
 
-            <Link
+            <Link prefetch={false}
               href={isLongTrails ? "/tours" : "/short-trails"}
               className={megaTextRevealClass(
                 isOpen,
-                "mt-8 inline-flex flex-col font-sans text-[14px] font-bold text-primary"
+                "mt-8 inline-flex flex-col font-sans text-[14px] font-bold text-brand-text"
               )}
               style={megaTextRevealStyle(isOpen, baseDelay + 380)}
             >
@@ -1103,7 +1097,7 @@ export function ToursMegaMenu({
             const baseDelay = 260 + columnIndex * 110;
 
             return (
-              <Link
+              <Link prefetch={false}
                 key={title}
                 href={href}
                 className={cn(
@@ -1112,7 +1106,7 @@ export function ToursMegaMenu({
                 )}
               >
                 <span className="col-span-2 flex min-w-0 items-center gap-3">
-                  <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-brand-text">
                     <Icon className="size-5" strokeWidth={1.7} />
                   </span>
                   <span className={megaTextRevealClass(isOpen, "min-w-0 font-sans text-[16px] font-semibold leading-tight text-secondary")} style={megaTextRevealStyle(isOpen, baseDelay)}>{title}</span>
@@ -1122,7 +1116,7 @@ export function ToursMegaMenu({
                 </span>
                 <span className="flex min-w-0 flex-col justify-between gap-2">
                   <span className={megaTextRevealClass(isOpen, "font-sans text-[13px] leading-relaxed text-secondary")} style={megaTextRevealStyle(isOpen, baseDelay + 90)}>{subtitle}</span>
-                  <span className="grid size-9 shrink-0 place-items-center self-end rounded-full border border-primary text-primary transition-colors group-hover/feature:bg-primary group-hover/feature:text-white"><ArrowRight className="size-4" /></span>
+                  <span className="grid size-9 shrink-0 place-items-center self-end rounded-full border border-primary text-brand-text transition-colors group-hover/feature:bg-brand-button-dark group-hover/feature:text-white"><ArrowRight className="size-4" /></span>
                 </span>
               </Link>
             );
@@ -1146,6 +1140,8 @@ function AccountMenu({
 
   return (
     <div
+      inert={!isOpen}
+      aria-hidden={!isOpen}
       style={headerLayerStyle}
       className={`absolute right-0 top-[calc(100%+14px)] z-[2147483647] w-[min(400px,calc(100vw-2.5rem))] overflow-hidden rounded-[10px] border border-primary/20 bg-white text-secondary shadow-[0_28px_70px_rgba(35,24,16,0.22)] ring-1 ring-white transition-[opacity,transform] duration-[260ms] ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isOpen
@@ -1154,13 +1150,13 @@ function AccountMenu({
       }`}
     >
       <div className="px-6 py-6">
-        <div className="flex items-start justify-between gap-4">
-          <p className="min-w-0 flex-1 truncate font-heading text-[28px] font-bold leading-[1.12] text-secondary">
+        <div className="flex items-start justify-between gap-4 max-lg:flex-col max-lg:gap-3">
+          <p className="min-w-0 flex-1 truncate font-heading text-[28px] font-bold leading-[1.12] text-secondary max-lg:w-full max-lg:flex-none max-lg:whitespace-normal max-lg:break-words max-lg:text-[20px]">
             Hello, {displayName}
           </p>
-          <Link
+          <Link prefetch={false}
             href="/me/wishlist"
-            className="mt-1 shrink-0 font-sans text-[12px] font-bold uppercase leading-none text-primary transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+            className="mt-1 shrink-0 max-lg:mt-0 font-sans text-[12px] font-bold uppercase leading-none text-brand-text transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
           >
             View Wishlist
           </Link>
@@ -1168,16 +1164,16 @@ function AccountMenu({
 
         <div className="mt-5 space-y-4">
           {accountMenuItems.map(({ title, description, href, icon: Icon }) => (
-            <Link
+            <Link prefetch={false}
               key={title}
               href={href}
-              className="group/account-item flex items-start gap-3 rounded-[7px] py-1 transition-colors hover:text-primary"
+              className="group/account-item flex items-start gap-3 rounded-[7px] py-1 transition-colors hover:text-brand-text"
             >
-              <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-[#fff4ea] text-primary ring-1 ring-primary/10">
+              <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-[#fff4ea] text-brand-text ring-1 ring-primary/10">
                 <Icon className="size-4" strokeWidth={1.8} />
               </span>
               <span className="min-w-0">
-                <span className="block font-sans text-description font-semibold leading-[1.25] text-secondary transition-colors group-hover/account-item:text-primary">
+                <span className="block font-sans text-description font-semibold leading-[1.25] text-secondary transition-colors group-hover/account-item:text-brand-text">
                   {title}
                 </span>
                 <span className="mt-1 block font-sans text-[14px] leading-[1.45] text-secondary/70">
@@ -1192,7 +1188,7 @@ function AccountMenu({
       <button
         type="button"
         onClick={onSignOut}
-        className="flex w-full items-center gap-3 border-t border-border bg-[#fbf0e8] px-6 py-4 font-sans text-description font-medium text-secondary transition-colors hover:bg-primary hover:text-white"
+        className="flex w-full items-center gap-3 border-t border-border bg-[#fbf0e8] px-6 py-4 font-sans text-description font-medium text-secondary transition-colors hover:bg-brand-button-dark hover:text-white"
       >
         <LogOut className="size-5" strokeWidth={1.8} />
         Sign Out
@@ -1202,16 +1198,7 @@ function AccountMenu({
 }
 
 function getTravellerDisplayName(traveller: TravellerUser | null) {
-  if (!traveller) {
-    return "Traveller";
-  }
-
-  const fullName = [traveller.firstName, traveller.lastName]
-    .map((part) => part?.trim())
-    .filter(Boolean)
-    .join(" ");
-
-  return fullName || traveller.email?.split("@")[0] || "Traveller";
+  return getTravellerAccountName(traveller);
 }
 
 function getTravellerInitials(traveller: TravellerUser | null) {
@@ -1242,6 +1229,7 @@ function MobileHeaderDrawer({
   indianItems,
   internationalItems,
   cityItems,
+  triggerRef,
   onClose,
   onSignOut,
 }: {
@@ -1253,36 +1241,13 @@ function MobileHeaderDrawer({
   indianItems: DestinationMenuItem[];
   internationalItems: DestinationMenuItem[];
   cityItems: CityMenuItem[];
+  triggerRef: { current: HTMLButtonElement | null };
   onClose: () => void;
   onSignOut: () => void;
 }) {
   const [openChildLabel, setOpenChildLabel] = useState<string | null>(null);
-  const drawerRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    if (!isOpen) return;
-    const previousFocus = document.activeElement as HTMLElement | null;
-    const frame = window.requestAnimationFrame(() => drawerRef.current?.querySelector<HTMLElement>("a, button")?.focus());
-    const trapFocus = (event: KeyboardEvent) => {
-      if (event.key !== "Tab") return;
-      const controls = drawerRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])');
-      if (!controls?.length) return;
-      const first = controls[0];
-      const last = controls[controls.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault(); last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault(); first.focus();
-      }
-    };
-    document.addEventListener("keydown", trapFocus);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener("keydown", trapFocus);
-      previousFocus?.focus();
-    };
-  }, [isOpen]);
-  const displayName = getTravellerDisplayName(traveller);
-  const displayEmail = traveller?.email || "Plan your next heritage journey.";
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useModalFocus(dialogRef, isOpen, onClose, 'aside button[aria-label="Close menu"]', triggerRef);
   const tourChildGroups = tourMenuColumns
     .map((column) => ({
       title: column.title,
@@ -1323,9 +1288,12 @@ function MobileHeaderDrawer({
   };
 
   const drawer = (
-    <div
+    <dialog
+      ref={dialogRef}
+      id="mobile-navigation"
+      aria-label="Navigation menu"
       style={mobileDrawerLayerStyle}
-      className={`fixed inset-0 z-[2147483647] lg:hidden ${
+      className={`fixed inset-0 m-0 h-[100dvh] max-h-none w-screen max-w-none overflow-hidden border-0 bg-transparent p-0 text-secondary z-[2147483647] lg:hidden ${
         isOpen ? "pointer-events-auto" : "pointer-events-none"
       }`}
       aria-hidden={!isOpen}
@@ -1334,6 +1302,7 @@ function MobileHeaderDrawer({
       <button
         type="button"
         aria-label="Close menu"
+        tabIndex={-1}
         onClick={onClose}
         className={`absolute inset-0 bg-secondary/45 backdrop-blur-[2px] transition-opacity duration-300 ${
           isOpen ? "opacity-100" : "opacity-0"
@@ -1341,41 +1310,29 @@ function MobileHeaderDrawer({
       />
 
       <aside
-        ref={drawerRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Navigation menu"
-        className={`absolute left-0 top-0 flex h-[100svh] max-h-[100svh] w-[min(340px,calc(100vw-1.25rem))] flex-col overflow-hidden border-r border-border bg-white text-secondary shadow-[0_26px_80px_rgba(35,24,16,0.24)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
+        className={`absolute left-0 top-0 flex h-[100svh] max-h-[100svh] w-[min(280px,calc(100vw-3rem))] flex-col overflow-hidden border-r border-border bg-white text-secondary transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          isOpen ? "translate-x-0 shadow-[0_26px_80px_rgba(35,24,16,0.24)]" : "-translate-x-full shadow-none"
         }`}
       >
         <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
-          <Link href="/" aria-label="Ancient Trails home" onClick={onClose}>
+          <Link prefetch={false} href="/" aria-label="Ancient Trails home" onClick={onClose}>
             <SiteLogo
               alt="Ancient Trails"
               width={218}
               height={86}
-              className="h-10 w-auto"
+              className="h-18 w-auto"
             />
           </Link>
           <button
             type="button"
             aria-label="Close menu"
             onClick={onClose}
-            className="grid size-10 shrink-0 place-items-center rounded-full border border-primary/20 bg-white text-secondary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+            className="grid size-10 shrink-0 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:border-button-outline hover:bg-brand-button-dark hover:text-white"
           >
             <X className="size-5" strokeWidth={2} />
           </button>
         </div>
 
-        <div className="border-b border-border bg-[#fff8f0] px-5 py-4">
-          <p className="font-heading text-[22px] font-bold leading-tight text-secondary">
-            {traveller ? `Hello, ${displayName}` : "Ancient Trails"}
-          </p>
-          <p className="mt-1 truncate font-sans text-[13px] font-medium text-secondary/64">
-            {displayEmail}
-          </p>
-        </div>
 
         <nav
           aria-label="Mobile navigation"
@@ -1388,46 +1345,48 @@ function MobileHeaderDrawer({
               return (
                 <div key={item.label}>
                   {childGroups.length > 0 ? (
-                    <button
-                      type="button"
-                      aria-expanded={openChildLabel === item.label}
-                      onClick={() =>
-                        setOpenChildLabel((current) =>
-                          current === item.label ? null : item.label
-                        )
-                      }
-                      className="group/mobile-nav flex h-11 w-full items-center justify-between rounded-[7px] px-3 text-left font-sans text-[15px] font-semibold text-secondary transition-colors hover:bg-primary/8 hover:text-primary"
-                    >
-                      <span>{item.label}</span>
-                      <ArrowRight
-                        className={`size-4 text-primary opacity-70 transition-transform ${
-                          openChildLabel === item.label
-                            ? "rotate-90"
-                            : "group-hover/mobile-nav:translate-x-0.5"
-                        }`}
-                        strokeWidth={1.8}
-                      />
-                    </button>
+                    <div className="group/mobile-nav flex h-11 w-full items-center justify-between rounded-[7px] px-3 text-left font-sans text-[15px] font-semibold text-secondary transition-colors hover:bg-primary/8 hover:text-brand-text">
+                      <Link prefetch={false} href={item.href} onClick={onClose} className="flex h-full min-w-0 flex-1 items-center">
+                        {item.label}
+                      </Link>
+                      <button
+                        type="button"
+                        aria-label={`Toggle ${item.label} submenu`}
+                        aria-expanded={openChildLabel === item.label}
+                        aria-controls={`mobile-submenu-${item.label.toLowerCase()}`}
+                        onClick={() => setOpenChildLabel((current) => current === item.label ? null : item.label)}
+                        className="-mr-3 grid size-11 shrink-0 place-items-center rounded-[7px]"
+                      >
+                        <ArrowRight
+                          className={`size-4 text-brand-text opacity-70 transition-transform ${
+                            openChildLabel === item.label
+                              ? "rotate-90"
+                              : "group-hover/mobile-nav:translate-x-0.5"
+                          }`}
+                          strokeWidth={1.8}
+                        />
+                      </button>
+                    </div>
                   ) : (
-                    <Link
+                    <Link prefetch={false}
                       href={item.href}
                       onClick={onClose}
-                      className="group/mobile-nav flex h-11 items-center justify-between rounded-[7px] px-3 font-sans text-[15px] font-semibold text-secondary transition-colors hover:bg-primary/8 hover:text-primary"
+                      className="group/mobile-nav flex h-11 items-center justify-between rounded-[7px] px-3 font-sans text-[15px] font-semibold text-secondary transition-colors hover:bg-primary/8 hover:text-brand-text"
                     >
                       <span>{item.label}</span>
                       <ArrowRight
-                        className="size-4 text-primary opacity-70 transition-transform group-hover/mobile-nav:translate-x-0.5"
+                        className="size-4 text-brand-text opacity-70 transition-transform group-hover/mobile-nav:translate-x-0.5"
                         strokeWidth={1.8}
                       />
                     </Link>
                   )}
 
                   {childGroups.length > 0 && openChildLabel === item.label ? (
-                    <div className="mb-2 ml-3 border-l border-primary/18 pl-3">
-                      <Link
+                    <div id={`mobile-submenu-${item.label.toLowerCase()}`} className="mb-2 ml-3 border-l border-primary/18 pl-3">
+                      <Link prefetch={false}
                         href={item.href}
                         onClick={onClose}
-                        className="mb-1 block rounded-[6px] px-2 py-1.5 font-sans text-[13px] font-bold text-primary transition-colors hover:bg-primary/8"
+                        className="mb-1 block rounded-[6px] px-2 py-1.5 font-sans text-[13px] font-bold text-brand-text transition-colors hover:bg-primary/8"
                       >
                         View all {item.label}
                       </Link>
@@ -1438,11 +1397,11 @@ function MobileHeaderDrawer({
                           </p>
                           <div className="mt-1 space-y-0.5">
                             {group.items.map((child) => (
-                              <Link
+                              <Link prefetch={false}
                                 key={`${group.title}-${child.href}-${child.title}`}
                                 href={child.href}
                                 onClick={onClose}
-                                className="block rounded-[6px] px-2 py-1.5 font-sans text-[13px] font-semibold text-secondary/72 transition-colors hover:bg-primary/8 hover:text-primary"
+                                className="block rounded-[6px] px-2 py-1.5 font-sans text-[13px] font-semibold text-secondary/72 transition-colors hover:bg-primary/8 hover:text-brand-text"
                               >
                                 {child.title}
                               </Link>
@@ -1461,7 +1420,7 @@ function MobileHeaderDrawer({
         <div className="border-t border-border px-5 py-4">
           {traveller ? (
             <>
-              <Link
+              <Link prefetch={false}
                 href={accountHref}
                 onClick={onClose}
                 className="flex h-11 w-full items-center justify-center rounded-full bg-primary px-5 font-sans text-[14px] font-semibold text-white transition-colors hover:bg-secondary"
@@ -1471,14 +1430,14 @@ function MobileHeaderDrawer({
               <button
                 type="button"
                 onClick={onSignOut}
-                className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-full border border-primary/30 bg-white font-sans text-[14px] font-semibold text-primary transition-colors hover:bg-primary hover:text-white"
+                className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-full border border-button-outline bg-white font-sans text-[14px] font-semibold text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white"
               >
                 <LogOut className="size-4" strokeWidth={1.9} />
                 Sign Out
               </button>
             </>
           ) : (
-            <Link
+            <Link prefetch={false}
               href={loginHref}
               onClick={onClose}
               className="flex h-11 w-full items-center justify-center rounded-full bg-primary px-5 font-sans text-[14px] font-semibold text-white transition-colors hover:bg-secondary"
@@ -1488,7 +1447,7 @@ function MobileHeaderDrawer({
           )}
         </div>
       </aside>
-    </div>
+    </dialog>
   );
 
   return typeof document === "undefined"
@@ -1501,6 +1460,7 @@ function HeaderSearchPopup({
   isOpen,
   query,
   results,
+  triggerRef,
   onClose,
   onQueryChange,
 }: {
@@ -1508,74 +1468,57 @@ function HeaderSearchPopup({
   isOpen: boolean;
   query: string;
   results: HeaderSearchItem[];
+  triggerRef: { current: HTMLButtonElement | null };
   onClose: () => void;
   onQueryChange: (value: string) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const popupRef = useRef<HTMLDivElement>(null);
-
+  const popupRef = useRef<HTMLDialogElement>(null);
+  const [position, setPosition] = useState<CSSProperties>({});
+  useHeaderPopover(popupRef, isOpen, onClose, 'input[type="search"]', triggerRef);
   useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      inputRef.current?.focus();
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
+    if (!isOpen) return;
+    const place = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const edge = trigger.parentElement?.getBoundingClientRect().right || rect.right;
+      const width = Math.min(430, window.innerWidth - 40);
+      const left = window.innerWidth < 1024 ? (window.innerWidth - width) / 2 : Math.max(20, Math.min(edge - width, window.innerWidth - width - 20));
+      setPosition({ position: 'fixed', margin: 0, left, top: rect.bottom + 14, width });
     };
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (popupRef.current?.contains(event.target as Node)) {
-        return;
-      }
-
-      onClose();
-    };
-
-    window.addEventListener("pointerdown", handlePointerDown);
-
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-    };
-  }, [isOpen, onClose]);
+    place(); window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [isOpen, triggerRef]);
 
   if (!isOpen) {
     return null;
   }
 
-  return (
-    <div
+  return createPortal(
+    <dialog
+      id="header-search-dialog"
+      aria-label="Search Ancient Trails"
       ref={popupRef}
-      style={headerLayerStyle}
-      className="absolute right-0 top-[calc(100%+14px)] z-[2147483647] w-[min(430px,calc(100vw-2.5rem))] overflow-hidden rounded-[10px] bg-white text-secondary shadow-[0_28px_70px_rgba(35,24,16,0.22)]"
+      style={{ ...headerLayerStyle, ...position }}
+      className="fixed border-0 p-0 z-[2147483647] w-[min(430px,calc(100vw-2.5rem))] overflow-hidden rounded-[10px] bg-white text-secondary shadow-[0_28px_70px_rgba(35,24,16,0.22)]"
     >
       <div className="flex items-center gap-3 border-b border-border bg-[#fff8f0] px-4 py-3">
-        <Search className="size-4 shrink-0 text-primary" strokeWidth={2} />
+        <Search className="size-4 shrink-0 text-brand-text" strokeWidth={2} />
         <label className="min-w-0 flex-1">
           <span className="sr-only">Search Ancient Trails</span>
           <input
-            ref={inputRef}
             type="search"
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder="Search tours, destinations, experiences..."
-            className="h-9 w-full bg-transparent font-sans text-[13px] font-semibold text-secondary outline-none placeholder:text-secondary/42"
+            className="h-9 w-full bg-transparent font-sans text-[13px] font-semibold text-secondary outline-none placeholder:text-secondary/42 [&::-webkit-search-cancel-button]:hidden"
           />
         </label>
         <button
           type="button"
           aria-label="Close search"
           onClick={onClose}
-          className="grid size-8 shrink-0 place-items-center rounded-full text-secondary/60 transition-colors hover:bg-primary hover:text-white"
+          className="grid size-8 shrink-0 place-items-center rounded-full text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white"
         >
           <X className="size-4" strokeWidth={2} />
         </button>
@@ -1599,12 +1542,12 @@ function HeaderSearchPopup({
           <ul className="space-y-1">
             {results.map((item) => (
               <li key={`${item.href}-${item.title}`}>
-                <Link
+                <Link prefetch={false}
                   href={item.href}
                   onClick={onClose}
                   className="group/search grid grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-3 rounded-[7px] px-2 py-2 transition-colors hover:bg-[#fff1e5]"
                 >
-                  <span className="relative grid size-11 shrink-0 place-items-center overflow-hidden rounded-[6px] bg-[#fff4ea] text-primary ring-1 ring-primary/10">
+                  <span className="relative grid size-11 shrink-0 place-items-center overflow-hidden rounded-[6px] bg-[#fff4ea] text-brand-text ring-1 ring-primary/10">
                     {item.image ? (
                       <Image
                         src={item.image}
@@ -1618,14 +1561,14 @@ function HeaderSearchPopup({
                     )}
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate font-sans text-[13px] font-bold leading-tight text-secondary transition-colors group-hover/search:text-primary">
+                    <span className="block truncate font-sans text-[13px] font-bold leading-tight text-secondary transition-colors group-hover/search:text-brand-text">
                       {item.title}
                     </span>
                     <span className="mt-1 line-clamp-1 font-sans text-[11px] font-medium leading-tight text-secondary/58">
                       {item.description}
                     </span>
                   </span>
-                  <span className="rounded-full border border-primary/15 px-2.5 py-1 font-sans text-[10px] font-bold uppercase leading-none text-primary">
+                  <span className="rounded-full border border-primary/15 px-2.5 py-1 font-sans text-[10px] font-bold uppercase leading-none text-brand-text">
                     {item.type}
                   </span>
                 </Link>
@@ -1635,7 +1578,8 @@ function HeaderSearchPopup({
         ) : null}
       </div>
       ) : null}
-    </div>
+    </dialog>,
+    document.getElementById("site-header-slot") || document.body
   );
 }
 
@@ -1661,6 +1605,20 @@ export function Header() {
   const [isDesktopMenuOpen, setIsDesktopMenuOpen] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const searchButtonRef = useRef<HTMLButtonElement>(null);
+  const accountLinkRef = useRef<HTMLAnchorElement>(null);
+  const desktopDialogRef = useRef<HTMLDialogElement>(null);
+  const [desktopPosition, setDesktopPosition] = useState<CSSProperties>({});
+  useHeaderPopover(desktopDialogRef, isDesktopMenuOpen, () => { setIsDesktopMenuOpen(false); setHoveredItem(null); }, 'nav button, nav a', menuButtonRef);
+  useEffect(() => {
+    if (!isDesktopMenuOpen) return;
+    const place = () => {
+      const rect = headerRef.current?.getBoundingClientRect();
+      if (rect) setDesktopPosition({ position: 'fixed', margin: 0, left: rect.left, top: rect.bottom + 12, width: hoveredItem ? rect.width : 240 });
+    };
+    place(); window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [isDesktopMenuOpen, hoveredItem]);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [hasLoadedSearchData, setHasLoadedSearchData] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1676,7 +1634,7 @@ export function Header() {
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
   const [isTourTabsDocked, setIsTourTabsDocked] = useState(false);
   const [hasScrolled, setHasScrolled] = useState(false);
-  const [isHeaderPortaled, setIsHeaderPortaled] = useState(false);
+  const [headerPortalTarget, setHeaderPortalTarget] = useState<HTMLElement | null>(null);
   const lastScrollYRef = useRef(0);
   const scrollFrameRef = useRef(0);
   const accountMenuCloseTimeoutRef = useRef(0);
@@ -1749,21 +1707,16 @@ export function Header() {
 
   useEffect(() => {
     const closeMenus = (event: PointerEvent) => {
-      if (!headerRef.current?.contains(event.target as Node)) {
+      if (!headerRef.current?.contains(event.target as Node) && !desktopDialogRef.current?.contains(event.target as Node)) {
         setIsDesktopMenuOpen(false);
         setHoveredItem(null);
         setIsAccountMenuOpen(false);
       }
     };
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsDesktopMenuOpen(false);
-        setHoveredItem(null);
-        setIsAccountMenuOpen(false);
-        setIsMobileMenuOpen(false);
-        setIsSearchOpen(false);
-        menuButtonRef.current?.focus();
-      }
+      if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]')) return;
+      if (isAccountMenuOpen) { setIsAccountMenuOpen(false); accountLinkRef.current?.focus(); }
+      if (isDesktopMenuOpen) { setIsDesktopMenuOpen(false); setHoveredItem(null); menuButtonRef.current?.focus(); }
     };
     window.addEventListener("pointerdown", closeMenus);
     window.addEventListener("keydown", handleEscape);
@@ -1772,12 +1725,23 @@ export function Header() {
       window.removeEventListener("keydown", handleEscape);
       window.clearTimeout(accountMenuCloseTimeoutRef.current);
     };
+  }, [isAccountMenuOpen, isDesktopMenuOpen]);
+
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const closeResponsiveMenu = () => {
+      setIsMobileMenuOpen(false);
+      setIsDesktopMenuOpen(false);
+      setHoveredItem(null);
+    };
+    desktop.addEventListener("change", closeResponsiveMenu);
+    return () => desktop.removeEventListener("change", closeResponsiveMenu);
   }, []);
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
       setIsHeaderReady(true);
-      setIsHeaderPortaled(true);
+      setHeaderPortalTarget(document.getElementById("site-header-slot"));
     });
 
     return () => {
@@ -1976,32 +1940,6 @@ export function Header() {
   }, [hasLoadedSearchData, isSearchOpen]);
 
   useEffect(() => {
-    document.body.style.overflow = isMobileMenuOpen ? "hidden" : "";
-
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [isMobileMenuOpen]);
-
-  useEffect(() => {
-    if (!isSearchOpen) {
-      return;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsSearchOpen(false);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isSearchOpen]);
-
-  useEffect(() => {
     const breakpoint = window.matchMedia("(min-width: 1024px)");
     const handleBreakpoint = () => {
       setIsDesktopMenuOpen(false);
@@ -2012,8 +1950,9 @@ export function Header() {
     return () => breakpoint.removeEventListener("change", handleBreakpoint);
   }, []);
 
-  const handleSignOut = () => {
-    clearTravellerSession();
+  const handleSignOut = async () => {
+    try { await logoutTravellerSession(); }
+    catch { toast.error("Could not sign out", "Your server session could not be ended. Please try again."); return; }
     setTravellerUser(null);
     setIsAccountMenuOpen(false);
     setIsMobileMenuOpen(false);
@@ -2075,7 +2014,7 @@ export function Header() {
       inert={!shouldShowHeader}
       className={cn(
         "fixed left-3 right-3 top-2 isolate flex h-[60px] items-center justify-between rounded-[24px] px-2 transition-[transform,opacity,background-color,box-shadow,backdrop-filter] duration-300 sm:left-5 sm:right-5 sm:h-[72px] sm:px-3 lg:left-8 lg:right-8 lg:top-3 lg:h-20 lg:rounded-[28px] lg:px-4 motion-reduce:transition-none",
-        hasGlassBackground ? "border border-white/10 bg-white/15 shadow-[0_12px_40px_rgba(70,40,15,0.12)] backdrop-blur-xl" : "border border-transparent bg-transparent",
+        hasGlassBackground ? "border border-white/10 bg-white/15 shadow-[0_12px_40px_rgba(70,40,15,0.12)] backdrop-blur-xl max-lg:bg-white/95" : "border border-transparent bg-transparent",
         shouldShowHeader ? "translate-y-0 opacity-100" : "pointer-events-none -translate-y-[calc(100%+3rem)] opacity-0"
       )}
     >
@@ -2083,7 +2022,8 @@ export function Header() {
         ref={menuButtonRef}
         type="button"
         aria-expanded={isDesktopMenuOpen || isMobileMenuOpen}
-        aria-controls={isDesktopMenuOpen ? "desktop-navigation" : undefined}
+        aria-controls={isDesktopMenuOpen ? "desktop-navigation" : "mobile-navigation"}
+        aria-haspopup="dialog"
         aria-label={isDesktopMenuOpen ? "Close menu" : "Open menu"}
         onClick={() => {
           if (window.matchMedia("(min-width: 1024px)").matches) {
@@ -2095,11 +2035,11 @@ export function Header() {
             openMobileMenu();
           }
         }}
-        className="relative z-10 grid size-11 shrink-0 place-items-center rounded-full bg-transparent text-primary lg:size-14"
+        className="relative z-10 grid size-11 shrink-0 place-items-center rounded-full bg-transparent text-brand-text lg:size-14"
       >
         {isDesktopMenuOpen ? <X className="size-7" strokeWidth={1.7} /> : <Image src="/menu%20(1).png" alt="" width={32} height={32} className="size-7 object-contain lg:size-8" />}
       </button>
-      <Link
+      <Link prefetch={false}
         href="/"
         aria-label="Ancient Trails home"
         className="absolute left-1/2 z-10 shrink-0 -translate-x-1/2"
@@ -2109,15 +2049,18 @@ export function Header() {
           width={218}
           height={86}
           priority
-          className="h-11 w-auto max-w-[96px] object-contain sm:h-16 sm:max-w-none lg:h-[86px]"
+          className="h-14 w-auto max-w-[min(120px,calc(100vw-224px))] object-contain sm:h-16 sm:max-w-none lg:h-[86px]"
         />
       </Link>
 
-      {isDesktopMenuOpen && (
-        <div
+      {isDesktopMenuOpen && createPortal(
+        <dialog
+          ref={desktopDialogRef}
+          aria-label="Navigation menu"
+          style={{ ...headerLayerStyle, ...desktopPosition }}
           id="desktop-navigation"
           className={cn(
-            "absolute left-0 top-[calc(100%+12px)] hidden max-h-[calc(100dvh-120px)] overflow-y-auto rounded-[20px] border border-white/70 bg-[#fffdfb]/97 shadow-[0_20px_60px_rgba(60,35,15,0.18)] lg:grid",
+            "fixed p-0 text-secondary hidden max-h-[calc(100dvh-120px)] overflow-auto overscroll-contain rounded-[20px] border border-white/70 bg-[#fffdfb] max-lg:bg-white shadow-[0_20px_60px_rgba(60,35,15,0.18)] lg:grid",
             hoveredItem ? "right-0 grid-cols-[180px_minmax(0,1fr)] xl:grid-cols-[210px_minmax(0,1fr)]" : "w-[240px] grid-cols-1"
           )}
           onClick={(event) => {
@@ -2127,18 +2070,18 @@ export function Header() {
             }
           }}
         >
+          <button type="button" aria-label="Close menu" onClick={() => { setIsDesktopMenuOpen(false); setHoveredItem(null); }} className="col-span-full justify-self-end m-2 grid size-8 place-items-center rounded-full text-brand-text hover:bg-primary/10"><X className="size-5" /></button>
           <nav aria-label="Primary navigation" className={cn(styles.navigationRail, "border-r border-primary/15 p-3")}>
-            <ul className="space-y-2 font-sans text-[16px] font-medium text-primary xl:text-[18px]">
+            <ul className="space-y-2 font-sans text-[16px] font-medium text-brand-text xl:text-[18px]">
               {navItems.map(item => (
                 <li key={item.label}>
                   {item.label === "Tours" || item.label === "Destinations" ? (
-                    <button
-                      type="button"
+                    <Link prefetch={false}
+                      href={item.href}
                       aria-expanded={hoveredItem === item.label}
                       aria-controls={"desktop-" + item.label.toLowerCase()}
                       onMouseEnter={() => openMegaMenu(item.label)}
                       onFocus={() => openMegaMenu(item.label)}
-                      onClick={() => openMegaMenu(item.label)}
                       onKeyDown={(event) => {
                         if (event.key === "ArrowRight") {
                           event.preventDefault();
@@ -2149,9 +2092,9 @@ export function Header() {
                       className={cn("flex min-h-12 w-full items-center justify-between gap-2 rounded-lg px-3 py-3 text-left transition-colors hover:bg-primary/10", hoveredItem === item.label && "bg-primary/10")}
                     >
                       {item.label}<ArrowRight className="size-4 shrink-0" />
-                    </button>
+                    </Link>
                   ) : (
-                    <Link href={item.href} onMouseEnter={() => openMegaMenu(item.label)} className={cn("block rounded-lg px-3 py-3 transition-colors hover:bg-primary/10", item.label === activeItem && "bg-primary/10")}>
+                    <Link prefetch={false} href={item.href} onMouseEnter={() => openMegaMenu(item.label)} className={cn("block rounded-lg px-3 py-3 transition-colors hover:bg-primary/10", item.label === activeItem && "bg-primary/10")}>
                       {item.label}
                     </Link>
                   )}
@@ -2168,23 +2111,28 @@ export function Header() {
               )}
             </div>
           )}
-        </div>
+        </dialog>,
+        headerPortalTarget || document.body
       )}
 
-      <div className="relative z-10 flex items-center gap-1 sm:gap-3">
+      <div className="relative z-10 flex items-center gap-1 sm:gap-3 max-lg:static">
         <button
           type="button"
+          ref={searchButtonRef}
+          aria-controls="header-search-dialog"
+          aria-haspopup="dialog"
           aria-expanded={isSearchOpen}
           aria-label="Search Ancient Trails"
           title="Search"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={toggleSearch}
-          className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/15 text-primary transition-colors hover:bg-primary/25 sm:size-10 lg:size-10"
+          className="grid size-9 shrink-0 place-items-center rounded-full bg-transparent text-brand-text transition-colors sm:size-10 lg:size-10"
         >
           <Search className="size-5" strokeWidth={2.3} />
         </button>
 
         <HeaderSearchPopup
+          triggerRef={searchButtonRef}
           isLoading={isSearchLoading && publicSearchItems.length === 0}
           isOpen={isSearchOpen}
           query={searchQuery}
@@ -2204,11 +2152,12 @@ export function Header() {
             }
           }}
         >
-          <Link
+          <Link prefetch={false}
+            ref={accountLinkRef}
             href={accountHref}
             aria-label={travellerUser ? "Open traveller dashboard" : "Login"}
             title={travellerUser ? "My Dashboard" : "Login"}
-            className="grid size-9 shrink-0 place-items-center md:text-[10px] rounded-full bg-primary font-sans text-[12px] font-normal uppercase leading-none text-white transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary/90"
+            className="grid size-9 shrink-0 place-items-center md:text-[10px] rounded-full bg-primary font-sans text-[12px] font-normal uppercase leading-none text-white transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-brand-button-dark"
           >
             {hasCompletedTravellerName(travellerUser) ? (
               <span>{getTravellerInitials(travellerUser)}</span>
@@ -2240,11 +2189,16 @@ export function Header() {
   return (
     <div
       style={headerLayerStyle}
-      className="relative isolate z-[2147483647] h-[60px] sm:h-[84px] [@media(max-height:600px)]:sm:h-[76px]"
+      className={cn(
+        "relative isolate z-[2147483647] h-[60px] sm:h-[84px] [@media(max-height:600px)]:sm:h-[76px]",
+        // The empty spacer must not cover the navigation rendered in the portal.
+        headerPortalTarget && "pointer-events-none"
+      )}
     >
-      {isHeaderPortaled ? createPortal(headerContent, document.body) : headerContent}
-      {isHeaderPortaled ? (
+      {headerPortalTarget ? createPortal(headerContent, headerPortalTarget) : headerContent}
+      {isHeaderReady ? (
         <MobileHeaderDrawer
+          triggerRef={menuButtonRef}
           isOpen={isMobileMenuOpen}
           traveller={travellerUser}
           loginHref={loginHref}

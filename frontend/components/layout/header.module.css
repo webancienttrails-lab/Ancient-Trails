@@ -1,4 +1,8 @@
 /* Keep the existing menu content inside the shared navigation panel. */
+.megaContent {
+  min-width: 1040px;
+}
+
 .megaContent > div > div {
   border: 0;
   border-radius: 0;
@@ -25,38 +29,6 @@
   padding-right: 20px;
 }
 
-@media (min-width: 1024px) and (max-width: 1439px) {
-  .megaContent[data-menu="tours"] > div > div,
-  .megaContent[data-menu="destinations"] > div > div > div {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .megaContent[data-menu="tours"] > div > div > div:first-child,
-  .megaContent[data-menu="destinations"] > div > div > div > div:first-child {
-    grid-column: 1 / -1;
-    padding: 20px;
-  }
-
-  .megaContent[data-menu="tours"] > div > div > div:first-child p {
-    max-width: none;
-  }
-
-  .megaContent[data-menu="tours"] > div > div > div:first-child a,
-  .megaContent[data-menu="destinations"] > div > div > div > div:first-child a {
-    margin-top: 16px;
-  }
-
-  .megaContent[data-menu="tours"] > div > div > div:last-child {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: none;
-    border-top: 1px solid rgb(224 116 25 / 20%);
-  }
-
-  .megaContent[data-menu="destinations"] > div > div > div > div:last-child {
-    grid-column: 1 / -1;
-  }
-}
 
 .navigationRail li > a,
 .navigationRail li > button {
@@ -83,7 +55,7 @@
 .megaContent[data-menu="tours"] > div > div > div:nth-child(2) ul,
 .megaContent[data-menu="tours"] > div > div > div:nth-child(3) ul {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+
   gap: 16px;
 }
 
@@ -91,4 +63,13 @@
 .megaContent[data-menu="tours"] > div > div > div:nth-child(3) li {
   min-width: 0;
   margin: 0;
+}
+
+/* Preserve the reference list arrangement at every desktop width. */
+.megaContent[data-menu="tours"] > div > div > div:nth-child(2) ul {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.megaContent[data-menu="tours"] > div > div > div:nth-child(3) ul {
+  grid-template-columns: minmax(0, 1fr);
 }

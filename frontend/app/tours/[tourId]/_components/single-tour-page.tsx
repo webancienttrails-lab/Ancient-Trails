@@ -1,7 +1,27 @@
 "use client";
+import { useModalFocus } from "@/lib/modal-focus";
+import type { TourPageData } from "@/lib/travel-page-data";
+import { getRequestedTourAlias } from "@/lib/routes";
+import { handleTabKeyDown } from "@/lib/tab-keyboard";
+import { formatTourTitle } from "@/lib/tour-title";
+
+import { PaymentRetryNotice } from "@/components/payment-retry-notice";
+import { paymentFailureMessage } from "@/lib/payment-failure";
+
+import {
+  getBookableDepartures,
+  getNextBookableDeparture,
+  getDepartureTotalSeats,
+  getDepartureFilledSeats,
+  getDepartureSeatsLeft,
+} from "@/lib/tour-departures";
+import { BookingTermExplanation, BookingTermsLink } from "@/components/booking-term-help";
 
 import { createInitialBankTransfer, getBankTransferConfig } from "@/lib/bank-transfer";
 import { isAirfareExcluded } from "@/lib/airfare";
+import { TourPriceNote } from "@/components/tours/tour-price-note";
+import { BookingFlowProvider, BookingProgress, BookingErrorSummary, useBookingFlow, useBookingFieldProps, bookingFieldId, type BookingStage, type BookingFieldIssue } from "@/components/tours/booking-flow";
+import { ApiError } from "@/lib/api";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -12,6 +32,7 @@ import {
   type SetStateAction,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -30,6 +51,7 @@ import {
   CreditCard,
   Info,
   Landmark,
+  LockKeyhole,
   Mail,
   MapPin,
   Minus,
@@ -45,14 +67,8 @@ import {
 } from "lucide-react";
 
 import {
-  fallbackUpcomingTours,
   getHomeMediaUrl,
   getTourDestinationIds,
-  listPublicDestinations,
-  listPublicExperts,
-  listPublicTourDepartures,
-  listPublicTourItineraries,
-  listPublicTours,
   type PublicDestination,
   type PublicExpert,
   type PublicTour,
@@ -68,6 +84,7 @@ import {
   calculateBalanceDueDate,
   calculateDeposit,
   generateOccupancyOptions,
+  selectAccommodationOption,
   ROOM_TYPES,
   validateDepartureForBooking,
   type AccommodationOption,
@@ -116,7 +133,7 @@ type TourDetailData = {
   destinations: PublicDestination[];
   expert: PublicExpert;
   itinerary: PublicTourItinerary | null;
-  primaryDestination: PublicDestination;
+  primaryDestination: PublicDestination | undefined;
   tour: PublicTour;
 };
 
@@ -251,14 +268,6 @@ declare global {
 
 let razorpayCheckoutScriptPromise: Promise<void> | null = null;
 
-const fallbackGalleryImages = [
-  "/home assets/Khajuraho.webp",
-  "/home assets/destination/Hampi.webp",
-  "/home assets/destination/Udaipur.webp",
-  "/home assets/destination/Varanasi.webp",
-  "/home assets/Egypt.webp",
-];
-
 const tabs: Array<{
   icon: LucideIcon;
   label: string;
@@ -301,18 +310,6 @@ function slugify(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-}
-
-const tourSlugAliases: Record<string, string> = {
-  "flavours-of-badami-hampi": "HAMPI",
-  "badami-hampi": "HAMPI",
-  hampi: "HAMPI",
-  "enigmatic-khajuraho": "KHAJURAHO",
-  khajuraho: "KHAJURAHO",
-};
-
-function getRequestedTourAlias(requestedTourId: string) {
-  return tourSlugAliases[slugify(decodeURIComponent(requestedTourId))] || "";
 }
 
 function uniqueValues(values: Array<string | undefined>) {
@@ -405,28 +402,6 @@ function isClientFallbackDeparture(departure: PublicTourDeparture) {
   return departure.id.startsWith("fallback-departure-");
 }
 
-function sortDeparturesByDate(departures: PublicTourDeparture[]) {
-  return departures
-    .slice()
-    .sort(
-      (left, right) =>
-        getDateValue(left.departureDate) - getDateValue(right.departureDate)
-    );
-}
-
-function isUpcomingDeparture(departure: PublicTourDeparture) {
-  const departureDate = getDateValue(departure.departureDate);
-
-  if (!departureDate) {
-    return false;
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  return departureDate >= today.getTime();
-}
-
 function validateDeparturePaymentReadiness(
   departure: PublicTourDeparture,
   requestedTravellers: number
@@ -449,13 +424,6 @@ function validateDeparturePaymentReadiness(
   }
 
   return Array.from(new Set(errors));
-}
-
-function isDeparturePaymentReady(
-  departure: PublicTourDeparture,
-  requestedTravellers = 1
-) {
-  return validateDeparturePaymentReadiness(departure, requestedTravellers).length === 0;
 }
 
 function getSelectedDeparture(
@@ -727,18 +695,21 @@ type BookingDetailIssue = {
   travellerId?: string;
 };
 
-function getBookingDetailsIssue(
+function getBookingDetailsIssues(
   counts: TravellerCounts,
   forms: Record<string, TravellerDetailForm>
-): BookingDetailIssue | null {
+): BookingFieldIssue[] {
+  const issues: BookingFieldIssue[] = [];
   const tabs = createTravellerDetailTabs(counts);
   for (const tab of tabs) {
     const form = { ...defaultTravellerDetailForm, ...(forms[tab.id] || {}) };
     const label = tab.label;
-    const issue = (message: string, field: string): BookingDetailIssue => {
+    const issue = (message: string, field: string): BookingFieldIssue => {
       const phoneField = field === "mobile number" || field === "phone country code";
       const fieldLabel = (tab.id === "adult-1" && phoneField ? "Lead traveller" : label) + " " + field;
       return {
+        id: bookingFieldId(tab.id, field),
+        stage: 3,
         message: label + message,
         travellerId: tab.id,
         selector: field === "gender"
@@ -746,32 +717,40 @@ function getBookingDetailsIssue(
           : '[aria-label=' + JSON.stringify(fieldLabel) + ']',
       };
     };
-    if (!form.firstName.trim()) return issue(": enter the first name.", "first name");
-    if (!form.lastName.trim()) return issue(": enter the last name.", "last name");
-    if (tab.id === "adult-1" && !form.email.trim()) return issue(": enter the email address.", "email");
-    if (form.email.trim() && !isValidEmail(form.email)) return issue(": enter a valid email address.", "email");
-    if (!isValidStoredBirthDate(form.dateOfBirth)) return issue(": select a valid date of birth.", "date of birth");
-    if (!form.address.trim()) return issue(": enter the address.", "address");
-    if (!extractPhoneCountryCode(form.phoneCountryCode)) return issue(": select the phone country code.", "phone country code");
+    if (!form.firstName.trim()) issues.push(issue(": enter the first name.", "first name"));
+    if (!form.lastName.trim()) issues.push(issue(": enter the last name.", "last name"));
+    if (tab.id === "adult-1" && !form.email.trim()) issues.push(issue(": enter the email address.", "email"));
+    if (form.email.trim() && !isValidEmail(form.email)) issues.push(issue(": enter a valid email address.", "email"));
+    if (!isValidStoredBirthDate(form.dateOfBirth)) issues.push(issue(": select a valid date of birth.", "date of birth"));
+    if (!form.address.trim()) issues.push(issue(": enter the address.", "address"));
+    if (!extractPhoneCountryCode(form.phoneCountryCode)) issues.push(issue(": select the phone country code.", "phone country code"));
     if (tab.id === "adult-1" ? !isValidMobileNumber(form.mobileNumber) : !/^[0-9]{10}$/.test(form.mobileNumber)) {
-      return issue(tab.id === "adult-1" ? ": enter a valid mobile number." : ": enter a 10-digit mobile number.", "mobile number");
+      issues.push(issue(tab.id === "adult-1" ? ": enter a valid mobile number." : ": enter a 10-digit mobile number.", "mobile number"));
     }
-    if (!form.gender) return issue(": select the gender.", "gender");
+    if (!form.gender) issues.push(issue(": select the gender.", "gender"));
   }
   const lead = { ...defaultTravellerDetailForm, ...(forms["adult-1"] || {}) };
-  if (!lead.emergencyContactName.trim()) return {
+  if (!lead.emergencyContactName.trim()) issues.push({
+    id: "booking-emergency-contact-name", stage: 3,
     message: "Enter the emergency contact name.",
     selector: '[aria-label="Booking emergency contact name"]',
-  };
-  if (getMobileDigits(lead.emergencyContactMobileNumber).length !== 10) return {
+  });
+  if (getMobileDigits(lead.emergencyContactMobileNumber).length !== 10) issues.push({
+    id: "booking-emergency-contact-mobile", stage: 3,
     message: "Enter a 10-digit emergency contact number.",
     selector: '[aria-label="Booking emergency contact mobile number"]',
-  };
+  });
   const warning = getEmergencyContactTravellerWarning(lead, tabs, forms);
-  return warning ? {
+  if (warning) issues.push({
+    id: "booking-emergency-contact-name", stage: 3,
     message: warning,
     selector: '[aria-label="Booking emergency contact name"]',
-  } : null;
+  });
+  return issues;
+}
+
+function getBookingDetailsIssue(counts: TravellerCounts, forms: Record<string, TravellerDetailForm>): BookingDetailIssue | null {
+  return getBookingDetailsIssues(counts, forms)[0] || null;
 }
 
 function focusBookingDetail(issue: BookingDetailIssue) {
@@ -782,8 +761,8 @@ function focusBookingDetail(issue: BookingDetailIssue) {
   // Wait for the selected traveller's panel to render before finding its field.
   window.requestAnimationFrame(() => {
     let target = document.querySelector<HTMLElement>(issue.selector);
-    if (!target || target.matches(":disabled")) {
-      target = document.querySelector<HTMLElement>('[aria-label="Lead traveller OTP"]')
+    if (!target || target.matches(":disabled") || !target.getClientRects().length) {
+      target = document.querySelector<HTMLElement>('[aria-label="Lead traveller OTP"]:not(:disabled)')
         || document.querySelector<HTMLElement>("[data-booking-send-otp]:not(:disabled)")
         || document.querySelector<HTMLElement>('[aria-label="Lead traveller mobile number"]');
     }
@@ -888,14 +867,6 @@ function getLeadTravellerFormFromProfile(
     gender,
     dateOfBirth: getTravellerProfileDateOfBirth(user?.dateOfBirth),
   };
-}
-
-function createInitialTravellerDetailForms(): Record<string, TravellerDetailForm> {
-  const leadTravellerForm = getLeadTravellerFormFromProfile(
-    getTravellerSession()?.user ?? null
-  );
-
-  return leadTravellerForm ? { "adult-1": leadTravellerForm } : {};
 }
 
 function extractPhoneCountryCode(value: string) {
@@ -1030,7 +1001,6 @@ function createBookingPayload({
       };
     }),
     accommodationDetails: createAccommodationDetails(accommodationOption),
-    gstPercentage: GST_PERCENTAGE,
     paymentOption,
   };
 }
@@ -1082,7 +1052,7 @@ async function syncLeadTravellerProfileFromBooking(
   const session = getTravellerSession();
   const leadForm = forms["adult-1"] || defaultTravellerDetailForm;
 
-  if (!session?.token || !shouldSyncLeadTravellerProfile(session.user, leadForm)) {
+  if (!session?.sessionId || !shouldSyncLeadTravellerProfile(session.user, leadForm)) {
     return;
   }
 
@@ -1173,12 +1143,12 @@ function getDifficultyLabel(tour: PublicTour) {
   return tour.difficulty || "Moderate";
 }
 
-function getDestinationTitle(destination: PublicDestination) {
+function getDestinationTitle(destination?: PublicDestination) {
   return (
-    destination.destinationName ||
-    destination.city ||
-    destination.state ||
-    destination.countryRegion ||
+    destination?.destinationName ||
+    destination?.city ||
+    destination?.state ||
+    destination?.countryRegion ||
     "Ancient Trails"
   );
 }
@@ -1186,12 +1156,8 @@ function getDestinationTitle(destination: PublicDestination) {
 function getRouteLabel(
   tour: PublicTour,
   destinations: PublicDestination[],
-  primaryDestination: PublicDestination
+  primaryDestination: PublicDestination | undefined
 ) {
-  if (tour.tourId === "WALKING-AMALFI-COAST") {
-    return "Bomerano to Agerola";
-  }
-
   const destinationNames = uniqueValues(
     destinations.map((destination) => getDestinationTitle(destination))
   );
@@ -1201,9 +1167,9 @@ function getRouteLabel(
   }
 
   return (
-    primaryDestination.city ||
-    primaryDestination.destinationName ||
-    primaryDestination.state ||
+    primaryDestination?.city ||
+    primaryDestination?.destinationName ||
+    primaryDestination?.state ||
     "Ancient Trails"
   );
 }
@@ -1213,58 +1179,14 @@ function getTourImages(tour: PublicTour) {
 }
 
 function getBestDeparture(departures: PublicTourDeparture[]) {
-  const sortedDepartures = sortDeparturesByDate(departures);
-
-  return (
-    sortedDepartures.find(
-      (departure) =>
-        isUpcomingDeparture(departure) && isDeparturePaymentReady(departure)
-    ) ||
-    sortedDepartures.find((departure) => isDeparturePaymentReady(departure)) ||
-    sortedDepartures[0]
-  );
-}
-
-function getLowestPrice(departures: PublicTourDeparture[]) {
-  const payableDepartures = departures.filter((departure) =>
-    isDeparturePaymentReady(departure)
-  );
-  const priceSource =
-    payableDepartures.length > 0 ? payableDepartures : departures;
-  const prices = priceSource
-    .map((departure) => departure.priceAdult)
-    .filter((price) => price > 0);
-
-  return prices.length > 0 ? Math.min(...prices) : 0;
+  return getNextBookableDeparture(departures);
 }
 
 function getDepartureFillProgress(departure: PublicTourDeparture) {
   const totalSeats = getDepartureTotalSeats(departure);
   const filledSeats = getDepartureFilledSeats(departure);
 
-  return Math.min(100, Math.max(0, (filledSeats / totalSeats) * 100));
-}
-
-function getDepartureTotalSeats(departure: PublicTourDeparture) {
-  return Math.max(
-    departure.totalSeats || 0,
-    departure.seatsAvailable || 0,
-    25
-  );
-}
-
-function getDepartureFilledSeats(departure: PublicTourDeparture) {
-  const totalSeats = getDepartureTotalSeats(departure);
-
-  return Math.min(
-    totalSeats,
-    Math.max(
-      0,
-      typeof departure.filledSeats === "number"
-        ? departure.filledSeats
-        : totalSeats - (departure.seatsAvailable || 0)
-    )
-  );
+  return totalSeats > 0 ? Math.min(100, Math.max(0, (filledSeats / totalSeats) * 100)) : 0;
 }
 
 function getSeatProgressColorClass(filledPercent: number) {
@@ -1295,222 +1217,6 @@ function createFallbackExpert(): PublicExpert {
   };
 }
 
-function createFallbackDestination(): PublicDestination {
-  return {
-    id: "fallback-destination-amalfi",
-    destinationId: "AMALFI-COAST",
-    destinationName: "Amalfi Coast",
-    destinationType: "International",
-    countryRegion: "Italy",
-    state: "Campania",
-    city: "Amalfi",
-    primaryHeritageFocus: "Coastal Heritage",
-    unescoSite: true,
-    keyLandmarks: [
-      "Path of the Gods",
-      "Positano",
-      "Praiano",
-      "Amalfi",
-      "Ravello",
-    ],
-    recommendedDurationDays: 8,
-    shortDescription:
-      "Experience scenic coastal trails, layered villages and Mediterranean heritage along one of Italy's most memorable walking routes.",
-    dressCode: "Light layers and sun protection",
-    footwear: "Comfortable walking shoes",
-    permits: "Details shared before travel",
-    idRequirement: "Passport required",
-    restrictions: "Some trails include steps and uneven paths",
-    bannerImage: "/home assets/Khajuraho.webp",
-    galleryImages: [
-      "/home assets/destination/Hampi.webp",
-      "/home assets/destination/Udaipur.webp",
-      "/home assets/destination/Varanasi.webp",
-      "/home assets/Egypt.webp",
-    ],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-function createFallbackTour(requestedTourId: string): PublicTour {
-  const requestedAlias = getRequestedTourAlias(requestedTourId);
-  const matchedFallback = fallbackUpcomingTours.find(
-    (tour) =>
-      normalizeCode(tour.tourId) === normalizeCode(requestedTourId) ||
-      (requestedAlias &&
-        normalizeCode(tour.tourId) === normalizeCode(requestedAlias)) ||
-      slugify(tour.title) === slugify(requestedTourId)
-  );
-
-  if (matchedFallback) {
-    return {
-      id: `fallback-${matchedFallback.tourId}`,
-      tourId: matchedFallback.tourId,
-      tourName: matchedFallback.title,
-      tourType: "Heritage Walk",
-      tourFormat: "Long Trails",
-      destinationId: matchedFallback.destinationId,
-      destinationIds: [matchedFallback.destinationId],
-      durationDn: matchedFallback.duration,
-      category: "Heritage Walk",
-      isBestseller: true,
-      difficulty: "Moderate",
-      bestSeason: "October to March",
-      description:
-        "A carefully designed heritage journey with guided walks, local stories, landmark visits and meaningful cultural encounters.",
-      inclusions: [
-        "Expert-led sightseeing and storytelling",
-        "Curated heritage walks",
-        "Accommodation on twin sharing basis",
-        "Local transfers as per itinerary",
-      ],
-      exclusions: [
-        "Flights and personal expenses",
-        "Meals not listed in the itinerary",
-        "Camera fees and monument charges unless specified",
-      ],
-      flightDetails: [],
-      accommodationDetails: [],
-      reportingAndDropping: [],
-      paymentPolicy: [],
-      cancellationPolicy: [],
-      needToKnow: [],
-      expertId: "GIRINATH-BHARADE",
-      notes: "",
-      bannerImage: matchedFallback.image,
-      galleryImages: fallbackGalleryImages.filter(
-        (image) => image !== matchedFallback.image
-      ),
-      video: "",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
-  return {
-    id: "fallback-walking-amalfi-coast",
-    tourId: "WALKING-AMALFI-COAST",
-    tourName: "Walking the Amalfi Coast",
-    tourType: "Heritage Walk",
-    tourFormat: "Short Trails",
-    destinationId: "AMALFI-COAST",
-    destinationIds: ["AMALFI-COAST"],
-    durationDn: "8 Days / 7 Nights",
-    category: "Heritage Walk",
-    isBestseller: false,
-    difficulty: "Moderate",
-    bestSeason: "April to October",
-    description:
-      "Experience the breathtaking beauty of the Amalfi Coast on this unforgettable 8-day guided hiking tour. Walk scenic coastal trails, explore charming villages, and enjoy authentic Italian hospitality from Bomerano to Agerola.",
-    inclusions: [
-      "Expert tour leader and local guide assistance",
-      "Accommodation on private double room basis",
-      "Daily breakfast and selected meals",
-      "Curated walking routes and heritage visits",
-      "Ground transfers as mentioned in the itinerary",
-    ],
-    exclusions: [
-      "International and domestic flights",
-      "Personal expenses and optional activities",
-      "Travel insurance and visa charges",
-      "Meals not mentioned in the itinerary",
-      "Tips, porterage and camera charges",
-    ],
-    flightDetails: [],
-    accommodationDetails: [],
-    reportingAndDropping: [],
-    paymentPolicy: [],
-    cancellationPolicy: [],
-    needToKnow: [],
-    expertId: "GIRINATH-BHARADE",
-    notes: "Average elevation: 450 - 650 m",
-    bannerImage: "/home assets/Khajuraho.webp",
-    galleryImages: [
-      "/home assets/destination/Hampi.webp",
-      "/home assets/destination/Udaipur.webp",
-      "/home assets/destination/Varanasi.webp",
-      "/home assets/Egypt.webp",
-    ],
-    video: "",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-function createFallbackDeparture(tour: PublicTour): PublicTourDeparture {
-  const departureDate = new Date();
-  departureDate.setDate(departureDate.getDate() + 45);
-  const returnDate = new Date(departureDate);
-  returnDate.setDate(departureDate.getDate() + parseDurationDays(tour.durationDn) - 1);
-
-  return {
-    id: `fallback-departure-${tour.tourId}`,
-    departureId: `${tour.tourId}-DEP-1`,
-    tourId: tour.tourId,
-    destinationId: tour.destinationId,
-    departureDate: departureDate.toISOString(),
-    returnDate: returnDate.toISOString(),
-    seatsAvailable: 12,
-    priceAdult: tour.tourId === "WALKING-AMALFI-COAST" ? 1950 : 35500,
-    priceExtraBed: tour.tourId === "WALKING-AMALFI-COAST" ? 1755 : 31950,
-    priceChildWithoutExtraBed:
-      tour.tourId === "WALKING-AMALFI-COAST" ? 1560 : 28400,
-    singleOccupancy: tour.tourId === "WALKING-AMALFI-COAST" ? 2438 : 44375,
-    depositType: "percentage",
-    depositValue: 25,
-    depositAppliesTo: "per_booking",
-    balanceDueDaysBefore: 45,
-    earlyBirdOffer:
-      tour.tourId === "WALKING-AMALFI-COAST" ? "11% Early Bird Discount" : null,
-    bookingDeadline: departureDate.toISOString(),
-    status: "scheduled",
-    childPricingRules: [
-      {
-        minAge: 0,
-        maxAge: 11,
-        allowExtraBed: true,
-        allowWithoutExtraBed: true,
-      },
-    ],
-    roomPolicy: {
-      allowChildBedSharing: true,
-      maxChildrenWithoutExtraBedPerRoom: 1,
-      allowExtraBed: true,
-      allowChildSingleRoom: false,
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-function createFallbackDetail(requestedTourId: string): TourDetailData {
-  const fallbackTour = createFallbackTour(requestedTourId);
-  const fallbackDestination =
-    fallbackTour.destinationId === "AMALFI-COAST"
-      ? createFallbackDestination()
-      : {
-          ...createFallbackDestination(),
-          destinationId: fallbackTour.destinationId,
-          destinationName: fallbackTour.tourName,
-          city: fallbackTour.tourName,
-          countryRegion: "India",
-          state: "",
-          primaryHeritageFocus: fallbackTour.category,
-          bannerImage: fallbackTour.bannerImage,
-          galleryImages: fallbackTour.galleryImages,
-        };
-
-  return {
-    tour: fallbackTour,
-    departures: [createFallbackDeparture(fallbackTour)],
-    destinations: [fallbackDestination],
-    itinerary: null,
-    primaryDestination: fallbackDestination,
-    expert: createFallbackExpert(),
-  };
-}
-
 function createItineraryDays(
   tour: PublicTour,
   destinations: PublicDestination[],
@@ -1532,96 +1238,7 @@ function createItineraryDays(
       }));
   }
 
-  if (tour.tourId === "WALKING-AMALFI-COAST") {
-    return [
-      {
-        dayNumber: 1,
-        title: "Arrive in Bomerano",
-        summary:
-          "Arrive in Bomerano and transfer to your hotel. Meet your guide and enjoy a welcome dinner.",
-      },
-      {
-        dayNumber: 2,
-        title: "Path of the Gods",
-        summary:
-          "Hike the famous Path of the Gods with breathtaking views of the coastline. Descend to Nocelle and visit Positano.",
-      },
-      {
-        dayNumber: 3,
-        title: "Amalfi Exploration",
-        summary:
-          "Explore the historic town of Amalfi, visit the Cathedral and enjoy free time by the sea.",
-      },
-      {
-        dayNumber: 4,
-        title: "Ravello Day",
-        summary:
-          "Hike to Ravello through lemon terraces and enjoy panoramic views. Visit Villa Rufolo.",
-      },
-      {
-        dayNumber: 5,
-        title: "Agerola Trails",
-        summary:
-          "Discover the trails around Agerola and traditional local villages.",
-      },
-      {
-        dayNumber: 6,
-        title: "Coastal Boat Day",
-        summary:
-          "Enjoy a scenic boat ride along the Amalfi Coast with stops for swimming.",
-      },
-      {
-        dayNumber: 7,
-        title: "Free Day",
-        summary: "Leisure time to relax, explore local markets or optional activities.",
-      },
-      {
-        dayNumber: 8,
-        title: "Departure",
-        summary: "After breakfast, check out and transfer to Agerola.",
-      },
-    ];
-  }
-
-  const days = parseDurationDays(tour.durationDn);
-  const primaryDestination = destinations[0];
-  const landmarks = uniqueValues(
-    destinations.flatMap((destination) => [
-      ...destination.keyLandmarks,
-      destination.destinationName,
-      destination.city,
-    ])
-  );
-  const route = getRouteLabel(tour, destinations, primaryDestination);
-
-  return Array.from({ length: days }, (_item, index) => {
-    const dayNumber = index + 1;
-    const landmark = landmarks[index % Math.max(landmarks.length, 1)];
-
-    if (dayNumber === 1) {
-      return {
-        dayNumber,
-        title: `Arrive in ${getDestinationTitle(primaryDestination)}`,
-        summary:
-          "Arrive, settle in and meet your tour expert for a journey briefing.",
-      };
-    }
-
-    if (dayNumber === days) {
-      return {
-        dayNumber,
-        title: "Departure",
-        summary: "After breakfast, check out and continue with onward travel.",
-      };
-    }
-
-    return {
-      dayNumber,
-      title: landmark ? `${landmark} Exploration` : `${route} Trail`,
-      summary:
-        "Follow a guided day of heritage walks, cultural interpretation and local experiences.",
-    };
-  });
+  return [];
 }
 
 function getPrimaryDestinationForTour(
@@ -1645,8 +1262,7 @@ function enrichTourData(
   departures: PublicTourDeparture[],
   destinations: PublicDestination[],
   experts: PublicExpert[],
-  itineraries: PublicTourItinerary[],
-  requestedTourId: string
+  itineraries: PublicTourItinerary[]
 ): TourDetailData {
   const destinationIds = getTourDestinationIds(tour);
   const linkedDestinations = destinationIds
@@ -1656,8 +1272,7 @@ function enrichTourData(
     .filter((destination): destination is PublicDestination => Boolean(destination));
   const primaryDestination =
     getPrimaryDestinationForTour(tour, linkedDestinations) ||
-    getPrimaryDestinationForTour(tour, destinations) ||
-    createFallbackDetail(requestedTourId).primaryDestination;
+    getPrimaryDestinationForTour(tour, destinations);
   const tourDepartures = departures
     .filter((departure) => departure.tourId === tour.tourId)
     .sort(
@@ -1672,12 +1287,9 @@ function enrichTourData(
 
   return {
     tour,
-    departures:
-      tourDepartures.length > 0
-        ? tourDepartures
-        : [createFallbackDeparture(tour)],
+    departures: getBookableDepartures(tourDepartures),
     destinations:
-      linkedDestinations.length > 0 ? linkedDestinations : [primaryDestination],
+      linkedDestinations.length > 0 ? linkedDestinations : primaryDestination ? [primaryDestination] : [],
     itinerary,
     primaryDestination,
     expert,
@@ -1701,13 +1313,17 @@ function findRequestedTour(tours: PublicTour[], requestedTourId: string) {
   );
 }
 
-export function SingleTourPage({ tourId }: { tourId: string }) {
+export function SingleTourPage({ tourId, initialData }: { tourId: string; initialData: TourPageData }) {
+  const toast = useToast();
   const router = useRouter();
-  const fallbackDetail = useMemo(() => createFallbackDetail(tourId), [tourId]);
-  const [detail, setDetail] = useState<TourDetailData>(fallbackDetail);
+  const detail = useMemo(() => {
+    const tour = findRequestedTour(initialData.tours, tourId);
+    if (!tour) throw new Error('Tour data does not match this page.');
+    return enrichTourData(tour, initialData.departures, initialData.destinations, initialData.experts, initialData.itineraries);
+  }, [initialData, tourId]);
   const [activeTab, setActiveTab] = useState<TourTab>("itinerary");
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
+  const isLoading = false;
   const [selectedDepartureId, setSelectedDepartureId] = useState("");
   const [travellerCounts, setTravellerCounts] = useState<TravellerCounts>({
     adults: 1,
@@ -1718,6 +1334,11 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
     useState("");
   const selectedPaymentOption: BookingPaymentOption = "advance";
   const [isBookingFlowOpen, setIsBookingFlowOpen] = useState(false);
+  const bookingScrollFrameRef = useRef(0);
+  useEffect(() => () => window.cancelAnimationFrame(bookingScrollFrameRef.current), []);
+  const [bookingStage, setBookingStage] = useState<BookingStage>(0);
+  const [validationAttempt, setValidationAttempt] = useState(0);
+  const [isLeadAuthenticated, setIsLeadAuthenticated] = useState(false);
   const [acceptedBookingTermsKey, setAcceptedBookingTermsKey] = useState("");
   const [areTravellerDetailsComplete, setAreTravellerDetailsComplete] =
     useState(false);
@@ -1727,6 +1348,11 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
   const [checkoutStatus, setCheckoutStatus] =
     useState<CheckoutStatus>("idle");
   const [paymentFeedback, setPaymentFeedback] = useState("");
+  const [paymentRetryMessage, setPaymentRetryMessage] = useState<string | null>(null);
+  const [isCheckingRetry, setIsCheckingRetry] = useState(false);
+  const checkingRetryRef = useRef(false);
+  const failedPaymentOrderRef = useRef<string | null>(null);
+  const retryPaymentOptionRef = useRef<BookingPaymentOption>("advance");
   const [offlineRequestKey, setOfflineRequestKey] = useState("");
   const [bankTransferEnabled, setBankTransferEnabled] = useState(false);
   useEffect(() => {
@@ -1734,63 +1360,15 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
   }, []);
   const [isTourEnquiryOpen, setIsTourEnquiryOpen] = useState(false);
   const [isPaymentChoiceOpen, setIsPaymentChoiceOpen] = useState(false);
+  const bookingSubmissionRef = useRef(false);
+  const paymentRequestRef = useRef<{ payload: string; key: string } | null>(null);
   const [siteContact, setSiteContact] = useState<SiteContactSettings>(
     defaultSiteContactSettings
   );
   const paymentOrderRef = useRef<BookingPaymentOrder | null>(null);
   const pendingPaymentCancellationRef = useRef<Promise<void> | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
 
-    async function loadTour() {
-      setIsLoading(true);
-
-      try {
-        const [
-          toursResponse,
-          departuresResponse,
-          destinationsResponse,
-          expertsResponse,
-          itinerariesResponse,
-        ] = await Promise.all([
-          listPublicTours(),
-          listPublicTourDepartures(),
-          listPublicDestinations(),
-          listPublicExperts(),
-          listPublicTourItineraries().catch(() => null),
-        ]);
-        const matchedTour = findRequestedTour(toursResponse.data.tours, tourId);
-
-        if (isMounted && matchedTour) {
-          setDetail(
-            enrichTourData(
-              matchedTour,
-              departuresResponse.data.departures,
-              destinationsResponse.data.destinations,
-              expertsResponse.data.experts,
-              itinerariesResponse?.data.itineraries || [],
-              tourId
-            )
-          );
-        }
-      } catch {
-        if (isMounted) {
-          setDetail(createFallbackDetail(tourId));
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    loadTour();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [tourId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1829,11 +1407,11 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
     () => getBestDeparture(detail.departures),
     [detail.departures]
   );
-  const price = getLowestPrice(detail.departures);
   const selectedDeparture = useMemo(
     () => getSelectedDeparture(detail.departures, selectedDepartureId),
     [detail.departures, selectedDepartureId]
   );
+  const price = selectedDeparture?.priceAdult ?? 0;
   const selectedDepartureKey = selectedDeparture
     ? getDepartureIdentifier(selectedDeparture)
     : "";
@@ -1883,11 +1461,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
         selectedDeparture: selectedPricedDeparture,
       });
 
-      return (
-        accommodationOptions.find(
-          (option) => option.id === selectedAccommodationOptionId
-        ) || accommodationOptions[0]
-      );
+      return selectAccommodationOption(accommodationOptions, selectedAccommodationOptionId);
     } catch {
       return undefined;
     }
@@ -1966,6 +1540,32 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
   const hasAcceptedBookingTerms = Boolean(
     bookingCompletionKey && acceptedBookingTermsKey === bookingCompletionKey
   );
+  const allBookingIssues: BookingFieldIssue[] = getBookingDetailsIssues(travellerCounts, completeTravellerDetailForms).map(issue => {
+    if (issue.travellerId && /^(child|infant)-/.test(issue.travellerId) && issue.id.endsWith("-date-of-birth")) {
+      const tab = createTravellerDetailTabs(travellerCounts).find(tab => tab.id === issue.travellerId);
+      return {...issue, id: bookingFieldId(issue.travellerId, "pricing date of birth"), stage: 1 as BookingStage, selector: '[aria-label=' + JSON.stringify(tab?.label + " pricing date of birth") + ']'};
+    }
+    return issue;
+  });
+  if (!isLeadAuthenticated) allBookingIssues.unshift({ id: "booking-lead-auth", stage: 0, message: "Verify the lead traveller's mobile number before continuing.", selector: '[aria-label="Lead traveller mobile number"]' });
+  if (!selectedDeparture || bookingValidationErrors.length) allBookingIssues.unshift({ id: "booking-departure", stage: 1, message: bookingValidationErrors[0] || "Select a scheduled departure.", selector: "[data-booking-departure]" });
+  if (!selectedAccommodationOption || bookingSubtotal <= 0) allBookingIssues.push({ id: "booking-accommodation", stage: 2, message: "Choose an available accommodation option.", selector: 'input[name="tour-accommodation"]' });
+  if (!hasAcceptedBookingTerms) allBookingIssues.push({ id: "booking-terms", stage: 4, message: "Please read and accept the Terms & Conditions before payment.", selector: "[data-booking-terms]" });
+  const visibleBookingIssues = validationAttempt ? Array.from(new Map(allBookingIssues.map(issue => [issue.id, issue])).values()) : [];
+
+  function focusBookingIssue(issue: BookingFieldIssue) {
+    flushSync(() => {
+      setActiveTab("pricing");
+      if (window.matchMedia("(max-width: 1023px)").matches) setBookingStage(isLeadAuthenticated ? issue.stage ?? 3 : 0);
+    });
+    const signInField = !isLeadAuthenticated && issue.id.startsWith("booking-adult-1-")
+      ? issue.id.endsWith("-first-name") ? "first name" : issue.id.endsWith("-last-name") ? "last name" : issue.id.endsWith("-email") ? "email" : ""
+      : "";
+    if (signInField && document.querySelector('[aria-label="Sign-in ' + signInField + '"]')) {
+      focusBookingDetail({...issue, selector: '[aria-label="Sign-in ' + signInField + '"]'});
+    } else focusBookingDetail(issue);
+  }
+
   const bookingDetailsIssue = getBookingDetailsIssue(travellerCounts, completeTravellerDetailForms);
   const bookingIssue: BookingDetailIssue =
     !selectedDepartureKey
@@ -1988,8 +1588,12 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
   const bookingReminder = bookingIssue.message;
 
   function handleIncompleteBooking() {
-    flushSync(() => setActiveTab("pricing"));
-    focusBookingDetail(bookingIssue);
+    flushSync(() => { setActiveTab("pricing"); setValidationAttempt(attempt => attempt + 1); });
+    window.requestAnimationFrame(() => {
+      const summary = document.getElementById("booking-form-errors");
+      summary?.focus({preventScroll: true});
+      summary?.scrollIntoView({behavior: "smooth", block: "start"});
+    });
   }
   const itineraryDays = useMemo(
     () => createItineraryDays(detail.tour, detail.destinations, detail.itinerary),
@@ -2010,7 +1614,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
         ? 60
         : 0;
       const shellRect = tabsShell?.getBoundingClientRect();
-      const isDocked = Boolean(shellRect && shellRect.top <= dockingOffset);
+      const isDocked = Boolean(tabsShell?.getClientRects().length && shellRect && shellRect.top <= dockingOffset);
 
       root.classList.toggle(
         "tour-tabs-docked",
@@ -2039,6 +1643,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
   }, []);
 
   const cancelPaymentOrder = useCallback((orderId: string) => {
+    paymentRequestRef.current = null;
     const cancellation = cancelBookingPaymentOrder(orderId)
       .catch(() => undefined)
       .then(() => undefined);
@@ -2102,18 +1707,18 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
     [resetPaymentAttempt]
   );
 
-  function redirectToBookingConfirmation(bookingId: string, token: string) {
+  function redirectToBookingConfirmation(bookingId: string) {
     router.push(
-      `/booking-confirmed/${bookingId}?token=${encodeURIComponent(token)}`
+      `/booking-confirmed/${bookingId}`
     );
   }
 
   async function recoverConfirmedPaymentOrder(orderId: string) {
     const response = await getBookingPaymentOrderStatus(orderId);
-    const { booking, confirmationToken, isConfirmed } = response.data;
+    const { booking, isConfirmed } = response.data;
 
-    if (isConfirmed && booking && confirmationToken) {
-      redirectToBookingConfirmation(booking.id, confirmationToken);
+    if (isConfirmed && booking) {
+      redirectToBookingConfirmation(booking.id);
       return true;
     }
 
@@ -2127,11 +1732,19 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
       throw new Error("Razorpay checkout could not be opened");
     }
 
-    const cancelOpenPaymentOrder = () => {
+    let didReceivePaymentResponse = false;
+    let didEndPaymentAttempt = false;
+    const endPaymentAttempt = (message: string) => {
+      if (didReceivePaymentResponse || didEndPaymentAttempt) return;
+      didEndPaymentAttempt = true;
+      failedPaymentOrderRef.current = order.checkout.orderId;
+      setPaymentRetryMessage(message);
       void cancelPaymentOrder(order.checkout.orderId);
       clearPaymentOrderState();
+      setCheckoutStatus("idle");
+      setPaymentFeedback(message);
+      toast.warning("Payment not completed", message);
     };
-    let didReceivePaymentResponse = false;
     const checkout = new window.Razorpay({
       amount: order.checkout.amount,
       currency: order.checkout.currency,
@@ -2147,15 +1760,17 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
         color: "#d47220",
       },
       handler: (paymentResponse) => {
+        if (didReceivePaymentResponse) return;
         didReceivePaymentResponse = true;
+        setPaymentRetryMessage(null);
         setCheckoutStatus("verifying");
         setPaymentFeedback("Verifying payment and confirming your booking...");
 
         verifyBookingPayment(paymentResponse)
           .then((verificationResponse) => {
-            const { booking, confirmationToken } = verificationResponse.data;
+            const { booking } = verificationResponse.data;
 
-            redirectToBookingConfirmation(booking.id, confirmationToken);
+            redirectToBookingConfirmation(booking.id);
           })
           .catch(async (error: unknown) => {
             try {
@@ -2176,26 +1791,15 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
       },
       modal: {
         ondismiss: () => {
-          if (didReceivePaymentResponse) {
-            return;
-          }
-
-          setCheckoutStatus("idle");
-          cancelOpenPaymentOrder();
-          setPaymentFeedback(
-            "Payment cancelled. You can start a new payment from this page."
-          );
+          endPaymentAttempt(paymentFailureMessage());
         },
       },
     });
 
     checkout.on("payment.failed", (failureResponse) => {
-      setCheckoutStatus("idle");
-      cancelOpenPaymentOrder();
-      setPaymentFeedback(
-        failureResponse.error?.description ||
-          failureResponse.error?.reason ||
-          "Payment failed. You can start a new payment from this page."
+      const reason = failureResponse.error?.description || failureResponse.error?.reason;
+      endPaymentAttempt(
+        paymentFailureMessage(reason)
       );
     });
 
@@ -2203,24 +1807,111 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
       flushSync(() => setCheckoutStatus("gateway_open"));
       checkout.open();
     } catch (error) {
-      setCheckoutStatus("idle");
-      cancelOpenPaymentOrder();
+      endPaymentAttempt(
+        paymentFailureMessage(error instanceof Error ? error.message : "Payment could not be opened.")
+      );
       throw error;
     }
   }
 
-  function openBookingFlow() {
-    setIsBookingFlowOpen(true);
-    setActiveTab("pricing");
+  function changeBookingStage(stage: BookingStage) {
+    setBookingStage(stage);
+    window.requestAnimationFrame(() => document.getElementById("departure-pricing")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
 
-    window.setTimeout(() => {
-      document
-        .getElementById("departure-pricing")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
+  function continueMobileBooking() {
+    if (checkoutStatus !== "idle" || (offlineRequestKey && offlineRequestKey === bookingCompletionKey)) return;
+    if (bookingStage === 0 && !isLeadAuthenticated) {
+      toast.warning("Sign in to continue", "Verify your mobile number before choosing your trip details.");
+      focusBookingDetail({ message: "Verify your mobile number.", selector: '[aria-label="Lead traveller mobile number"]' });
+      return;
+    }
+    if (bookingStage === 1 && (!selectedDeparture || bookingValidationErrors.length > 0)) {
+      toast.warning("Check your departure", bookingValidationErrors[0] || "Select a departure.");
+      return;
+    }
+    if (bookingStage === 1 && selectedChildren.some(child => !child.dateOfBirth)) {
+      toast.warning("Add birth dates", "Add each child's date of birth to calculate the correct room price.");
+      return;
+    }
+    if (bookingStage === 2 && !selectedAccommodationOption) {
+      toast.warning("Choose your room", "Select an available accommodation option to continue.");
+      return;
+    }
+    if (bookingStage === 3 && !canBookSeat) {
+      toast.warning("Complete your details", bookingReminder);
+      if (!isLeadAuthenticated) changeBookingStage(0);
+      handleIncompleteBooking();
+      return;
+    }
+    if (bookingStage < 4) {
+      changeBookingStage((bookingStage + 1) as BookingStage);
+      return;
+    }
+    if (!hasAcceptedBookingTerms || !canBookSeat) {
+      toast.warning("Complete your booking", bookingReminder);
+      if (!canBookSeat) changeBookingStage(isLeadAuthenticated ? 3 : 0);
+      handleIncompleteBooking();
+      return;
+    }
+    setIsPaymentChoiceOpen(true);
+  }
+
+  function openBookingFlow() {
+    if (!bestDeparture) {
+      setIsTourEnquiryOpen(true);
+      return;
+    }
+    if (bookingScrollFrameRef.current) return;
+    const section = document.getElementById("departure-pricing");
+    if (!section) return;
+    const mobile = window.matchMedia("(max-width: 1023px)").matches;
+    const offset = mobile ? 76 : 64;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const started = performance.now();
+    let settled = 0;
+    let lastY = window.scrollY;
+    window.scrollTo({ top: Math.max(0, window.scrollY + section.getBoundingClientRect().top - offset), behavior: reducedMotion ? "instant" : "smooth" });
+    const finishScroll = () => {
+      const nearTarget = Math.abs(section.getBoundingClientRect().top - offset) < 3;
+      const stationary = Math.abs(window.scrollY - lastY) < 1;
+      lastY = window.scrollY;
+      settled = nearTarget || (stationary && performance.now() - started > 200) ? settled + 1 : 0;
+      if (settled < 3 && performance.now() - started < 1600) {
+        bookingScrollFrameRef.current = window.requestAnimationFrame(finishScroll);
+        return;
+      }
+      bookingScrollFrameRef.current = 0;
+      // Keep the booking anchor in the same screen position as the phone view compacts.
+      const previousTop = section.getBoundingClientRect().top;
+      flushSync(() => { setIsBookingFlowOpen(true); setActiveTab("pricing"); });
+      document.getElementById("booking-heading")?.focus({ preventScroll: true });
+      if (mobile) window.scrollBy({top: section.getBoundingClientRect().top - previousTop, behavior: "instant"});
+    };
+    bookingScrollFrameRef.current = window.requestAnimationFrame(finishScroll);
+  }
+
+  async function retryFailedPayment() {
+    if (checkingRetryRef.current || bookingSubmissionRef.current || checkoutStatus !== "idle") return;
+    checkingRetryRef.current = true;
+    setIsCheckingRetry(true);
+    try {
+      const orderId = failedPaymentOrderRef.current;
+      if (orderId && await recoverConfirmedPaymentOrder(orderId)) {
+        setPaymentRetryMessage(null);
+        return;
+      }
+      await handleBookSeat(retryPaymentOptionRef.current);
+    } catch {
+      setPaymentRetryMessage("We could not check your previous payment. Please check with your bank or contact our team before paying again. Your booking choices are still saved.");
+    } finally {
+      checkingRetryRef.current = false;
+      setIsCheckingRetry(false);
+    }
   }
 
   async function handleBookSeat(paymentOption = selectedPaymentOption, offline = false, bankTransfer = false) {
+    if (bookingSubmissionRef.current) return;
     if (offlineRequestKey && offlineRequestKey === bookingCompletionKey) {
       setPaymentFeedback("Your offline payment request is already saved. Our team will confirm your booking after payment.");
       return;
@@ -2232,6 +1923,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
       !selectedDeparture ||
       checkoutStatus !== "idle"
     ) {
+      if (checkoutStatus === "idle") handleIncompleteBooking();
       setPaymentFeedback(
         checkoutStatus !== "idle"
           ? "A payment attempt is already in progress."
@@ -2241,6 +1933,9 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
       return;
     }
 
+    bookingSubmissionRef.current = true;
+    retryPaymentOptionRef.current = paymentOption;
+    setPaymentRetryMessage(null);
     setCheckoutStatus(offline ? "requesting_offline" : "creating");
     setPaymentFeedback("");
     setIsPaymentChoiceOpen(false);
@@ -2259,7 +1954,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
           forms: completeTravellerDetailForms, paymentOption, tour: detail.tour, travellerCounts,
         }));
         setCheckoutStatus("idle");
-        router.push("/bank-transfer/" + response.data.booking.id + "?token=" + encodeURIComponent(response.data.accessToken || ""));
+        router.push("/bank-transfer/" + response.data.booking.id);
         return;
       }
       if (offline) {
@@ -2274,46 +1969,51 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
         setOfflineRequestKey(bookingCompletionKey);
         setPaymentFeedback("Booking " + (response.data.booking.bookingReference || response.data.booking.id) + ": " + response.message);
         setCheckoutStatus("idle");
-        router.push(`/booking-submitted/${response.data.booking.id}?token=${encodeURIComponent(response.data.submissionToken)}`);
+        router.push(`/booking-submitted/${response.data.booking.id}`);
         return;
       }
 
-      const order = (
-        await createBookingPaymentOrder(
-          createBookingPayload({
-            accommodationOption: selectedAccommodationOption,
-            departure: selectedDeparture,
-            forms: completeTravellerDetailForms,
-            paymentOption,
-            tour: detail.tour,
-            travellerCounts,
-          })
-        )
-      ).data;
+      const paymentPayload = createBookingPayload({
+        accommodationOption: selectedAccommodationOption,
+        departure: selectedDeparture,
+        forms: completeTravellerDetailForms,
+        paymentOption,
+        tour: detail.tour,
+        travellerCounts,
+      });
+      const serializedPayload = JSON.stringify(paymentPayload);
+      if (paymentRequestRef.current?.payload !== serializedPayload) {
+        paymentRequestRef.current = { payload: serializedPayload, key: crypto.randomUUID() };
+      }
+      const order = (await createBookingPaymentOrder(paymentPayload, paymentRequestRef.current.key)).data;
 
       paymentOrderRef.current = order;
       await openRazorpayCheckout(order);
     } catch (error) {
+      if (error instanceof ApiError && error.statusCode === 410) paymentRequestRef.current = null;
       const orderId = paymentOrderRef.current?.checkout.orderId;
 
       if (orderId) {
+        failedPaymentOrderRef.current = orderId;
         void cancelPaymentOrder(orderId);
       }
 
       paymentOrderRef.current = null;
       setCheckoutStatus("idle");
-      setPaymentFeedback(
-        error instanceof Error
-          ? error.message
-          : "Payment could not be started. Please try again."
-      );
+      const message = error instanceof Error ? error.message : "Payment could not be started. Please try again.";
+      setPaymentFeedback(message);
+      if (!offline && !bankTransfer) setPaymentRetryMessage(paymentFailureMessage(message));
+    } finally {
+      bookingSubmissionRef.current = false;
     }
   }
 
   return (
-    <main className="min-h-screen bg-background pb-28 text-secondary sm:pb-32 lg:pb-0">
+    <BookingFlowProvider errors={visibleBookingIssues} validationAttempt={validationAttempt} onIssueFocus={focusBookingIssue} stage={bookingStage} onStageChange={changeBookingStage} onAuthReadyChange={setIsLeadAuthenticated} onExit={() => { setIsBookingFlowOpen(false); window.requestAnimationFrame(() => window.scrollTo({top: 0, behavior: "smooth"})); }}>
+    <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-secondary">
       <Header />
       <PaymentProceedingOverlay checkoutStatus={checkoutStatus} />
+      <PaymentRetryNotice message={paymentRetryMessage} busy={isCheckingRetry || checkoutStatus !== "idle"} onRetry={() => void retryFailedPayment()} onDismiss={() => setPaymentRetryMessage(null)} />
 
       <section className="home-wide-frame mx-auto grid w-full gap-5 px-4 pb-7 pt-7 sm:px-5 sm:pt-12 lg:grid-cols-[minmax(0,1fr)_360px] lg:px-0">
         <div className="min-w-0">
@@ -2321,8 +2021,8 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
 
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h1 className="font-heading text-[32px] font-bold leading-none tracking-normal text-secondary sm:text-title">
-                {detail.tour.tourName}
+              <h1 className="font-heading text-[27px] font-bold leading-none tracking-normal text-secondary sm:text-title">
+                {formatTourTitle(detail.tour.tourName)}
               </h1>
              
             </div>
@@ -2331,6 +2031,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
             ) : null}
           </div>
 
+          <div className={isBookingFlowOpen ? "max-lg:hidden" : undefined}>
           <TourGallery
             images={galleryImages}
             selectedImage={selectedImage}
@@ -2340,8 +2041,9 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
             tourType={detail.tour.category || detail.tour.tourType}
             onSelectImage={setSelectedImageIndex}
           />
+          </div>
 
-          <div className="mt-4 lg:hidden">
+          <div className={cn("mt-4 lg:hidden", isBookingFlowOpen && "hidden")}>
             <TourHighlightCard
               action={
                 <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -2356,7 +2058,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
                   <button
                     type="button"
                     onClick={() => setIsTourEnquiryOpen(true)}
-                    className="mt-2 inline-flex items-center gap-2 font-sans text-[14px] font-semibold text-primary underline-offset-4 transition-colors hover:text-accent hover:underline"
+                    className="mt-2 inline-flex items-center gap-2 font-sans text-[14px] font-semibold text-button-outline underline-offset-4 transition-colors hover:text-accent hover:underline"
                   >
                     Enquire Now
                   </button>
@@ -2391,10 +2093,10 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
             tour={detail.tour}
             travellerCounts={travellerCounts}
           />
-          <TourAdditionalDetails tour={detail.tour} />
+          <div className={isBookingFlowOpen ? "max-lg:hidden" : undefined}><TourAdditionalDetails tour={detail.tour} /></div>
         </div>
 
-        <aside className="space-y-2.5 lg:sticky lg:top-[90px] lg:self-start">
+        <aside className={cn("space-y-2.5 lg:self-start", !isBookingFlowOpen && "lg:sticky lg:top-[90px]", isBookingFlowOpen && bookingStage !== 4 && "max-lg:hidden")}>
           <div className="hidden lg:block">
             <PriceCard
               accommodationOptions={accommodationOptions}
@@ -2426,7 +2128,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
               tour={detail.tour}
             />
           </div>
-          {canBookSeat ? (
+          {isBookingFlowOpen && selectedAccommodationOption ? (
             <BookingSummary
               balanceAmount={bookingBalanceAmount}
               balanceDueDate={bookingBalanceDueDate}
@@ -2443,14 +2145,15 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
               travellerCounts={travellerCounts}
             />
           ) : null}
-          <BookingTermsCard
+          {bestDeparture ? <BookingTermsCard
             accepted={hasAcceptedBookingTerms}
             canBook={canBookSeat}
             onAcceptedChange={(accepted) =>
               setAcceptedBookingTermsKey(accepted ? bookingCompletionKey : "")
             }
-          />
+          /> : null}
           <SidebarTourActions
+            hasBookableDeparture={Boolean(bestDeparture)}
             bookingReminder={bookingReminder}
             onIncomplete={handleIncompleteBooking}
             showAirfareNotice={isAirfareExcluded(detail.tour)}
@@ -2461,11 +2164,19 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
             hasOfflineRequest={Boolean(offlineRequestKey && offlineRequestKey === bookingCompletionKey)}
             onBookNow={openBookingFlow}
           />
-          <HelpCard contact={siteContact} />
+          <div className={isBookingFlowOpen ? "max-lg:hidden" : undefined}><HelpCard contact={siteContact} /></div>
         </aside>
       </section>
 
       <MobileBookingBar
+        suspended={isPaymentChoiceOpen || checkoutStatus !== "idle"}
+        isBookingFlowOpen={isBookingFlowOpen}
+        bookingStage={bookingStage}
+        total={bookingGrandTotal}
+        isBusy={checkoutStatus !== "idle" || Boolean(offlineRequestKey && offlineRequestKey === bookingCompletionKey)}
+        onContinue={continueMobileBooking}
+        isAuthenticated={isLeadAuthenticated}
+        airfareExtra={isAirfareExcluded(detail.tour)}
         onBookNow={openBookingFlow}
         price={price}
       />
@@ -2493,6 +2204,7 @@ export function SingleTourPage({ tourId }: { tourId: string }) {
         />
       ) : null}
     </main>
+    </BookingFlowProvider>
   );
 }
 
@@ -2556,11 +2268,11 @@ function PaymentProceedingOverlay({
 function Breadcrumbs({ tourName }: { tourName: string }) {
   return (
     <nav className="flex flex-wrap items-center gap-1.5 font-sans text-[13px] font-medium text-secondary/52 sm:gap-2.5 sm:text-[15px]">
-      <Link href="/" className="transition-colors hover:text-primary">
+      <Link prefetch={false} href="/" className="transition-colors hover:text-brand-text">
         Home
       </Link>
       <ChevronRight className="size-3.5 text-secondary/35" />
-      <Link href="/tour-calendar" className="transition-colors hover:text-primary">
+      <Link prefetch={false} href="/tours" className="transition-colors hover:text-brand-text">
         Tours
       </Link>
       <ChevronRight className="size-3.5 text-secondary/35" />
@@ -2575,7 +2287,7 @@ function TourMeta({
   tour,
 }: {
   destinations: PublicDestination[];
-  primaryDestination: PublicDestination;
+  primaryDestination: PublicDestination | undefined;
   tour: PublicTour;
 }) {
   return (
@@ -2694,7 +2406,7 @@ function TourGallery({
           type="button"
           aria-label="Previous photo"
           onClick={() => moveImage(-1)}
-          className="grid size-8 place-items-center rounded-full border border-border bg-white text-primary transition-colors hover:bg-primary hover:text-white sm:size-9"
+          className="grid size-8 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white sm:size-9"
         >
           <ChevronLeft className="size-4" />
         </button>
@@ -2726,7 +2438,7 @@ function TourGallery({
           type="button"
           aria-label="Next photo"
           onClick={() => moveImage(1)}
-          className="grid size-8 place-items-center rounded-full border border-border bg-white text-primary transition-colors hover:bg-primary hover:text-white sm:size-9"
+          className="grid size-8 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white sm:size-9"
         >
           <ChevronRight className="size-4" />
         </button>
@@ -2764,7 +2476,7 @@ function TourTabs({
   isBookingFlowOpen: boolean;
   onOpenBookingFlow: () => void;
   onTabChange: (tab: TourTab) => void;
-  primaryDestination: PublicDestination;
+  primaryDestination: PublicDestination | undefined;
   selectedAccommodationOptionId: string;
   selectedDepartureId: string;
   setSelectedAccommodationOptionId: Dispatch<SetStateAction<string>>;
@@ -2775,13 +2487,13 @@ function TourTabs({
   tour: PublicTour;
   travellerCounts: TravellerCounts;
 }) {
-  const tabsListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let frameId = 0;
 
     const updateActiveTab = () => {
       frameId = 0;
+      if (isBookingFlowOpen && window.matchMedia("(max-width: 1023px)").matches) return;
 
       const observedSections = tabs
         .map((tab) => ({
@@ -2801,7 +2513,8 @@ function TourTabs({
 
       const tabBar = document.querySelector<HTMLElement>("[data-tour-tabs]");
       const activationLine =
-        (tabBar?.getBoundingClientRect().height || 56) + 40;
+        (tabBar?.getBoundingClientRect().height || 56) +
+        (window.matchMedia("(max-width: 639px)").matches ? 76 : 40);
       const activeSection = observedSections.reduce(
         (current, section) =>
           section.element.getBoundingClientRect().top <= activationLine
@@ -2832,36 +2545,13 @@ function TourTabs({
       window.removeEventListener("scroll", scheduleUpdate);
       window.removeEventListener("resize", scheduleUpdate);
     };
-  }, [activeTab, onTabChange]);
-
-  useEffect(() => {
-    const tabsList = tabsListRef.current;
-
-    if (!tabsList || !window.matchMedia("(max-width: 639px)").matches) {
-      return;
-    }
-
-    const activeTabButton = tabsList.querySelector<HTMLElement>(
-      `[data-tour-tab-value="${activeTab}"]`
-    );
-
-    if (!activeTabButton) {
-      return;
-    }
-
-    tabsList.scrollTo({
-      behavior: "smooth",
-      left:
-        activeTabButton.offsetLeft -
-        (tabsList.clientWidth - activeTabButton.clientWidth) / 2,
-    });
-  }, [activeTab]);
+  }, [activeTab, onTabChange, isBookingFlowOpen]);
 
   function handleTabClick(tab: (typeof tabs)[number]) {
     onTabChange(tab.value);
-    document
-      .getElementById(tab.sectionId)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const section = document.getElementById(tab.sectionId);
+    section?.focus({ preventScroll: true });
+    section?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   return (
@@ -2872,47 +2562,50 @@ function TourTabs({
       <div
         data-tour-tabs
         data-tour-tabs-shell
-        className="tour-detail-tabs sticky top-[60px] z-[2147483646] min-h-12 overflow-hidden rounded-[8px] border border-border bg-card shadow-[0_6px_16px_rgba(67,43,27,0.08)] sm:top-0 sm:z-[2147483647] sm:shadow-none"
+        className={cn(isBookingFlowOpen && "max-lg:hidden", "tour-detail-tabs sticky top-[60px] z-[2147483646] min-h-12 overflow-hidden rounded-[8px] border border-border bg-card shadow-[0_6px_16px_rgba(67,43,27,0.08)] sm:top-0 sm:z-[2147483647] sm:shadow-none")}
       >
-        <div
-          ref={tabsListRef}
-          className="flex w-full overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-4 sm:overflow-visible xl:grid-cols-[0.95fr_1.3fr_1.35fr_1fr]"
+        <nav
+          aria-label="Tour sections"
+          className="grid w-full grid-cols-2 sm:grid-cols-4 xl:grid-cols-[0.95fr_1.3fr_1.35fr_1fr]"
         >
           {tabs.map((tab) => {
             const { icon: Icon, label, value } = tab;
 
             return (
-              <button
+              <a
                 key={value}
-                type="button"
+                id={`tour-section-link-${value}`}
+                href={`#${tab.sectionId}`}
                 data-tour-tab-value={value}
                 aria-controls={tab.sectionId}
-                aria-pressed={activeTab === value}
-                onClick={() => handleTabClick(tab)}
+                aria-current={activeTab === value ? "location" : undefined}
+                onClick={event => { event.preventDefault(); handleTabClick(tab); }}
                 className={cn(
-                  "relative flex min-h-12 min-w-[136px] shrink-0 items-center justify-center gap-1.5 border-r border-b border-border px-3 font-sans text-[14px] font-semibold transition-colors last:border-r-0 sm:min-h-12 sm:min-w-0 sm:shrink sm:gap-2 sm:px-2 sm:text-[15px] xl:border-b-0",
+                  "relative flex min-h-12 min-w-0 shrink-0 items-center justify-center gap-1.5 border-r border-b border-border px-3 font-sans text-[14px] font-semibold transition-colors last:border-r-0 sm:min-h-12 sm:min-w-0 sm:shrink sm:gap-2 sm:px-2 sm:text-[15px] xl:border-b-0",
                   activeTab === value
-                    ? "bg-muted/45 text-primary"
-                    : "text-secondary hover:bg-primary/5 hover:text-primary"
+                    ? "bg-muted/45 text-brand-text"
+                    : "text-secondary hover:bg-primary/5 hover:text-brand-text"
                 )}
               >
                 <Icon className="hidden size-3.5 shrink-0 sm:block sm:size-4" strokeWidth={1.8} />
-                <span className="min-w-0 text-center leading-tight">
+                <span className="min-w-0 whitespace-normal break-words text-center leading-tight">
                   {label}
                 </span>
                 {activeTab === value ? (
                   <span className="absolute bottom-0 left-5 right-5 h-0.5 bg-primary" />
                 ) : null}
-              </button>
+              </a>
             );
           })}
-        </div>
+        </nav>
       </div>
 
       <div className="mt-4 space-y-5">
         <section
           id="itinerary"
-          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4 sm:p-5"
+          aria-labelledby="tour-section-link-itinerary"
+          tabIndex={-1}
+          className={cn(isBookingFlowOpen && "max-lg:hidden", "scroll-mt-[168px] rounded-[8px] border border-border bg-card sm:scroll-mt-[64px] p-4 sm:p-5")}
         >
           <ItineraryPanel
             itinerary={itinerary}
@@ -2924,15 +2617,20 @@ function TourTabs({
 
         <section
           id="inclusions"
-          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4  sm:p-5"
+          aria-labelledby="tour-section-link-inclusions"
+          tabIndex={-1}
+          className={cn(isBookingFlowOpen && "max-lg:hidden", "scroll-mt-[168px] rounded-[8px] border border-border bg-card sm:scroll-mt-[64px] p-4  sm:p-5")}
         >
           <InclusionsPanel tour={tour} />
         </section>
 
         <section
           id="departure-pricing"
-          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4  sm:p-5"
+          aria-labelledby="booking-heading"
+          tabIndex={-1}
+          className={cn("booking-mobile-form rounded-[8px] border border-border bg-card p-4 sm:p-5", isBookingFlowOpen ? "scroll-mt-[76px] lg:scroll-mt-[64px]" : "scroll-mt-[168px] sm:scroll-mt-[64px]")}
         >
+          <h2 id="booking-heading" tabIndex={-1} className="sr-only">Book {tour.tourName}</h2>
           <PricingPanel
             departures={departures}
             isBookingFlowOpen={isBookingFlowOpen}
@@ -2951,7 +2649,9 @@ function TourTabs({
 
         <section
           id="tour-expert"
-          className="scroll-mt-[64px] rounded-[8px] border border-border bg-card p-4  sm:p-5"
+          aria-labelledby="tour-section-link-expert"
+          tabIndex={-1}
+          className={cn(isBookingFlowOpen && "max-lg:hidden", "scroll-mt-[168px] rounded-[8px] border border-border bg-card sm:scroll-mt-[64px] p-4 sm:p-5", !getYoutubeEmbedUrl(tour.video) && "max-lg:border-0 max-lg:p-0")}
         >
           <ExpertPanel expert={expert} tour={tour} />
         </section>
@@ -2968,13 +2668,13 @@ function ItineraryPanel({
 }: {
   itinerary: PublicTourItinerary | null;
   itineraryDays: ItineraryDay[];
-  primaryDestination: PublicDestination;
+  primaryDestination: PublicDestination | undefined;
   tour: PublicTour;
 }) {
   const summary =
     itinerary?.itinerarySummary ||
     tour.description ||
-    primaryDestination.shortDescription ||
+    primaryDestination?.shortDescription ||
     "Each day combines landmark visits, expert interpretation and time to absorb the destination.";
 
   return (
@@ -3011,31 +2711,41 @@ function TourAdditionalDetails({ tour }: { tour: PublicTour }) {
   return (
     <section className="mt-5 space-y-5">
       <div className="overflow-hidden rounded-[8px] border border-border bg-card">
-        <div className="grid grid-cols-2 gap-1 border-b border-border bg-transparent p-1 sm:grid-cols-3 sm:gap-0 sm:border-b sm:bg-muted/45 sm:p-0">
+        <div role="tablist" aria-label="Additional tour details" onKeyDown={handleTabKeyDown} className="flex gap-1 overflow-x-auto overscroll-x-contain border-b border-border bg-transparent p-1 sm:grid sm:grid-cols-3 sm:gap-0 sm:overflow-visible sm:border-b sm:bg-muted/45 sm:p-0">
           {tabItems.map(({ icon: Icon, label, value }, index) => (
             <button
               key={value}
               type="button"
+              role="tab"
+              id={`tour-additional-tab-${value}`}
+              aria-controls={`tour-additional-panel-${value}`}
+              aria-selected={activeTab === value}
+              tabIndex={activeTab === value ? 0 : -1}
               onClick={() => setActiveTab(value)}
               className={cn(
-                "flex min-h-16 min-w-0 items-center justify-center gap-3 rounded-[7px] border border-border px-2 py-2 text-center font-sans text-[14px] font-semibold leading-[1.3] transition-colors sm:min-h-12 sm:rounded-none sm:border-0 sm:border-b-2 sm:px-3 sm:py-3 sm:text-[14px]",
+                "flex min-h-10 min-w-[150px] shrink-0 items-center justify-center gap-3 rounded-[7px] border border-border px-2 py-2 text-center font-sans text-[14px] font-semibold leading-[1.3] transition-colors sm:min-h-12 sm:min-w-0 sm:shrink sm:rounded-none sm:border-0 sm:border-b-2 sm:px-3 sm:py-3 sm:text-[14px]",
                 index === 2 && "col-span-2 sm:col-span-1",
                 activeTab === value
-                  ? "border-primary bg-primary text-white sm:border-primary sm:bg-primary sm:shadow-none"
-                  : "bg-white text-secondary/52 hover:border-primary/30 hover:bg-primary/5 hover:text-primary sm:border-transparent sm:bg-transparent sm:hover:bg-primary/8"
+                  ? "border-primary bg-brand-button-dark text-white sm:border-primary sm:bg-brand-button-dark sm:shadow-none"
+                  : "bg-white text-secondary/52 hover:border-primary/30 hover:bg-primary/5 hover:text-brand-text sm:border-transparent sm:bg-transparent sm:hover:bg-primary/8"
               )}
             >
               <Icon className="hidden size-4 shrink-0 sm:block" strokeWidth={1.8} />
-              <span className="whitespace-normal break-words text-[14px] font-semibold leading-[1.35] sm:text-[14px]">
+              <span className="whitespace-nowrap text-[14px] font-semibold leading-[1.35] sm:whitespace-normal sm:break-words sm:text-[14px]">
                 {label}
               </span>
             </button>
           ))}
         </div>
-        <TourInfoList
-          items={contentByTab[activeTab]}
-          emptyMessage="Details will be shared by the Ancient Trails team."
-        />
+        {tabItems.map(({ value }) => (
+          <div key={value} role="tabpanel" id={`tour-additional-panel-${value}`}
+            aria-labelledby={`tour-additional-tab-${value}`} hidden={activeTab !== value} tabIndex={0}>
+            <TourInfoList
+              items={contentByTab[value]}
+              emptyMessage="Details will be shared by the Ancient Trails team."
+            />
+          </div>
+        ))}
       </div>
 
       <PolicyPanel
@@ -3101,7 +2811,7 @@ function PolicyPanel({
   return (
     <section className="rounded-[8px] border border-border bg-card p-5 sm:p-6">
       <div className="flex items-center gap-3 border-b border-border pb-4">
-        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-brand-text">
           <Icon className="size-5" strokeWidth={1.8} />
         </span>
         <h2 className="font-heading text-[18px] font-Semibold  tracking-[0.04em] text-secondary sm:text-[20px]">
@@ -3142,13 +2852,13 @@ function PaymentPolicyContent() {
         {policies.map((policy) => (
           <details key={policy.condition} open className="group/payment overflow-hidden rounded-[12px] border border-primary/15 bg-card shadow-[0_6px_18px_rgba(67,43,27,0.04)]">
             <summary className="flex cursor-pointer list-none items-center gap-3 bg-[#fff8f1] px-4 py-3 [&::-webkit-details-marker]:hidden sm:gap-5 sm:px-5">
-              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-brand-text">
                 <Users className="size-5" strokeWidth={1.8} />
               </span>
               <h3 className="min-w-0 flex-1 font-sans text-[13px] font-semibold leading-tight text-secondary sm:text-[15px]">
                 {policy.condition}
               </h3>
-              <ChevronDown className="size-5 shrink-0 text-primary transition-transform group-open/payment:rotate-180" />
+              <ChevronDown className="size-5 shrink-0 text-brand-text transition-transform group-open/payment:rotate-180" />
             </summary>
             <div className="px-4 sm:px-7">
               {policy.payments.map(({ timing, amount }) => (
@@ -3175,7 +2885,7 @@ function PaymentPolicyContent() {
             <p className="min-w-0">
               Payment can be done via cheque, Demand Draft, NEFT, RTGS, IMPS, Credit Card/ Debit Card or UPI gateway.
               <br />
-              Cheque/Demand Draft should be drawn in favor of {"\u201c"}<strong className="font-bold text-primary">ANCIENT TRAILS</strong>{"\u201d"}.
+              Cheque/Demand Draft should be drawn in favor of {"\u201c"}<strong className="font-bold text-brand-text">ANCIENT TRAILS</strong>{"\u201d"}.
             </p>
           </div>
           <div className="flex items-start gap-3 border-t border-border/60 py-4 font-sans text-[13px] font-medium leading-[1.55] text-secondary/78 sm:gap-5 sm:text-[15px] sm:font-normal">
@@ -3192,7 +2902,7 @@ function PaymentPolicyContent() {
 function PaymentPolicyText({ text }: { text: string }) {
   return text.split(/(\d+(?:\.\d+)?\s*%|ANCIENT TRAILS)/gi).map((part, index) =>
     /^(?:\d+(?:\.\d+)?\s*%|ANCIENT TRAILS)$/i.test(part) ? (
-      <strong key={index} className="font-semibold text-primary">
+      <strong key={index} className="font-semibold text-brand-text">
         {part}
       </strong>
     ) : <span key={index}>{part}</span>
@@ -3215,13 +2925,13 @@ function CancellationPolicyContent() {
     <div className="space-y-5 pt-4 sm:p-6">
       <details open className="group/cancellation overflow-hidden rounded-[12px] border border-primary/15 bg-card shadow-[0_6px_18px_rgba(67,43,27,0.04)]">
         <summary className="flex cursor-pointer list-none items-center gap-3 bg-[#fff8f1] px-4 py-3 [&::-webkit-details-marker]:hidden sm:gap-5 sm:px-5">
-          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-brand-text">
             <CalendarDays className="size-5" strokeWidth={1.8} />
           </span>
           <h3 className="min-w-0 flex-1 font-sans text-[13px] font-semibold leading-tight text-secondary sm:text-[15px]">
             Cancellation charges applicable per person
           </h3>
-          <ChevronDown className="size-5 shrink-0 text-primary transition-transform group-open/cancellation:rotate-180" />
+          <ChevronDown className="size-5 shrink-0 text-brand-text transition-transform group-open/cancellation:rotate-180" />
         </summary>
         <div className="p-3 sm:p-4">
           {rows.length > 0 ? (
@@ -3248,7 +2958,7 @@ function CancellationPolicyContent() {
                         </div>
                       </td>
                       <td className="border-l border-border/60 px-2 py-2.5 sm:px-4">
-                        <div className="rounded-[9px] bg-[#fff8f1] px-3 py-3 font-semibold break-words text-primary sm:px-4">
+                        <div className="rounded-[9px] bg-[#fff8f1] px-3 py-3 font-semibold break-words text-brand-text sm:px-4">
                           {row.charge}
                         </div>
                       </td>
@@ -3336,7 +3046,7 @@ function ExpandableItinerarySummary({ text }: { text: string }) {
         <button
           type="button"
           onClick={() => setIsExpanded((current) => !current)}
-          className="mt-2 font-sans text-[15px] font-bold text-primary transition-colors hover:text-accent"
+          className="mt-2 font-sans text-[15px] font-bold text-button-outline transition-colors hover:text-accent"
         >
           {isExpanded ? "Read Less" : "Read More"}
         </button>
@@ -3370,7 +3080,7 @@ function toPricedDeparture(departure: PublicTourDeparture): PricedDeparture {
     departureDate: departure.departureDate,
     returnDate: departure.returnDate,
     totalSeats: departure.totalSeats,
-    seatsAvailable: departure.seatsAvailable,
+    seatsAvailable: getDepartureSeatsLeft(departure),
     priceAdult: departure.priceAdult,
     priceExtraBed: departure.priceExtraBed,
     priceChildWithoutExtraBed: departure.priceChildWithoutExtraBed,
@@ -3430,15 +3140,23 @@ function formatBalanceDueDate(value: Date | null) {
 
 function DateOfBirthPicker({
   ariaLabel,
+  fieldId,
+  validationId,
+  required = false,
   disabled = false,
   onChange,
   value,
 }: {
   ariaLabel: string;
+  fieldId?: string;
+  validationId?: string;
+  required?: boolean;
   disabled?: boolean;
   onChange: (value: string) => void;
   value: string;
 }) {
+  const fieldProps = useBookingFieldProps();
+  const controlId = fieldId || "booking-" + ariaLabel.toLowerCase().replace(/\s+/g, "-");
   const selectedDate = parseDatePickerValue(value);
   const today = new Date();
   const currentYear = today.getFullYear();
@@ -3494,13 +3212,19 @@ function DateOfBirthPicker({
   }
 
   return (
-    <div ref={pickerRef} className="relative">
+    <div ref={pickerRef} className="relative" onKeyDown={event => { if (event.key === "Escape") { setIsOpen(false); document.getElementById(controlId)?.focus(); } }}>
       <button
         type="button"
+        role="combobox"
+        aria-haspopup="dialog"
+        aria-controls={isOpen ? controlId + "-calendar" : undefined}
         aria-expanded={!disabled && isOpen}
         aria-label={ariaLabel}
+        {...fieldProps(controlId, validationId || fieldId)}
+        aria-required={required}
         disabled={disabled}
         onClick={() => setIsOpen((current) => !current)}
+        onKeyDown={event => { if (event.key === "ArrowDown" && !isOpen) { event.preventDefault(); setIsOpen(true); } }}
         className={cn(
           "flex h-11 w-full items-center justify-between rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15",
           displayValue ? "text-secondary" : "text-secondary/40",
@@ -3509,11 +3233,11 @@ function DateOfBirthPicker({
         )}
       >
         <span>{displayValue || "Date of Birth *"}</span>
-        <CalendarDays className="size-4 text-primary" strokeWidth={1.8} />
+        <CalendarDays className="size-4 text-brand-text" strokeWidth={1.8} />
       </button>
 
       {!disabled && isOpen ? (
-        <div className="absolute left-0 top-[calc(100%+8px)] z-50 w-[min(320px,calc(100vw-2rem))] rounded-[8px] border border-primary/25 bg-card p-3 font-sans text-secondary ">
+        <div data-booking-calendar id={controlId + "-calendar"} role="dialog" aria-label={ariaLabel + " calendar"} className="absolute left-0 top-[calc(100%+8px)] z-50 w-[min(320px,calc(100vw-2rem))] rounded-[8px] border border-primary/25 bg-card p-3 font-sans text-secondary ">
           <div className="flex items-center gap-2">
             <label className="relative min-w-0 flex-1">
               <span className="sr-only">Select month</span>
@@ -3529,7 +3253,7 @@ function DateOfBirthPicker({
                   </option>
                 ))}
               </select>
-              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-primary" />
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-brand-text" />
             </label>
 
             <label className="relative w-[96px]">
@@ -3546,14 +3270,14 @@ function DateOfBirthPicker({
                   </option>
                 ))}
               </select>
-              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-primary" />
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-brand-text" />
             </label>
 
             <button
               type="button"
               aria-label="Previous month"
               onClick={() => moveMonth(-1)}
-              className="grid size-9 shrink-0 place-items-center rounded-full border border-border bg-white text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+              className="grid size-9 shrink-0 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:border-button-outline hover:bg-brand-button-dark hover:text-white"
             >
               <ChevronLeft className="size-4" />
             </button>
@@ -3561,13 +3285,13 @@ function DateOfBirthPicker({
               type="button"
               aria-label="Next month"
               onClick={() => moveMonth(1)}
-              className="grid size-9 shrink-0 place-items-center rounded-full border border-border bg-white text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+              className="grid size-9 shrink-0 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:border-button-outline hover:bg-brand-button-dark hover:text-white"
             >
               <ChevronRight className="size-4" />
             </button>
           </div>
 
-          <div className="mt-3 grid grid-cols-7 gap-1 text-center">
+          <div data-calendar-days className="mt-3 grid grid-cols-7 gap-1 text-center">
             {datePickerWeekdayLabels.map((weekday) => (
               <span
                 key={weekday}
@@ -3596,9 +3320,9 @@ function DateOfBirthPicker({
                     "grid size-8 place-items-center rounded-full text-[12px] font-medium transition-colors",
                     isSelected
                       ? "bg-primary text-white"
-                      : "text-secondary hover:bg-primary/10 hover:text-primary",
+                      : "text-button-outline hover:bg-primary/10 hover:text-button-outline",
                     isFutureDate &&
-                      "cursor-not-allowed text-secondary/28 hover:bg-transparent hover:text-secondary/28"
+                      "cursor-not-allowed text-button-outline hover:bg-transparent hover:text-secondary/28"
                   )}
                 >
                   {day}
@@ -3640,6 +3364,8 @@ function PricingPanel({
   travellerCounts: TravellerCounts;
 }) {
   const toast = useToast();
+  const { onAuthReadyChange } = useBookingFlow();
+  const fieldProps = useBookingFieldProps();
   const selectedDeparture = getSelectedDeparture(departures, selectedDepartureId);
   const pricedDeparture = selectedDeparture
     ? toPricedDeparture(selectedDeparture)
@@ -3655,8 +3381,8 @@ function PricingPanel({
     )
   );
   const maxTravellers =
-    selectedDeparture?.seatsAvailable && selectedDeparture.seatsAvailable > 0
-      ? selectedDeparture.seatsAvailable
+    selectedDeparture && getDepartureSeatsLeft(selectedDeparture) > 0
+      ? getDepartureSeatsLeft(selectedDeparture)
       : 12;
   const totalTravellers = getTotalTravellers(travellerCounts);
   const travellerDetailTabs = useMemo(
@@ -3667,10 +3393,9 @@ function PricingPanel({
     useState("adult-1");
   const [travellerDetailForms, setTravellerDetailForms] = useState<
     Record<string, TravellerDetailForm>
-  >(createInitialTravellerDetailForms);
-  const [travellerSession, setTravellerSession] = useState<TravellerSession | null>(
-    () => getTravellerSession()
-  );
+  >({});
+  // Read browser credentials in the session effect after hydration.
+  const [travellerSession, setTravellerSession] = useState<TravellerSession | null>(null);
   const [leadOtp, setLeadOtp] = useState("");
   const [leadOtpTargetMobileNumber, setLeadOtpTargetMobileNumber] =
     useState("");
@@ -3687,7 +3412,7 @@ function PricingPanel({
     ...defaultTravellerDetailForm,
     ...(travellerDetailForms["adult-1"] || {}),
   };
-  const isLeadTravellerLoggedIn = Boolean(travellerSession?.token);
+  const isLeadTravellerLoggedIn = Boolean(travellerSession?.sessionId);
   const leadTravellerAuthMobileNumber =
     getLeadTravellerAuthMobileNumber(leadTravellerDetails);
   const travellerProfileAuthMobileNumber = getProfileAuthMobileNumber(
@@ -3799,10 +3524,9 @@ function PricingPanel({
     }
   })();
   const accommodationOptions = accommodationResult.options;
-  const selectedAccommodationOption =
-    accommodationOptions.find(
-      (option) => option.id === selectedAccommodationOptionId
-    ) || accommodationOptions[0];
+  const selectedAccommodationOption = selectAccommodationOption(
+    accommodationOptions, selectedAccommodationOptionId
+  );
   const resolvedSelectedAccommodationOptionId =
     selectedAccommodationOption?.id || "";
 
@@ -3842,16 +3566,19 @@ function PricingPanel({
     });
   }, []);
 
-  useEffect(
-    () =>
-      listenForTravellerSessionChanges(() => {
-        const nextTravellerSession = getTravellerSession();
+  useEffect(() => {
+    const syncTravellerSession = () => {
+      const nextTravellerSession = getTravellerSession();
 
-        setTravellerSession(nextTravellerSession);
-        applyLeadTravellerProfile(nextTravellerSession?.user ?? null);
-      }),
-    [applyLeadTravellerProfile]
-  );
+      setTravellerSession(nextTravellerSession);
+      applyLeadTravellerProfile(nextTravellerSession?.user ?? null);
+    };
+
+    const unsubscribe = listenForTravellerSessionChanges(syncTravellerSession);
+    syncTravellerSession();
+
+    return unsubscribe;
+  }, [applyLeadTravellerProfile]);
 
   useEffect(() => {
     if (leadOtpCooldownSeconds <= 0) {
@@ -3866,6 +3593,10 @@ function PricingPanel({
       window.clearInterval(timerId);
     };
   }, [leadOtpCooldownSeconds]);
+
+  useEffect(() => {
+    onAuthReadyChange(hasVerifiedLeadMobileNumber);
+  }, [hasVerifiedLeadMobileNumber, onAuthReadyChange]);
 
   useEffect(() => {
     onTravellerDetailsCompleteChange(areTravellerDetailsCompleteForBooking);
@@ -3883,26 +3614,10 @@ function PricingPanel({
   function updateTravellerCount(key: TravellerCountKey, delta: number) {
     setTravellerCounts((current) => {
       const minimum = key === "adults" ? 1 : 0;
-      const nextValue = Math.max(minimum, current[key] + delta);
-      const nextCounts = {
-        ...current,
-        [key]: nextValue,
-      };
-
-      if (
-        delta > 0 &&
-        getTotalTravellers(current) <= BOOKING_TRAVELLER_LIMIT &&
-        getTotalTravellers(nextCounts) > BOOKING_TRAVELLER_LIMIT
-      ) {
-        setIsGroupEnquiryOpen(true);
-
+      const nextCounts = { ...current, [key]: Math.max(minimum, current[key] + delta) };
+      if (delta > 0 && getTotalTravellers(nextCounts) > Math.min(BOOKING_TRAVELLER_LIMIT, maxTravellers)) {
         return current;
       }
-
-      if (delta > 0 && getTotalTravellers(nextCounts) > maxTravellers) {
-        return current;
-      }
-
       return nextCounts;
     });
   }
@@ -4085,8 +3800,8 @@ function PricingPanel({
       return;
     }
 
-    if (!/^\d{4,9}$/.test(leadOtp.trim())) {
-      const message = "OTP must be 4 to 9 digits.";
+    if (!/^\d{6}$/.test(leadOtp.trim())) {
+      const message = "OTP must be 6 digits.";
 
       setLeadAuthError(message);
       toast.error("Invalid OTP", message);
@@ -4183,7 +3898,7 @@ function PricingPanel({
 
       saveLeadTravellerSession(
         {
-          token: otpResponse.data.token,
+          sessionId: otpResponse.data.sessionId,
           user: otpResponse.data.user,
         },
         "Login successful",
@@ -4199,20 +3914,21 @@ function PricingPanel({
     }
   }
 
-  if (!isBookingFlowOpen) {
+  if (!selectedDeparture || !isBookingFlowOpen) {
     return (
-      <BookingStep step="1" title="Reserve Your Seat">
+      <BookingStep step="1" title={selectedDeparture ? "Reserve Your Seat" : "Coming Soon"}>
         <div className="rounded-[8px] border border-primary/15 bg-[#fff8f1] p-4 font-sans">
           <p className="text-[15px] font-medium leading-[1.6] text-secondary/74">
-            Start your booking to select a departure, add traveller details and
-            choose accommodation.
+            {selectedDeparture
+              ? "Start your booking to select a departure, add traveller details and choose accommodation."
+              : "Dates and prices will be announced soon. Enquire with our team for updates."}
           </p>
           <Button
             type="button"
             onClick={onOpenBookingFlow}
             className="mt-4 w-full justify-between gap-4 px-5 font-normal sm:w-auto sm:min-w-[190px]"
           >
-            Book Now
+            {selectedDeparture ? "Book Now" : "Enquire Now"}
             <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
           </Button>
         </div>
@@ -4222,6 +3938,52 @@ function PricingPanel({
 
   return (
     <div className="space-y-4">
+      <BookingErrorSummary />
+      <BookingProgress />
+      <BookingStep step="0" title="Sign in to book" mobileStage={0}>
+        {hasLeadRegistrationOtpVerification ? (
+          <div className="mb-3 grid gap-3 sm:grid-cols-3">
+            {(["firstName", "lastName", "email"] as const).map(field => (
+              <label key={field} className="font-sans text-[13px] font-medium">
+                {field === "firstName" ? "First name" : field === "lastName" ? "Last name" : "Email address"}
+                <input aria-label={field === "firstName" ? "Sign-in first name" : field === "lastName" ? "Sign-in last name" : "Sign-in email"}
+                  {...fieldProps("booking-signin-" + field, bookingFieldId("adult-1", field === "firstName" ? "first name" : field === "lastName" ? "last name" : "email"))}
+                  required autoComplete={field === "firstName" ? "given-name" : field === "lastName" ? "family-name" : "email"}
+                  type={field === "email" ? "email" : "text"} value={leadTravellerDetails[field]}
+                  onChange={event => updateLeadTravellerDetail(field, event.target.value)}
+                  className="mt-1 h-11 w-full rounded-[6px] border border-border bg-background px-3" />
+              </label>
+            ))}
+          </div>
+        ) : null}
+        <LeadTravellerVerificationPanel
+          canCompleteProfile={areLeadTravellerProfileFieldsReady}
+          cooldownSeconds={leadOtpCooldownSeconds}
+          errorMessage={leadAuthError}
+          hasOtpBeenRequested={hasLeadOtpBeenRequested}
+          isCompletingProfile={hasLeadRegistrationOtpVerification}
+          isLoggedIn={isLeadTravellerLoggedIn}
+          isProfileMobile={isLeadTravellerUsingProfileMobile}
+          isRequestingOtp={isRequestingLeadOtp}
+          isVerified={hasVerifiedLeadMobileNumber}
+          isVerifyingOtp={isVerifyingLeadOtp}
+          message={leadAuthMessage}
+          mobileNumber={leadTravellerDetails.mobileNumber}
+          onMobileNumberChange={(value) =>
+            updateLeadTravellerDetail("mobileNumber", value)
+          }
+          onOtpChange={setLeadOtp}
+          onPhoneCountryCodeChange={(value) =>
+            updateLeadTravellerDetail("phoneCountryCode", value)
+          }
+          onRequestOtp={handleLeadTravellerRequestOtp}
+          onVerifyOtp={handleLeadTravellerVerifyOtp}
+          otp={leadOtp}
+          phoneCountryCode={leadTravellerDetails.phoneCountryCode}
+          phoneNumber={leadTravellerAuthMobileNumber}
+        />
+      </BookingStep>
+
       <BookingStep
         actions={
           <div className="flex items-center gap-2">
@@ -4229,7 +3991,7 @@ function PricingPanel({
               type="button"
               aria-label="Previous departure"
               onClick={() => moveDeparture(-1)}
-              className="grid size-8 place-items-center rounded-full border border-border bg-background text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+              className="grid size-8 place-items-center rounded-full border border-button-outline bg-background text-button-outline transition-colors hover:border-button-outline hover:bg-brand-button-dark hover:text-white"
             >
               <ChevronLeft className="size-4" />
             </button>
@@ -4237,14 +3999,15 @@ function PricingPanel({
               type="button"
               aria-label="Next departure"
               onClick={() => moveDeparture(1)}
-              className="grid size-8 place-items-center rounded-full border border-border bg-background text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+              className="grid size-8 place-items-center rounded-full border border-button-outline bg-background text-button-outline transition-colors hover:border-button-outline hover:bg-brand-button-dark hover:text-white"
             >
               <ChevronRight className="size-4" />
             </button>
           </div>
         }
+        mobileStage={1}
         step="1"
-        title="Select Your Dates"
+        title="Date and Travellers"
       >
         <div className="grid auto-rows-fr gap-3 md:grid-cols-3">
           {departures.map((departure) => {
@@ -4278,7 +4041,7 @@ function PricingPanel({
                 <span className="mt-4 block border-t border-[#ecd8ca] pt-4">
                   <span className="mb-3 flex items-center justify-between gap-3 text-[14px] font-semibold leading-none text-secondary/68">
                     <span>Seats</span>
-                    <span className="font-bold text-primary">
+                    <span className="font-bold text-brand-text">
                       {filledSeats}/{totalSeats}
                     </span>
                   </span>
@@ -4300,11 +4063,10 @@ function PricingPanel({
             );
           })}
         </div>
-      </BookingStep>
 
-      <BookingStep step="2" title="Add Traveller Details">
         <div className="grid gap-3 sm:grid-cols-3">
           <TravellerCounter
+            increaseDisabled={totalTravellers >= Math.min(BOOKING_TRAVELLER_LIMIT, maxTravellers)}
             ageLabel="Above 12 years"
             label="Adult"
             minimum={1}
@@ -4313,6 +4075,7 @@ function PricingPanel({
             onIncrease={() => updateTravellerCount("adults", 1)}
           />
           <TravellerCounter
+            increaseDisabled={totalTravellers >= Math.min(BOOKING_TRAVELLER_LIMIT, maxTravellers)}
             ageLabel="Above 6 to 12 years"
             label="Child"
             value={travellerCounts.children}
@@ -4320,6 +4083,7 @@ function PricingPanel({
             onIncrease={() => updateTravellerCount("children", 1)}
           />
           <TravellerCounter
+            increaseDisabled={totalTravellers >= Math.min(BOOKING_TRAVELLER_LIMIT, maxTravellers)}
             ageLabel="Below 6 years"
             label="Infant"
             value={travellerCounts.infants}
@@ -4328,11 +4092,12 @@ function PricingPanel({
           />
         </div>
 
-        {totalTravellers > BOOKING_TRAVELLER_LIMIT ? (
+        {totalTravellers >= Math.min(BOOKING_TRAVELLER_LIMIT, maxTravellers) ? (
           <div className="mt-4 rounded-[8px] border border-primary/20 bg-primary/5 p-3 font-sans">
             <p className="text-[14px] font-semibold leading-[1.5] text-secondary">
-              Online booking is available for up to {BOOKING_TRAVELLER_LIMIT} travellers.
-              Please enquire for larger groups.
+              {maxTravellers < BOOKING_TRAVELLER_LIMIT
+                ? `Only ${maxTravellers} ${maxTravellers === 1 ? "seat is" : "seats are"} available for this departure.`
+                : `Maximum ${BOOKING_TRAVELLER_LIMIT} ${travellerCounts.adults === BOOKING_TRAVELLER_LIMIT ? "adults" : "travellers"} per booking.`} For larger groups, enquire.
             </p>
             <Button
               type="button"
@@ -4345,32 +4110,44 @@ function PricingPanel({
           </div>
         ) : null}
 
-        <LeadTravellerVerificationPanel
-          canCompleteProfile={areLeadTravellerProfileFieldsReady}
-          cooldownSeconds={leadOtpCooldownSeconds}
-          errorMessage={leadAuthError}
-          hasOtpBeenRequested={hasLeadOtpBeenRequested}
-          isCompletingProfile={hasLeadRegistrationOtpVerification}
-          isLoggedIn={isLeadTravellerLoggedIn}
-          isProfileMobile={isLeadTravellerUsingProfileMobile}
-          isRequestingOtp={isRequestingLeadOtp}
-          isVerified={hasVerifiedLeadMobileNumber}
-          isVerifyingOtp={isVerifyingLeadOtp}
-          message={leadAuthMessage}
-          mobileNumber={leadTravellerDetails.mobileNumber}
-          onMobileNumberChange={(value) =>
-            updateLeadTravellerDetail("mobileNumber", value)
-          }
-          onOtpChange={setLeadOtp}
-          onPhoneCountryCodeChange={(value) =>
-            updateLeadTravellerDetail("phoneCountryCode", value)
-          }
-          onRequestOtp={handleLeadTravellerRequestOtp}
-          onVerifyOtp={handleLeadTravellerVerifyOtp}
-          otp={leadOtp}
-          phoneCountryCode={leadTravellerDetails.phoneCountryCode}
-          phoneNumber={leadTravellerAuthMobileNumber}
-        />
+        {travellerDetailTabs.filter(tab => tab.id !== "adult-1" && tab.travellerType !== "adult").map(tab => (
+          <label key={tab.id} className="mt-3 block font-sans text-[13px] font-medium text-secondary">
+            {tab.label} date of birth (for accurate room pricing)
+            <DateOfBirthPicker ariaLabel={tab.label + " pricing date of birth"}
+              fieldId={bookingFieldId(tab.id, "pricing date of birth")} required
+              value={travellerDetailForms[tab.id]?.dateOfBirth || ""}
+              onChange={dateOfBirth => setTravellerDetailForms(current => ({...current, [tab.id]: {...defaultTravellerDetailForm, ...current[tab.id], dateOfBirth}}))} />
+          </label>
+        ))}
+      </BookingStep>
+      <BookingStep mobileStage={2} step="2" title="Select Accommodation">
+        <p className="font-sans text-[14px] font-medium text-secondary/68">
+          Select an accommodation option for {totalTravellers} traveller
+          {totalTravellers === 1 ? "" : "s"}.
+        </p>
+        {departureValidationErrors.length > 0 ? (
+          <div className="mt-3 rounded-[7px] border border-destructive/20 bg-destructive/5 px-3 py-2 font-sans text-[14px] font-medium text-destructive">
+            {departureValidationErrors[0]}
+          </div>
+        ) : null}
+        {accommodationResult.error ? (
+          <div className="mt-3 rounded-[7px] border border-accent/20 bg-muted px-3 py-2 font-sans text-[14px] font-medium text-accent">
+            {accommodationResult.error}
+          </div>
+        ) : null}
+        <fieldset {...fieldProps("booking-accommodation")} aria-required="true" tabIndex={-1} className="mt-3 grid gap-3">
+          <legend className="sr-only">Choose accommodation</legend>
+          {accommodationOptions.map((option) => (
+            <AccommodationOptionCard
+              key={option.id}
+              option={option}
+              selected={resolvedSelectedAccommodationOptionId === option.id}
+              onSelect={() => setSelectedAccommodationOptionId(option.id)}
+            />
+          ))}
+        </fieldset>
+      </BookingStep>
+      <BookingStep mobileStage={3} step="3" title="Your Details">
 
         <div className="mt-4 flex items-start gap-2 rounded-[6px] bg-muted px-3 py-2 font-sans text-[14px] font-medium leading-[1.5] text-secondary/72">
           <Info className="mt-0.5 size-3.5 shrink-0 text-accent" />
@@ -4385,6 +4162,7 @@ function PricingPanel({
             aria-label="Traveller detail tabs"
             className="mt-4 flex gap-2 overflow-x-auto rounded-[7px] border border-border bg-muted/35 p-1"
             role="tablist"
+            onKeyDown={handleTabKeyDown}
           >
             {travellerDetailTabs.map((travellerTab) => {
               const isSelected = travellerTab.id === activeTravellerDetailTab.id;
@@ -4392,17 +4170,19 @@ function PricingPanel({
               return (
                 <button
                   key={travellerTab.id}
-                  aria-controls={`traveller-panel-${travellerTab.id}`}
+                  aria-controls="traveller-details-panel"
                   aria-selected={isSelected}
+                  tabIndex={isSelected ? 0 : -1}
                   className={cn(
                     "h-9 shrink-0 rounded-[6px] px-3 font-sans !text-[14px] font-medium leading-none transition-colors focus:outline-none focus:ring-3 focus:ring-primary/15",
                     isSelected
-                      ? "bg-primary text-white shadow-[0_5px_12px_rgba(212,114,32,0.18)]"
+                      ? "bg-brand-button-dark text-white shadow-[0_5px_12px_rgba(212,114,32,0.18)]"
                       : "text-secondary/68 hover:bg-background hover:text-secondary",
                     !canEditTravellerDetailFields &&
                       "cursor-not-allowed opacity-55 hover:bg-transparent"
                   )}
                   disabled={!canEditTravellerDetailFields}
+                  aria-disabled={!canEditTravellerDetailFields}
                   id={`traveller-tab-${travellerTab.id}`}
                   onClick={() => setActiveTravellerDetailId(travellerTab.id)}
                   role="tab"
@@ -4419,13 +4199,14 @@ function PricingPanel({
           aria-labelledby={
             travellerDetailTabs.length > 1
               ? `traveller-tab-${activeTravellerDetailTab.id}`
-              : undefined
+              : "traveller-details-heading"
           }
           className="mt-5"
-          id={`traveller-panel-${activeTravellerDetailTab.id}`}
-          role="tabpanel"
+          id="traveller-details-panel"
+          role={travellerDetailTabs.length > 1 ? "tabpanel" : "group"}
+          tabIndex={0}
         >
-          <h3 className="font-sans text-[14px] font-bold text-secondary">
+          <h3 id="traveller-details-heading" className="font-sans text-[14px] font-bold text-secondary">
             {activeTravellerDetailTab.heading}
           </h3>
           <p className="mt-1 font-sans text-[14px] font-medium text-secondary/64">
@@ -4433,21 +4214,28 @@ function PricingPanel({
           </p>
 
           {!canEditTravellerDetailFields ? (
-            <p className="mt-3 rounded-[6px] border border-primary/15 bg-primary/5 px-3 py-2 font-sans text-[13px] font-semibold text-secondary/70">
-              Verify the lead traveller mobile number to unlock traveller details.
+            <p id="booking-traveller-lock-hint" role="status" className="mt-3 flex items-start gap-2 rounded-[6px] border border-border bg-muted px-3 py-2 font-sans text-[14px] font-medium text-secondary">
+              <LockKeyhole aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+              <span>Traveller details are locked. Verify the lead traveller mobile number to unlock these fields.</span>
             </p>
           ) : null}
 
           <fieldset
+            data-booking-traveller-fields
             disabled={!canEditTravellerDetailFields}
+            aria-disabled={!canEditTravellerDetailFields}
+            aria-describedby={!canEditTravellerDetailFields ? "booking-traveller-lock-hint" : undefined}
             className={cn(
               "mt-3 space-y-3",
-              !canEditTravellerDetailFields && "opacity-60"
+              !canEditTravellerDetailFields && "[&_input]:cursor-not-allowed [&_input]:bg-muted [&_select]:cursor-not-allowed [&_select]:bg-muted [&_textarea]:cursor-not-allowed [&_textarea]:bg-muted [&_button]:cursor-not-allowed [&_button]:bg-muted"
             )}
           >
             <div className="grid gap-3 md:grid-cols-[0.55fr_1.25fr_1.25fr]">
               <select
                 aria-label={`${activeTravellerDetailTab.label} title`}
+                {...fieldProps(bookingFieldId(activeTravellerDetailTab.id, "title"))}
+                required={true}
+                autoComplete={`section-${activeTravellerDetailTab.id} honorific-prefix`}
                 className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
                 value={activeTravellerDetails.title}
                 onChange={(event) =>
@@ -4461,6 +4249,9 @@ function PricingPanel({
               </select>
               <input
                 aria-label={`${activeTravellerDetailTab.label} first name`}
+                {...fieldProps(bookingFieldId(activeTravellerDetailTab.id, "first name"))}
+                required={true}
+                autoComplete={`section-${activeTravellerDetailTab.id} given-name`}
                 className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
                 value={activeTravellerDetails.firstName}
                 onChange={(event) =>
@@ -4471,6 +4262,9 @@ function PricingPanel({
               />
               <input
                 aria-label={`${activeTravellerDetailTab.label} last name`}
+                {...fieldProps(bookingFieldId(activeTravellerDetailTab.id, "last name"))}
+                required={true}
+                autoComplete={`section-${activeTravellerDetailTab.id} family-name`}
                 className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
                 value={activeTravellerDetails.lastName}
                 onChange={(event) =>
@@ -4484,6 +4278,9 @@ function PricingPanel({
             <div className="grid gap-3 md:grid-cols-2">
               <input
                 aria-label={`${activeTravellerDetailTab.label} email`}
+                {...fieldProps(bookingFieldId(activeTravellerDetailTab.id, "email"))}
+                required={activeTravellerDetailTab.id === "adult-1"}
+                autoComplete={`section-${activeTravellerDetailTab.id} email`}
                 className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
                 value={activeTravellerDetails.email}
                 onChange={(event) =>
@@ -4497,6 +4294,9 @@ function PricingPanel({
               <DateOfBirthPicker
                 key={`${activeTravellerDetailTab.id}-date-of-birth`}
                 ariaLabel={`${activeTravellerDetailTab.label} date of birth`}
+                fieldId={bookingFieldId(activeTravellerDetailTab.id, "date of birth")}
+                validationId={activeTravellerDetailTab.travellerType !== "adult" ? bookingFieldId(activeTravellerDetailTab.id, "pricing date of birth") : undefined}
+                required
                 disabled={!canEditTravellerDetailFields}
                 value={activeTravellerDetails.dateOfBirth}
                 onChange={(nextValue) =>
@@ -4507,6 +4307,9 @@ function PricingPanel({
 
             <textarea
               aria-label={`${activeTravellerDetailTab.label} address`}
+                {...fieldProps(bookingFieldId(activeTravellerDetailTab.id, "address"))}
+                required={true}
+                autoComplete={`section-${activeTravellerDetailTab.id} street-address`}
               className="min-h-24 w-full rounded-[6px] border border-border bg-background px-3 py-2.5 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
               value={activeTravellerDetails.address}
               onChange={(event) =>
@@ -4528,6 +4331,9 @@ function PricingPanel({
                 <>
                   <select
                     aria-label={`${activeTravellerDetailTab.label} phone country code`}
+                {...fieldProps(bookingFieldId(activeTravellerDetailTab.id, "phone country code"))}
+                required={true}
+                autoComplete={`section-${activeTravellerDetailTab.id} tel-country-code`}
                     className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
                     value={activeTravellerDetails.phoneCountryCode}
                     onChange={(event) =>
@@ -4537,13 +4343,13 @@ function PricingPanel({
                       )
                     }
                   >
-                    <option>India +91</option>
-                    <option>US +1</option>
-                    <option>UK +44</option>
-                    <option>Australia +61</option>
+                    <option value="India +91">+91</option>
                   </select>
                   <input
                     aria-label={`${activeTravellerDetailTab.label} mobile number`}
+                {...fieldProps(bookingFieldId(activeTravellerDetailTab.id, "mobile number"))}
+                required={true}
+                autoComplete={`section-${activeTravellerDetailTab.id} tel-national`}
                     inputMode="numeric"
                     maxLength={10}
                     pattern="[0-9]{10}"
@@ -4564,6 +4370,9 @@ function PricingPanel({
                 <span className="font-medium">Gender *</span>
                 <label className="inline-flex items-center gap-1.5">
                   <input
+                    {...fieldProps(bookingFieldId(activeTravellerDetailTab.id, "gender"))}
+                    required
+                    autoComplete={`section-${activeTravellerDetailTab.id} sex`}
                     checked={activeTravellerDetails.gender === "male"}
                     name={`traveller-gender-${activeTravellerDetailTab.id}`}
                     onChange={() => updateActiveTravellerDetail("gender", "male")}
@@ -4573,6 +4382,9 @@ function PricingPanel({
                 </label>
                 <label className="inline-flex items-center gap-1.5">
                   <input
+                    {...fieldProps(bookingFieldId(activeTravellerDetailTab.id, "gender-female"), bookingFieldId(activeTravellerDetailTab.id, "gender"))}
+                    required
+                    autoComplete={`section-${activeTravellerDetailTab.id} sex`}
                     checked={activeTravellerDetails.gender === "female"}
                     name={`traveller-gender-${activeTravellerDetailTab.id}`}
                     onChange={() =>
@@ -4589,10 +4401,13 @@ function PricingPanel({
         </div>
 
         <fieldset
+          data-booking-emergency
           disabled={!canEditTravellerDetailFields}
+          aria-disabled={!canEditTravellerDetailFields}
+          aria-describedby={!canEditTravellerDetailFields ? "booking-traveller-lock-hint" : undefined}
           className={cn(
             "mt-4 space-y-3 rounded-[8px] border border-border bg-muted/25 p-3",
-            !canEditTravellerDetailFields && "opacity-60"
+            !canEditTravellerDetailFields && "[&_input]:cursor-not-allowed [&_input]:bg-muted"
           )}
         >
           <div>
@@ -4606,6 +4421,9 @@ function PricingPanel({
           <div className="grid gap-3 md:grid-cols-2">
             <input
               aria-label="Booking emergency contact name"
+              {...fieldProps("booking-emergency-contact-name")}
+              required
+              autoComplete="section-emergency name"
               className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
               value={leadTravellerDetails.emergencyContactName}
               onChange={(event) =>
@@ -4619,6 +4437,9 @@ function PricingPanel({
             />
             <input
               aria-label="Booking emergency contact mobile number"
+              {...fieldProps("booking-emergency-contact-mobile")}
+              required
+              autoComplete="section-emergency tel-national"
               className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
               inputMode="numeric"
               maxLength={10}
@@ -4642,39 +4463,18 @@ function PricingPanel({
           ) : null}
         </fieldset>
 
-        <p className="mt-4 font-sans text-[14px] font-medium text-secondary/72">
-          {totalTravellers > 1
-            ? "Traveller details can be completed for each traveller before payment."
-            : "You will fill the remaining traveller data after payment."}
-        </p>
+        {totalTravellers > 1 ? (
+          <p data-booking-group-details-note className="mt-4 font-sans text-[14px] font-medium text-secondary/72">
+            Complete each traveller&apos;s details before payment.
+          </p>
+        ) : null}
       </BookingStep>
+      <div className="lg:hidden">
+        <BookingStep mobileStage={4} step="4" title="Review and Pay">
+          <p className="font-sans text-[14px] text-secondary/72">Check your trip, room and total below, then accept the terms to continue to payment.</p>
+        </BookingStep>
+      </div>
 
-      <BookingStep step="3" title="Select Accommodation">
-        <p className="font-sans text-[14px] font-medium text-secondary/68">
-          Select an accommodation option for {totalTravellers} traveller
-          {totalTravellers === 1 ? "" : "s"}.
-        </p>
-        {departureValidationErrors.length > 0 ? (
-          <div className="mt-3 rounded-[7px] border border-destructive/20 bg-destructive/5 px-3 py-2 font-sans text-[14px] font-medium text-destructive">
-            {departureValidationErrors[0]}
-          </div>
-        ) : null}
-        {accommodationResult.error ? (
-          <div className="mt-3 rounded-[7px] border border-accent/20 bg-muted px-3 py-2 font-sans text-[14px] font-medium text-accent">
-            {accommodationResult.error}
-          </div>
-        ) : null}
-        <div className="mt-3 grid gap-3">
-          {accommodationOptions.map((option) => (
-            <AccommodationOptionCard
-              key={option.id}
-              option={option}
-              selected={resolvedSelectedAccommodationOptionId === option.id}
-              onSelect={() => setSelectedAccommodationOptionId(option.id)}
-            />
-          ))}
-        </div>
-      </BookingStep>
 
       {isGroupEnquiryOpen ? (
         <EnquiryModal
@@ -4734,6 +4534,7 @@ function LeadTravellerVerificationPanel({
   phoneNumber: string;
 }) {
   const isBusy = isRequestingOtp || isVerifyingOtp;
+  const fieldProps = useBookingFieldProps();
   const requestOtpButtonLabel = isVerified
     ? "Verified"
     : isCompletingProfile
@@ -4745,7 +4546,7 @@ function LeadTravellerVerificationPanel({
           : "Send OTP";
 
   return (
-    <section className="mt-4 rounded-[8px] border border-primary/20 bg-primary/5 p-3 font-sans">
+    <section data-booking-auth {...fieldProps("booking-lead-auth")} tabIndex={-1} className="mt-4 rounded-[8px] border border-primary/20 bg-primary/5 p-3 font-sans">
       <h4 className="text-[14px] font-bold text-secondary">
         Lead Traveller Mobile Verification
       </h4>
@@ -4760,18 +4561,21 @@ function LeadTravellerVerificationPanel({
       <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(120px,0.9fr)_minmax(160px,1.1fr)_auto_minmax(120px,0.9fr)_auto]">
         <select
           aria-label="Lead traveller phone country code"
+          {...fieldProps(bookingFieldId("adult-1", "phone country code"))}
+          required
+          autoComplete="section-adult-1 tel-country-code"
           className="h-11 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
           value={phoneCountryCode}
           onChange={(event) => onPhoneCountryCodeChange(event.target.value)}
         >
-          <option>India +91</option>
-          <option>US +1</option>
-          <option>UK +44</option>
-          <option>Australia +61</option>
+          <option value="India +91">+91</option>
         </select>
         <div className="relative">
           <input
             aria-label="Lead traveller mobile number"
+            {...fieldProps(bookingFieldId("adult-1", "mobile number"), "booking-lead-auth")}
+            required
+            autoComplete="section-adult-1 tel-national"
             className={cn(
               "h-11 w-full rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15",
               isVerified && "border-primary/45 pr-10"
@@ -4784,7 +4588,7 @@ function LeadTravellerVerificationPanel({
           {isVerified ? (
             <span
               aria-label="Mobile number verified"
-              className="absolute right-2.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full bg-primary text-white"
+              className="absolute right-2.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full bg-brand-button-dark text-white"
               title="Mobile number verified"
             >
               <Check className="size-3.5" strokeWidth={2.4} />
@@ -4812,13 +4616,16 @@ function LeadTravellerVerificationPanel({
           <form onSubmit={onVerifyOtp} className="contents">
             <input
               aria-label="Lead traveller OTP"
+              {...fieldProps("booking-lead-otp", "booking-lead-auth")}
+              required
+              autoComplete="one-time-code"
               className="h-11 min-w-0 rounded-[6px] border border-border bg-background px-3 text-[13px] font-semibold tracking-[0.2em] text-secondary outline-none focus:border-primary focus:ring-3 focus:ring-primary/15"
               inputMode="numeric"
-              maxLength={9}
+              maxLength={6}
               onChange={(event) =>
                 onOtpChange(event.target.value.replace(/\D/g, ""))
               }
-              placeholder="Enter OTP"
+              placeholder="6-digit OTP (valid 5 minutes)"
               value={otp}
             />
             <Button
@@ -4854,10 +4661,10 @@ function LeadTravellerVerificationPanel({
       ) : null}
 
       {message ? (
-        <p className="mt-2 text-[12px] font-medium text-primary">{message}</p>
+        <p className="mt-2 text-[12px] font-medium text-brand-text">{message}</p>
       ) : null}
       {errorMessage ? (
-        <p className="mt-2 text-[12px] font-semibold text-destructive">
+        <p role="alert" className="mt-2 text-[12px] font-semibold text-destructive">
           {errorMessage}
         </p>
       ) : null}
@@ -4867,20 +4674,23 @@ function LeadTravellerVerificationPanel({
 
 function BookingStep({
   actions,
+  mobileStage,
   children,
   step,
   title,
 }: {
   actions?: ReactNode;
+  mobileStage?: BookingStage;
   children: ReactNode;
   step: string;
   title: string;
 }) {
+  const { stage } = useBookingFlow();
   return (
-    <section className="rounded-[8px] border border-border bg-background p-4 text-[14px] ">
+    <section data-booking-stage={mobileStage} className={cn(mobileStage !== undefined && stage !== mobileStage && "max-lg:hidden", "rounded-[8px] border border-border bg-background p-4 text-[14px]", step === "1" && "max-lg:border-0 max-lg:p-0")}>
       <div className="mb-3 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="grid size-7 shrink-0 place-items-center rounded-[5px] bg-primary font-sans text-[14px] font-bold leading-none text-white">
+          <span className={cn("grid size-7 shrink-0 place-items-center rounded-[5px] bg-brand-button-dark font-sans text-[14px] font-bold leading-none text-white", step === "1" && "max-lg:hidden")}>
             {step}
           </span>
           <h2 className="min-w-0 font-heading text-[19px] font-bold leading-tight text-secondary sm:text-[21px]">
@@ -4919,6 +4729,7 @@ function AccommodationOptionCard({
   option: AccommodationOption;
   selected: boolean;
 }) {
+  const fieldProps = useBookingFieldProps();
   const roomCounts = option.rooms.reduce(
     (map, room) => {
       map[room.roomType] = (map[room.roomType] || 0) + 1;
@@ -4935,6 +4746,8 @@ function AccommodationOptionCard({
       )}
     >
       <input
+        {...fieldProps("booking-accommodation-" + option.id, "booking-accommodation")}
+        required
         checked={selected}
         className="mt-1"
         name="tour-accommodation"
@@ -4947,7 +4760,7 @@ function AccommodationOptionCard({
             <strong className="font-description text-[15px] font-semibold leading-tight text-secondary">
               {option.title}
             </strong>
-            <strong className="shrink-0 text-[16px] font-semibold text-secondary">
+            <strong className="shrink-0 whitespace-nowrap text-[16px] font-semibold text-secondary">
               {formatCurrency(option.total)}
             </strong>
           </span>
@@ -4956,13 +4769,14 @@ function AccommodationOptionCard({
         <span className="mt-1 block text-[14px] font-medium text-secondary/64">
           {option.description}
         </span>
+        {option.rooms.some(room => room.roomType === "twin" || room.roomType === "triple_twin") ? <BookingTermExplanation term="twin-sharing" /> : null}
         <span className="mt-2 flex flex-wrap gap-2">
           {Object.entries(roomCounts).map(([roomType, count]) => (
             <span
               key={roomType}
               className="inline-flex items-center gap-1.5 rounded-[6px] border border-border bg-white px-2 py-1 text-[14px] font-medium text-secondary/72"
             >
-              <span className="inline-flex items-center gap-0.5 text-primary">
+              <span className="inline-flex items-center gap-0.5 text-brand-text">
                 {getAccommodationBedIcons(
                   roomType as keyof typeof ROOM_TYPES
                 ).map((Icon, index) => (
@@ -5046,6 +4860,8 @@ function BookingSummary({
               label="Deposit Payable"
               value={formatCurrency(depositAmount)}
             />
+            <BookingTermExplanation term="registration-amount" />
+            <BookingTermsLink />
             <SummaryLine label="Balance" value={formatCurrency(balanceAmount)} />
           </>
         ) : null}
@@ -5058,7 +4874,7 @@ function BookingSummary({
       </div>
 
       {paymentFeedback ? (
-        <div className="mt-3 rounded-[7px] border border-primary/15 bg-muted/45 px-3 py-2 font-sans text-[12px] font-medium leading-[1.45] text-secondary/72">
+        <div role="status" aria-live="polite" className="mt-3 rounded-[7px] border border-primary/15 bg-muted/45 px-3 py-2 font-sans text-[12px] font-medium leading-[1.45] text-secondary/72">
           <p>{paymentFeedback}</p>
         </div>
       ) : null}
@@ -5088,6 +4904,7 @@ function SummaryLine({
       <span
         className={cn(
           "min-w-0 break-words text-right font-medium",
+          value.includes("\u20b9") && "shrink-0 whitespace-nowrap",
           strong && "font-semibold"
         )}
       >
@@ -5101,6 +4918,7 @@ function TravellerCounter({
   ageLabel,
   label,
   minimum = 0,
+  increaseDisabled = false,
   onDecrease,
   onIncrease,
   value,
@@ -5108,6 +4926,7 @@ function TravellerCounter({
   ageLabel: string;
   label: string;
   minimum?: number;
+  increaseDisabled?: boolean;
   onDecrease: () => void;
   onIncrease: () => void;
   value: number;
@@ -5128,7 +4947,7 @@ function TravellerCounter({
           aria-label={`Decrease ${label} count`}
           disabled={value <= minimum}
           onClick={onDecrease}
-          className="grid size-7 place-items-center rounded-full border border-border bg-white text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white disabled:pointer-events-none disabled:opacity-45"
+          className="grid size-7 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:border-button-outline hover:bg-brand-button-dark hover:text-white disabled:pointer-events-none disabled:opacity-45"
         >
           <Minus className="size-3.5" />
         </button>
@@ -5138,8 +4957,9 @@ function TravellerCounter({
         <button
           type="button"
           aria-label={`Increase ${label} count`}
+          disabled={increaseDisabled}
           onClick={onIncrease}
-          className="grid size-7 place-items-center rounded-full border border-border bg-white text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+          className="grid size-7 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:border-button-outline hover:bg-brand-button-dark hover:text-white disabled:pointer-events-none disabled:opacity-45"
         >
           <Plus className="size-3.5" />
         </button>
@@ -5151,7 +4971,7 @@ function TravellerCounter({
 function SectionTitle({ title }: { title: string }) {
   return (
     <div>
-      <h2 className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+      <h2 className="font-sans text-eyebrow font-medium uppercase tracking-normal text-button-outline">
         {title}
       </h2>
       <span className="mt-2 block h-0.5 w-8 bg-primary" />
@@ -5201,11 +5021,11 @@ function DailyItinerary({
             {isOpen ? (
               <>
                 <div className="mb-4 flex items-center gap-4  font-sans">
-                  <span className="shrink-0 text-[14px] font-medium leading-none text-primary">
+                  <span className="shrink-0 text-[14px] font-medium leading-none text-brand-text">
                     Day {day.dayNumber}
                   </span>
                   <span className="h-8 w-px shrink-0 bg-[#ead8c5]" />
-                  <h3 className="min-w-0 font-sans text-[18px] font-semibold leading-tight text-secondary sm:text-[18px]">
+                  <h3 className="min-w-0 break-words font-sans text-[18px] font-semibold leading-tight text-secondary sm:text-[18px]">
                     {day.title}
                   </h3>
                   <button
@@ -5214,7 +5034,7 @@ function DailyItinerary({
                     aria-expanded={isOpen}
                     aria-label={`Collapse day ${day.dayNumber}`}
                     onClick={toggleDay}
-                    className="ml-auto grid size-9 shrink-0 place-items-center rounded-full border border-primary bg-white text-primary transition-colors hover:bg-primary hover:text-white"
+                    className="ml-auto grid size-9 shrink-0 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white"
                   >
                     <Minus className="size-3.5" />
                   </button>
@@ -5296,6 +5116,7 @@ function DailyItinerary({
                 </div>
               </>
             ) : (
+              <>
               <button
                 type="button"
                 aria-controls={contentId}
@@ -5303,16 +5124,24 @@ function DailyItinerary({
                 onClick={toggleDay}
                 className="grid w-full grid-cols-[auto_minmax(0,1fr)_40px] items-center gap-x-3 px-4 py-4 text-left font-sans transition-colors duration-200 hover:bg-muted/35 sm:px-5"
               >
-                <span className="font-sans text-[13px] font-bold uppercase text-primary">
+                <span className="font-sans text-[13px] font-bold uppercase text-brand-text">
                   Day {day.dayNumber}
                 </span>
-                <strong className="min-w-0 truncate font-sans text-[16px] font-semibold leading-tight text-secondary sm:text-[18px]">
+                <strong className="min-w-0 whitespace-normal break-words font-sans text-[16px] font-semibold leading-tight text-secondary sm:truncate sm:text-[18px]">
                   {day.title}
                 </strong>
-                <span className="grid size-10 place-items-center rounded-full border border-[#ead8c5] bg-white text-primary">
+                <span className="grid size-10 place-items-center rounded-full border border-[#ead8c5] bg-white text-brand-text">
                   <Plus className="size-3.5" />
                 </span>
               </button>
+              <div id={contentId} hidden>
+                <p>{day.summary}</p>
+                <ul>{places.map(place => <li key={place}>{place}</li>)}</ul>
+                {day.meals ? <p>Meals: {day.meals}</p> : null}
+                {day.hotels ? <p>Hotel: {day.hotels}</p> : null}
+                {day.walkingDifficulty ? <p>Walking: {day.walkingDifficulty}</p> : null}
+              </div>
+              </>
             )}
           </article>
         );
@@ -5323,7 +5152,7 @@ function DailyItinerary({
 
 function DaySightseeingIcon() {
   return (
-    <span className="grid size-8 shrink-0 place-items-center text-primary">
+    <span className="grid size-8 shrink-0 place-items-center text-brand-text">
       <Image
         src="/Tour-assets/tour-guide.png"
         alt=""
@@ -5370,7 +5199,7 @@ function DayMetaFact({
 }) {
   return (
     <span className={cn("flex items-center gap-3 px-0 font-sans text-secondary sm:px-5 first:sm:pl-0", className)}>
-      <span className="grid size-8 shrink-0 place-items-center text-primary">
+      <span className="grid size-8 shrink-0 place-items-center text-brand-text">
         {iconSrc ? (
           <Image
             src={iconSrc}
@@ -5385,7 +5214,7 @@ function DayMetaFact({
         ) : null}
       </span>
       <span className="min-w-0">
-        <span className="block text-[12px] font-medium leading-tight text-primary">
+        <span className="block text-[12px] font-medium leading-tight text-brand-text">
           {label}
         </span>
         <span className="mt-1 block text-[13px] font-medium leading-tight text-secondary/82">
@@ -5413,7 +5242,7 @@ function ListBlock({
       <ul className="mt-3 space-y-2.5 font-sans text-[15px] font-semibold leading-[1.55] text-secondary/78">
         {items.map((item) => (
           <li key={item} className="flex items-start gap-3">
-            <Icon className="mt-0.5 size-4 shrink-0 text-primary" strokeWidth={2.1} />
+            <Icon className="mt-0.5 size-4 shrink-0 text-brand-text" strokeWidth={2.1} />
             <span>{item}</span>
           </li>
         ))}
@@ -5468,12 +5297,17 @@ function PriceCard({
       <div className="border-b border-border bg-[#fff8f1] px-3 py-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 font-sans">
+            {price > 0 ? <>
             <strong className="mt-1 flex flex-wrap items-end gap-x-2 gap-y-1 text-[27px] font-bold leading-none text-secondary">
               {formatCurrency(price)}
               <span className="pb-0.5 text-[15px] font-semibold leading-none text-secondary/72">
                 per person on twin sharing
               </span>
             </strong>
+            <TourPriceNote gstPercentage={gstPercentage} airfareExtra={isAirfareExcluded(tour)} />
+            <BookingTermExplanation term="twin-sharing" />
+            <BookingTermsLink />
+            </> : <strong className="mt-1 block text-[27px] font-bold leading-none text-secondary">Coming Soon</strong>}
           </div>
 
        
@@ -5490,7 +5324,7 @@ function PriceCard({
           <button
             type="button"
             onClick={onEnquireNow}
-            className="mt-2 inline-flex items-center gap-2 font-sans text-[14px] font-semibold text-primary underline-offset-4 transition-colors hover:text-accent hover:underline"
+            className="mt-2 inline-flex items-center gap-2 font-sans text-[14px] font-semibold text-button-outline underline-offset-4 transition-colors hover:text-accent hover:underline"
           >
             Enquire Now
           </button>
@@ -5504,16 +5338,83 @@ function PriceCard({
 
 function MobileBookingBar({
   onBookNow,
+  suspended,
+  isBookingFlowOpen,
+  bookingStage,
+  total,
+  onContinue,
+  isBusy,
+  isAuthenticated,
   price,
+  airfareExtra,
 }: {
   onBookNow: () => void;
+  suspended: boolean;
+  isBookingFlowOpen: boolean;
+  bookingStage: BookingStage;
+  total: number;
+  onContinue: () => void;
+  isBusy: boolean;
+  isAuthenticated: boolean;
   price: number;
+  airfareExtra: boolean;
 }) {
+  const barRef = useRef<HTMLDivElement>(null);
+  const [barHeight, setBarHeight] = useState(0);
+  const [bookingInView, setBookingInView] = useState(false);
+  const hidden = suspended || (!isBookingFlowOpen && bookingInView);
+
+  useLayoutEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const measure = () => setBarHeight(Math.ceil(bar.getBoundingClientRect().height));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const section = document.getElementById("departure-pricing");
+    if (!section) return;
+    const observer = new IntersectionObserver(([entry]) => setBookingInView(entry.isIntersecting), {
+      rootMargin: "-64px 0px -" + barHeight + "px 0px", threshold: 0,
+    });
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, [barHeight]);
+
+  useLayoutEffect(() => {
+    // Reserve space after the shared footer, including while a payment overlay is open.
+    const body = document.body;
+    const previousPadding = body.style.paddingBottom;
+    const basePadding = parseFloat(window.getComputedStyle(body).paddingBottom) || 0;
+    const reserved = isBookingFlowOpen || !bookingInView ? barHeight : 0;
+    body.style.paddingBottom = (basePadding + reserved) + "px";
+    return () => { body.style.paddingBottom = previousPadding; };
+  }, [barHeight, bookingInView, isBookingFlowOpen]);
+
+  const dockProps = { ref: barRef, "aria-hidden": hidden, inert: hidden, style: { visibility: hidden ? "hidden" as const : "visible" as const } };
+  if (isBookingFlowOpen) return (
+    <div {...dockProps} data-mobile-booking-bar className="fixed inset-x-0 bottom-0 z-[2147483646] border-t border-border bg-white px-4 pb-[max(0.9rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-6px_18px_rgba(67,43,27,0.12)] lg:hidden">
+      <div className="mx-auto flex max-w-[700px] items-center justify-between gap-3 font-sans">
+        <div className="min-w-0">
+          <span className="block text-[11px] font-medium text-secondary/65">Selected total, including {GST_PERCENTAGE}% GST</span>
+          <strong data-booking-total className="block whitespace-nowrap text-[22px] font-bold leading-tight text-secondary">{total > 0 ? formatCurrency(total) : "Choose your room"}</strong>
+          {airfareExtra ? <span className="block text-[11px] text-secondary/65">Airfare extra</span> : null}
+        </div>
+        <Button type="button" onClick={onContinue} disabled={hidden || isBusy || (bookingStage === 0 && !isAuthenticated)} className="h-11 shrink-0 rounded-full px-5 font-normal">
+          {isBusy ? "Please wait..." : bookingStage === 4 ? "Pay Now" : "Continue"}
+        </Button>
+      </div>
+    </div>
+  );
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[2147483646] border-t border-border bg-white px-5 pb-[max(0.9rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-6px_18px_rgba(67,43,27,0.12)] lg:hidden">
+    <div {...dockProps} data-mobile-booking-launcher className="fixed inset-x-0 bottom-0 z-[2147483646] border-t border-border bg-white px-5 pb-[max(0.9rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-6px_18px_rgba(67,43,27,0.12)] lg:hidden">
       <div className="mx-auto max-w-[520px] font-sans">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0 text-left">
+            {price > 0 ? <>
             <strong className="block text-[20px] font-bold leading-none text-secondary">
               {formatCurrency(price)}
             </strong>
@@ -5521,13 +5422,17 @@ function MobileBookingBar({
             <span className="mt-0.5 block text-[12px] font-semibold leading-tight text-secondary/72">
               per person on twin sharing
             </span>
+            <TourPriceNote gstPercentage={GST_PERCENTAGE} airfareExtra={airfareExtra} />
+            <BookingTermExplanation term="twin-sharing" className="max-w-[250px] text-[11px] leading-snug" />
+            </> : <strong className="block text-[20px] font-bold leading-none text-secondary">Coming Soon</strong>}
           </div>
           <Button
             type="button"
             onClick={onBookNow}
-            className="h-11 shrink-0 rounded-full border border-primary bg-primary px-7 text-[15px] font-normal text-white transition-colors hover:bg-white hover:text-primary"
+            disabled={hidden}
+            className="h-11 shrink-0 rounded-full border border-primary bg-primary px-7 text-[15px] font-normal text-white transition-colors hover:bg-white hover:text-button-outline"
           >
-            Book Now
+            {price > 0 ? "Book Now" : "Enquire Now"}
           </Button>
         </div>
       </div>
@@ -5573,6 +5478,8 @@ function EnquiryModal({
   tourName: string;
 }) {
   const toast = useToast();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useModalFocus(dialogRef, true, onClose, 'input[name="name"]');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [guestCounts, setGuestCounts] = useState<TravellerCounts>(() => ({
@@ -5580,7 +5487,7 @@ function EnquiryModal({
     children: initialTravellerCounts?.children || 0,
     infants: initialTravellerCounts?.infants || 0,
   }));
-  const travelDates = Array.from(new Set(sortDeparturesByDate(departures)
+  const travelDates = Array.from(new Set(getBookableDepartures(departures)
     .map(departure => departure.departureDate)
     .filter((date): date is string => Boolean(date && !Number.isNaN(new Date(date).getTime())))
     .map(date => date.slice(0, 10))));
@@ -5595,22 +5502,7 @@ function EnquiryModal({
     }));
   }
 
-  useEffect(() => {
-    const originalOverflow = document.body.style.overflow;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
 
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -5650,14 +5542,17 @@ function EnquiryModal({
   }
 
   const modal = (
-    <div
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="tour-enquiry-title"
       aria-modal="true"
-      className="fixed inset-0 z-[2147483647] flex items-center justify-center overflow-y-auto bg-secondary/62 px-3 py-3 backdrop-blur-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="fixed inset-0 m-0 h-[100dvh] max-h-none w-screen max-w-none border-0 text-secondary z-[2147483647] flex items-center justify-center overflow-y-auto bg-secondary/62 px-3 py-3 backdrop-blur-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       role="dialog"
     >
       <button
         type="button"
         aria-label="Close enquiry form"
+        tabIndex={-1}
         className="absolute inset-0 cursor-default"
         onClick={onClose}
       />
@@ -5668,10 +5563,10 @@ function EnquiryModal({
       >
         <div className="flex items-start justify-between gap-3 border-b border-border bg-[#fff8f1] px-4 py-2">
           <div>
-            <h2 className="font-heading text-[24px] font-bold leading-tight text-secondary">
+            <h2 id="tour-enquiry-title" className="font-heading text-[24px] font-bold leading-tight text-secondary">
               Enquire Now
             </h2>
-            <p className="mt-0.5 font-sans text-[13px] font-bold text-primary">
+            <p className="mt-0.5 font-sans text-[13px] font-bold text-brand-text">
               {tourName}
             </p>
           </div>
@@ -5679,7 +5574,7 @@ function EnquiryModal({
             type="button"
             aria-label="Close enquiry form"
             onClick={onClose}
-            className="grid size-7 shrink-0 place-items-center rounded-full border border-primary/20 bg-white text-secondary shadow-[0_8px_18px_rgba(67,43,27,0.1)] transition-colors hover:border-primary hover:bg-primary hover:text-white"
+            className="grid size-7 shrink-0 place-items-center rounded-full border border-button-outline bg-white text-button-outline shadow-[0_8px_18px_rgba(67,43,27,0.1)] transition-colors hover:border-button-outline hover:bg-brand-button-dark hover:text-white"
           >
             <X className="size-4" strokeWidth={2} />
           </button>
@@ -5766,7 +5661,7 @@ function EnquiryModal({
           </Button>
         </div>
       </form>
-    </div>
+    </dialog>
   );
 
   if (typeof document === "undefined") {
@@ -5810,14 +5705,18 @@ function TourHighlightCard({
   expert: PublicExpert;
   tour: PublicTour;
 }) {
-  const seatsAvailable = departure?.seatsAvailable || 0;
+  const seatsAvailable = departure ? getDepartureSeatsLeft(departure) : 0;
   const seatsLabel = departure
     ? seatsAvailable > 0
       ? `${seatsAvailable} ${seatsAvailable === 1 ? "Seat" : "Seats"}`
       : "Sold Out"
     : "Seats on Request";
   const seenDepartureDates = new Set<string>();
-  const departureDates = sortDeparturesByDate(departures).filter((item) => {
+  const bookableDepartures = getBookableDepartures(departures);
+  const orderedDepartures = departure
+    ? [departure, ...bookableDepartures.filter((item) => getDepartureIdentifier(item) !== getDepartureIdentifier(departure))]
+    : bookableDepartures;
+  const departureDates = orderedDepartures.filter((item) => {
     const date = formatDate(item.departureDate);
     if (date === "Coming Soon" || seenDepartureDates.has(date)) return false;
     seenDepartureDates.add(date);
@@ -5827,7 +5726,7 @@ function TourHighlightCard({
   return (
     <article className="@container rounded-[12px] border border-border bg-card p-3 shadow-[0_10px_24px_rgba(67,43,27,0.06)]">
       <h2 className="flex items-center gap-3 font-heading text-[23px] font-bold text-secondary @min-[600px]:text-[34px]">
-        <Landmark className="size-6 shrink-0 text-primary @min-[600px]:size-8" strokeWidth={1.8} />
+        <Landmark className="size-6 shrink-0 text-brand-text @min-[600px]:size-8" strokeWidth={1.8} />
         Tour Highlight
       </h2>
 
@@ -5908,7 +5807,7 @@ function SidebarSummaryItem({
   return (
     <div className="grid grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)] items-start gap-2 py-2.5 @min-[600px]:grid-cols-[minmax(0,1fr)_minmax(0,2.3fr)] @min-[600px]:gap-4 @min-[600px]:py-3">
       <span className="flex min-w-0 items-start gap-2 @min-[600px]:gap-5">
-        <Icon className="size-5 shrink-0 text-primary @min-[600px]:size-7" strokeWidth={1.8} />
+        <Icon className="size-5 shrink-0 text-brand-text @min-[600px]:size-7" strokeWidth={1.8} />
         <span className="min-w-0 text-[13px] font-medium leading-snug text-secondary/58 @min-[600px]:text-[19px]">
           {label}
         </span>
@@ -5929,8 +5828,9 @@ function BookingTermsCard({
   canBook: boolean;
   onAcceptedChange: (accepted: boolean) => void;
 }) {
+  const fieldProps = useBookingFieldProps();
   return (
-    <article className="hidden rounded-[8px] border border-border bg-card p-3 shadow-[0_10px_24px_rgba(67,43,27,0.05)] lg:block">
+    <article className="rounded-[8px] border border-border bg-card p-3 shadow-[0_10px_24px_rgba(67,43,27,0.05)]">
       <h2 className="font-heading text-[17px] font-bold text-secondary">
         Terms & Conditions
       </h2>
@@ -5942,6 +5842,8 @@ function BookingTermsCard({
       >
         <input
           data-booking-terms
+          {...fieldProps("booking-terms")}
+          required
           checked={accepted}
           className="mt-0.5 size-4 shrink-0 accent-primary disabled:cursor-not-allowed disabled:opacity-55"
           disabled={!canBook}
@@ -5950,9 +5852,11 @@ function BookingTermsCard({
         />
         <span>
           I have read and agreed to the Ancient Trail&apos;s{" "}
-          <Link
-            href="#"
-            className="font-semibold text-primary transition-colors hover:text-accent"
+          <Link prefetch={false}
+            href="/terms-and-conditions"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-brand-text transition-colors hover:text-accent"
           >
             Terms & Conditions.
           </Link>
@@ -5969,6 +5873,7 @@ function BookingTermsCard({
 
 function SidebarTourActions({
   bookingReminder,
+  hasBookableDeparture,
   onIncomplete,
   showAirfareNotice,
   canPay,
@@ -5979,6 +5884,7 @@ function SidebarTourActions({
   hasOfflineRequest,
 }: {
   bookingReminder: string;
+  hasBookableDeparture: boolean;
   onIncomplete: () => void;
   showAirfareNotice: boolean;
   canPay: boolean;
@@ -5995,7 +5901,7 @@ function SidebarTourActions({
 
   function handlePrimaryClick() {
     if (isBusy) return;
-    if (!isBookingFlowOpen) {
+    if (!hasBookableDeparture || !isBookingFlowOpen) {
       onBookNow();
       return;
     }
@@ -6033,7 +5939,7 @@ function SidebarTourActions({
             {isBookingFlowOpen ? (
               <CreditCard className="size-4" />
             ) : null}
-            {isBookingFlowOpen ? "Pay Now" : "Book Now"}
+            {!hasBookableDeparture ? "Enquire Now" : isBookingFlowOpen ? "Pay Now" : "Book Now"}
           </span>
         </Button>
       </div>
@@ -6062,7 +5968,18 @@ function PaymentChoiceModal({
   onPayBankTransfer?: (option: "advance" | "full") => void;
   onPayOffline: () => void;
 }) {
-  const [step, setStep] = useState<"method" | "online" | "bank">("method");
+  const [step, setStep] = useState<"method" | "online" | "bank" | "offline">("method");
+
+  const offlineConfirmedRef = useRef(false);
+  const [offlineConfirmed, setOfflineConfirmed] = useState(false);
+  const confirmationBusy = isBusy || offlineConfirmed;
+
+  function confirmOfflinePayment() {
+    if (isBusy || offlineConfirmedRef.current) return;
+    offlineConfirmedRef.current = true;
+    setOfflineConfirmed(true);
+    onPayOffline();
+  }
 
   return (
     <div
@@ -6071,22 +5988,23 @@ function PaymentChoiceModal({
       className="fixed inset-0 z-[2147483647] grid place-items-center bg-secondary/45 px-4 py-6 backdrop-blur-[3px]"
       role="dialog"
     >
-      <div className="w-full max-w-[520px] overflow-hidden rounded-[10px] border border-primary/20 bg-card shadow-[0_24px_80px_rgba(35,24,16,0.28)]">
+      <div data-lenis-prevent className="max-h-[calc(100dvh-3rem)] w-full max-w-[520px] overflow-y-auto rounded-[10px] border border-primary/20 bg-card shadow-[0_24px_80px_rgba(35,24,16,0.28)]">
         <div className="flex items-start justify-between gap-4 border-b border-border bg-[#fff8f1] px-5 py-4">
           <div>
             <h2 id="payment-choice-title" className="font-heading text-[24px] font-bold leading-tight text-secondary">
-              {step === "method" ? "Choose Payment Method" : step === "online" ? "Online Payment" : "Bank Transfer"}
+              {step === "method" ? "Choose Payment Method" : step === "offline" ? "Confirm Offline Payment" : step === "online" ? "Online Payment" : "Bank Transfer"}
             </h2>
             <p className="mt-1 font-sans text-[13px] font-medium leading-[1.45] text-secondary/68">
-              {step === "method" ? "Select how you want to pay for this booking." : "Choose full payment or advance payment."}
+              {step === "method" ? "Select how you want to pay for this booking." : step === "offline" ? "Review your request before submitting." : "Choose full payment or advance payment."}
             </p>
+            <BookingTermsLink />
           </div>
           <button
             type="button"
             aria-label="Close payment options"
             onClick={onClose}
             disabled={isBusy}
-            className="grid size-8 shrink-0 place-items-center rounded-full border border-primary/20 bg-white text-secondary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+            className="grid size-8 shrink-0 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:border-button-outline hover:bg-brand-button-dark hover:text-white"
           >
             <X className="size-4" strokeWidth={2} />
           </button>
@@ -6100,13 +6018,25 @@ function PaymentChoiceModal({
             <Button type="button" disabled={isBusy || !onPayBankTransfer} onClick={() => setStep("bank")} variant="outline" className="h-auto min-h-12 justify-start whitespace-normal rounded-[8px] px-4 py-3 text-left font-medium">
               Bank Transfer {"\u2014"} NEFT / RTGS / IMPS
             </Button>
-            <Button type="button" disabled={isBusy} onClick={onPayOffline} variant="outline" className="h-auto min-h-12 justify-start whitespace-normal rounded-[8px] px-4 py-3 text-left font-medium">
+            <Button type="button" disabled={isBusy} onClick={() => setStep("offline")} variant="outline" className="h-auto min-h-12 justify-start whitespace-normal rounded-[8px] px-4 py-3 text-left font-medium">
               Offline Payment {"\u2014"} Cash / Cheque
             </Button>
+            <BookingTermExplanation term="offline" />
+          </div>
+        ) : step === "offline" ? (
+          <div className="space-y-4 p-5 font-sans">
+            <p className="text-[16px] font-semibold leading-relaxed text-secondary">Reserve without paying online? Our team will contact you.</p>
+            <p className="text-[13px] leading-relaxed text-secondary/68">No online payment will be taken. Your booking is confirmed only after our team verifies payment and availability.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Button type="button" variant="outline" disabled={confirmationBusy} onClick={onClose}>Cancel</Button>
+              <Button type="button" disabled={confirmationBusy} onClick={confirmOfflinePayment}>
+                {confirmationBusy ? "Submitting..." : "Confirm Offline Request"}
+              </Button>
+            </div>
           </div>
         ) : (
         <div className="p-5">
-          <button type="button" disabled={isBusy} onClick={() => setStep("method")} className="mb-4 font-sans text-[13px] font-semibold text-primary hover:underline disabled:opacity-60">
+          <button type="button" disabled={isBusy} onClick={() => setStep("method")} className="mb-4 font-sans text-[13px] font-semibold text-button-outline hover:underline disabled:opacity-60">
             Back to payment methods
           </button>
           {step === "bank" ? (
@@ -6119,12 +6049,12 @@ function PaymentChoiceModal({
             type="button"
             disabled={isBusy}
             onClick={() => step === "bank" ? onPayBankTransfer?.("full") : onPayFull()}
-            className="group/payment relative rounded-[8px] border-2 border-[#2faa5d] bg-white p-4 text-left text-secondary shadow-[0_0_0_3px_rgba(47,170,93,0.14)] transition-colors hover:bg-[#f8fff9] disabled:pointer-events-none disabled:opacity-60"
+            className="group/payment relative rounded-[8px] border-2 border-button-outline bg-white p-4 text-left text-button-outline shadow-[0_0_0_3px_rgba(47,170,93,0.14)] transition-colors hover:bg-[#f8fff9] disabled:pointer-events-none disabled:opacity-60"
           >
             <span className="absolute right-2.5 top-2.5 grid size-6 place-items-center rounded-full bg-[#2faa5d] text-white shadow-[0_6px_14px_rgba(47,170,93,0.28)]">
               <Check className="size-3.5" strokeWidth={2.4} />
             </span>
-            <span className="font-sans text-[13px] font-semibold uppercase leading-none text-primary">
+            <span className="font-sans text-[13px] font-semibold uppercase leading-none text-brand-text">
               Pay Full
             </span>
             <strong className="mt-3 block font-sans text-[25px] leading-none">
@@ -6139,16 +6069,17 @@ function PaymentChoiceModal({
             type="button"
             disabled={isBusy}
             onClick={() => step === "bank" ? onPayBankTransfer?.("advance") : onPayAdvance()}
-            className="group/payment rounded-[8px] border border-primary/25 bg-white p-4 text-left text-secondary transition-colors hover:border-primary hover:bg-white hover:shadow-[0_0_0_3px_rgba(212,114,32,0.12)] disabled:pointer-events-none disabled:opacity-60"
+            className="group/payment rounded-[8px] border border-button-outline bg-white p-4 text-left text-button-outline transition-colors hover:border-button-outline hover:bg-white hover:shadow-[0_0_0_3px_rgba(212,114,32,0.12)] disabled:pointer-events-none disabled:opacity-60"
           >
-            <span className="font-sans text-[13px] font-semibold uppercase leading-none text-primary">
+            <span className="font-sans text-[13px] font-semibold uppercase leading-none text-brand-text">
               Pay Advance
             </span>
             <strong className="mt-3 block font-sans text-[25px] leading-none">
               {formatCurrency(advanceAmount)}
             </strong>
             <span className="mt-3 block font-sans text-[12px] font-medium leading-[1.45] text-secondary/68">
-              Balance {formatCurrency(balanceAmount)} can be paid later.
+              <BookingTermExplanation term="advance" className="mt-0" />
+              <span className="mt-1 block">Remaining balance: {formatCurrency(balanceAmount)}.</span>
             </span>
           </button>
           </div>
@@ -6168,11 +6099,11 @@ function HelpCard({ contact }: { contact: SiteContactSettings }) {
       <div className="min-w-0 font-sans text-secondary">
         <h2 className="font-heading text-[18px] font-bold">Need Help?</h2>
         <p className="mt-1.5 flex flex-wrap items-center gap-x-1 break-words text-[14px] font-semibold">
-          <PhoneCall className="size-3.5 text-primary" />
+          <PhoneCall className="size-3.5 text-brand-text" />
           Call Us : {callDisplay || defaultSiteContactSettings.primaryCalling}
         </p>
         <p className="mt-1 flex flex-wrap items-center gap-x-1 break-words text-[14px] font-semibold">
-          <Mail className="size-3.5 text-primary" />
+          <Mail className="size-3.5 text-brand-text" />
           Mail Us : {emailAddress}
         </p>
       </div>

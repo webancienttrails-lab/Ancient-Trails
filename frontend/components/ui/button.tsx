@@ -1,4 +1,3 @@
-import Image from "next/image"
 import type { ComponentProps } from "react"
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
@@ -6,21 +5,21 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariantStyles = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-[24px] border border-transparent bg-clip-padding cursor-pointer text-button font-medium whitespace-nowrap transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center rounded-[24px] border border-transparent bg-clip-padding cursor-pointer text-button font-medium whitespace-nowrap transition-all duration-300 ease-[ease] outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
         default:
-          "border-primary bg-primary text-primary-foreground hover:bg-white hover:text-primary",
+          "border-button-outline bg-button-outline text-white hover:bg-white hover:text-button-outline",
         outline:
-          "border-primary bg-white text-primary hover:bg-primary hover:text-white aria-expanded:bg-primary aria-expanded:text-white",
+          "border-button-outline bg-white text-button-outline hover:bg-button-outline hover:text-white aria-expanded:bg-button-outline aria-expanded:text-white",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+          "border-button-outline bg-button-outline text-white hover:bg-white hover:text-button-outline aria-expanded:bg-button-outline aria-expanded:text-white",
         ghost:
-          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+          "text-button-outline hover:text-button-outline aria-expanded:text-button-outline",
         destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
-        link: "text-primary underline-offset-4 hover:underline",
+          "bg-primary/10 text-brand-text hover:bg-primary/20 focus-visible:border-primary/40 focus-visible:ring-primary/20",
+        link: "text-button-outline underline-offset-4 hover:underline",
       },
       size: {
         default:
@@ -96,11 +95,8 @@ function Button({
 
 function ButtonArrow({ className = "" }: { className?: string }) {
   return (
-    <Image
-      src="/arrow_right.png"
-      alt=""
-      width={37}
-      height={16}
+    <span
+      aria-hidden="true"
       className={cn("h-3 w-7 shrink-0", className)}
       data-slot="button-arrow"
     />

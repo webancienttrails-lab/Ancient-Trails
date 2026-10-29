@@ -12,6 +12,7 @@ export type SiteContactSettings = {
 export type SiteSocialLinks = { facebook: string; instagram: string; linkedin: string; youtube: string; };
 
 export type SiteSettings = {
+  quoteAssistanceTitle?: string;
   logo?: string;
   googleBusinessReviewsUrl?: string;
   googleBusinessReviewsVerified?: boolean;

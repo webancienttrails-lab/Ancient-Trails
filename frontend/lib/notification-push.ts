@@ -1,10 +1,10 @@
 "use client";
 
-import { getApps, initializeApp } from "firebase/app";
-import { getMessaging, isSupported, onMessage, onRegistered, register, unregister } from "firebase/messaging";
+
+
 import { apiBaseUrl } from "@/lib/api";
 
-type Identity = { token: string; user: { id: string } };
+type Identity = { sessionId: string; user: { id: string } };
 const audience = "customer";
 const prefix = "ancient-trails-push:" + audience + ":";
 let activeUser = "", generation = 0, stopRegistration: (() => void) | undefined, stopMessage: (() => void) | undefined;
@@ -26,6 +26,7 @@ function config() {
   return value;
 }
 async function messaging() {
+  const [{ getApps, initializeApp }, { getMessaging, isSupported }] = await Promise.all([import("firebase/app"), import("firebase/messaging")]);
   if (!await isSupported()) throw new Error("Browser notifications are not supported on this device.");
   const value = config(), app = getApps()[0] || initializeApp(value);
   if (app.options.projectId !== value.projectId) throw new Error("Firebase project configuration does not match.");
@@ -47,6 +48,7 @@ export function browserPushStatus(userId: string) {
   return Notification.permission === "granted" && localStorage.getItem(prefix + "enabled:" + userId) === "true" ? "enabled" : "disabled";
 }
 async function enableBrowserPushNow(identity: Identity, epoch: number) {
+  const { onMessage, onRegistered, register } = await import("firebase/messaging");
   if (!("Notification" in window) || !("serviceWorker" in navigator)) throw new Error("Browser notifications are not supported on this device.");
   if (epoch !== generation) return;
   activeUser = identity.user.id;
@@ -64,7 +66,7 @@ async function enableBrowserPushNow(identity: Identity, epoch: number) {
     if (epoch !== generation || activeUser !== identity.user.id || fid !== currentFid) return;
     try {
       const response = await fetch(apiBaseUrl + "/api/notifications/" + audience + "/registrations", {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + identity.token },
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Session-Id": identity.sessionId, "X-Session-Audience": "traveller", "X-Requested-With": "XMLHttpRequest" },
         body: JSON.stringify({ fid, deviceKey: deviceKey() }), signal: AbortSignal.timeout(10000),
       });
       if (!response.ok) throw new Error("Could not register this browser. Please retry.");
@@ -116,17 +118,18 @@ export function resumeBrowserPush(identity: Identity) {
   else void disableBrowserPush();
 }
 export function disableBrowserPush(identity?: Identity) {
+  const shouldUnregister = Boolean(activeUser || registration || localStorage.getItem(prefix + "binding"));
   ++generation; activeUser = ""; stopRegistration?.(); stopMessage?.(); stopRegistration = undefined; stopMessage = undefined; clearTimeout(uploadTimer);
   localStorage.removeItem(prefix + "binding");
   if (identity) {
     localStorage.removeItem(prefix + "enabled:" + identity.user.id);
-    void fetch(apiBaseUrl + "/api/notifications/" + audience + "/registrations", { method: "DELETE", keepalive: true,
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + identity.token }, body: JSON.stringify({ deviceKey: deviceKey() }),
+    void fetch(apiBaseUrl + "/api/notifications/" + audience + "/registrations", { method: "DELETE", keepalive: true, credentials: "include",
+      headers: { "Content-Type": "application/json", "X-Session-Id": identity.sessionId, "X-Session-Audience": "traveller", "X-Requested-With": "XMLHttpRequest" }, body: JSON.stringify({ deviceKey: deviceKey() }),
     }).catch(() => {});
   }
   const clear = workerMessage("PUSH_CLEAR").catch(() => {});
   window.dispatchEvent(new Event("ancient-trails-push-status"));
-  const task = pushOperation.catch(() => {}).then(async () => { await clear; try { await unregister(await messaging()); } catch { /* The inbox remains available offline. */ } });
+  const task = pushOperation.catch(() => {}).then(async () => { await clear; if (!shouldUnregister) return; try { const { unregister } = await import("firebase/messaging"); await unregister(await messaging()); } catch { /* The inbox remains available offline. */ } });
   pushOperation = task;
   return task;
 }

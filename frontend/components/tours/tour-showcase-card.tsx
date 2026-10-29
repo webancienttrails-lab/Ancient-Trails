@@ -75,7 +75,7 @@ export function TourShowcaseCard({
       )}
     >
       <div className="relative aspect-[1.6/1] overflow-hidden bg-muted">
-        <Link
+        <Link prefetch={false}
           href={href}
           aria-label={`View ${title}`}
           className="absolute inset-0 block focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25"
@@ -93,7 +93,7 @@ export function TourShowcaseCard({
             <div className="absolute left-5 top-0 flex h-[46px] items-stretch">
               <span
                 aria-hidden="true"
-                className="grid w-[40px] place-items-center rounded-b-[14px] bg-primary/72 text-white shadow-[0_10px_22px_rgba(35,23,15,0.2)] backdrop-blur-[2px]"
+                className="grid w-[40px] place-items-center rounded-b-[14px] bg-brand-button-dark text-white shadow-[0_10px_22px_rgba(35,23,15,0.2)] backdrop-blur-[2px]"
               >
                 <BestsellerBadgeIcon />
               </span>
@@ -117,7 +117,7 @@ export function TourShowcaseCard({
             aria-label={favoriteLabel}
             aria-pressed={isFavorite}
             onClick={onFavoriteToggle}
-            className="absolute right-3 top-3 z-10 grid size-10 place-items-center rounded-full bg-[#2b241f]/80 text-white shadow-[0_10px_24px_rgba(35,23,15,0.28)] backdrop-blur-[2px] transition-colors hover:bg-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-white/45"
+            className="absolute right-3 top-3 z-10 grid size-10 place-items-center rounded-full bg-[#2b241f]/80 text-white shadow-[0_10px_24px_rgba(35,23,15,0.28)] backdrop-blur-[2px] transition-colors hover:bg-brand-button-dark focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-white/45"
           >
             <Heart
               className={cn("size-[18px]", isFavorite && "fill-current")}
@@ -129,9 +129,9 @@ export function TourShowcaseCard({
 
       <div className="px-4 pb-2 pt-4 sm:px-5">
         <h3 className="font-heading text-[20px] font-bold leading-[1.06] tracking-normal text-secondary sm:text-[20px]">
-          <Link
+          <Link prefetch={false}
             href={href}
-            className="line-clamp-2 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
+            className="line-clamp-2 transition-colors hover:text-brand-text focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
           >
             {title}
           </Link>
@@ -141,16 +141,16 @@ export function TourShowcaseCard({
 
         <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 font-sans">
           <div className="min-w-0">
-            <time className="mt-1.5 block truncate text-[16px] font-medium leading-none text-primary">
+            <time className="mt-1.5 block truncate text-[16px] font-medium leading-none text-brand-text">
               {nextDepartureLabel}
             </time>
           </div>
-          <Link
+          <Link prefetch={false}
             href={allDeparturesHref}
-            className="inline-flex w-fit items-center gap-2 pt-0.5 text-[12px] font-medium leading-none text-secondary transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20 sm:text-[13px] lg:justify-self-end"
+            className="inline-flex w-fit items-center gap-2 pt-0.5 text-[12px] font-medium leading-none text-secondary transition-colors hover:text-brand-text focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20 sm:text-[13px] lg:justify-self-end"
           >
             <span className="whitespace-nowrap">View Calendar</span>
-            <CalendarDays className="size-5 shrink-0 text-primary" strokeWidth={1.8} />
+            <CalendarDays className="size-5 shrink-0 text-brand-text" strokeWidth={1.8} />
           </Link>
         </div>
 
@@ -166,16 +166,16 @@ export function TourShowcaseCard({
           />
         </div>
         <div className="mt-2 py-2 flex flex-nowrap items-center justify-between gap-2.5 border-t border-[#d6d1cb]">
-          <Link
+          <Link prefetch={false}
             href={`${href}#itinerary`}
             aria-label={`View itinerary for ${title}`}
-            className="inline-flex items-center font-sans text-[14px] font-medium text-secondary transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+            className="inline-flex items-center font-sans text-[14px] font-medium text-secondary transition-colors hover:text-brand-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
           >
             View Itinerary
           </Link>
           <Button
             nativeButton={false}
-            render={<Link href={href} aria-label={`${ctaLabel} ${title}`} />}
+            render={<Link prefetch={false} href={href} aria-label={`${ctaLabel} ${title}`} />}
             className="h-[34px] min-w-[134px] shrink-0 gap-4 px-4 text-[12px] font-normal sm:min-w-[144px] sm:text-[14px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             {ctaLabel}
@@ -187,7 +187,7 @@ export function TourShowcaseCard({
             <span className="font-sans text-[12px] font-medium leading-none text-secondary/62">
               Tour Includes
             </span>
-            <div className="flex shrink-0 items-center gap-2.5 text-primary sm:gap-3">
+            <div className="flex shrink-0 items-center gap-2.5 text-brand-text sm:gap-3">
               {tourIncludes.map(({ icon, label }) => (
                 <TourIncludeIcon key={label} icon={icon} label={label} />
               ))}
@@ -255,7 +255,7 @@ export function TourExpertHoverPopup({
       <strong
         tabIndex={hasPopup ? 0 : undefined}
         className={cn(
-          "block min-w-0 truncate text-right text-[14px] font-semibold leading-none text-secondary outline-none transition-colors hover:text-primary focus-visible:text-primary sm:text-[14px]",
+          "block min-w-0 truncate text-right text-[14px] font-semibold leading-none text-secondary outline-none transition-colors hover:text-brand-text focus-visible:text-brand-text sm:text-[14px]",
           triggerClassName
         )}
       >
@@ -265,7 +265,7 @@ export function TourExpertHoverPopup({
       {hasPopup ? (
         <span className="pointer-events-none absolute bottom-full right-0 z-20 mb-2 w-[252px] rounded-[10px] border border-[#e8cbaa] bg-white p-3 text-left opacity-0 shadow-[0_14px_30px_rgba(35,23,15,0.16)] transition-opacity duration-200 group-hover/expert:opacity-100 group-focus-within/expert:opacity-100">
           <div className="flex items-center gap-3">
-            <span className="relative grid size-11 shrink-0 place-items-center overflow-hidden rounded-full bg-[#fff1e5] font-sans text-[13px] font-bold text-primary">
+            <span className="relative grid size-11 shrink-0 place-items-center overflow-hidden rounded-full bg-[#fff1e5] font-sans text-[13px] font-bold text-brand-text">
               {image ? (
                 <Image
                   src={image}

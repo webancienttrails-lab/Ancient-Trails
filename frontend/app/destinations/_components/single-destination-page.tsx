@@ -1,5 +1,7 @@
 "use client";
+import type { DestinationPageData } from "@/lib/travel-page-data";
 
+import { getNextBookableDeparture } from "@/lib/tour-departures";
 import Image from "next/image";
 import Link from "next/link";
 import { type MouseEvent, useEffect, useMemo, useState } from "react";
@@ -20,6 +22,8 @@ import {
 import { createPortal } from "react-dom";
 
 import { Header } from "@/components/layout/header";
+import { TravelEmptyState } from "@/components/travel-empty-state";
+import { CustomiseTourDialog } from "@/components/contact/customise-tour-dialog";
 import { TourShowcaseCard } from "@/components/tours/tour-showcase-card";
 import { useToast } from "@/components/ui/toast";
 import { listenForTravellerSessionChanges } from "@/lib/auth";
@@ -39,8 +43,8 @@ import {
 } from "@/lib/home-travel";
 import {
   getTourCalendarHref,
+  getExperiencesHref,
   getTourHref,
-  slugifyRoute,
 } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import {
@@ -50,12 +54,6 @@ import {
   toggleWishlistTour,
   type WishlistTourSnapshot,
 } from "@/lib/wishlist";
-
-function getExperiencesHref(destination: PublicDestination) {
-  return `/experiences/${encodeURIComponent(
-    slugifyRoute(destination.destinationName) || destination.destinationId
-  )}`;
-}
 
 const fallbackImages = [
   "/home assets/destination/Hampi.webp",
@@ -214,46 +212,15 @@ function formatDate(value: string | null | undefined) {
     : shortDateFormatter.format(date).replace(",", "");
 }
 
-function getDateValue(value: string | null) {
-  if (!value) {
-    return 0;
-  }
-
-  const timestamp = new Date(value).getTime();
-
-  return Number.isNaN(timestamp) ? 0 : timestamp;
-}
-
 function getLowestTourPrice(
   tour: PublicTour,
   departures: PublicTourDeparture[]
 ) {
-  const prices = departures
-    .filter((departure) => departure.tourId === tour.tourId)
-    .map((departure) => departure.priceAdult)
-    .filter((price) => price > 0);
-
-  return prices.length > 0 ? Math.min(...prices) : 0;
+  return getNextTourDeparture(tour, departures)?.priceAdult ?? 0;
 }
 
-function getNextTourDeparture(
-  tour: PublicTour,
-  departures: PublicTourDeparture[]
-) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tourDepartures = departures
-    .filter((departure) => departure.tourId === tour.tourId)
-    .sort(
-      (left, right) =>
-        getDateValue(left.departureDate) - getDateValue(right.departureDate)
-    );
-
-  return (
-    tourDepartures.find(
-      (departure) => getDateValue(departure.departureDate) >= today.getTime()
-    ) || tourDepartures[0]
-  );
+function getNextTourDeparture(tour: PublicTour, departures: PublicTourDeparture[]) {
+  return getNextBookableDeparture(departures.filter((departure) => departure.tourId === tour.tourId));
 }
 
 function getRelatedDepartures(
@@ -589,18 +556,21 @@ function createWishlistSnapshot({
 
 export function SingleDestinationPage({
   destinationId,
+  initialData,
 }: {
   destinationId: string;
+  initialData?: DestinationPageData;
 }) {
   const toast = useToast();
-  const [destination, setDestination] = useState<PublicDestination | null>(null);
-  const [relatedTours, setRelatedTours] = useState<PublicTour[]>([]);
-  const [departures, setDepartures] = useState<PublicTourDeparture[]>([]);
-  const [experts, setExperts] = useState<PublicExpert[]>([]);
-  const [experiences, setExperiences] = useState<PublicExperience[]>([]);
+  const initialTours = initialData?.tours.filter(tour => isTourLinkedToDestination(tour, initialData.destination)) ?? [];
+  const [destination, setDestination] = useState<PublicDestination | null>(initialData?.destination ?? null);
+  const [relatedTours, setRelatedTours] = useState<PublicTour[]>(initialTours);
+  const [departures, setDepartures] = useState<PublicTourDeparture[]>(initialData ? getRelatedDepartures(initialTours, initialData.departures) : []);
+  const [experts, setExperts] = useState<PublicExpert[]>(initialData?.experts ?? []);
+  const [experiences, setExperiences] = useState<PublicExperience[]>(initialData?.experiences.filter(experience => initialTours.some(tour => normalizeCode(tour.tourId) === normalizeCode(experience.tourId))) ?? []);
   const [wishlistTourIds, setWishlistTourIds] = useState<string[]>([]);
   const [lightbox, setLightbox] = useState<LightboxState | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!initialData);
   const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
@@ -639,7 +609,7 @@ export function SingleDestinationPage({
           await Promise.all([
             listPublicTours(matchedDestination.destinationId),
             listPublicTourDepartures(),
-            listPublicExperiences(matchedDestination.destinationId).catch(() => ({
+            listPublicExperiences().catch(() => ({
               data: { experiences: [] as PublicExperience[] },
             })),
             listPublicExperts().catch(() => ({
@@ -655,7 +625,9 @@ export function SingleDestinationPage({
           setRelatedTours(tours);
           setDepartures(getRelatedDepartures(tours, departuresResponse.data.departures));
           setExperts(expertsResponse.data.experts);
-          setExperiences(experiencesResponse.data.experiences);
+          setExperiences(experiencesResponse.data.experiences.filter(experience =>
+            tours.some(tour => normalizeCode(tour.tourId) === normalizeCode(experience.tourId))
+          ));
         }
       } catch (error) {
         if (isMounted) {
@@ -668,12 +640,12 @@ export function SingleDestinationPage({
       }
     }
 
-    loadDestination();
+    if (!initialData) loadDestination();
 
     return () => {
       isMounted = false;
     };
-  }, [destinationId]);
+  }, [destinationId, initialData]);
 
   useEffect(() => {
     const syncWishlist = () => {
@@ -771,7 +743,7 @@ export function SingleDestinationPage({
 
   if (isLoading) {
     return (
-      <main className="min-h-screen overflow-x-hidden bg-background text-secondary">
+      <main id="main-content" tabIndex={-1} className="min-h-screen overflow-x-hidden bg-background text-secondary">
         <LoadingDestination />
       </main>
     );
@@ -779,7 +751,7 @@ export function SingleDestinationPage({
 
   if (!destination || loadError) {
     return (
-      <main className="min-h-screen overflow-x-hidden bg-background text-secondary">
+      <main id="main-content" tabIndex={-1} className="min-h-screen overflow-x-hidden bg-background text-secondary">
         <TopBackdrop />
         <section className="mx-auto mt-10 max-w-[720px] px-5 pb-20">
           <div className="rounded-[8px] border border-[#ead8c5] bg-white p-8 text-center shadow-[0_18px_44px_rgba(50,50,50,0.08)]">
@@ -790,13 +762,14 @@ export function SingleDestinationPage({
               {loadError ||
                 "This destination is not available in the current destination records."}
             </p>
-            <Link
+            <Link prefetch={false}
               href="/destinations"
               className="mt-6 inline-flex h-10 items-center gap-3 rounded-full bg-primary px-5 font-sans text-[14px] font-bold text-white transition-colors hover:bg-accent"
             >
               Back to Destinations
               <ArrowRight className="size-4" />
             </Link>
+            <div className="mt-6"><TravelEmptyState /></div>
           </div>
         </section>
       </main>
@@ -804,7 +777,7 @@ export function SingleDestinationPage({
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-background text-secondary">
+    <main id="main-content" tabIndex={-1} className="min-h-screen overflow-x-hidden bg-background text-secondary">
       <TopBackdrop />
 
       <div className="home-wide-frame mx-auto mt-8 w-[calc(100%-2.5rem)] pb-16">
@@ -815,6 +788,7 @@ export function SingleDestinationPage({
         />
 
         <ExploreAndPlan
+          hasExperiences={relatedTours.length > 0 || experiences.length > 0}
           destination={destination}
           galleryImages={destinationGalleryImages}
           images={images}
@@ -891,7 +865,7 @@ function LoadingDestination() {
 
 function TopBackdrop() {
   return (
-    <section className="relative h-[200px] overflow-hidden bg-secondary">
+    <section className="relative h-[100px] overflow-hidden bg-secondary lg:h-[120px]">
       <Image
         src="/home assets/Heritage Banner.webp"
         alt="Ancient Trails heritage landscape"
@@ -983,13 +957,7 @@ function DestinationOverview({
                 Best Time To Visit - {getBestSeason(destination, tours)}
               </p> */}
             </div>
-            <Link
-              href={getTourCalendarHref({ destination })}
-              className="inline-flex w-fit items-center gap-2 rounded-full border border-white/80 bg-black/50 px-4 py-2 font-sans text-[13px] font-medium leading-none text-white backdrop-blur-sm sm:text-[14px]"
-            >
-              Customise my {destination.destinationName} Tour
-              <ArrowRight className="size-3.5 sm:size-4" />
-            </Link>
+            <CustomiseTourDialog destinationName={destination.destinationName} />
           </div>
         </article>
 
@@ -1006,20 +974,20 @@ function DestinationOverview({
           </p>
 
           <div className="mt-4 border-l-4 border-primary pl-5">
-            <Quote className="mb-1 size-6 text-primary" strokeWidth={1.8} />
+            <Quote className="mb-1 size-6 text-brand-text" strokeWidth={1.8} />
             <p className="font-heading text-[16px] font-normal italic leading-snug tracking-normal text-secondary sm:text-[20px]">
               {getDestinationFact(destination)}
             </p>
           </div>
 
-          <Link
+          {tours.length > 0 ? <Link prefetch={false}
             href={`#${destinationToursSectionId}`}
             onClick={scrollToToursSection}
-            className="mt-4 inline-flex w-fit items-center gap-2 font-sans text-description font-normal uppercase text-primary transition-colors hover:text-secondary"
+            className="mt-4 inline-flex w-fit items-center gap-2 font-sans text-description font-normal uppercase text-brand-text transition-colors hover:text-secondary"
           >
             Scroll to view tours in {destination.destinationName}
             <ArrowDown className="size-4" />
-          </Link>
+          </Link> : null}
         </aside>
       </div>
 
@@ -1178,21 +1146,21 @@ function GalleryLightbox({
             <button
               type="button"
               aria-label="Fullscreen gallery"
-              className="transition-colors hover:text-primary"
+              className="transition-colors hover:text-button-outline text-button-outline"
             >
               <Expand className="size-6" strokeWidth={2} />
             </button>
             <button
               type="button"
               aria-label="Zoom gallery image"
-              className="transition-colors hover:text-primary"
+              className="transition-colors hover:text-button-outline text-button-outline"
             >
               <ZoomIn className="size-6" strokeWidth={2} />
             </button>
             <button
               type="button"
               aria-label="Share gallery image"
-              className="transition-colors hover:text-primary"
+              className="transition-colors hover:text-button-outline text-button-outline"
             >
               <Share2 className="size-6" strokeWidth={2} />
             </button>
@@ -1200,7 +1168,7 @@ function GalleryLightbox({
               type="button"
               aria-label="Close gallery"
               onClick={onClose}
-              className="transition-colors hover:text-primary"
+              className="transition-colors hover:text-button-outline text-button-outline"
             >
               <X className="size-7" strokeWidth={2} />
             </button>
@@ -1212,7 +1180,7 @@ function GalleryLightbox({
             type="button"
             aria-label="Previous gallery image"
             onClick={showPreviousImage}
-            className="absolute left-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-primary md:left-10"
+            className="absolute left-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-brand-button-dark md:left-10"
           >
             <ChevronLeft className="size-8" strokeWidth={2.4} />
           </button>
@@ -1226,7 +1194,6 @@ function GalleryLightbox({
               alt={`${title} gallery image ${boundedIndex + 1}`}
               fill
               priority
-              unoptimized
               sizes="(min-width: 1280px) 1120px, calc(100vw - 3rem)"
               onLoad={(event) => updateImageSize(event.currentTarget)}
               className="object-contain object-center drop-shadow-[0_18px_42px_rgba(0,0,0,0.26)]"
@@ -1237,7 +1204,7 @@ function GalleryLightbox({
             type="button"
             aria-label="Next gallery image"
             onClick={showNextImage}
-            className="absolute right-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-primary md:right-10"
+            className="absolute right-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-brand-button-dark md:right-10"
           >
             <ChevronRight className="size-8" strokeWidth={2.4} />
           </button>
@@ -1253,6 +1220,7 @@ function GalleryLightbox({
 }
 
 function ExploreAndPlan({
+  hasExperiences,
   destination,
   galleryImages,
   images,
@@ -1262,6 +1230,7 @@ function ExploreAndPlan({
   galleryImages: string[];
   images: string[];
   onGalleryOpen: (index: number) => void;
+  hasExperiences: boolean;
 }) {
   const landmarks = getFeaturedLandmarkRows(destination, images);
   const attractionSummary = getAttractionSummary(destination);
@@ -1370,7 +1339,7 @@ function ExploreAndPlan({
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="grid gap-5 sm:grid-cols-[280px_minmax(0,1fr)] sm:items-start">
             <div className="pt-0.5">
-              <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+              <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-button-outline">
                 Explore with us
               </p>
               <h2 className="mt-2 font-heading text-title font-bold leading-none tracking-normal text-secondary">
@@ -1388,7 +1357,7 @@ function ExploreAndPlan({
                 type="button"
                 aria-label="Previous attraction"
                 onClick={showPreviousAttraction}
-                className="grid size-10 place-items-center rounded-full border border-[#efcdb5] bg-white text-primary shadow-[0_10px_20px_rgba(67,43,27,0.08)] transition-colors hover:border-primary hover:bg-primary hover:text-white focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25"
+                className="grid size-10 place-items-center rounded-full border border-button-outline bg-white text-button-outline shadow-[0_10px_20px_rgba(67,43,27,0.08)] transition-colors hover:border-button-outline hover:bg-brand-button-dark hover:text-white focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25"
               >
                 <ChevronLeft className="size-5" strokeWidth={2.2} />
               </button>
@@ -1396,7 +1365,7 @@ function ExploreAndPlan({
                 type="button"
                 aria-label="Next attraction"
                 onClick={showNextAttraction}
-                className="grid size-10 place-items-center rounded-full border border-[#efcdb5] bg-white text-primary shadow-[0_10px_20px_rgba(67,43,27,0.08)] transition-colors hover:border-primary hover:bg-primary hover:text-white focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25"
+                className="grid size-10 place-items-center rounded-full border border-button-outline bg-white text-button-outline shadow-[0_10px_20px_rgba(67,43,27,0.08)] transition-colors hover:border-button-outline hover:bg-brand-button-dark hover:text-white focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25"
               >
                 <ChevronRight className="size-5" strokeWidth={2.2} />
               </button>
@@ -1448,27 +1417,27 @@ function ExploreAndPlan({
         <div className="absolute inset-0 bg-black/75" />
         <div className="home-wide-frame relative z-10 mx-auto flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+            <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-button-outline">
               Live the legacy
             </p>
             <h2 className="mt-2 font-heading text-title font-bold leading-none tracking-normal text-white">
               Experiences in {destination.destinationName}
             </h2>
           </div>
-          <Link
+          {hasExperiences ? <Link prefetch={false}
             href={getExperiencesHref(destination)}
             className="inline-flex w-fit items-center gap-2 rounded-full bg-primary px-5 py-3 font-sans text-[14px] font-normal  leading-none text-white  transition-colors hover:bg-secondary"
           >
             Explore Experiences
             <ArrowRight className="size-4" />
-          </Link>
+          </Link> : null}
         </div>
       </section>
 
       <div className="mt-12 min-w-0">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+            <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-button-outline">
               In pictures
             </p>
             <h2 className="mt-2 font-heading text-title font-bold leading-none tracking-normal text-secondary">
@@ -1577,24 +1546,7 @@ function TravellerExperienceSection({
   const featuredVideo = getExperienceVideo(videoExperience);
 
   function getTravellerReviewCount(experience: PublicExperience) {
-    const travellerKey =
-      experience.travellerEmail.trim().toLowerCase() ||
-      experience.travellerName.trim().toLowerCase();
-
-    if (!travellerKey) {
-      return 1;
-    }
-
-    return Math.max(
-      experiences.filter((item) => {
-        const itemKey =
-          item.travellerEmail.trim().toLowerCase() ||
-          item.travellerName.trim().toLowerCase();
-
-        return itemKey === travellerKey;
-      }).length,
-      1
-    );
+    return experience.travellerReviewCount || 1;
   }
 
   return (
@@ -1606,9 +1558,9 @@ function TravellerExperienceSection({
         <h2 className="mt-2 font-heading text-title font-bold leading-none tracking-normal text-secondary">
           Exploring {destination.destinationName} with Us
         </h2>
-        <Link
+        <Link prefetch={false}
           href={getExperiencesHref(destination)}
-          className="mt-4 inline-flex items-center gap-2 font-sans text-description font-medium uppercase text-primary transition-colors hover:text-secondary"
+          className="mt-4 inline-flex items-center gap-2 font-sans text-description font-medium uppercase text-brand-text transition-colors hover:text-secondary"
         >
           Reviews & Experiences
           <ArrowRight className="size-4" />
@@ -1619,10 +1571,10 @@ function TravellerExperienceSection({
             Rating
           </p>
           <div className="mt-1 flex items-end gap-2">
-            <strong className="font-sans text-[42px] font-medium leading-none text-primary">
+            <strong className="font-sans text-[42px] font-medium leading-none text-brand-text">
               {averageRating.toFixed(1)}
             </strong>
-            <span className="pb-1.5 font-sans text-description font-medium text-primary">
+            <span className="pb-1.5 font-sans text-description font-medium text-brand-text">
               /5
             </span>
           </div>
@@ -1658,7 +1610,6 @@ function TravellerExperienceSection({
             src={featuredImage || fallbackImages[0]}
             alt={videoExperience?.title || destination.destinationName}
             fill
-            unoptimized
             sizes="(min-width: 1280px) 340px, (min-width: 1024px) 28vw, 100vw"
             className="object-cover object-center"
           />
@@ -1667,7 +1618,7 @@ function TravellerExperienceSection({
 
       <div className="grid gap-3">
         <div className="grid gap-4">
-          <p className="max-w-[360px] font-sans text-description font-medium text-primary">
+          <p className="max-w-[360px] font-sans text-description font-medium text-brand-text">
             Every Journey we organise is built on trust, safety and unforgettable
             memories
           </p>
@@ -1684,9 +1635,9 @@ function TravellerExperienceSection({
             Ready to plan your Journey?
             <span className="block">Let&apos;s get started!</span>
           </p>
-          <Link
+          <Link prefetch={false}
             href={getTourCalendarHref({ destination })}
-            className="group/button mt-3 inline-flex h-11 items-center justify-center gap-4 rounded-[24px] border border-primary bg-primary px-6 font-sans text-button font-medium leading-none text-white transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-white hover:text-primary"
+            className="group/button mt-3 inline-flex h-11 items-center justify-center gap-4 rounded-[24px] border border-primary bg-primary px-6 font-sans text-button font-medium leading-none text-white transition-all duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-white hover:text-button-outline"
           >
             Plan Your Trip
             <ArrowRight className="size-4" />
@@ -1733,7 +1684,6 @@ function MiniMediaRow({
           src={photo || fallbackPhoto}
           alt="Traveller memory"
           fill
-          unoptimized
           sizes="180px"
           className="object-cover object-center"
         />
@@ -1747,7 +1697,6 @@ function MiniMediaRow({
           src={previewPhoto}
           alt=""
           fill
-          unoptimized
           sizes="180px"
           className="object-cover object-center"
         />
@@ -1776,7 +1725,7 @@ function RatingStars({
   const filledCount = Math.round(value);
 
   return (
-    <div className={cn("flex items-center gap-0.5 text-primary", className)}>
+    <div className={cn("flex items-center gap-0.5 text-brand-text", className)}>
       {Array.from({ length: 5 }, (_item, index) => (
         <Star
           key={index}
@@ -1819,13 +1768,12 @@ function ReviewCard({
             src={avatarImage}
             alt={name}
             fill
-            unoptimized
             sizes="40px"
             className="object-cover"
           />
         </span>
       ) : (
-        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary font-sans text-description font-bold text-white">
+        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-brand-button-dark font-sans text-description font-bold text-white">
           {getTravellerInitials(name)}
         </span>
       )}
@@ -1924,7 +1872,7 @@ function DestinationReviewSlider({
             type="button"
             aria-label="Previous traveller review"
             onClick={showPreviousReview}
-            className="grid size-9 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:text-primary"
+            className="grid size-9 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
           >
             <ChevronLeft className="size-4" strokeWidth={2.3} />
           </button>
@@ -1934,6 +1882,7 @@ function DestinationReviewSlider({
               <button
                 key={`${experience.id || experience.experienceId}-dot`}
                 type="button"
+                data-slot="carousel-dot"
                 aria-label={`Show traveller review ${index + 1}`}
                 aria-current={index === boundedIndex ? "true" : undefined}
                 onClick={() => setActiveIndex(index)}
@@ -1949,7 +1898,7 @@ function DestinationReviewSlider({
             type="button"
             aria-label="Next traveller review"
             onClick={showNextReview}
-            className="grid size-9 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:text-primary"
+            className="grid size-9 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
           >
             <ChevronRight className="size-4" strokeWidth={2.3} />
           </button>
@@ -1983,21 +1932,21 @@ function ToursSection({
   wishlistedTourIds: Set<string>;
 }) {
   if (tours.length === 0) {
-    return null;
+    return <section id={destinationToursSectionId} className="mt-10 scroll-mt-28"><TravelEmptyState /></section>;
   }
 
   return (
     <section id={destinationToursSectionId} className="mt-10 scroll-mt-28">
-      <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+      <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-button-outline">
         Plan your visit
       </p>
       <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <h2 className="font-heading text-title font-bold leading-none tracking-normal text-secondary">
           Tours in {destination.destinationName.toLowerCase()}
         </h2>
-        <Link
+        <Link prefetch={false}
           href={getTourCalendarHref({ destination })}
-          className="inline-flex w-fit items-center gap-2 font-sans text-description font-medium uppercase text-primary"
+          className="inline-flex w-fit items-center gap-2 font-sans text-description font-medium uppercase text-brand-text"
         >
           View all tours
           <ArrowRight className="size-4" />

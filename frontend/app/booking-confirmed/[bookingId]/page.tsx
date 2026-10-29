@@ -3,10 +3,13 @@ import { BookingResultPage, type BookingResultRouteProps } from "@/components/bo
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+  referrer: "no-referrer",
   title: "Booking Confirmed",
   description: "Your Ancient Trails booking confirmation details.",
 };
 
-export default function BookingConfirmedRoute(props: BookingResultRouteProps) {
-  return <BookingResultPage {...props} />;
+export default async function BookingConfirmedRoute(props: BookingResultRouteProps) {
+  const { bookingId } = await props.params;
+  return <BookingResultPage bookingId={bookingId} />;
 }

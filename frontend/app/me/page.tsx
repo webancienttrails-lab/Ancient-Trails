@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function MePage() {
   return (
-    <main className="min-h-screen overflow-x-clip bg-background text-secondary lg:overflow-x-visible">
+    <main id="main-content" tabIndex={-1} className="min-h-screen overflow-x-clip bg-background text-secondary lg:overflow-x-visible">
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <UserSidebar />
 

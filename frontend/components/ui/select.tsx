@@ -86,7 +86,7 @@ function SelectItem({
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        "grid cursor-pointer grid-cols-[1fr_18px] items-center gap-3 rounded-[6px] px-3 py-2.5 font-sans text-[13px] font-medium text-secondary outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-45 data-[highlighted]:bg-primary/10 data-[highlighted]:text-primary data-[selected]:text-primary",
+        "grid cursor-pointer grid-cols-[1fr_18px] items-center gap-3 rounded-[6px] px-3 py-2.5 font-sans text-[13px] font-medium text-secondary outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-45 data-[highlighted]:bg-primary/10 data-[highlighted]:text-brand-text data-[selected]:text-brand-text",
         className
       )}
       {...props}
@@ -94,7 +94,7 @@ function SelectItem({
       <SelectPrimitive.ItemText className="min-w-0 truncate">
         {children}
       </SelectPrimitive.ItemText>
-      <SelectPrimitive.ItemIndicator className="grid size-4 place-items-center text-primary">
+      <SelectPrimitive.ItemIndicator className="grid size-4 place-items-center text-brand-text">
         <Check className="size-4" strokeWidth={2.2} />
       </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>

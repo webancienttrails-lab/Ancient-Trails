@@ -73,7 +73,6 @@ export type BookingPayload = {
     twinOccupancy: number;
     tripleOccupancy: number;
   };
-  gstPercentage: number;
 };
 
 export type BookingConfirmation = {
@@ -241,9 +240,10 @@ export function createOfflineBooking(payload: BookingPayload) {
   });
 }
 
-export function createBookingPaymentOrder(payload: BookingPayload) {
+export function createBookingPaymentOrder(payload: BookingPayload, idempotencyKey?: string) {
   return apiRequest<BookingPaymentOrder>("/api/bookings/payment/order", {
     method: "POST",
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
     body: JSON.stringify(payload),
   });
 }
@@ -271,19 +271,20 @@ export function verifyBookingPayment(payload: {
 
 export function getBookingPaymentOrderStatus(orderId: string) {
   return apiRequest<BookingPaymentOrderStatus>(
-    `/api/bookings/payment/orders/${encodeURIComponent(orderId)}/status`
+    `/api/bookings/payment/orders/${encodeURIComponent(orderId)}/status`,
+    { headers: getTravellerHeaders(), cache: "no-store" }
   );
 }
 
 function getTravellerHeaders(): HeadersInit {
   const session = getTravellerSession();
 
-  if (!session?.token) {
+  if (!session?.sessionId) {
     throw new ApiError(401, "Please sign in to continue");
   }
 
   return {
-    Authorization: `Bearer ${session.token}`,
+    "X-Session-Id": session.sessionId,
   };
 }
 
@@ -315,45 +316,47 @@ export function verifyBookingBalancePayment(
   );
 }
 
-export function getOfflineBookingSubmission(bookingId: string, token: string) {
+export function getOfflineBookingSubmission(bookingId: string) {
   return apiRequest<BookingConfirmationData>(
-    `/api/bookings/${encodeURIComponent(bookingId)}/offline-submission?token=${encodeURIComponent(token)}`,
-    { cache: "no-store" }
+    `/api/bookings/${encodeURIComponent(bookingId)}/offline-submission`,
+    { cache: "no-store", headers: getTravellerHeaders() }
   );
 }
 
-export function getBookingConfirmation(bookingId: string, token: string) {
+export function getBookingConfirmation(bookingId: string) {
   return apiRequest<BookingConfirmationData>(
     `/api/bookings/${encodeURIComponent(
       bookingId
-    )}/confirmation?token=${encodeURIComponent(token)}`,
+    )}/confirmation`,
     {
       cache: "no-store",
+      headers: getTravellerHeaders(),
     }
   );
 }
 
-export function getBookingRecovery(bookingId: string, token: string) {
+export function getBookingRecovery(bookingId: string) {
   return apiRequest<BookingRecoveryData>(
     `/api/bookings/${encodeURIComponent(
       bookingId
-    )}/recovery?token=${encodeURIComponent(token)}`,
+    )}/recovery`,
     {
       cache: "no-store",
+      headers: getTravellerHeaders(),
     }
   );
 }
 
 export function createBookingRecoveryPaymentOrder(
-  bookingId: string,
-  token: string
+  bookingId: string
 ) {
   return apiRequest<BookingPaymentOrder>(
     `/api/bookings/${encodeURIComponent(
       bookingId
-    )}/recovery/payment/order?token=${encodeURIComponent(token)}`,
+    )}/recovery/payment/order`,
     {
       method: "POST",
+      headers: getTravellerHeaders(),
     }
   );
 }

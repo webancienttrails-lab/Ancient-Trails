@@ -1,4 +1,6 @@
-import Image from "next/image";
+import { HomeHeroImage } from "@/components/layout/home-hero-image";
+import type { PublicBlogPreview } from "@/lib/blogs";
+import { RecentBlogPosts } from "./recent-blog-posts";
 
 import { Header } from "@/components/layout/header";
 import { PlanTripLauncher } from "@/components/plan-trip-launcher";
@@ -6,6 +8,7 @@ import type {
   HomeCustomisedTourCard,
   HomeDestinationCard,
   HomeExperienceCard,
+  HomeTourCard,
 } from "@/lib/home-travel";
 import { AboutSection } from "./about-section";
 import { CustomisedToursSection } from "./customised-tours-section";
@@ -18,44 +21,32 @@ import { UpcomingToursSection } from "./upcoming-tours-section";
 import { WhyChooseUsSection } from "./why-choose-us-section";
 
 export function HomePage({
+  recentPosts = [],
+  upcomingTours,
   customisedTourDestinations,
   homeExperiences,
   topDestinations,
   tourCategories,
 }: {
+  recentPosts?: PublicBlogPreview[];
+  upcomingTours?: HomeTourCard[];
   customisedTourDestinations?: HomeCustomisedTourCard[];
   homeExperiences?: HomeExperienceCard[];
   topDestinations?: HomeDestinationCard[];
   tourCategories?: string[];
 }) {
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-foreground">
       <section className="relative h-[100svh] min-h-[560px] overflow-hidden lg:h-[80vh] lg:min-h-0">
-        <Image
-          src="/home assets/Briddeshwara temple_banner.webp"
-          alt="Amber fort over a heritage landscape"
-          fill
-          priority
-          sizes="(min-width: 768px) 100vw, 0px"
-          className="hidden scale-[1.08] object-cover object-center sm:scale-[1.1] md:block lg:scale-[1.12]"
-        />
-        <Image
-          src="/home assets/Mobile_banner.webp"
-          alt="Amber fort over a heritage landscape"
-          fill
-          priority
-          sizes="(max-width: 767px) 100vw, 0px"
-          className="object-cover object-center md:hidden"
-        />
+        <HomeHeroImage />
 
-      
         <div className="home-wide-frame relative z-20 mx-auto flex h-full w-full flex-col px-5 py-[clamp(1rem,4vh,2.25rem)] sm:px-0 [@media(min-width:1300px)]:px-12">
           <Header />
 
           <div className="flex min-h-0 flex-1 items-start px-0 py-[clamp(0.5rem,3vh,4rem)] pt-[clamp(1.5rem,8vh,4rem)] sm:items-center sm:px-6 sm:pt-[clamp(0.5rem,3vh,4rem)] lg:px-10 [@media(min-width:1300px)]:px-4">
             <div className="max-w-[430px] text-accent">
               <TextReveal trigger="load" delay={120}>
-                <p className="mb-[clamp(0.5rem,1.5vh,0.75rem)] text-eyebrow font-medium uppercase tracking-normal text-primary max-sm:!text-[12px]">
+                <p className="mb-[clamp(0.5rem,1.5vh,0.75rem)] text-eyebrow font-medium uppercase tracking-normal text-button-outline max-sm:!text-[12px]">
                   Learn. Explore. Remember.
                 </p>
               </TextReveal>
@@ -86,7 +77,7 @@ export function HomePage({
         </div>
       </section>
 
-      <UpcomingToursSection />
+      <UpcomingToursSection initialTours={upcomingTours} />
 
       <AboutSection />
 
@@ -104,6 +95,7 @@ export function HomePage({
       <SpecialisedToursSection />
 
       <FaqSection />
+      <RecentBlogPosts posts={recentPosts} />
     </main>
   );
 }

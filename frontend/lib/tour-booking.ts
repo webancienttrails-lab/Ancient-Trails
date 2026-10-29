@@ -4,7 +4,8 @@ export type DepartureStatus =
   | "scheduled"
   | "coming_soon"
   | "closed"
-  | "cancelled";
+  | "cancelled"
+  | "completed";
 
 export type PricingCategory =
   | "adult"
@@ -133,6 +134,20 @@ export interface AccommodationOption {
   recommended?: boolean;
   requiresRoommateMatching?: boolean;
   preferredSharingType?: "twin" | "triple";
+}
+
+export function selectAccommodationOption(
+  options: AccommodationOption[],
+  selectedOptionId: string
+) {
+  if (selectedOptionId) return options.find(option => option.id === selectedOptionId);
+
+  // Only default to the advertised adult twin-sharing rate. Other arrangements
+  // require an explicit choice rather than silently selecting a premium room.
+  return options.find(option =>
+    option.rooms.length > 0 && option.rooms.every(room => room.roomType === "twin") &&
+    option.breakdown.length > 0 && option.breakdown.every(item => item.rateType === "ADULT")
+  );
 }
 
 type Guest = {
@@ -1151,11 +1166,14 @@ export function validateDepartureForBooking(
   if (departure.status === "cancelled") {
     errors.push("This departure has been cancelled.");
   }
+  if (departure.status === "completed") {
+    errors.push("This departure has been completed and cannot be booked.");
+  }
 
   if (departure.status === "scheduled") {
     if (!departureDate || !returnDate) {
       errors.push("Scheduled departures require departure and return dates.");
-    } else if (returnDate.getTime() <= departureDate.getTime()) {
+    } else if (returnDate.getTime() < departureDate.getTime()) {
       errors.push("Return date must be after departure date.");
     }
   }

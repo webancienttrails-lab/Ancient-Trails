@@ -119,6 +119,7 @@ export function RevealOnView({
   return (
     <div
       ref={elementRef}
+      data-reveal=""
       style={{ transitionDelay: `${isVisible ? delay : 0}ms` } as CSSProperties}
       className={cn(
         "transform-gpu transition-[opacity,transform,filter] duration-[1050ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[opacity,transform,filter]",

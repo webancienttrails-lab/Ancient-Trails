@@ -1,0 +1,99 @@
+.page {
+  --specialised-orange: var(--brand-primary-text);
+  min-height: 100vh;
+  overflow-x: clip;
+  background: #fff;
+  color: var(--secondary);
+}
+.intro {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  min-height: clamp(180px, 17vw, 245px);
+  align-items: center;
+  gap: 32px;
+  padding: 16px 0 28px 6%;
+}
+.introCopy { position: relative; z-index: 1; }
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  color: var(--color-button-outline);
+  font-family: var(--font-sans);
+  font-size: clamp(10px, .83vw, 12px);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.eyebrow span, .interestHeading i { display: inline-block; width: 32px; height: 1px; flex-shrink: 0; background: var(--brand-primary); }
+.intro h1 { margin-top: 7px; font-family: var(--font-heading); font-size: clamp(30px, 3vw, 46px); font-weight: 700; line-height: 1.08; }
+.introDescription { max-width: 510px; margin-top: 12px; color: #666; font-family: var(--font-sans); font-size: clamp(12px, 1vw, 15px); line-height: 1.5; }
+.introIllustration { position: absolute; inset: -6px -25px -5px 53%; pointer-events: none; opacity: .65; }
+.introIllustration img { object-fit: contain; object-position: center bottom; }
+.interests { display: grid; gap: 20px; }
+.interestRow {
+  display: grid;
+  grid-template-columns: 1.08fr 1fr;
+  align-items: stretch;
+  gap: clamp(25px, 2.7vw, 42px);
+  scroll-margin-top: 100px;
+}
+.reverse { grid-template-columns: 1fr 1.08fr; }
+.reverse .photo { order: 2; }
+.reverse .copy { order: 1; padding-left: clamp(0px, 2.5vw, 36px); }
+.photo { position: relative; min-width: 0; min-height: clamp(180px, 18.1vw, 270px); overflow: hidden; border-radius: 8px; }
+.photoImage { object-fit: cover; object-position: center; }
+.iconBadge { position: absolute; top: clamp(14px, 1.3vw, 20px); left: clamp(14px, 1.3vw, 20px); display: grid; width: clamp(42px, 4.2vw, 60px); aspect-ratio: 1; place-items: center; border: 1px solid #ffc189; border-radius: 50%; background: linear-gradient(135deg, #ffb260, #ff791a); color: #fff; }
+.iconBadge svg { width: 56%; height: 56%; }
+.copy { position: relative; min-width: 0; padding: 8px 0; isolation: isolate; }
+.interestHeading { position: relative; z-index: 1; font-family: var(--font-heading); font-size: clamp(27px, 2.6vw, 40px); font-weight: 700; line-height: 1.05; }
+.headingPrefix { display: flex; align-items: center; gap: clamp(18px, 3vw, 46px); color: var(--secondary); }
+.audience { display: block; margin-top: 2px; color: var(--specialised-orange); }
+.inlineHeading .headingPrefix, .inlineHeading .audience { display: inline; }
+.inlineHeading i { margin-left: 15px; vertical-align: middle; }
+.interestHeading > span:first-child:not(.headingPrefix) { color: var(--specialised-orange); }
+.description { position: relative; z-index: 1; max-width: 540px; margin-top: 10px; color: #777; font-family: var(--font-sans); font-size: clamp(11px, 1vw, 15px); font-weight: 400; line-height: 1.42; }
+.action {
+  position: relative;
+  z-index: 1;
+  max-width: 100%;
+  margin-top: 12px;
+  font-family: var(--font-sans);
+}
+.decoration { position: absolute; z-index: 0; right: -20px; bottom: -5px; width: 38%; height: 70%; pointer-events: none; color: #bb936c; opacity: .3; }
+.sketch { object-fit: contain; object-position: right bottom; }
+.contactBanner { position: relative; display: flex; width: calc(100% - 40px); min-height: clamp(160px, 14vw, 210px); align-items: center; justify-content: space-between; gap: 24px; overflow: hidden; isolation: isolate; margin: 24px auto 12px; padding: 24px clamp(24px, 8vw, 140px); border-radius: 14px; }
+.contactImage { z-index: -2; object-fit: cover; object-position: center 65%; }
+.contactBanner::before { position: absolute; z-index: -1; inset: 0; content: ""; background: #fcf0e1; clip-path: polygon(0 0, 43% 0, 45% 7%, 44% 14%, 48% 23%, 46% 30%, 51% 41%, 50% 50%, 54% 62%, 53% 72%, 59% 87%, 65% 100%, 0 100%); }
+.contactIllustration { position: absolute; z-index: -1; bottom: -30px; left: -40px; width: 25%; height: 100%; mix-blend-mode: multiply; opacity: .28; mask-image: linear-gradient(to right, #000, transparent); }
+.contactIllustration img { object-fit: cover; object-position: bottom; }
+.contactCopy { max-width: 440px; }
+.contactCopy h2 { margin-top: 8px; font-family: var(--font-heading); font-size: clamp(28px, 2.7vw, 40px); font-weight: 700; line-height: 1.05; }
+.contactCopy > p:last-child { margin-top: 10px; font-family: var(--font-sans); font-size: clamp(11px, 1vw, 14px); line-height: 1.45; color: #777; }
+.contactAction { margin-top: 0; }
+@media (min-width: 1500px) { .intro { min-height: 265px; } }
+@media (max-width: 1023px) and (min-width: 700px) {
+  .interestRow, .reverse { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+  .reverse .copy { padding-left: 12px; }
+  .interestHeading { font-size: 28px; }
+  .photo { min-height: 190px; }
+}
+@media (max-width: 699px) {
+  .intro { display: block; min-height: 0; padding: 24px 4px 28px; }
+  .intro h1 { font-size: clamp(32px, 8vw, 42px); }
+  .introDescription { max-width: 460px; font-size: 13px; line-height: 1.55; }
+  .introIllustration { display: none; }
+  .eyebrow { font-size: 10px; }
+  .interests { gap: 30px; }
+  .interestRow, .reverse { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .photo, .reverse .photo { order: 0; min-height: 0; aspect-ratio: 2 / 1; }
+  .copy, .reverse .copy { order: 1; padding: 0 5px 5px; }
+  .interestHeading { font-size: 30px; }
+  .description { max-width: 100%; font-size: 13px; line-height: 1.55; }
+  .decoration { right: 0; width: 30%; max-height: 170px; opacity: .2; }
+  .contactBanner { width: calc(100% - 24px); min-height: 290px; align-items: flex-start; flex-direction: column; justify-content: center; gap: 22px; margin-top: 28px; padding: 28px 25px; }
+  .contactBanner::before { background: linear-gradient(90deg, #fcf0e1 0%, #fcf0e1f5 55%, #fcf0e1a6 100%); clip-path: none; }
+  .contactCopy h2 { font-size: 31px; }
+  .contactCopy > p:last-child { font-size: 12px; }
+  .desktopBreak { display: none; }
+}

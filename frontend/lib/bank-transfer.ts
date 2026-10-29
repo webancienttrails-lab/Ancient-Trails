@@ -21,20 +21,19 @@ export type BankTransferRequest = { purpose: "advance" | "full" | "partial" | "f
 
 function headers(): HeadersInit {
   const session = getTravellerSession();
-  return session?.token ? { Authorization: "Bearer " + session.token } : {};
+  return session?.sessionId ? { "X-Session-Id": session.sessionId } : {};
 }
-const suffix = (token?: string) => token ? "?token=" + encodeURIComponent(token) : "";
 export function getBankTransferConfig() {
   return apiRequest<{ enabled: boolean }>("/api/bookings/bank-transfer/config");
 }
 export function createInitialBankTransfer(payload: BookingPayload) {
   return apiRequest<BankTransferData>("/api/bookings/bank-transfer", { method: "POST", body: JSON.stringify(payload), headers: headers() });
 }
-export function getBankTransfer(bookingId: string, token?: string) {
-  return apiRequest<BankTransferData>("/api/bookings/" + bookingId + "/bank-transfer" + suffix(token), { headers: headers(), cache: "no-store" });
+export function getBankTransfer(bookingId: string) {
+  return apiRequest<BankTransferData>("/api/bookings/" + bookingId + "/bank-transfer", { headers: headers(), cache: "no-store" });
 }
-export function requestBankTransfer(bookingId: string, request: BankTransferRequest, token?: string) {
-  return apiRequest<BankTransferData>("/api/bookings/" + bookingId + "/bank-transfer" + suffix(token), {
+export function requestBankTransfer(bookingId: string, request: BankTransferRequest) {
+  return apiRequest<BankTransferData>("/api/bookings/" + bookingId + "/bank-transfer", {
     method: "POST", headers: headers(), body: JSON.stringify(request),
   });
 }

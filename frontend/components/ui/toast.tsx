@@ -48,7 +48,7 @@ const toastIcons: Record<ToastVariant, LucideIcon> = {
 const toastStyles: Record<ToastVariant, string> = {
   success: "border-emerald-200 bg-white text-secondary [&_[data-toast-icon]]:text-emerald-600",
   error: "border-red-200 bg-white text-secondary [&_[data-toast-icon]]:text-red-600",
-  info: "border-primary/25 bg-white text-secondary [&_[data-toast-icon]]:text-primary",
+  info: "border-primary/25 bg-white text-secondary [&_[data-toast-icon]]:text-brand-text",
   warning: "border-amber-200 bg-white text-secondary [&_[data-toast-icon]]:text-amber-600",
 };
 
@@ -94,7 +94,7 @@ function ToastCard({
       <button
         type="button"
         onClick={() => onDismiss(item.id)}
-        className="grid size-6 place-items-center rounded-full text-secondary/45 transition-colors hover:bg-primary/10 hover:text-primary"
+        className="grid size-6 place-items-center rounded-full text-button-outline transition-colors hover:bg-primary/10 hover:text-button-outline"
         aria-label="Dismiss notification"
       >
         <X className="size-4" strokeWidth={1.9} />

@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 
 import { useToast } from "@/components/ui/toast";
-import { clearTravellerSession } from "@/lib/auth";
+import { logoutTravellerSession } from "@/lib/auth";
 import {
   defaultSiteContactSettings,
   getContactCallDisplay,
@@ -65,7 +65,7 @@ export function UserAvatar({
 
   return (
     <span
-      className={`${sizeClass} grid shrink-0 place-items-center overflow-hidden rounded-full bg-[linear-gradient(135deg,#323232,#9b3b13)] text-white shadow-[0_10px_24px_rgba(50,50,50,0.16)]`}
+      className={`${sizeClass} grid shrink-0 place-items-center overflow-hidden rounded-full bg-[linear-gradient(135deg,#323232,#d47220)] text-white shadow-[0_10px_24px_rgba(50,50,50,0.16)]`}
     >
       {imageSrc ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -87,14 +87,14 @@ function SidebarItem({ item }: { item: UserSidebarItem }) {
       href={item.href ?? "#"}
       className={`group flex h-10 items-center gap-4 rounded-[7px] px-5 font-sans text-[15px] font-medium transition-colors ${
         item.active
-          ? "border-l-2 border-primary bg-primary/10 font-bold text-primary"
-          : "text-secondary hover:bg-primary/8 hover:text-primary"
+          ? "border-l-2 border-primary bg-primary/10 font-bold text-brand-text"
+          : "text-secondary hover:bg-primary/8 hover:text-brand-text"
       }`}
     >
       <Icon className="size-5 shrink-0" strokeWidth={1.8} />
       <span className="min-w-0 flex-1 truncate">{item.label}</span>
       {item.badge ? (
-        <span className="grid size-5 place-items-center rounded-full bg-primary text-[11px] font-semibold text-white">
+        <span className="grid size-5 place-items-center rounded-full bg-brand-button-dark text-[11px] font-semibold text-white">
           {item.badge}
         </span>
       ) : null}
@@ -151,8 +151,9 @@ export function UserSidebar({
     };
   }, []);
 
-  const handleSignOut = () => {
-    clearTravellerSession();
+  const handleSignOut = async () => {
+    try { await logoutTravellerSession(); }
+    catch { toast.error("Could not sign out", "Your server session could not be ended. Please try again."); return; }
     toast.success("Logged out", "You have been signed out successfully.");
     router.push("/");
   };
@@ -209,7 +210,7 @@ export function UserSidebar({
         <button
           type="button"
           onClick={handleSignOut}
-          className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-[7px] border border-primary/30 bg-primary/10 font-sans text-[14px] font-semibold text-primary transition-colors hover:bg-primary hover:text-white"
+          className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-[7px] border border-button-outline bg-primary/10 font-sans text-[14px] font-semibold text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white"
         >
           <LogOut className="size-4" strokeWidth={1.9} />
           Log Out

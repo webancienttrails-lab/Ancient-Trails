@@ -1,9 +1,17 @@
 "use client";
+import type { TravelCatalogue } from "@/lib/travel-page-data";
 
 import Image from "next/image";
+import {
+  getBookableDepartures,
+  getNextBookableDeparture,
+  getDepartureSeatsLeft,
+  getDepartureTotalSeats,
+  getDepartureFilledSeats,
+} from "@/lib/tour-departures";
 import Link from "next/link";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useMemo, useState } from "react";
+import { QuoteDialog } from "@/components/contact/quote-dialog";
 import {
   ArrowRight,
   BedDouble,
@@ -18,7 +26,6 @@ import {
   SlidersHorizontal,
   Sparkles,
   UserRoundCheck,
-  X,
   type LucideIcon,
 } from "lucide-react";
 
@@ -374,28 +381,11 @@ function getTourImage(tour: PublicTour, fallbackImage: string) {
 }
 
 function getLowestPrice(departures: PublicTourDeparture[]) {
-  const prices = departures
-    .map((departure) => departure.priceAdult)
-    .filter((price) => price > 0);
-
-  return prices.length > 0 ? Math.min(...prices) : 0;
+  return getNextBookableDeparture(departures)?.priceAdult ?? 0;
 }
 
 function getNextDeparture(departures: PublicTourDeparture[]) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  return (
-    departures
-      .filter(
-        (departure) => getDateValue(departure.departureDate) >= today.getTime()
-      )
-      .sort(
-        (left, right) =>
-          getDateValue(left.departureDate) - getDateValue(right.departureDate)
-      )[0] ||
-    undefined
-  );
+  return getNextBookableDeparture(departures);
 }
 
 function getAvailability(departures: PublicTourDeparture[]): AvailabilityFilter {
@@ -403,7 +393,7 @@ function getAvailability(departures: PublicTourDeparture[]): AvailabilityFilter 
     return "coming-soon";
   }
 
-  if (departures.every((departure) => departure.seatsAvailable <= 0)) {
+  if (departures.every((departure) => getDepartureSeatsLeft(departure) <= 0)) {
     return "sold-out";
   }
 
@@ -499,7 +489,7 @@ function getMonthScopedItem(item: TourListItem, selectedMonth: string) {
   }
 
   const totalSeats = monthDepartures.reduce(
-    (sum, departure) => sum + Math.max(0, departure.seatsAvailable),
+    (sum, departure) => sum + getDepartureSeatsLeft(departure),
     0
   );
 
@@ -678,7 +668,7 @@ function buildTourItems(
   });
 
   return tours.map((tour, index): TourListItem => {
-    const tourDepartures = departuresByTourId.get(tour.tourId) || [];
+    const tourDepartures = getBookableDepartures(departuresByTourId.get(tour.tourId) || []);
     const primaryDestinationId = getPrimaryDestinationId(tour);
     const destination = destinationById.get(normalizeCode(primaryDestinationId));
     const linkedDestinations = getTourDestinationIds(tour)
@@ -688,7 +678,7 @@ function buildTourItems(
     const lowestPrice = getLowestPrice(tourDepartures);
     const expert = getTourExpert(tour, experts);
     const totalSeats = tourDepartures.reduce(
-      (sum, departure) => sum + Math.max(0, departure.seatsAvailable),
+      (sum, departure) => sum + getDepartureSeatsLeft(departure),
       0
     );
     const image = getTourImage(
@@ -777,30 +767,36 @@ function createWishlistSnapshot(item: TourListItem): WishlistTourSnapshot {
 }
 
 export function ToursListingPage({
+  initialData,
   initialAdultCount = 2,
   initialChildCount = 0,
   initialDestinationValue = "",
   initialMonthValue = "",
   initialSearchQuery = "",
+  initialTourFormat,
 }: {
+  initialData?: TravelCatalogue;
   initialAdultCount?: number;
   initialChildCount?: number;
   initialDestinationValue?: string;
   initialMonthValue?: string;
   initialSearchQuery?: string;
+  initialTourFormat?: "Long Trails" | "Short Trails";
 }) {
   const toast = useToast();
   const fallbackTours = useMemo(() => createFallbackTours(), []);
   const fallbackDepartures = useMemo(() => createFallbackDepartures(), []);
   const fallbackDestinations = useMemo(() => createFallbackDestinations(), []);
-  const [tours, setTours] = useState<PublicTour[]>(fallbackTours);
+  const [tours, setTours] = useState<PublicTour[]>(initialData?.tours ?? fallbackTours);
   const [departures, setDepartures] =
-    useState<PublicTourDeparture[]>(fallbackDepartures);
+    useState<PublicTourDeparture[]>(initialData?.departures ?? fallbackDepartures);
   const [destinations, setDestinations] =
-    useState<PublicDestination[]>(fallbackDestinations);
-  const [experts, setExperts] = useState<PublicExpert[]>([]);
+    useState<PublicDestination[]>(initialData?.destinations ?? fallbackDestinations);
+  const [experts, setExperts] = useState<PublicExpert[]>(initialData?.experts ?? []);
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
-  const [selectedTypeValues, setSelectedTypeValues] = useState<string[]>([]);
+  const [selectedTypeValues, setSelectedTypeValues] = useState<string[]>(() =>
+    initialTourFormat ? [normalizeKey(initialTourFormat)] : []
+  );
   const [selectedDestinationValues, setSelectedDestinationValues] = useState<
     string[]
   >([]);
@@ -820,11 +816,12 @@ export function ToursListingPage({
   const [isFilterCollapsed, setIsFilterCollapsed] = useState(false);
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const [isQuoteOpen, setIsQuoteOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!initialData);
   const [loadError, setLoadError] = useState("");
   const [wishlistTourIds, setWishlistTourIds] = useState<string[]>([]);
 
   useEffect(() => {
+    if (initialData) return;
     let isMounted = true;
 
     async function loadTours() {
@@ -847,9 +844,7 @@ export function ToursListingPage({
             setTours(toursResponse.data.tours);
           }
 
-          if (departuresResponse.data.departures.length > 0) {
-            setDepartures(departuresResponse.data.departures);
-          }
+          setDepartures(departuresResponse.data.departures);
 
           if (destinationsResponse.data.destinations.length > 0) {
             setDestinations(destinationsResponse.data.destinations);
@@ -873,7 +868,7 @@ export function ToursListingPage({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [initialData]);
 
   useEffect(() => {
     const syncWishlist = () => {
@@ -1049,7 +1044,8 @@ export function ToursListingPage({
   }
 
   return (
-    <main className="min-h-screen bg-background text-secondary">
+    <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-secondary">
+      <h1 className="sr-only">Available Tours</h1>
       <HeaderBand />
 
       <section
@@ -1177,7 +1173,7 @@ function TourSidebar({
             type="button"
             aria-label="Maximize tour filters"
             onClick={() => onCollapsedChange(false)}
-            className="grid size-10 place-items-center rounded-[7px] border border-primary/25 bg-primary/8 text-primary transition-colors hover:border-primary hover:bg-primary hover:text-white"
+            className="grid size-10 place-items-center rounded-[7px] border border-button-outline bg-primary/8 text-button-outline transition-colors hover:border-button-outline hover:bg-brand-button-dark hover:text-white"
           >
             <SlidersHorizontal className="size-4" strokeWidth={1.9} />
           </button>
@@ -1211,7 +1207,7 @@ function TourSidebar({
             type="button"
             onClick={onClearFilters}
             disabled={activeFilterCount === 0}
-            className="font-sans text-[11px] font-bold text-secondary/60 transition-colors hover:text-secondary disabled:pointer-events-none disabled:text-secondary/30"
+            className="font-sans text-[11px] font-bold text-button-outline transition-colors hover:text-secondary disabled:pointer-events-none disabled:text-secondary/30"
           >
             Clear all
           </button>
@@ -1295,7 +1291,7 @@ function MobileTourActions({
             <SheetTitle className="flex items-center gap-2 font-heading text-[22px] font-bold text-secondary">
               Filters
               {mobileFilterCount > 0 ? (
-                <span className="rounded-full bg-primary px-2 py-0.5 font-sans text-[12px] font-bold text-white">
+                <span className="rounded-full bg-brand-button-dark px-2 py-0.5 font-sans text-[12px] font-bold text-white">
                   {mobileFilterCount}
                 </span>
               ) : null}
@@ -1321,7 +1317,7 @@ function MobileTourActions({
             <button
               type="button"
               disabled={mobileFilterCount === 0}
-              className="justify-self-center font-sans text-[15px] font-medium text-secondary underline underline-offset-2 transition-colors hover:text-primary disabled:pointer-events-none disabled:opacity-45"
+              className="justify-self-center font-sans text-[15px] font-medium text-button-outline underline underline-offset-2 transition-colors hover:text-button-outline disabled:pointer-events-none disabled:opacity-45"
               onClick={onClearFilters}
             >
               Reset Filters
@@ -1337,9 +1333,7 @@ function MobileTourActions({
         </SheetContent>
       </Sheet>
 
-      {isQuoteOpen ? (
-        <MobileQuoteModal onClose={() => onQuoteOpenChange(false)} />
-      ) : null}
+      <QuoteDialog open={isQuoteOpen} onOpenChange={onQuoteOpenChange} />
     </>
   );
 }
@@ -1361,131 +1355,12 @@ function MobileActionButton({
       className="relative flex min-h-[48px] min-w-0 items-center justify-center gap-1.5 bg-white px-1.5 font-sans text-[14px] font-medium text-secondary transition-colors active:bg-[#fff8f1]"
       onClick={onClick}
     >
-      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-white">
+      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-button-dark text-white">
         <Icon className="size-3.5" strokeWidth={2.2} />
       </span>
       <span className="truncate">{label}</span>
       
     </button>
-  );
-}
-
-function MobileQuoteModal({ onClose }: { onClose: () => void }) {
-  const [isSubmitted, setIsSubmitted] = useState(false);
-
-  useEffect(() => {
-    const originalOverflow = document.body.style.overflow;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose]);
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSubmitted(true);
-  }
-
-  if (typeof document === "undefined") {
-    return null;
-  }
-
-  return createPortal(
-    <div
-      aria-modal="true"
-      className="fixed inset-0 z-[2147483647] flex items-end justify-center bg-secondary/52 px-3 pb-3 pt-8 backdrop-blur-sm lg:hidden"
-      role="dialog"
-    >
-      <button
-        type="button"
-        aria-label="Close quote form"
-        className="absolute inset-0 cursor-default"
-        onClick={onClose}
-      />
-      <form
-        className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-[520px] overflow-y-auto rounded-[14px] border border-[#ead8c5] bg-white shadow-[0_24px_70px_rgba(18,32,44,0.28)]"
-        onSubmit={handleSubmit}
-      >
-        <div className="flex items-start justify-between gap-4 border-b border-[#ead8c5] bg-[#fff8f1] px-4 py-4">
-          <div>
-            <h2 className="font-heading text-[24px] font-bold leading-tight text-secondary">
-              Get Quote
-            </h2>
-            <p className="mt-1 font-sans text-[13px] font-semibold leading-relaxed text-secondary/66">
-              Share your travel details and our team will help you plan it.
-            </p>
-          </div>
-          <button
-            type="button"
-            aria-label="Close quote form"
-            className="grid size-8 shrink-0 place-items-center rounded-full border border-primary/20 bg-white text-secondary transition-colors hover:border-primary hover:text-primary"
-            onClick={onClose}
-          >
-            <X className="size-4" strokeWidth={2} />
-          </button>
-        </div>
-
-        <div className="grid gap-3 px-4 py-4">
-          <TourQuoteField label="Your Name *">
-            <input required type="text" placeholder="Your Name" />
-          </TourQuoteField>
-          <TourQuoteField label="Phone Number *">
-            <input required type="tel" placeholder="Phone Number" />
-          </TourQuoteField>
-          <TourQuoteField label="Email Address *">
-            <input required type="email" placeholder="Email Address" />
-          </TourQuoteField>
-          <TourQuoteField label="Destination">
-            <input type="text" placeholder="Where would you like to go?" />
-          </TourQuoteField>
-          <TourQuoteField label="Message">
-            <textarea rows={3} placeholder="Dates, guests, or any preference." />
-          </TourQuoteField>
-
-          {isSubmitted ? (
-            <p className="rounded-[8px] border border-primary/20 bg-primary/8 px-3 py-2 font-sans text-[14px] font-bold text-primary">
-              Thank you. Your quote request has been captured.
-            </p>
-          ) : null}
-
-          <button
-            type="submit"
-            className="mt-1 h-11 rounded-[8px] bg-primary font-sans text-[15px] font-bold text-secondary shadow-[0_12px_24px_rgba(244,192,7,0.24)] transition-transform active:translate-y-px"
-          >
-            Submit
-          </button>
-        </div>
-      </form>
-    </div>,
-    document.body
-  );
-}
-
-function TourQuoteField({
-  children,
-  label,
-}: {
-  children: ReactNode;
-  label: string;
-}) {
-  return (
-    <label className="block font-sans">
-      <span className="mb-1 block text-[12px] font-bold uppercase text-secondary/58">
-        {label}
-      </span>
-      <span className="block [&>input]:h-10 [&>input]:w-full [&>input]:rounded-[8px] [&>input]:border [&>input]:border-[#ead8c5] [&>input]:bg-background [&>input]:px-3 [&>input]:text-[14px] [&>input]:font-semibold [&>input]:text-secondary [&>input]:outline-none [&>input]:transition-colors [&>input]:placeholder:text-secondary/38 focus-within:[&>input]:border-primary focus-within:[&>input]:ring-3 focus-within:[&>input]:ring-primary/15 [&>textarea]:w-full [&>textarea]:resize-none [&>textarea]:rounded-[8px] [&>textarea]:border [&>textarea]:border-[#ead8c5] [&>textarea]:bg-background [&>textarea]:px-3 [&>textarea]:py-2.5 [&>textarea]:text-[14px] [&>textarea]:font-semibold [&>textarea]:text-secondary [&>textarea]:outline-none [&>textarea]:transition-colors [&>textarea]:placeholder:text-secondary/38 focus-within:[&>textarea]:border-primary focus-within:[&>textarea]:ring-3 focus-within:[&>textarea]:ring-primary/15">
-        {children}
-      </span>
-    </label>
   );
 }
 
@@ -1505,7 +1380,7 @@ function CollapsedFilterButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="relative grid size-10 place-items-center rounded-[7px] text-secondary transition-colors hover:bg-primary/8 hover:text-primary"
+      className="relative grid size-10 place-items-center rounded-[7px] text-button-outline transition-colors hover:bg-primary/8 hover:text-button-outline"
     >
       <Icon className="size-4" strokeWidth={1.8} />
       {active ? (
@@ -1535,14 +1410,14 @@ function CheckboxGroup({
   return (
     <section>
       <h3 className="flex items-center gap-2 font-sans text-[14px] font-semibold text-secondary">
-        <Icon className="size-4 text-primary" strokeWidth={1.8} />
+        <Icon className="size-4 text-brand-text" strokeWidth={1.8} />
         {title}
       </h3>
       <div className="mt-3 space-y-1.5">
         {options.slice(0, 8).map((option) => (
           <label
             key={option.value}
-            className="flex cursor-pointer items-center gap-3 rounded-[6px] px-1 py-1 font-sans text-[14px] font-normal text-secondary/72 transition-colors hover:text-primary"
+            className="flex cursor-pointer items-center gap-3 rounded-[6px] px-1 py-1 font-sans text-[14px] font-normal text-secondary/72 transition-colors hover:text-brand-text"
           >
             <input
               checked={selectedValues.includes(option.value)}
@@ -1575,14 +1450,14 @@ function RadioGroup({
   return (
     <section>
       <h3 className="flex items-center gap-2 font-sans text-[14px] font-semibold text-secondary">
-        <Icon className="size-4 text-primary" strokeWidth={1.8} />
+        <Icon className="size-4 text-brand-text" strokeWidth={1.8} />
         {title}
       </h3>
       <div className="mt-3 space-y-1.5">
         {options.map((option) => (
           <label
             key={option.value}
-            className="flex cursor-pointer items-center gap-3 rounded-[6px] px-1 py-1 font-sans text-[14px] font-normal text-secondary/72 transition-colors hover:text-primary"
+            className="flex cursor-pointer items-center gap-3 rounded-[6px] px-1 py-1 font-sans text-[14px] font-normal text-secondary/72 transition-colors hover:text-brand-text"
           >
             <input
               checked={value === option.value}
@@ -1617,7 +1492,7 @@ function ResultsHeader({
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <p className="font-sans text-[16px] font-medium uppercase text-primary">
+        <p className="font-sans text-[16px] font-medium uppercase text-button-outline">
           {loadError ? "Fallback tours" : "Tour Results"}
         </p>
         <h2 className="mt-1 font-heading text-[30px] font-bold leading-tight text-secondary sm:text-[36px]">
@@ -1669,7 +1544,7 @@ function ViewButton({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "grid size-10 place-items-center text-secondary transition-colors hover:text-primary",
+        "grid size-10 place-items-center text-button-outline transition-colors hover:text-button-outline",
         active && "bg-primary text-white hover:text-white"
       )}
     >
@@ -1825,7 +1700,7 @@ function TourListRow({
     <article className="overflow-visible rounded-[12px] border border-[#e8cbaa] bg-white p-2.5 transition-all hover:-translate-y-0.5 hover:border-primary/55">
       <div className="grid gap-3 xl:grid-cols-[240px_minmax(0,1fr)_220px] xl:items-stretch">
         <div className="relative h-[150px] overflow-hidden rounded-[8px] bg-muted sm:h-[180px] xl:h-auto">
-          <Link
+          <Link prefetch={false}
             href={getTourHref(item.tour)}
             aria-label={`View ${item.tour.tourName}`}
             className="absolute inset-0 block focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25"
@@ -1852,7 +1727,7 @@ function TourListRow({
           </Link>
 
           {item.tour.isBestseller ? (
-            <span className="absolute left-3 top-3 rounded-[6px] bg-primary px-2 py-1 font-sans text-[11px] font-bold leading-none text-white">
+            <span className="absolute left-3 top-3 rounded-[6px] bg-brand-button-dark px-2 py-1 font-sans text-[11px] font-bold leading-none text-white">
               BESTSELLER
             </span>
           ) : null}
@@ -1865,7 +1740,7 @@ function TourListRow({
             }
             aria-pressed={isWishlisted}
             onClick={() => onWishlistToggle(item)}
-            className="absolute right-3 top-3 z-10 grid size-9 place-items-center rounded-full bg-[#2b241f]/80 text-white shadow-[0_10px_24px_rgba(35,23,15,0.28)] backdrop-blur-[2px] transition-colors hover:bg-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-white/45"
+            className="absolute right-3 top-3 z-10 grid size-9 place-items-center rounded-full bg-[#2b241f]/80 text-white shadow-[0_10px_24px_rgba(35,23,15,0.28)] backdrop-blur-[2px] transition-colors hover:bg-brand-button-dark focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-white/45"
           >
             <Heart
               className={cn("size-4", isWishlisted && "fill-current")}
@@ -1876,28 +1751,28 @@ function TourListRow({
 
         <div className="flex min-w-0 flex-col px-0.5 py-0.5">
           <h3 className="font-heading text-[21px] font-bold leading-[1.06] tracking-normal text-secondary sm:text-[24px]">
-            <Link
+            <Link prefetch={false}
               href={getTourHref(item.tour)}
-              className="line-clamp-2 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
+              className="line-clamp-2 transition-colors hover:text-brand-text focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
             >
               {item.tour.tourName}
             </Link>
           </h3>
 
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-            <time className="block font-sans text-[16px] font-medium leading-none text-primary">
+            <time className="block font-sans text-[16px] font-medium leading-none text-brand-text">
               {formatOrdinalDate(item.nextDeparture?.departureDate || null)}
             </time>
 
-            <Link
+            <Link prefetch={false}
               href={getTourCalendarHref({
                 destination: item.destination,
                 tour: item.tour,
               })}
-              className="inline-flex w-fit items-center gap-2 font-sans text-[13px] font-medium leading-none text-secondary transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
+              className="inline-flex w-fit items-center gap-2 font-sans text-[13px] font-medium leading-none text-secondary transition-colors hover:text-brand-text focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
             >
               <span>View All Calendar</span>
-              <CalendarDays className="size-5 shrink-0 text-primary" strokeWidth={1.8} />
+              <CalendarDays className="size-5 shrink-0 text-brand-text" strokeWidth={1.8} />
             </Link>
           </div>
 
@@ -1910,7 +1785,7 @@ function TourListRow({
               <span className="font-sans text-[12px] font-medium leading-none text-secondary/62">
                 Tour Includes
               </span>
-              <div className="flex shrink-0 items-center gap-3 text-primary">
+              <div className="flex shrink-0 items-center gap-3 text-brand-text">
                 {tourIncludes.map(({ icon, label }) => (
                   <TourListIncludeIcon key={label} icon={icon} label={label} />
                 ))}
@@ -1941,20 +1816,20 @@ function TourListRow({
             </div>
           </div>
 
-          <Link
+          <Link prefetch={false}
             href={`${getTourHref(item.tour)}#itinerary`}
             aria-label={`View itinerary for ${item.tour.tourName}`}
-            className="justify-self-end font-sans text-[14px] font-semibold text-secondary underline-offset-4 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
+            className="justify-self-end font-sans text-[14px] font-semibold text-secondary underline-offset-4 transition-colors hover:text-brand-text hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
           >
             View Itinerary
           </Link>
 
-          <Link
+          <Link prefetch={false}
             href={getTourHref(item.tour)}
             aria-label={`Book Now ${item.tour.tourName}`}
             className={buttonVariants({
               className:
-                "mt-auto h-9 w-full justify-between gap-3 px-4 text-[13px] font-normal hover:border-primary hover:bg-white hover:text-primary hover:shadow-none",
+                "mt-auto h-9 w-full justify-between gap-3 px-4 text-[13px] font-normal hover:border-primary hover:bg-white hover:text-brand-text hover:shadow-none",
             })}
           >
             Book Now
@@ -1977,13 +1852,10 @@ function getTourListSeatInfo(item: TourListItem): TourListSeatInfo {
   const departure = item.nextDeparture;
 
   if (departure) {
-    const filled = Math.max(0, Math.trunc(departure.filledSeats || 0));
-    const capacity = Math.max(
-      0,
-      Math.trunc(departure.totalSeats || departure.seatsAvailable + filled)
-    );
+    const filled = getDepartureFilledSeats(departure);
+    const capacity = getDepartureTotalSeats(departure);
     const boundedFilled = Math.min(filled, capacity);
-    const left = Math.max(0, Math.trunc(departure.seatsAvailable));
+    const left = getDepartureSeatsLeft(departure);
 
     return {
       capacity,
@@ -1993,23 +1865,8 @@ function getTourListSeatInfo(item: TourListItem): TourListSeatInfo {
     };
   }
 
-  const capacity = item.departures.reduce(
-    (sum, currentDeparture) =>
-      sum +
-      Math.max(
-        0,
-        Math.trunc(
-          currentDeparture.totalSeats ||
-            currentDeparture.seatsAvailable + (currentDeparture.filledSeats || 0)
-        )
-      ),
-    0
-  );
-  const filled = item.departures.reduce(
-    (sum, currentDeparture) =>
-      sum + Math.max(0, Math.trunc(currentDeparture.filledSeats || 0)),
-    0
-  );
+  const capacity = item.departures.reduce((sum, departure) => sum + getDepartureTotalSeats(departure), 0);
+  const filled = item.departures.reduce((sum, departure) => sum + getDepartureFilledSeats(departure), 0);
   const boundedFilled = Math.min(filled, capacity);
 
   return {
@@ -2024,7 +1881,7 @@ function TourSeatProgress({ seats }: { seats: TourListSeatInfo }) {
   return (
     <div className="min-w-0">
       <p className="flex items-center justify-between gap-2 font-sans text-[12px] font-semibold leading-none text-secondary/60">
-        <span className="font-bold text-primary">
+        <span className="font-bold text-brand-text">
           {seats.left > 0 ? `${seats.left} seats left` : "Seats full"}
         </span>
         <span>{seats.filled}/{seats.capacity}</span>
@@ -2077,7 +1934,7 @@ function ExpertAvatar({
       .toUpperCase() || "AT";
 
   return (
-    <span className="relative grid size-9 shrink-0 place-items-center overflow-hidden rounded-full bg-[#efe2d4] font-sans text-[11px] font-bold text-primary">
+    <span className="relative grid size-9 shrink-0 place-items-center overflow-hidden rounded-full bg-[#efe2d4] font-sans text-[11px] font-bold text-brand-text">
       {image ? (
         <Image
           src={image}
@@ -2180,7 +2037,7 @@ function PaginationButton({
       aria-current={active ? "page" : undefined}
       onClick={onClick}
       className={cn(
-        "grid size-8 place-items-center rounded-full border border-[#ead8c5] bg-white font-sans text-[13px] font-semibold text-secondary transition-colors hover:border-primary hover:text-primary",
+        "grid size-8 place-items-center rounded-full border border-button-outline bg-white font-sans text-[13px] font-semibold text-button-outline transition-colors hover:border-button-outline hover:text-button-outline",
         active && "border-primary bg-primary text-white hover:text-white"
       )}
     >

@@ -66,13 +66,13 @@ export function FaqSection() {
       <div className="home-wide-frame mx-auto w-full px-5 pt-9 sm:px-0 [@media(min-width:1300px)]:px-12">
         <Accordion
           multiple={false}
-          className="grid items-start gap-x-6 gap-y-5 md:grid-cols-2"
+          className="block gap-x-6 md:columns-2"
         >
-          {faqItems.map((item) => (
+          {faqItems.map((item, index) => (
             <AccordionItem
               key={item.question}
               value={item.question}
-              className="border-b border-border/70 bg-transparent shadow-none"
+              className={`mb-5 break-inside-avoid-column border-b border-border/70 bg-transparent shadow-none ${index === Math.ceil(faqItems.length / 2) ? "md:break-before-column" : ""}`}
             >
               <AccordionTrigger className="min-h-[46px] items-center gap-3 px-4 py-3 font-sans no-underline hover:no-underline sm:gap-4 sm:px-5 sm:text-description [&_[data-slot=accordion-trigger-icon]]:hidden cursor-pointer">
                 <span className="font-sans text-[16px] font-semibold sm:text-description">

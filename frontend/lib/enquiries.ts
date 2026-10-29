@@ -1,5 +1,12 @@
 import { apiRequest } from "@/lib/api";
 
+export async function createCallbackEnquiry(payload: { name: string; phone: string }) {
+  return apiRequest<{ enquiry: { id: string } }>("/api/enquiries/callback", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export type ContactEnquiryPayload = {
   name: string;
   email: string;

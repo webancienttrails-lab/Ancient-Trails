@@ -21,7 +21,7 @@ function getCurrentRedirectPath(pathname: string | null) {
 function hasValidTravellerSession() {
   const session = getTravellerSession();
 
-  if (!session?.token) {
+  if (!session?.sessionId) {
     return false;
   }
 

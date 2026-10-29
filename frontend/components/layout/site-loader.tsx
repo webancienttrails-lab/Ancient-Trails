@@ -86,7 +86,7 @@ export function LoaderScreen() {
   usePreventDocumentScroll(true);
 
   return (
-    <main className="grid min-h-screen place-items-center bg-background">
+    <main id="main-content" tabIndex={-1} className="grid min-h-screen place-items-center bg-background">
       <span className="sr-only">Loading Ancient Trails</span>
       <LoaderAnimation />
     </main>
@@ -95,7 +95,7 @@ export function LoaderScreen() {
 
 export function SiteLoader() {
   const pathname = usePathname();
-  const [isVisible, setIsVisible] = useState(() => pathname !== "/");
+  const [isVisible, setIsVisible] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
   const startedAtRef = useRef(0);
   const fadeTimerRef = useRef(0);
@@ -221,7 +221,7 @@ export function SiteLoader() {
     <div
       role="status"
       aria-live="polite"
-      className={`fixed inset-0 z-[2147483647] grid place-items-center bg-background transition-opacity duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`fixed inset-0 z-[2147483647] grid place-items-center bg-background max-lg:bg-white max-lg:opacity-100 transition-opacity duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isLeaving ? "pointer-events-none opacity-0" : "opacity-100"
       }`}
     >

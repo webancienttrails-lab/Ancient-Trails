@@ -1,4 +1,5 @@
 import { apiBaseUrl, apiRequest } from "@/lib/api";
+import { getNextBookableDeparture } from "./tour-departures";
 
 export type PublicTour = {
   id: string;
@@ -67,7 +68,8 @@ export type PublicTourDeparture = {
   balanceDueDaysBefore: number;
   earlyBirdOffer: string | null;
   bookingDeadline: string | null;
-  status: "scheduled" | "coming_soon" | "closed" | "cancelled";
+  status: "scheduled" | "coming_soon" | "closed" | "cancelled" | "completed";
+  validationErrors?: Array<{ path: string; message: string }>;
   childPricingRules: Array<{
     minAge: number;
     maxAge: number;
@@ -160,7 +162,7 @@ export type PublicExperience = {
   tourId: string;
   tourName: string;
   travellerName: string;
-  travellerEmail: string;
+  travellerReviewCount?: number;
   title?: string;
   writtenReview: string;
   googleReviewUrl?: string;
@@ -910,31 +912,6 @@ function createDurationFromDates(departure: PublicTourDeparture) {
   return `${days} Days/ ${Math.max(0, days - 1)} Nights`;
 }
 
-function getBestDatedDeparture(
-  departures: PublicTourDeparture[],
-  tourId: string
-) {
-  const today = new Date();
-
-  today.setHours(0, 0, 0, 0);
-
-  const datedDepartures = departures
-    .filter(
-      (departure) =>
-        departure.tourId === tourId && getDateValue(departure.departureDate) > 0
-    )
-    .sort(
-      (left, right) =>
-        getDateValue(left.departureDate) - getDateValue(right.departureDate)
-    );
-
-  return (
-    datedDepartures.find(
-      (departure) => getDateValue(departure.departureDate) >= today.getTime()
-    ) || datedDepartures[0]
-  );
-}
-
 export async function listPublicTours(destinationId = "") {
   const query = destinationId.trim()
     ? `?destinationId=${encodeURIComponent(destinationId.trim())}`
@@ -976,6 +953,12 @@ export async function listPublicExperiences(tourId = "") {
   );
 }
 
+export async function getPublicExperience(reference: string) {
+  return apiRequest<{ experience: PublicExperience }>(
+    `/api/experiences/${encodeURIComponent(reference)}`, { cache: "no-store" }
+  );
+}
+
 export async function getHomePageContent() {
   return apiRequest<{ home: HomePageContent }>("/api/home");
 }
@@ -997,9 +980,10 @@ export function buildUpcomingTourCards(
   selectedUpcomingTours: HomeUpcomingTourSetting[] = []
 ): HomeTourCard[] {
   const tourById = new Map(tours.map((tour) => [tour.tourId, tour]));
+  let selectedCards: HomeTourCard[] = [];
 
   if (selectedUpcomingTours.length > 0) {
-    return [...selectedUpcomingTours]
+    selectedCards = [...selectedUpcomingTours]
       .sort((left, right) => left.sortOrder - right.sortOrder)
       .flatMap((selection) => {
         const tour = tourById.get(selection.tourId);
@@ -1008,24 +992,17 @@ export function buildUpcomingTourCards(
           return [];
         }
 
-        const selectedDeparture = selection.departureId
-          ? departures.find(
-              (item) =>
-                item.departureId === selection.departureId &&
-                item.tourId === selection.tourId
-            )
-          : undefined;
-        const departure =
-          selectedDeparture || getBestDatedDeparture(departures, selection.tourId);
+        const departure = getNextBookableDeparture(
+          departures.filter(item => item.tourId === selection.tourId)
+        );
+        if (!departure) return [];
 
         return [{
-          date: departure
-            ? formatTravelDate(departure.departureDate)
-            : "Coming Soon",
+          date: formatTravelDate(departure.departureDate),
           destinationId:
-            departure?.destinationId || getPrimaryTourDestinationId(tour),
+            departure.destinationId || getPrimaryTourDestinationId(tour),
           duration:
-            tour.durationDn || (departure ? createDurationFromDates(departure) : ""),
+            tour.durationDn || createDurationFromDates(departure),
           image: getTourImage(tour, "/home assets/Khajuraho.webp"),
           isBestseller: Boolean(tour.isBestseller),
           title: tour.tourName,
@@ -1035,22 +1012,20 @@ export function buildUpcomingTourCards(
       .slice(0, limit);
   }
 
-  const today = new Date();
-
-  today.setHours(0, 0, 0, 0);
-
-  const datedDepartures = departures
-    .filter((departure) => getDateValue(departure.departureDate) > 0)
+  if (selectedCards.length >= limit) return selectedCards;
+  const selectedTourIds = new Set(selectedCards.map((card) => card.tourId));
+  const selectedDepartures = tours
+    .filter((tour) => !selectedTourIds.has(tour.tourId))
+    .flatMap(tour => {
+      const departure = getNextBookableDeparture(
+        departures.filter(item => item.tourId === tour.tourId)
+      );
+      return departure ? [departure] : [];
+    })
     .sort(
       (left, right) =>
         getDateValue(left.departureDate) - getDateValue(right.departureDate)
     );
-  const sourceDepartures =
-    datedDepartures.filter(
-      (departure) => getDateValue(departure.departureDate) >= today.getTime()
-    ) || [];
-  const selectedDepartures =
-    sourceDepartures.length > 0 ? sourceDepartures : datedDepartures;
   const cards = selectedDepartures
     .flatMap((departure) => {
       const tour = tourById.get(departure.tourId);
@@ -1070,25 +1045,25 @@ export function buildUpcomingTourCards(
       } satisfies HomeTourCard];
     });
 
-  const usedTourIds = new Set(cards.map((card) => card.tourId));
+  const upcomingCards = [...selectedCards, ...cards].slice(0, limit);
+  if (upcomingCards.length >= limit) return upcomingCards;
 
-  tours.forEach((tour) => {
-    if (cards.length >= limit || usedTourIds.has(tour.tourId)) {
-      return;
-    }
-
-    cards.push({
+  const shownTourIds = new Set(upcomingCards.map((card) => card.tourId));
+  const comingSoonCards = tours
+    .filter((tour) => !shownTourIds.has(tour.tourId) && departures.some(
+      (departure) => departure.tourId === tour.tourId && departure.status === "coming_soon"
+    ))
+    .map((tour) => ({
       date: "Coming Soon",
       destinationId: getPrimaryTourDestinationId(tour),
-      duration: tour.durationDn,
+      duration: tour.durationDn || "Coming Soon",
       image: getTourImage(tour, "/home assets/Khajuraho.webp"),
       isBestseller: Boolean(tour.isBestseller),
       title: tour.tourName,
       tourId: tour.tourId,
-    });
-  });
+    } satisfies HomeTourCard));
 
-  return cards.slice(0, limit);
+  return [...upcomingCards, ...comingSoonCards].slice(0, limit);
 }
 
 export function buildTrendingDestinationCards(

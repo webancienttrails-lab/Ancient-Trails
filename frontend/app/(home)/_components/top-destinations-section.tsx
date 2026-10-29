@@ -367,8 +367,8 @@ function MapPushPin({ active }: { active?: boolean }) {
         className={cn(
           "absolute left-1/2 top-0 z-10 size-3 -translate-x-1/2 rounded-full shadow-[0_4px_8px_rgba(155,59,19,0.26)] lg:size-4",
           active
-            ? "bg-[radial-gradient(circle_at_68%_24%,#ffffff_0_7%,#f7b56c_16%,#d47220_52%,#9b3b13_100%)]"
-            : "bg-[radial-gradient(circle_at_68%_24%,#ffffff_0_7%,#f4a15a_16%,#d47220_54%,#9b3b13_100%)]"
+            ? "bg-[radial-gradient(circle_at_68%_24%,#ffffff_0_7%,#d47220_16%,#d47220_52%,#d47220_100%)]"
+            : "bg-[radial-gradient(circle_at_68%_24%,#ffffff_0_7%,#d47220_16%,#d47220_54%,#d47220_100%)]"
         )}
       >
         <span className="absolute right-0.5 top-0.5 size-1 rounded-full bg-white/80 blur-[0.5px] lg:right-1 lg:size-1.5" />
@@ -447,14 +447,14 @@ export function TopDestinationsSection({
           <div>
             <TextReveal>
               <div>
-                <div className="mb-3 hidden items-center gap-3 text-primary lg:flex">
+                <div className="mb-3 hidden items-center gap-3 text-brand-text lg:flex">
                   <p className="text-description font-medium uppercase">
                     Explore India
                   </p>
                 </div>
                 <h2 className="font-heading text-title font-bold leading-[0.94] text-secondary">
                   <span className="block">Top Trending</span>
-                  <span className="block text-primary">Destinations</span>
+                  <span className="block text-brand-text">Destinations</span>
                 </h2>
                 <div className="relative mt-2 hidden h-[22px] w-[154px] lg:block">
                   <Image
@@ -479,8 +479,8 @@ export function TopDestinationsSection({
 
           <Button
             nativeButton={false}
-            render={<Link href="/destinations" />}
-            className="h-12 w-fit min-w-0 justify-between gap-4 rounded-full px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:h-11 lg:min-w-[230px]"
+            render={<Link prefetch={false} href="/destinations" />}
+            className="h-12 w-fit min-w-0 justify-between gap-4 rounded-full px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:h-11 lg:w-max lg:min-w-[230px] lg:justify-self-end"
           >
             View All Destinations
             <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
@@ -496,11 +496,11 @@ export function TopDestinationsSection({
                 <h3 className="font-sans text-[18px] font-bold text-secondary">
                   Popular Destinations
                 </h3>
-                <span className="h-px w-5 bg-primary/50" />
+                <span className="hidden h-px w-5 bg-primary/50 lg:block" />
               </div>
-              <Link
+              <Link prefetch={false}
                 href="/destinations"
-                className="inline-flex items-center gap-2 font-sans text-[15px] font-semibold text-primary lg:hidden"
+                className="inline-flex items-center gap-2 font-sans text-[15px] font-semibold text-brand-text lg:hidden"
               >
                 See All
                 <ButtonArrow className="h-2.5 w-5" />
@@ -548,7 +548,7 @@ export function TopDestinationsSection({
                       <span
                         className={cn(
                           "block max-w-full truncate font-sans text-[15px] font-bold leading-none transition-colors lg:text-description",
-                          isActive ? "text-primary" : "text-secondary"
+                          isActive ? "text-brand-text" : "text-secondary"
                         )}
                       >
                         {destination.name}
@@ -566,7 +566,7 @@ export function TopDestinationsSection({
           <div className="relative order-1 mx-auto h-[min(410px,82vw)] w-full max-w-[390px] overflow-visible lg:order-none lg:mx-auto lg:h-[535px] lg:w-full lg:max-w-[700px] lg:rounded-none lg:border-0 lg:bg-transparent lg:shadow-none">
             <div className="absolute left-1/2 top-1/2 aspect-[700/535] w-full max-w-[520px] -translate-x-1/2 -translate-y-1/2 lg:inset-0 lg:aspect-auto lg:w-full lg:max-w-none lg:translate-x-0 lg:translate-y-0">
               <Image
-                src="/home assets/Map.webp"
+                src="/home assets/Map-optimized.webp"
                 alt="Top destinations map of India"
                 fill
                 sizes="(min-width: 1024px) 700px, 100vw"
@@ -581,7 +581,7 @@ export function TopDestinationsSection({
                 const alignRight = destination.markerX > 72;
 
                 return (
-                <Link
+                <Link prefetch={false}
                   key={`map-${destination.destinationId}-${index}`}
                   href={getDestinationHref(destination)}
                   aria-label={`Explore ${destination.name}`}
@@ -606,7 +606,7 @@ export function TopDestinationsSection({
                   <MapPushPin active={isActive} />
                   <span
                     className={cn(
-                      "pointer-events-none absolute left-1/2 top-[calc(100%+2px)] z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-white/95 px-2 py-1 font-sans text-[10px] font-bold leading-none text-primary opacity-0 shadow-[0_8px_18px_rgba(50,50,50,0.14)] ring-1 ring-primary/15 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 lg:hidden",
+                      "pointer-events-none absolute left-1/2 top-[calc(100%+2px)] z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-white/95 px-2 py-1 font-sans text-[10px] font-bold leading-none text-brand-text opacity-0 shadow-[0_8px_18px_rgba(50,50,50,0.14)] ring-1 ring-primary/15 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 lg:hidden",
                       isActive && "opacity-100"
                     )}
                   >
@@ -676,7 +676,7 @@ export function TopDestinationsSection({
                 <h3 className="line-clamp-2 min-h-0 break-words font-heading text-[25px] font-bold leading-tight text-secondary sm:text-[30px] lg:min-h-[30px] lg:text-[24px]">
                   {activeDestination.name}
                 </h3>
-                <p className="mt-1 min-h-0 break-words border-b border-primary/20 pb-2 font-sans text-[17px] font-medium text-primary sm:text-[20px] lg:min-h-[27px] lg:pb-1 lg:text-description">
+                <p className="mt-1 min-h-0 break-words border-b border-primary/20 pb-2 font-sans text-[17px] font-medium text-brand-text sm:text-[20px] lg:min-h-[27px] lg:pb-1 lg:text-description">
                   {activeDestination.state}
                 </p>
                 {activeTourCategoryLabels.length > 0 ? (
@@ -694,7 +694,7 @@ export function TopDestinationsSection({
                     </span>
                     <span
                       title={activeTourCategoryLabels.join(", ")}
-                      className="mt-1 inline-flex h-9 min-w-0 max-w-full items-center  font-sans text-[13px] font-semibold leading-none text-primary"
+                      className="mt-1 inline-flex h-9 min-w-0 max-w-full items-center  font-sans text-[13px] font-semibold leading-none text-brand-text"
                     >
                       <span className="min-w-0 truncate">
                         {getCompactTourCategoryLabel(
@@ -716,7 +716,7 @@ export function TopDestinationsSection({
                       key={label}
                       className="flex min-w-0 items-center gap-2 font-sans text-[12px] font-medium text-secondary sm:text-[14px] lg:text-[13px]"
                     >
-                      <Icon className="size-4 shrink-0 text-primary lg:size-3.5" />
+                      <Icon className="size-4 shrink-0 text-brand-text lg:size-3.5" />
                       <span className="truncate">{label}</span>
                     </div>
                   ))}
@@ -724,7 +724,7 @@ export function TopDestinationsSection({
 
                 <Button
                   nativeButton={false}
-                  render={<Link href={getDestinationHref(activeDestination)} />}
+                  render={<Link prefetch={false} href={getDestinationHref(activeDestination)} />}
                   className="mt-auto h-10 w-full justify-between rounded-full px-5 text-[14px] font-normal sm:h-12 sm:text-[17px] lg:h-10 lg:text-[13px]"
                 >
                   Explore {activeDestination.name}

@@ -400,6 +400,13 @@ export function PlanTripLauncher() {
   const launcherRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const opener = launcherRef.current?.querySelector("button");
+    panelRef.current?.querySelector<HTMLElement>("input, button")?.focus({ preventScroll: true });
+    return () => { if (opener?.isConnected) opener.focus({ preventScroll: true }); };
+  }, [isOpen]);
+
   const destinationById = useMemo(
     () =>
       new Map(
@@ -727,14 +734,15 @@ export function PlanTripLauncher() {
 
   return (
     <>
-      <button
+      {isOpen ? <button
         type="button"
         aria-label="Close trip planner"
+        tabIndex={-1}
         onClick={closePlanner}
         className={`fixed inset-0 z-20 bg-secondary/10 backdrop-blur-[3px] transition-opacity duration-500 ease-out ${
           isOpen ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
-      />
+      /> : null}
 
       <PlannerEnquiryDialog
         open={isEnquiryOpen}
@@ -754,10 +762,11 @@ export function PlanTripLauncher() {
           variant="outline"
           aria-expanded={isOpen}
           aria-controls="plan-trip-panel"
+          tabIndex={isOpen ? -1 : 0}
           onClick={handleLauncherClick}
           className={`${planTripButtonClassName} transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
             isOpen
-              ? "pointer-events-none scale-95 bg-primary text-white opacity-0"
+              ? "pointer-events-none scale-95 bg-brand-button-dark text-white opacity-0"
               : "opacity-100"
           }`}
         >
@@ -787,7 +796,7 @@ export function PlanTripLauncher() {
             tabIndex={isCtaSettled ? 0 : -1}
             disabled={!hasDestinationQuery}
             onClick={handleSearchTours}
-            className={`${planTripButtonClassName} h-full w-full min-w-0 !bg-white !text-primary hover:!bg-white hover:!text-primary [&_svg]:!text-primary ${
+            className={`${planTripButtonClassName} h-full w-full min-w-0 !bg-white !text-button-outline hover:!bg-button-outline hover:!text-white [&_svg]:text-current ${
               isCtaSettled ? "pointer-events-auto" : "pointer-events-none"
             } ${hasDestinationQuery ? "" : "cursor-not-allowed opacity-60"}`}
           >
@@ -796,7 +805,7 @@ export function PlanTripLauncher() {
         </div>
       ) : null}
 
-      <div
+      {isOpen ? <div
         ref={panelRef}
         id="plan-trip-panel"
         aria-hidden={!isOpen}
@@ -872,7 +881,7 @@ export function PlanTripLauncher() {
               variant="outline"
               disabled={!hasDestinationQuery}
               onClick={handleSearchTours}
-              className={`${planTripButtonClassName} h-10 w-full max-w-[390px] !min-w-0 !gap-3 px-4 !bg-white !text-primary hover:!bg-white hover:!text-primary [&_svg]:!text-primary md:hidden ${
+              className={`${planTripButtonClassName} h-10 w-full max-w-[390px] !min-w-0 !gap-3 px-4 !bg-white !text-button-outline hover:!bg-button-outline hover:!text-white [&_svg]:text-current md:hidden ${
                 hasDestinationQuery ? "" : "cursor-not-allowed opacity-60"
               }`}
             >
@@ -889,7 +898,7 @@ export function PlanTripLauncher() {
             </Button>
           </div>
         </div>
-      </div>
+      </div> : null}
     </>
   );
 }
@@ -1167,7 +1176,7 @@ export function PlanTripInline({
             variant="outline"
             disabled={!hasDestinationQuery}
             onClick={handleSearchTours}
-            className={`${planTripButtonClassName} h-11 w-full min-w-0 !bg-white !text-primary hover:!bg-white hover:!text-primary [&_svg]:!text-primary md:w-[210px] ${
+            className={`${planTripButtonClassName} h-11 w-full min-w-0 !bg-white !text-button-outline hover:!bg-button-outline hover:!text-white [&_svg]:text-current md:w-[210px] ${
               hasDestinationQuery ? "" : "cursor-not-allowed opacity-60"
             }`}
           >
@@ -1222,7 +1231,7 @@ function PlannerEnquiryDialog({
           type="button"
           aria-label="Close group enquiry"
           onClick={closeDialog}
-          className="absolute right-5 top-5 grid size-9 place-items-center rounded-full border border-accent/25 bg-white text-secondary transition-colors hover:border-primary hover:text-primary"
+          className="absolute right-5 top-5 grid size-9 place-items-center rounded-full border border-accent/25 bg-white text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
         >
           <X className="size-4" strokeWidth={1.8} />
         </button>
@@ -1354,13 +1363,13 @@ function DestinationField({
       {active ? (
         <div className="absolute left-0 top-[calc(100%+12px)] z-[80] w-full min-w-[280px] overflow-hidden rounded-[18px] border border-border bg-white shadow-[0_18px_42px_rgba(15,23,42,0.16)] md:w-full">
           {suggestions.length > 0 ? (
-            <div className="max-h-[30dvh] touch-pan-y overflow-y-auto overscroll-contain px-2 pb-8 pt-2 [-webkit-overflow-scrolling:touch] md:max-h-[min(360px,calc(100dvh-13rem))]">
+            <div data-lenis-prevent className="h-[144px] max-h-[calc(100dvh-13rem)] touch-pan-y overflow-y-auto overscroll-contain px-2 pb-8 pt-2 [-webkit-overflow-scrolling:touch] sm:h-[174px]">
               {suggestions.map((suggestion) => (
                 <button
                   key={suggestion.id}
                   type="button"
                   onClick={() => onSuggestionSelect(suggestion)}
-                  className="flex w-full items-center justify-between gap-3 rounded-[10px] px-3 py-2 text-left font-sans transition-colors hover:bg-primary/8 hover:text-primary"
+                  className="flex w-full items-center justify-between gap-3 rounded-[10px] px-3 py-2 text-left font-sans transition-colors hover:bg-primary/8 hover:text-button-outline text-button-outline"
                 >
                   <span className="min-w-0">
                     <strong className="block truncate text-[14px] font-bold text-secondary">
@@ -1370,7 +1379,7 @@ function DestinationField({
                       {suggestion.meta}
                     </span>
                   </span>
-                  <span className="shrink-0 rounded-full bg-[#fff1e5] px-2 py-1 text-[10px] font-bold uppercase text-primary">
+                  <span className="shrink-0 rounded-full bg-[#fff1e5] px-2 py-1 text-[10px] font-bold uppercase text-brand-text">
                     {suggestion.type}
                   </span>
                 </button>
@@ -1411,7 +1420,7 @@ function MonthField({
 
       {active ? (
         <div className="absolute left-1/2 top-[calc(100%+12px)] z-[80] w-[min(290px,calc(100vw-1rem))] -translate-x-1/2 overflow-hidden rounded-[18px] border border-border bg-white shadow-[0_18px_42px_rgba(15,23,42,0.16)] md:w-full">
-          <div className="max-h-[30dvh] touch-pan-y overflow-y-auto overscroll-contain px-2 pb-8 pt-2 [-webkit-overflow-scrolling:touch] md:max-h-[min(360px,calc(100dvh-13rem))]">
+          <div data-lenis-prevent className="h-[144px] max-h-[calc(100dvh-13rem)] touch-pan-y overflow-y-auto overscroll-contain px-2 pb-8 pt-2 [-webkit-overflow-scrolling:touch] sm:h-[174px]">
             <MonthOptionButton
               active={!value}
               label="Any Month"
@@ -1452,21 +1461,21 @@ function MonthOptionButton({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "flex w-full items-center justify-between gap-3 rounded-[10px] px-3 py-2 text-left font-sans transition-colors hover:bg-primary/8 hover:text-primary",
-        active && "bg-primary/8 text-primary"
+        "flex w-full items-center justify-between gap-3 rounded-[10px] px-3 py-2 text-left font-sans transition-colors hover:bg-primary/8 hover:text-button-outline text-button-outline",
+        active && "bg-primary/8 text-brand-text"
       )}
     >
       <span className="min-w-0">
         <strong
           className={cn(
             "block truncate text-[14px] font-bold text-secondary",
-            active && "text-primary"
+            active && "text-brand-text"
           )}
         >
           {label}
         </strong>
       </span>
-      <span className="shrink-0 rounded-full bg-[#fff1e5] px-2 py-1 text-[10px] font-bold uppercase text-primary">
+      <span className="shrink-0 rounded-full bg-[#fff1e5] px-2 py-1 text-[10px] font-bold uppercase text-brand-text">
         Month
       </span>
     </button>
@@ -1547,11 +1556,11 @@ function PlannerFieldButton({
       type="button"
       aria-expanded={active}
       onClick={onClick}
-      className="flex h-9 w-full items-center gap-4 px-3 py-1.5 text-left font-sans text-description font-medium text-secondary transition-colors hover:text-primary focus-visible:ring-3 focus-visible:ring-primary/15 md:h-full md:gap-5 md:px-8 md:py-3"
+      className="flex h-9 w-full items-center gap-4 px-3 py-1.5 text-left font-sans text-description font-medium text-button-outline transition-colors hover:text-button-outline focus-visible:ring-3 focus-visible:ring-primary/15 md:h-full md:gap-5 md:px-8 md:py-3"
     >
       <Icon className="size-5 shrink-0 text-accent md:size-6" strokeWidth={1.9} />
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      <ChevronDown className="size-4 shrink-0 text-primary" />
+      <ChevronDown className="size-4 shrink-0 text-brand-text" />
     </button>
   );
 }
@@ -1585,7 +1594,7 @@ function TravellerStepper({
           aria-label={`Decrease ${label}`}
           disabled={value <= minimum}
           onClick={() => onChange(value - 1)}
-          className="grid size-8 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:bg-primary hover:text-white disabled:pointer-events-none disabled:text-secondary/28 sm:size-9"
+          className="grid size-8 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:border-button-outline hover:bg-brand-button-dark hover:text-white disabled:pointer-events-none disabled:text-secondary/28 sm:size-9"
         >
           <Minus className="size-3.5" strokeWidth={1.8} />
         </button>
@@ -1596,7 +1605,7 @@ function TravellerStepper({
           type="button"
           aria-label={`Increase ${label}`}
           onClick={() => onChange(value + 1)}
-          className="grid size-8 place-items-center rounded-full border border-border bg-white text-secondary transition-colors hover:border-primary hover:bg-primary hover:text-white sm:size-9"
+          className="grid size-8 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:border-button-outline hover:bg-brand-button-dark hover:text-white sm:size-9"
         >
           <Plus className="size-3.5" strokeWidth={1.8} />
         </button>

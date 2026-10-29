@@ -103,7 +103,7 @@ export function DownloadItineraryButton(props: DownloadItineraryButtonProps) {
     <button
       type="button"
       onClick={handleDownloadItinerary}
-      className="mt-2 inline-flex items-center gap-2 font-sans text-[14px] font-semibold text-primary underline-offset-4 transition-colors hover:text-accent hover:underline disabled:pointer-events-none disabled:opacity-60"
+      className="mt-2 inline-flex items-center gap-2 font-sans text-[14px] font-semibold text-button-outline underline-offset-4 transition-colors hover:text-accent hover:underline disabled:pointer-events-none disabled:opacity-60"
       disabled={isDownloadingItinerary}
     >
       <Download className="size-4" />
@@ -603,7 +603,7 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
     ink: "#33251C",
     lightGold: "#F7E8D3",
     muted: "#F6EFE7",
-    primary: "#C76B2B",
+    primary: "#A95000",
     secondary: "#6D3824",
     soft: "#FFFDF9",
     textMuted: "#7D6C60",

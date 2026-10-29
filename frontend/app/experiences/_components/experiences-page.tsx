@@ -25,6 +25,9 @@ import { GoogleReviewCard } from "@/components/experiences/google-review-card";
 import { getPublicSiteSettings } from "@/lib/site-settings";
 import type { GoogleBusinessReviewsSettings } from "@/lib/google-review-url";
 import { Header } from "@/components/layout/header";
+import { TravelEmptyState } from "@/components/travel-empty-state";
+import { getTourExperienceSearchText } from "@/lib/experience-search";
+import type { ExperiencePageData } from "@/lib/experience-page";
 import { ButtonArrow, buttonVariants } from "@/components/ui/button";
 import {
   getAboutPageContent,
@@ -33,14 +36,18 @@ import {
 import {
   getHomeMediaUrl,
   listPublicExperiences,
+  listPublicDestinations,
+  getTourDestinationIds,
   listPublicTours,
   type PublicTour,
+  type PublicDestination,
   type PublicExperience,
 } from "@/lib/home-travel";
 import {
   getTourCalendarHref,
+  getExperienceHref,
+  getTourExperiencesHref,
   matchesRouteValue,
-  slugifyRoute,
 } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { getExperienceGalleryImages, getExperienceMoments } from "@/lib/experience-detail";
@@ -58,11 +65,6 @@ type TourExperienceGroup = {
   image: string;
   rating: number;
   reviewCount: number;
-};
-
-type ExperienceDetailState = {
-  tour: PublicTour | null;
-  experiences: PublicExperience[];
 };
 
 type ExperienceHeaderStat = {
@@ -130,12 +132,6 @@ function isIndiaDestination(destination: PublicTour) {
     normalizeKey(destination.category).includes("india");
 }
 
-function getExperienceHref(destination: PublicTour) {
-  return `/experiences/${encodeURIComponent(
-    slugifyRoute(destination.tourName) || destination.tourId
-  )}`;
-}
-
 function matchesCategory(
   destination: PublicTour,
   category: ExperienceCategory
@@ -153,26 +149,6 @@ function matchesCategory(
       return normalizeKey(destination.category).includes("unesco") ||
         normalizeKey(destination.tourName).includes("unesco");
   }
-}
-
-function getDestinationSearchText(
-  destination: PublicTour,
-  experiences: PublicExperience[]
-) {
-  return [
-    destination.tourId,
-    destination.tourName,
-    destination.tourType,
-    destination.tourFormat,
-    destination.category,
-    destination.description,
-    (destination.inclusions || []).join(" "),
-    experiences.map((experience) => experience.travellerName || "").join(" "),
-    experiences.map((experience) => experience.title || "").join(" "),
-    experiences.map((experience) => experience.writtenReview || "").join(" "),
-  ]
-    .join(" ")
-    .toLowerCase();
 }
 
 function getDestinationImages(
@@ -283,24 +259,9 @@ function getTravellerReviewCount(
   experience: PublicExperience,
   experiences: PublicExperience[]
 ) {
-  const travellerKey =
-    (experience.travellerEmail || "").trim().toLowerCase() ||
-    (experience.travellerName || "").trim().toLowerCase();
-
-  if (!travellerKey) {
-    return 1;
-  }
-
-  return Math.max(
-    experiences.filter((item) => {
-      const itemKey =
-        (item.travellerEmail || "").trim().toLowerCase() ||
-        (item.travellerName || "").trim().toLowerCase();
-
-      return itemKey === travellerKey;
-    }).length,
-    1
-  );
+  return experience.travellerReviewCount
+    || experiences.find(item => item.id === experience.id)?.travellerReviewCount
+    || 1;
 }
 
 function buildDestinationGroups(
@@ -435,7 +396,7 @@ function HeaderBand({
   stats: ExperienceHeaderStat[];
 }) {
   return (
-    <section className="relative h-[260px] overflow-hidden bg-secondary md:h-[200px]">
+    <section className="relative overflow-hidden bg-secondary">
       <Image
         src="/home assets/Heritage Banner.webp"
         alt="Ancient Trails heritage landscape"
@@ -445,12 +406,13 @@ function HeaderBand({
         className="object-cover object-center"
       />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(20,16,12,0.7)_100%)]" />
-      <div className="home-wide-frame relative z-10 mx-auto flex h-full w-full flex-col px-5 sm:px-8 lg:px-0">
-        <Header />
-        <div className="flex flex-1 items-center justify-center pb-6 md:pb-6">
-          <div className="w-full max-w-[760px] text-center text-white">
-          
-            {stats.length > 0 ? (
+      <div className="home-wide-frame relative z-10 mx-auto flex w-full flex-col px-5 sm:px-8 lg:px-0">
+        <div className="h-[100px] lg:h-[120px]">
+          <Header />
+        </div>
+        {stats.length > 0 ? (
+          <div className="flex items-center justify-center pb-6 md:pb-6">
+            <div className="w-full max-w-[760px] text-center text-white">
               <div className="flex flex-wrap items-center justify-center gap-3 text-center">
                 {stats.map((stat, index) => (
                   <div
@@ -466,21 +428,26 @@ function HeaderBand({
                   </div>
                 ))}
               </div>
-            ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </section>
   );
 }
 
-export function ExperiencesPage() {
+export function ExperiencesPage({ initialSearchQuery = "", initialDestinationValue = "" }: {
+  initialSearchQuery?: string;
+  initialDestinationValue?: string;
+}) {
   const headerStats = useExperienceHeaderStats();
   const [destinations, setDestinations] = useState<PublicTour[]>([]);
   const [experiences, setExperiences] = useState<PublicExperience[]>([]);
+  const [destinationRecords, setDestinationRecords] = useState<PublicDestination[]>([]);
   const [activeCategory, setActiveCategory] =
-    useState<ExperienceCategory>("india");
-  const [searchQuery, setSearchQuery] = useState("");
+    useState<ExperienceCategory>(initialSearchQuery || initialDestinationValue ? "all" : "india");
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  const [selectedDestinationValue, setSelectedDestinationValue] = useState(initialDestinationValue);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -492,10 +459,11 @@ export function ExperiencesPage() {
       setLoadError("");
 
       try {
-        const [destinationsResponse, experiencesResponse] =
+        const [destinationsResponse, experiencesResponse, directoryResponse] =
           await Promise.all([
             listPublicTours(),
             listPublicExperiences().catch(() => ({ data: { experiences: [] } })),
+            listPublicDestinations().catch(() => ({ data: { destinations: [] as PublicDestination[] } })),
           ]);
 
         if (!isMounted) {
@@ -504,6 +472,7 @@ export function ExperiencesPage() {
 
         setDestinations(destinationsResponse.data.tours);
         setExperiences(experiencesResponse.data.experiences);
+        setDestinationRecords(directoryResponse.data.destinations);
       } catch (error) {
         if (isMounted) {
           setLoadError(getErrorMessage(error));
@@ -532,19 +501,23 @@ export function ExperiencesPage() {
     return groups.filter((group) => {
       const matchesSearch =
         !query ||
-        getDestinationSearchText(group.tour, group.experiences).includes(
+        getTourExperienceSearchText(group.tour, group.experiences, destinationRecords).includes(
           query
         );
 
       return (
         matchesCategory(group.tour, activeCategory) &&
+        (!selectedDestinationValue || getTourDestinationIds(group.tour).some(id =>
+          matchesRouteValue(selectedDestinationValue, id,
+            destinationRecords.find(destination => destination.destinationId === id)?.destinationName || "")
+        )) &&
         matchesSearch
       );
     });
-  }, [activeCategory, groups, searchQuery]);
+  }, [activeCategory, groups, searchQuery, destinationRecords, selectedDestinationValue]);
 
   return (
-    <main className="min-h-screen bg-background text-secondary">
+    <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-secondary">
       <HeaderBand stats={headerStats} />
 
       <ExperienceTopBar
@@ -558,7 +531,7 @@ export function ExperiencesPage() {
         className={`${pageContainerClassName} grid gap-6 pb-10 pt-10 md:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] md:items-center md:gap-10 lg:gap-14`}
       >
         <div className="min-w-0">
-          <p className="font-sans text-eyebrow font-medium uppercase leading-none text-primary">
+          <p className="font-sans text-eyebrow font-medium uppercase leading-none text-button-outline">
             Traveller
           </p>
           <h1 className="mt-1 flex flex-wrap items-end gap-x-4 gap-y-1 font-heading text-title font-bold italic leading-none tracking-normal text-secondary">
@@ -581,6 +554,12 @@ export function ExperiencesPage() {
       </section>
 
       <section className={`${pageContainerClassName} pb-16`}>
+        {selectedDestinationValue ? (
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 font-sans text-sm text-secondary">
+            <p>Experiences in {destinationRecords.find(destination => matchesRouteValue(selectedDestinationValue, destination.destinationId, destination.destinationName))?.destinationName || selectedDestinationValue}</p>
+            <button type="button" onClick={() => { setSelectedDestinationValue(""); setActiveCategory("all"); }} className="cursor-pointer font-medium text-button-outline underline underline-offset-4">View all experiences</button>
+          </div>
+        ) : null}
         {loadError ? (
           <EmptyState title="Experiences could not load" message={loadError} />
         ) : null}
@@ -590,10 +569,7 @@ export function ExperiencesPage() {
         ) : null}
 
         {!isLoading && !loadError && visibleGroups.length === 0 ? (
-          <EmptyState
-            title="No traveller experiences found"
-            message="Try changing the tour search or category."
-          />
+          <TravelEmptyState experiences />
         ) : null}
       </section>
     </main>
@@ -628,12 +604,12 @@ function ExperienceTopBar({
                 className={cn(
                   "inline-flex h-9 items-center justify-center rounded-full font-sans text-[15px] font-semibold leading-none transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
                   isPlainAll
-                    ? "px-0 text-primary hover:text-accent"
+                    ? "px-0 text-button-outline hover:text-accent"
                     : "border px-5",
                   isActive
                     ? "border-primary bg-primary text-white "
                     : !isPlainAll &&
-                        "border-primary/70 bg-white text-primary hover:bg-primary hover:text-white"
+                        "border-button-outline bg-white text-button-outline hover:bg-brand-button-dark hover:text-white"
                 )}
               >
                 {tab.label}
@@ -643,15 +619,15 @@ function ExperienceTopBar({
         </div>
 
         <label className="relative w-full md:w-[235px]">
-          <span className="sr-only">Search Tour</span>
+          <span className="sr-only">Search tours or destinations</span>
           <input
             type="search"
             value={searchQuery}
             onChange={(event) => onSearchQueryChange(event.target.value)}
-            placeholder="Search Tour"
+            placeholder="Search tours or destinations"
             className="h-9 w-full rounded-full border border-primary/55 bg-white px-5 pr-10 font-sans text-[13px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/50 focus:border-primary focus:ring-3 focus:ring-primary/15"
           />
-          <Search className="pointer-events-none absolute right-4 top-1/2 size-3.5 -translate-y-1/2 text-primary" />
+          <Search className="pointer-events-none absolute right-4 top-1/2 size-3.5 -translate-y-1/2 text-brand-text" />
         </label>
       </div>
     </section>
@@ -703,7 +679,7 @@ function ExperienceDestinationCard({
 
   return (
     <Link
-      href={getExperienceHref(destination)}
+      href={group.experiences[0] ? getExperienceHref(group.experiences[0]) : getTourExperiencesHref(destination)}
       aria-label={`Read traveller experiences for ${destination.tourName}`}
       className="group block"
     >
@@ -736,7 +712,7 @@ function ExperienceDestinationCard({
         </div>
 
         <div className="flex items-end justify-center pb-3">
-          <span className="grid size-9 place-items-center rounded-full border border-primary bg-primary text-white transition-colors group-hover:bg-white group-hover:text-primary">
+          <span className="grid size-9 place-items-center rounded-full border border-primary bg-brand-button-dark text-white transition-colors group-hover:bg-white group-hover:text-brand-text">
             <ArrowRight className="size-5" strokeWidth={2.1} />
           </span>
         </div>
@@ -746,9 +722,9 @@ function ExperienceDestinationCard({
 }
 
 export function SingleExperiencePage({
-  experienceId,
+  detail,
 }: {
-  experienceId: string;
+  detail: ExperiencePageData;
 }) {
   const headerStats = useExperienceHeaderStats();
   const [businessReviews, setBusinessReviews] = useState<GoogleBusinessReviewsSettings>({});
@@ -762,136 +738,28 @@ export function SingleExperiencePage({
     }).catch(() => { /* Individual review links work without optional business settings. */ });
     return () => { mounted = false; };
   }, []);
-  const [detail, setDetail] = useState<ExperienceDetailState>({
-    tour: null,
-    experiences: [],
-  });
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
-    const requestedId = decodeURIComponent(experienceId);
-
-    async function loadExperienceDetail() {
-      setIsLoading(true);
-      setLoadError("");
-
-      try {
-        const [toursResponse, experiencesResponse] = await Promise.all([
-          listPublicTours(),
-          listPublicExperiences(),
-        ]);
-        const tours = toursResponse.data.tours;
-        const allExperiences = experiencesResponse.data.experiences;
-        const matchedTour =
-          tours.find((tour) =>
-            matchesRouteValue(
-              requestedId,
-              tour.tourId,
-              tour.tourName
-            )
-          ) || null;
-        const matchedExperience = matchedTour
-          ? null
-          : allExperiences.find((experience) =>
-              matchesRouteValue(
-                requestedId,
-                experience.experienceId,
-                experience.title || experience.tourName
-              )
-            ) || null;
-        const tour =
-          matchedTour ||
-          (matchedExperience
-            ? tours.find(
-                (item) => normalizeId(item.tourId) === normalizeId(matchedExperience.tourId)
-              ) || null
-            : null);
-        if (!tour) {
-          if (isMounted) {
-            setDetail({ tour: null, experiences: [] });
-            setLoadError("Experience tour not found.");
-          }
-
-          return;
-        }
-
-        const tourExperiencesResponse = await listPublicExperiences(tour.tourId);
-        const tourExperiences = tourExperiencesResponse.data.experiences;
-        // An experience URL should feature that record first, even when the tour has newer reviews.
-        const orderedExperiences = matchedExperience
-          ? [matchedExperience, ...tourExperiences.filter(item => item.experienceId !== matchedExperience.experienceId)]
-          : tourExperiences;
-
-        if (isMounted) {
-          setDetail({
-            tour,
-            experiences: orderedExperiences,
-          });
-        }
-      } catch (error) {
-        if (isMounted) {
-          setLoadError(getErrorMessage(error));
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    loadExperienceDetail();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [experienceId]);
-
-  if (isLoading) {
+  if (!detail.tour) {
+    const experience = detail.experiences[0];
+    const images = detail.experiences.flatMap(item => item.travellerPhotoGallery).map(getHomeMediaUrl);
     return (
-      <main className="min-h-screen bg-background text-secondary">
+      <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-secondary">
         <HeaderBand stats={headerStats} />
         <section className={`${detailContainerClassName} py-10`}>
-          <div className="h-[360px] animate-pulse rounded-[8px] bg-muted" />
-          <div className="mt-10 h-[260px] animate-pulse rounded-[8px] bg-muted" />
+          <h1 className="font-heading text-title font-bold text-secondary">{experience?.title || experience?.tourName || "Traveller Experience"}</h1>
+          <Link href="/experiences" className="mt-4 inline-flex items-center gap-2 text-brand-text">Back to Experiences <ArrowRight className="size-4" /></Link>
+          <TravellerRatingSection averageRating={getAverageRating(detail.experiences)} experiences={detail.experiences} />
+          <ReviewsGrid experiences={detail.experiences} images={images} businessReviews={businessReviews} />
         </section>
       </main>
     );
   }
-
-  if (!detail.tour || loadError) {
-    return (
-      <main className="min-h-screen bg-background text-secondary">
-        <HeaderBand stats={headerStats} />
-        <section className="mx-auto mt-10 max-w-[720px] px-5 pb-20">
-          <div className="rounded-[8px] border border-[#ead8c5] bg-white p-8 text-center shadow-[0_18px_44px_rgba(50,50,50,0.08)]">
-            <h1 className="font-heading text-title font-bold leading-none tracking-normal text-secondary">
-              Experience not found
-            </h1>
-            <p className="mx-auto mt-4 max-w-[460px] font-sans text-description text-secondary/70">
-              {loadError ||
-                "This traveller experience is not available in the current records."}
-            </p>
-            <Link
-              href="/experiences"
-              className="mt-6 inline-flex h-10 items-center gap-3 rounded-full bg-primary px-5 font-sans text-button font-bold text-white transition-colors hover:bg-accent"
-            >
-              Back to Experiences
-              <ArrowRight className="size-4" />
-            </Link>
-          </div>
-        </section>
-      </main>
-    );
-  }
-
   const images = getDestinationImages(detail.tour, detail.experiences);
   const averageRating = getAverageRating(detail.experiences);
 
   return (
-    <main className="min-h-screen bg-background text-secondary">
+    <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-secondary">
       <HeaderBand stats={headerStats} />
 
       <section className={`${detailContainerClassName} pb-20 pt-6 md:pt-8`}>
@@ -971,10 +839,10 @@ function ExperienceDetailHero({
 
         <aside className="shrink-0 text-right md:min-w-[220px]">
           <div className="flex items-end justify-end gap-1.5 md:gap-2">
-            <strong className="font-description text-[34px] font-semibold leading-none tracking-normal text-primary md:text-[48px]">
+            <strong className="font-description text-[34px] font-semibold leading-none tracking-normal text-brand-text md:text-[48px]">
               {averageRating.toFixed(1)}
             </strong>
-            <span className="pb-1 font-description text-[14px] font-semibold leading-none text-primary md:pb-1.5 md:text-[18px]">
+            <span className="pb-1 font-description text-[14px] font-semibold leading-none text-brand-text md:pb-1.5 md:text-[18px]">
               / 5
             </span>
           </div>
@@ -1084,7 +952,7 @@ function ExperienceAlbumCard({
       />
       {onClick ? (
         <span className="absolute inset-0 flex items-center justify-center bg-black/18 text-white opacity-0 transition-opacity group-hover:opacity-100">
-          <span className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 font-sans text-[12px] font-bold uppercase text-primary">
+          <span className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 font-sans text-[12px] font-bold uppercase text-brand-text">
             <ImageIcon className="size-4" strokeWidth={2} />
             View all
           </span>
@@ -1202,7 +1070,7 @@ function ExperiencePhotoLightbox({
             type="button"
             aria-label="Close gallery"
             onClick={onClose}
-            className="transition-colors hover:text-primary"
+            className="transition-colors hover:text-button-outline text-button-outline"
           >
             <X className="size-7" strokeWidth={2} />
           </button>
@@ -1214,7 +1082,7 @@ function ExperiencePhotoLightbox({
               type="button"
               aria-label="Previous gallery image"
               onClick={showPreviousImage}
-              className="absolute left-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-primary md:left-10"
+              className="absolute left-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-brand-button-dark md:left-10"
             >
               <ChevronLeft className="size-8" strokeWidth={2.4} />
             </button>
@@ -1237,7 +1105,7 @@ function ExperiencePhotoLightbox({
               type="button"
               aria-label="Next gallery image"
               onClick={showNextImage}
-              className="absolute right-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-primary md:right-10"
+              className="absolute right-5 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/18 text-white transition-colors hover:bg-brand-button-dark md:right-10"
             >
               <ChevronRight className="size-8" strokeWidth={2.4} />
             </button>
@@ -1305,7 +1173,7 @@ function TravellerRatingSection({
             className="grid grid-cols-[minmax(112px,0.74fr)_minmax(0,1fr)_32px] items-center gap-2 bg-white px-1 py-1.5 md:grid-cols-[minmax(130px,0.82fr)_minmax(0,1fr)_42px] md:gap-3 md:px-4 md:py-4 sm:grid-cols-[minmax(160px,0.82fr)_minmax(0,1fr)_48px]"
           >
             <span className="flex min-w-0 items-center gap-2 font-sans text-[11px] font-medium text-secondary/72 md:gap-2.5 md:text-description md:text-secondary/82">
-              <Icon className="size-3.5 shrink-0 text-primary md:size-4" strokeWidth={1.8} />
+              <Icon className="size-3.5 shrink-0 text-brand-text md:size-4" strokeWidth={1.8} />
               {label}
             </span>
             <span className="h-1.5 overflow-hidden rounded-full bg-primary/12 md:h-2">
@@ -1314,7 +1182,7 @@ function TravellerRatingSection({
                 style={{ width: `${Math.min(100, (value / 5) * 100)}%` }}
               />
             </span>
-            <span className="font-sans text-[11px] font-semibold text-primary md:text-button">
+            <span className="font-sans text-[11px] font-semibold text-brand-text md:text-button">
               {value.toFixed(1)}
             </span>
           </div>
@@ -1407,7 +1275,7 @@ function TravellerMomentsSection({
               type="button"
               aria-label="Previous traveller moment"
               onClick={showPreviousMobileMoment}
-              className="absolute left-3 top-1/2 grid size-10 -translate-y-1/2 place-items-center rounded-full bg-white/92 text-primary shadow-[0_8px_20px_rgba(35,24,16,0.16)] transition-colors hover:bg-primary hover:text-white"
+              className="absolute left-3 top-1/2 grid size-10 -translate-y-1/2 place-items-center rounded-full bg-white/92 text-brand-text shadow-[0_8px_20px_rgba(35,24,16,0.16)] transition-colors hover:bg-brand-button-dark hover:text-white"
             >
               <ChevronLeft className="size-5" strokeWidth={2.3} />
             </button>
@@ -1415,7 +1283,7 @@ function TravellerMomentsSection({
               type="button"
               aria-label="Next traveller moment"
               onClick={showNextMobileMoment}
-              className="absolute right-3 top-1/2 grid size-10 -translate-y-1/2 place-items-center rounded-full bg-white/92 text-primary shadow-[0_8px_20px_rgba(35,24,16,0.16)] transition-colors hover:bg-primary hover:text-white"
+              className="absolute right-3 top-1/2 grid size-10 -translate-y-1/2 place-items-center rounded-full bg-white/92 text-brand-text shadow-[0_8px_20px_rgba(35,24,16,0.16)] transition-colors hover:bg-brand-button-dark hover:text-white"
             >
               <ChevronRight className="size-5" strokeWidth={2.3} />
             </button>
@@ -1426,6 +1294,7 @@ function TravellerMomentsSection({
               <button
                 key={`${moment.image}-${index}-mobile-dot`}
                 type="button"
+                data-slot="carousel-dot"
                 aria-label={`Show traveller moment ${index + 1}`}
                 aria-current={index === mobileMomentIndex ? "true" : undefined}
                 onClick={() => setMobileMomentIndex(index)}
@@ -1536,7 +1405,7 @@ function ExperienceMomentLightbox({
             type="button"
             aria-label="Close media preview"
             onClick={onClose}
-            className="transition-colors hover:text-primary"
+            className="transition-colors hover:text-button-outline text-button-outline"
           >
             <X className="size-7" strokeWidth={2} />
           </button>
@@ -1706,7 +1575,7 @@ function ReviewsGrid({
                 currentCount + mobileReviewsPerLoad
               )
             }
-            className="inline-flex h-10 min-w-[150px] items-center justify-center rounded-full border border-primary bg-primary px-5 font-sans text-button font-medium text-white transition-colors hover:bg-transparent hover:text-primary"
+            className="inline-flex h-10 min-w-[150px] items-center justify-center rounded-full border border-primary bg-primary px-5 font-sans text-button font-medium text-white transition-colors hover:bg-transparent hover:text-button-outline"
           >
             Load more
           </button>
@@ -1734,7 +1603,7 @@ function ReviewsGrid({
               currentCount + reviewsPerLoad
             )
           }
-          className="inline-flex h-10 min-w-[150px] items-center justify-center rounded-full border border-primary bg-primary px-5 font-sans text-button font-medium text-white transition-colors hover:bg-transparent hover:text-primary"
+          className="inline-flex h-10 min-w-[150px] items-center justify-center rounded-full border border-primary bg-primary px-5 font-sans text-button font-medium text-white transition-colors hover:bg-transparent hover:text-button-outline"
         >
           Load more
         </button>
@@ -1834,7 +1703,7 @@ function RatingStars({
   const filledCount = Math.round(value);
 
   return (
-    <div className={cn("flex items-center gap-0.5 text-primary", className)}>
+    <div className={cn("flex items-center gap-0.5 text-brand-text", className)}>
       {Array.from({ length: 5 }, (_item, index) => (
         <Star
           key={index}

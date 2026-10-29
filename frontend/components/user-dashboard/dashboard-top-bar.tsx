@@ -1,5 +1,6 @@
 "use client";
 
+import { getTravellerAccountName, getTravellerAccountContact } from "@/lib/profile-prompt";
 import { SiteLogo } from "@/components/site-logo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -29,7 +30,7 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { UserAvatar } from "@/components/user-dashboard/user-sidebar";
 import {
-  clearTravellerSession,
+  logoutTravellerSession,
   getTravellerSession,
   listenForTravellerSessionChanges,
   type TravellerUser,
@@ -233,16 +234,7 @@ function buildCityMenuItems(
 }
 
 function getTravellerDisplayName(user: TravellerUser | null) {
-  if (!user) {
-    return "Traveller";
-  }
-
-  const fullName = [user.firstName, user.lastName]
-    .map((part) => part?.trim())
-    .filter(Boolean)
-    .join(" ");
-
-  return fullName || user.email.split("@")[0] || "Traveller";
+  return getTravellerAccountName(user);
 }
 
 function getTravellerInitials(user: TravellerUser | null) {
@@ -257,7 +249,7 @@ function getTravellerInitials(user: TravellerUser | null) {
 }
 
 function getTravellerEmail(user: TravellerUser | null) {
-  return user?.email || "traveller@ancienttrails.com";
+  return getTravellerAccountContact(user);
 }
 
 function AccountPopup({
@@ -277,6 +269,8 @@ function AccountPopup({
 
   return (
     <div
+      inert={!isOpen}
+      aria-hidden={!isOpen}
       className={`absolute right-0 top-[calc(100%+14px)] z-50 w-[min(380px,calc(100vw-2rem))] overflow-hidden rounded-[8px] border border-primary/20 bg-white text-secondary shadow-[0_24px_60px_rgba(35,24,16,0.2)] ring-1 ring-white transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
         isOpen
           ? "pointer-events-auto translate-y-0 opacity-100"
@@ -308,11 +302,11 @@ function AccountPopup({
               href={href}
               className="group/account-menu flex items-start gap-3 rounded-[7px] px-2 py-1.5 transition-colors hover:bg-primary/8"
             >
-              <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+              <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-brand-text">
                 <Icon className="size-4" strokeWidth={1.8} />
               </span>
               <span className="min-w-0">
-                <span className="block font-sans text-[14px] font-semibold leading-tight text-secondary transition-colors group-hover/account-menu:text-primary">
+                <span className="block font-sans text-[14px] font-semibold leading-tight text-secondary transition-colors group-hover/account-menu:text-brand-text">
                   {title}
                 </span>
                 <span className="mt-1 block font-sans text-[12px] leading-snug text-secondary/65">
@@ -327,7 +321,7 @@ function AccountPopup({
       <button
         type="button"
         onClick={onSignOut}
-        className="flex w-full items-center gap-3 border-t border-border bg-[#fbf0e8] px-5 py-4 font-sans text-[15px] font-semibold text-secondary transition-colors hover:bg-primary hover:text-white"
+        className="flex w-full items-center gap-3 border-t border-border bg-[#fbf0e8] px-5 py-4 font-sans text-[15px] font-semibold text-secondary transition-colors hover:bg-brand-button-dark hover:text-white"
       >
         <LogOut className="size-5" strokeWidth={1.8} />
         Log Out
@@ -367,6 +361,7 @@ function MobileDashboardDrawer({
         isOpen ? "pointer-events-auto" : "pointer-events-none"
       }`}
       aria-hidden={!isOpen}
+      inert={!isOpen}
     >
       <button
         type="button"
@@ -396,7 +391,7 @@ function MobileDashboardDrawer({
             aria-label="Close dashboard menu"
             variant="outline"
             size="icon-lg"
-            className="size-10 rounded-full text-secondary hover:text-primary"
+            className="size-10 rounded-full text-secondary hover:text-brand-text"
             onClick={onClose}
           >
             <X className="size-5" strokeWidth={1.9} />
@@ -431,11 +426,11 @@ function MobileDashboardDrawer({
                 onClick={onClose}
                 className="group/mobile-menu flex h-11 items-center gap-3 rounded-[7px] px-2.5 transition-colors hover:bg-primary/8"
               >
-                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-brand-text">
                   <Icon className="size-4" strokeWidth={1.8} />
                 </span>
                 <span className="min-w-0">
-                  <span className="block font-sans text-[14px] font-semibold leading-tight text-secondary transition-colors group-hover/mobile-menu:text-primary">
+                  <span className="block font-sans text-[14px] font-semibold leading-tight text-secondary transition-colors group-hover/mobile-menu:text-brand-text">
                     {title}
                   </span>
                 </span>
@@ -470,7 +465,7 @@ function MobileDashboardDrawer({
           <button
             type="button"
             onClick={onSignOut}
-            className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-[7px] border border-primary/30 bg-primary/10 font-sans text-[14px] font-semibold text-primary transition-colors hover:bg-primary hover:text-white"
+            className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-[7px] border border-primary/30 bg-primary/10 font-sans text-[14px] font-semibold text-brand-text transition-colors hover:bg-brand-button-dark hover:text-white"
           >
             <LogOut className="size-4" strokeWidth={1.9} />
             Log Out
@@ -669,8 +664,9 @@ export function DashboardTopBar() {
       setIsAccountMenuOpen(false);
     }, 160);
   };
-  const handleSignOut = () => {
-    clearTravellerSession();
+  const handleSignOut = async () => {
+    try { await logoutTravellerSession(); }
+    catch { toast.error("Could not sign out", "Your server session could not be ended. Please try again."); return; }
     setTravellerUser(null);
     setIsAccountMenuOpen(false);
     setIsMobileMenuOpen(false);
@@ -681,6 +677,8 @@ export function DashboardTopBar() {
     hoveredNavItem === "Tours" || hoveredNavItem === "Destinations";
   const megaMenuLayer = (
     <div
+      inert={!isMegaMenuOpen}
+      aria-hidden={!isMegaMenuOpen}
       onMouseEnter={keepMegaMenuOpen}
       onMouseLeave={closeMegaMenu}
       className={`fixed left-0 right-0 top-[78px] z-[2147483647] hidden h-0 lg:block ${
@@ -717,7 +715,7 @@ export function DashboardTopBar() {
             aria-label="Open dashboard menu"
             variant="outline"
             size="icon-lg"
-            className="rounded-full text-secondary hover:bg-primary/8 hover:text-primary"
+            className="rounded-full text-secondary hover:bg-primary/8 hover:text-brand-text"
             onClick={() => setIsMobileMenuOpen(true)}
           >
             <Menu className="size-5" strokeWidth={1.9} />
@@ -760,8 +758,8 @@ export function DashboardTopBar() {
                       setHoveredNavItem(null);
                     }
                   }}
-                  className={`transition-colors hover:text-primary ${
-                    item.label === hoveredNavItem ? "text-primary" : ""
+                  className={`transition-colors hover:text-brand-text ${
+                    item.label === hoveredNavItem ? "text-brand-text" : ""
                   }`}
                 >
                   {item.label}

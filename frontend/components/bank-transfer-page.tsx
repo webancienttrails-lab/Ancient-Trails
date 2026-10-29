@@ -1,4 +1,5 @@
 "use client";
+import { getTravellerSession, listenForTravellerSessionChanges } from "@/lib/auth";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -9,18 +10,24 @@ import { useToast } from "@/components/ui/toast";
 import { getBankTransfer, type BankTransferData } from "@/lib/bank-transfer";
 
 const money = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(value || 0);
-export function BankTransferPage({ bookingId, token }: { bookingId: string; token: string }) {
+export function BankTransferPage({ bookingId }: { bookingId: string }) {
   const toast = useToast();
   const [data, setData] = useState<BankTransferData | null>(null);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
-    try { setData((await getBankTransfer(bookingId, token)).data); setError(""); }
+    const sessionToken = getTravellerSession()?.sessionId;
+    try {
+      const response = await getBankTransfer(bookingId);
+      if (getTravellerSession()?.sessionId !== sessionToken) return;
+      setData(response.data); setError("");
+    }
     catch (err) { setError(err instanceof Error ? err.message : "Unable to load bank details"); }
-  }, [bookingId, token]);
+  }, [bookingId]);
   useEffect(() => {
     void load();
+    const unsubscribe = listenForTravellerSessionChanges(() => { setData(null); void load(); });
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 15000);
-    return () => window.clearInterval(timer);
+    return () => { unsubscribe(); window.clearInterval(timer); };
   }, [load]);
   const account = data?.accounts.find(item => item.status === "active") || data?.accounts[0];
   const expired = !!account && new Date(account.expiresAt).getTime() <= Date.now();
@@ -49,7 +56,7 @@ export function BankTransferPage({ bookingId, token }: { bookingId: string; toke
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="mx-auto w-full max-w-4xl space-y-5 px-4 py-10">
+      <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-4xl space-y-5 px-4 py-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div><h1 className="font-heading text-3xl font-bold text-secondary">Bank Transfer</h1><p className="mt-1 text-sm text-secondary/65">NEFT / RTGS / IMPS</p></div>
           <Button variant="outline" onClick={() => void load()}><RefreshCw className="size-4" /> Check Status</Button>
@@ -70,7 +77,7 @@ export function BankTransferPage({ bookingId, token }: { bookingId: string; toke
             </p>
             {account?.accountNumber ? (
               <section className="overflow-hidden rounded-[10px] border border-border bg-card">
-                <h2 className="flex items-center gap-2 border-b border-border bg-[#fff8f1] p-5 font-heading text-xl font-bold"><Landmark className="size-5 text-primary" /> Transfer Details</h2>
+                <h2 className="flex items-center gap-2 border-b border-border bg-[#fff8f1] p-5 font-heading text-xl font-bold"><Landmark className="size-5 text-brand-text" /> Transfer Details</h2>
                 <dl className="grid gap-5 p-5 sm:grid-cols-2">
                   {[
                     ["Beneficiary Name", account.beneficiaryName], ["Virtual Account Number", account.accountNumber],
@@ -88,7 +95,7 @@ export function BankTransferPage({ bookingId, token }: { bookingId: string; toke
                           title={value && value !== "-" ? "Copy " + label : label + " unavailable"}
                           disabled={!value || value === "-"}
                           onClick={() => void copyField(label, value)}
-                          className="inline-flex shrink-0 items-center justify-center rounded p-1 text-secondary/55 transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-35"
+                          className="inline-flex shrink-0 items-center justify-center rounded p-1 text-button-outline transition-colors hover:bg-primary/10 hover:text-button-outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-35"
                         >
                           <Copy className="size-4" aria-hidden="true" />
                         </button>
@@ -109,7 +116,7 @@ export function BankTransferPage({ bookingId, token }: { bookingId: string; toke
             {data.transfers.length ? <section className="space-y-3 rounded-[10px] border border-border bg-card p-5"><h2 className="font-heading text-xl font-bold">Transfer History</h2>
               {data.transfers.map(item => <div key={item.paymentId} className="space-y-1 border-t border-border py-3 text-sm"><p className="font-semibold">{money(item.amount)} - {item.status}</p><p className="break-all text-xs text-secondary/60">{item.mode} / {item.utr || item.paymentId} / {new Date(item.receivedAt).toLocaleString("en-IN")}</p><p>Applied: {money(item.amountApplied)}{item.amountReview > 0 ? " / Under review: " + money(item.amountReview) : ""}</p>{item.reason ? <p className="text-amber-700">{item.reason}</p> : null}</div>)}
             </section> : null}
-            {data.confirmationUrl ? <Link href={data.confirmationUrl} className="inline-block font-semibold text-primary underline">View Booking Confirmation</Link> : null}
+            {data.confirmationUrl ? <Link href={data.confirmationUrl} className="inline-block font-semibold text-brand-text underline">View Booking Confirmation</Link> : null}
           </>
         ) : null}
       </main>

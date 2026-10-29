@@ -92,7 +92,7 @@ function CustomisedTourCard({
       className={`relative min-h-[170px] w-full overflow-hidden rounded-[18px] sm:min-h-[220px] lg:min-h-0 lg:rounded-[10px] ${className}`}
     >
       {tours.map((tour, index) => (
-        <Link
+        <Link prefetch={false}
           key={`${tour.destinationId || tour.title}-${index}`}
           href="/destinations"
           aria-label={`Explore ${tour.title}`}
@@ -120,7 +120,7 @@ function CustomisedTourCard({
             {tour.tags.map((tag, tagIndex) => (
               <span
                 key={`${tag}-${tagIndex}`}
-                className="rounded-full bg-white px-4 py-2 text-[13px] font-medium text-primary lg:px-3 lg:py-1 lg:text-[12px]"
+                className="rounded-full bg-white px-4 py-2 text-[13px] font-medium text-brand-text lg:px-3 lg:py-1 lg:text-[12px]"
               >
                 {tag} +
               </span>
@@ -196,7 +196,7 @@ export function CustomisedToursSection({
         <div className="relative z-10 grid gap-8 md:grid-cols-2 lg:grid-cols-[minmax(250px,330px)_repeat(3,minmax(0,1fr))] lg:items-start lg:gap-x-8 xl:grid-cols-[330px_250px_260px_220px] xl:justify-between xl:gap-x-[44px]">
           <div className="lg:pt-1">
             <TextReveal visible={isSectionReady}>
-              <p className="text-description font-medium uppercase text-primary">
+              <p className="text-description font-medium uppercase text-button-outline">
                 Customised Tours
               </p>
             </TextReveal>
@@ -241,8 +241,8 @@ export function CustomisedToursSection({
 
             <Button
               nativeButton={false}
-              render={<Link href="/destinations" />}
-              className="mt-11 hidden h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:px-6 sm:text-button lg:flex lg:min-w-[200px]"
+              render={<Link prefetch={false} href="/destinations" />}
+              className="mt-11 hidden h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:px-6 sm:text-button lg:flex lg:w-max lg:min-w-[200px]"
             >
               Customise Your Tour
               <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
@@ -296,7 +296,7 @@ export function CustomisedToursSection({
 
         <Button
           nativeButton={false}
-          render={<Link href="/destinations" />}
+          render={<Link prefetch={false} href="/destinations" />}
           className="mt-9 h-12 w-full min-w-0 justify-between rounded-full px-6 text-[17px] font-normal lg:hidden"
         >
           Customise Your Tour

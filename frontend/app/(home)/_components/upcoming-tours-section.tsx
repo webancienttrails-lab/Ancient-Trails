@@ -90,7 +90,7 @@ function TourCard({ tour, className, sizes }: TourCardProps) {
   const formattedDate = formatDepartureDate(tour.date);
 
   return (
-    <Link
+    <Link prefetch={false}
       href={getTourHref(tour)}
       className={`group relative block overflow-hidden rounded-[10px] bg-secondary  ${className}`}
     >
@@ -104,7 +104,7 @@ function TourCard({ tour, className, sizes }: TourCardProps) {
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(18,12,8,0.04)_0%,rgba(18,12,8,0.14)_46%,rgba(18,12,8,0.82)_100%)]" />
       <div className="absolute inset-x-0 top-0 h-16 bg-[linear-gradient(180deg,rgba(0,0,0,0.72)_0%,rgba(0,0,0,0)_100%)]" />
       {tour.isBestseller ? (
-        <span className="absolute left-2 top-2 rounded-[6px] bg-primary px-2 py-1 font-sans text-[10px] font-bold leading-none text-white shadow-[0_10px_20px_rgba(0,0,0,0.18)] lg:left-3 lg:top-3 lg:text-[11px]">
+        <span className="absolute left-2 top-2 rounded-[6px] bg-brand-button-dark px-2 py-1 font-sans text-[10px] font-bold leading-none text-white shadow-[0_10px_20px_rgba(0,0,0,0.18)] lg:left-3 lg:top-3 lg:text-[11px]">
           BESTSELLER
         </span>
       ) : null}
@@ -132,10 +132,11 @@ function TourCard({ tour, className, sizes }: TourCardProps) {
   );
 }
 
-export function UpcomingToursSection() {
-  const [adminTours, setAdminTours] = useState<HomeTourCard[]>([]);
+export function UpcomingToursSection({ initialTours }: { initialTours?: HomeTourCard[] }) {
+  const [adminTours, setAdminTours] = useState<HomeTourCard[]>(initialTours ?? []);
 
   useEffect(() => {
+    if (initialTours) return;
     let isMounted = true;
 
     async function loadTours() {
@@ -157,7 +158,7 @@ export function UpcomingToursSection() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [initialTours]);
 
   const tours = adminTours.slice(0, 6);
 
@@ -172,7 +173,7 @@ export function UpcomingToursSection() {
           <div>
             <TextReveal>
               <div>
-                <p className="text-eyebrow font-medium uppercase tracking-normal text-primary">
+                <p className="text-eyebrow font-medium uppercase tracking-normal text-button-outline">
                   Explore Upcoming Tours
                 </p>
                 <h2 className="mt-1 font-sans text-title font-bold leading-none tracking-normal sm:text-[38px] lg:text-[40px]">
@@ -198,12 +199,13 @@ export function UpcomingToursSection() {
 
             <div className="mt-4 flex justify-start lg:hidden">
               <Button
+                variant="secondary"
                 nativeButton={false}
-                render={<Link href="/tour-calendar" />}
+                render={<Link prefetch={false} href="/tour-calendar" />}
                 className="h-10 w-auto min-w-[220px] justify-between gap-4 px-4 text-[12px] sm:w-auto sm:gap-6 sm:px-5 sm:text-button"
               >
                 View Tour Calendar
-                <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+                <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />
               </Button>
             </div>
 
@@ -265,12 +267,13 @@ export function UpcomingToursSection() {
 
               <div className="mt-4 flex justify-start lg:mt-6 lg:justify-end">
                 <Button
+                  variant="secondary"
                   nativeButton={false}
-                  render={<Link href="/tour-calendar" />}
+                  render={<Link prefetch={false} href="/tour-calendar" />}
                   className="h-10 w-full min-w-0 justify-between gap-2 px-3 text-[12px] sm:w-auto sm:gap-6 sm:px-5 sm:text-button lg:min-w-[220px]"
                 >
                   View Tour Calendar
-                  <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+                  <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />
                 </Button>
               </div>
             </div>

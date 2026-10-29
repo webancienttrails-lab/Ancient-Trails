@@ -3,10 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:otp-security": "node --test tests/otp-login-flow.test.cjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:auth-session": "node --test tests/auth-session.test.cjs",
+    "test:experience-privacy": "node --test tests/experience-privacy.test.cjs",
+    "test:experience-links": "node --test tests/experience-links.test.cjs tests/experience-links.live.test.cjs",
+    "test:mobile-search": "node --test tests/mobile-search.live.test.cjs",
+    "test:booking-terms": "node --test tests/booking-terms.live.test.cjs",
+    "test:mobile-booking": "node --test tests/mobile-booking-flow.live.test.cjs",
+    "test:cancellation-request": "node --test tests/booking-cancellation-request.test.cjs",
+    "test:booking-receipt": "node --test tests/booking-receipt.test.cjs",
+    "test:booking-privacy": "node --test tests/booking-privacy.test.cjs",
+    "test:payment-retry": "node --test tests/payment-retry.test.cjs tests/payment-checkout-outcomes.test.cjs",
+    "test:checkout-outcomes": "node --test tests/payment-checkout-outcomes.test.cjs",
+    "test:offline-confirmation": "node --test tests/offline-payment-confirmation.live.test.cjs",
+    "test:booking-accessibility": "node --test tests/booking-accessibility.live.test.cjs",
+    "test:booking-dock": "node --test tests/booking-dock.live.test.cjs",
+    "test:mobile-controls": "node --test tests/mobile-booking-controls.live.test.cjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

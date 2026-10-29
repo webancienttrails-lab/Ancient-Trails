@@ -40,6 +40,8 @@ export type BlogCategoryCount = {
   count: number;
 };
 
+export type PublicBlogPreview = Pick<PublicBlog, "id" | "slug" | "title" | "heroImage" | "quote" | "publishedAt" | "category">;
+
 export type PublicBlogsResponse = {
   blogs: PublicBlog[];
   categories: BlogCategoryCount[];
@@ -77,10 +79,17 @@ export function getBlogMediaUrl(source: string): string {
   return trimmedSource;
 }
 
-export async function listPublishedBlogs() {
-  return apiRequest<PublicBlogsResponse>("/api/blogs");
+export async function listPublishedBlogs(options: {
+  page?: number; limit?: number; category?: string; sort?: "Latest" | "Oldest";
+} = {}) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(options)) {
+    if (value !== undefined && value !== "All") params.set(key, String(value));
+  }
+  const query = params.toString();
+  return apiRequest<PublicBlogsResponse>(`/api/blogs${query ? `?${query}` : ""}`, { cache: "no-store" });
 }
 
 export async function getPublishedBlog(slug: string) {
-  return apiRequest<PublicBlogResponse>(`/api/blogs/${slug}`);
+  return apiRequest<PublicBlogResponse>(`/api/blogs/${encodeURIComponent(slug)}`);
 }

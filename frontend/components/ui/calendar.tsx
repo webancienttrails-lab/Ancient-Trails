@@ -165,7 +165,7 @@ export function Calendar({
           variant="ghost"
           size="icon-sm"
           onClick={() => moveMonth(-1)}
-          className="rounded-full text-secondary/70 hover:text-primary"
+          className="rounded-full text-button-outline hover:text-button-outline"
           aria-label="Previous month"
         >
           <ChevronLeft className="size-4" strokeWidth={2} />
@@ -204,7 +204,7 @@ export function Calendar({
           variant="ghost"
           size="icon-sm"
           onClick={() => moveMonth(1)}
-          className="rounded-full text-secondary/70 hover:text-primary"
+          className="rounded-full text-button-outline hover:text-button-outline"
           aria-label="Next month"
         >
           <ChevronRight className="size-4" strokeWidth={2} />
@@ -236,9 +236,9 @@ export function Calendar({
               type="button"
               onClick={() => onChange?.(dateValue)}
               className={cn(
-                "grid h-9 place-items-center rounded-full font-sans text-[12px] font-semibold text-secondary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:ring-3 focus-visible:ring-primary/20",
-                isToday && "text-primary",
-                isSelected && "bg-primary text-white hover:bg-primary hover:text-white"
+                "grid h-9 place-items-center rounded-full font-sans text-[12px] font-semibold text-button-outline transition-colors hover:bg-primary/10 hover:text-button-outline focus-visible:ring-3 focus-visible:ring-primary/20",
+                isToday && "text-button-outline",
+                isSelected && "bg-primary text-white hover:bg-brand-button-dark hover:text-white"
               )}
             >
               {day}

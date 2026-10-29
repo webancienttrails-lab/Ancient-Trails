@@ -1,5 +1,6 @@
 import Image from "next/image";
 import type { Metadata } from "next";
+import { privatePageRobots } from "@/lib/seo";
 import {
   Bookmark,
   CalendarCheck,
@@ -12,6 +13,7 @@ import { Header } from "@/components/layout/header";
 
 export const metadata: Metadata = {
   title: "Login",
+  robots: privatePageRobots,
 };
 
 const journeyHighlights = [
@@ -34,7 +36,7 @@ const journeyHighlights = [
 
 export default function LoginPage() {
   return (
-    <main className="min-h-[100dvh] overflow-x-hidden bg-background text-secondary lg:h-[100dvh] lg:overflow-hidden">
+    <main id="main-content" tabIndex={-1} className="min-h-[100dvh] overflow-x-hidden bg-background text-secondary lg:h-[100dvh] lg:overflow-hidden">
       <section className="relative min-h-[100dvh] overflow-hidden lg:h-full">
         <Image
           src="/home assets/Caves.webp"
@@ -59,7 +61,7 @@ export default function LoginPage() {
             <div className="max-w-[390px]">
               <h1 className="font-heading text-[2.1rem] font-bold leading-[0.98] text-white sm:text-[2.45rem] lg:text-[clamp(2.35rem,4.5vw,3.8rem)] lg:text-secondary">
                 Your Journey
-                <span className="block text-primary">Starts Here</span>
+                <span className="block text-brand-text">Starts Here</span>
               </h1>
              
               <p className="mb-1 mt-3 max-w-[345px] font-sans text-[0.9rem] leading-[1.55] text-white/90 sm:text-[clamp(0.88rem,1.2vw,1rem)] lg:mb-2 lg:mt-[clamp(0.75rem,2vh,1.25rem)] lg:text-secondary">

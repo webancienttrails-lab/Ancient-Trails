@@ -240,7 +240,7 @@ export function AboutPageContent() {
   );
 
   return (
-    <main className="min-h-screen overflow-hidden bg-background text-foreground">
+    <main id="main-content" tabIndex={-1} className="min-h-screen overflow-hidden bg-background text-foreground">
       <HeroSection />
       {stats.length > 0 ? <StatsSection stats={stats} /> : null}
       <MissionVisionSection />
@@ -277,13 +277,13 @@ function HeroSection() {
 
         <div className="flex flex-1 items-center px-0 pb-[92px] pt-6 max-sm:items-end max-sm:pb-[82px] max-sm:pt-10 lg:pb-[86px] lg:pt-4">
           <div className="max-w-[410px] text-accent max-sm:max-w-[340px]">
-            <p className="mb-[clamp(0.5rem,1.5vh,0.75rem)] text-eyebrow font-medium uppercase tracking-normal text-primary">
+            <p className="mb-[clamp(0.5rem,1.5vh,0.75rem)] text-eyebrow font-medium uppercase tracking-normal text-button-outline">
               About Ancient Trails
             </p>
             <h1 className="font-heading text-title font-bold leading-none tracking-normal text-secondary">
               Our Story.
               <span className="block">
-                Our Passion<span className="text-primary">.</span>
+                Our Passion<span className="text-brand-text">.</span>
               </span>
             </h1>
             <span className="mt-5 block h-px w-14 bg-accent" />
@@ -512,7 +512,7 @@ function ValuesSection() {
       <div className="home-wide-frame relative mx-auto w-full [@media(min-width:1300px)]:px-12">
         <div className="text-center">
           <span className="mx-auto block h-px w-[150px] bg-primary max-sm:w-[110px]" />
-          <p className="mt-7 font-sans text-eyebrow font-medium uppercase tracking-normal text-primary max-sm:mt-5">
+          <p className="mt-7 font-sans text-eyebrow font-medium uppercase tracking-normal text-button-outline max-sm:mt-5">
             Why Travel With Us?
           </p>
           <h2 className="mt-2 font-sans text-title font-semibold leading-none tracking-normal text-secondary">
@@ -540,7 +540,7 @@ function ValuesSection() {
                   </span>
                 ) : null}
 
-                <span className="grid size-[78px] place-items-center rounded-full border border-[#f5ddca] bg-[#fff7f1] text-primary max-sm:size-[64px]">
+                <span className="grid size-[78px] place-items-center rounded-full border border-[#f5ddca] bg-[#fff7f1] text-brand-text max-sm:size-[64px]">
                   <Icon className="size-8 max-sm:size-7" strokeWidth={1.8} />
                 </span>
                 <h3 className="mt-7 min-h-[54px] max-w-[235px] font-sans text-description font-bold leading-[1.32] tracking-normal text-secondary max-sm:mt-5 max-sm:min-h-0">
@@ -558,6 +558,7 @@ function ValuesSection() {
               <button
                 key={item.title}
                 type="button"
+                data-slot="carousel-dot"
                 aria-label={`Show ${item.title}`}
                 aria-pressed={activeValueIndex === index}
                 onClick={() => setActiveValueIndex(index)}
@@ -617,13 +618,13 @@ function FounderSection({
             />
             <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.98)_0%,rgba(255,255,255,0.92)_48%,rgba(255,255,255,0.74)_100%)]" />
             <div className="relative z-10 max-w-[690px]">
-              <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+              <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-button-outline">
                 Meet Our Founder
               </p>
               <h2 className="mt-2 font-heading text-title font-bold leading-none tracking-normal text-secondary">
                 {displayName}
               </h2>
-              <p className="mt-2 font-sans text-description font-semibold leading-tight text-primary max-sm:mt-1">
+              <p className="mt-2 font-sans text-description font-semibold leading-tight text-brand-text max-sm:mt-1">
                 {role}
               </p>
 
@@ -640,7 +641,7 @@ function FounderSection({
                   {tags.map((tag) => (
                     <span
                       key={tag}
-                      className="rounded-full border border-primary/20 bg-white/86 px-4 py-1.5 font-sans text-[13px] font-semibold leading-none text-primary max-sm:px-3 max-sm:text-[12px]"
+                      className="rounded-full border border-primary/20 bg-white/86 px-4 py-1.5 font-sans text-[13px] font-semibold leading-none text-brand-text max-sm:px-3 max-sm:text-[12px]"
                     >
                       {tag}
                     </span>
@@ -746,12 +747,12 @@ function TeamCarouselSection({
       <div className="home-wide-frame mx-auto w-full px-5 max-sm:px-4 sm:px-0 [@media(min-width:1300px)]:px-12">
         <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+            <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-button-outline">
               Our Team
             </p>
             <h2 className="mt-3 max-w-[690px] font-heading text-title font-bold leading-none tracking-normal text-secondary">
               Everything your
-              <span className="block text-primary">journey needs</span>
+              <span className="block text-brand-text">journey needs</span>
             </h2>
           </div>
 
@@ -762,7 +763,7 @@ function TeamCarouselSection({
                   type="button"
                   aria-label="Previous team member"
                   onClick={showPreviousMember}
-                  className="grid size-11 place-items-center rounded-full border border-primary bg-white text-primary transition-colors hover:bg-primary hover:text-white"
+                  className="grid size-11 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white"
                 >
                   <ArrowLeft className="size-5" strokeWidth={2} />
                 </button>
@@ -770,7 +771,7 @@ function TeamCarouselSection({
                   type="button"
                   aria-label="Next team member"
                   onClick={showNextMember}
-                  className="grid size-11 place-items-center rounded-full border border-primary bg-primary text-white transition-colors hover:bg-white hover:text-primary"
+                  className="grid size-11 place-items-center rounded-full border border-primary bg-primary text-white transition-colors hover:bg-white hover:text-button-outline"
                 >
                   <ArrowRight className="size-5" strokeWidth={2} />
                 </button>
@@ -843,7 +844,7 @@ function TeamCarouselCard({
         </p>
       </div>
       <div className="absolute inset-0 flex translate-y-3 flex-col justify-end bg-black/12 p-6 opacity-0 backdrop-blur-sm transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
-        <p className="font-sans text-eyebrow font-semibold uppercase tracking-normal text-primary">
+        <p className="font-sans text-eyebrow font-semibold uppercase tracking-normal text-button-outline">
           {role}
         </p>
         <h3 className="mt-3 font-heading text-[20px] font-semibold leading-tight tracking-normal text-white sm:text-[24px]">
@@ -891,7 +892,7 @@ function ExpertPeopleSection({ experts }: { experts: PublicExpert[] }) {
       <div className="home-wide-frame mx-auto grid w-full gap-8 [@media(min-width:1300px)]:px-12 lg:grid-cols-[310px_minmax(0,1fr)] lg:items-end xl:grid-cols-[350px_minmax(0,1fr)]">
         <div className="flex min-h-[330px] flex-col justify-between max-sm:min-h-0 max-sm:gap-6 lg:min-h-[380px]">
           <div>
-            <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-primary">
+            <p className="font-sans text-eyebrow font-medium uppercase tracking-normal text-button-outline">
              
               Our Experts
             </p>
@@ -910,7 +911,7 @@ function ExpertPeopleSection({ experts }: { experts: PublicExpert[] }) {
                 type="button"
                 aria-label="Previous expert"
                 onClick={showPreviousExpert}
-                className="grid size-11 place-items-center rounded-full border border-primary bg-white text-primary transition-colors hover:bg-primary hover:text-white"
+                className="grid size-11 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white"
               >
                 <ArrowLeft className="size-5" strokeWidth={2.2} />
               </button>
@@ -918,7 +919,7 @@ function ExpertPeopleSection({ experts }: { experts: PublicExpert[] }) {
                 type="button"
                 aria-label="Next expert"
                 onClick={showNextExpert}
-                className="grid size-11 place-items-center rounded-full border border-primary bg-primary text-white transition-colors hover:bg-white hover:text-primary"
+                className="grid size-11 place-items-center rounded-full border border-primary bg-primary text-white transition-colors hover:bg-white hover:text-button-outline"
               >
                 <ArrowRight className="size-5" strokeWidth={2.2} />
               </button>
@@ -961,7 +962,7 @@ function ExpertPeopleCard({ expert }: { expert: PublicExpert }) {
         <ProfilePlaceholder name={name} />
       )}
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.02)_28%,rgba(5,10,3,0.68)_100%)]" />
-      <span className="absolute right-5 top-5 grid size-11 place-items-center rounded-full border border-primary bg-primary text-white transition-colors group-hover:bg-white group-hover:text-primary">
+      <span className="absolute right-5 top-5 grid size-11 place-items-center rounded-full border border-primary bg-brand-button-dark text-white transition-colors group-hover:bg-white group-hover:text-brand-text">
         <ArrowUpRight className="size-5" strokeWidth={2.2} />
       </span>
       <div className="absolute inset-x-0 bottom-0 p-6 text-white">
@@ -979,7 +980,7 @@ export function AboutFooterStrip() {
   return (
     <section className="bg-[#211006] px-5 py-10 text-white sm:px-8 lg:px-0">
       <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-3">
-        <p className="font-heading text-title font-bold text-primary">
+        <p className="font-heading text-title font-bold text-brand-text">
           ancient trails
         </p>
         <p className="max-w-[420px] font-sans text-description leading-[1.6] text-white/70">
@@ -993,7 +994,7 @@ export function AboutFooterStrip() {
 
 function ProfilePlaceholder({ name }: { name: string }) {
   return (
-    <div className="absolute inset-0 grid place-items-center bg-[linear-gradient(135deg,#f6e6d7,#dec8b6)] text-primary">
+    <div className="absolute inset-0 grid place-items-center bg-[linear-gradient(135deg,#f6e6d7,#dec8b6)] text-brand-text">
       <span className="grid size-16 place-items-center rounded-full bg-white/72 font-heading text-title font-bold shadow-[0_12px_28px_rgba(80,50,25,0.12)]">
         {getInitials(name)}
       </span>

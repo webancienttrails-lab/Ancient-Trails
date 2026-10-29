@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { PaymentRetryNotice } from "@/components/payment-retry-notice";
+import { paymentFailureMessage } from "@/lib/payment-failure";
+import { getTravellerSession, listenForTravellerSessionChanges } from "@/lib/auth";
+import { useParams, useRouter } from "next/navigation";
 import {
   AlertCircle,
   CalendarDays,
@@ -48,6 +51,7 @@ type RazorpayCheckoutOptions = {
   currency: string;
   description: string;
   handler: (response: RazorpayPaymentResponse) => void;
+  modal?: { ondismiss: () => void };
   key: string;
   name: string;
   order_id: string;
@@ -140,42 +144,41 @@ function getPayableAmount(data: BookingRecoveryData) {
 
 export default function BookingRecoveryPage() {
   const params = useParams<{ bookingId: string }>();
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const token = searchParams.get("token") || "";
   const bookingId = params.bookingId;
   const [data, setData] = useState<BookingRecoveryData | null>(null);
   const [status, setStatus] = useState<"loading" | "idle" | "creating" | "verifying">(
     "loading"
   );
   const [message, setMessage] = useState("");
+  const [paymentRetryMessage, setPaymentRetryMessage] = useState<string | null>(null);
   const isMountedRef = useRef(true);
 
   const loadRecovery = useCallback(async () => {
-    if (!bookingId || !token) {
+    if (!bookingId) {
       setStatus("idle");
-      setMessage("This booking link is missing a recovery token.");
+      setMessage("This booking link is incomplete.");
       return;
     }
 
     setStatus("loading");
+    setData(null);
     setMessage("");
+    const sessionToken = getTravellerSession()?.sessionId;
 
     try {
-      const response = await getBookingRecovery(bookingId, token);
+      const response = await getBookingRecovery(bookingId);
 
-      if (!isMountedRef.current) {
+      if (!isMountedRef.current || getTravellerSession()?.sessionId !== sessionToken) {
         return;
       }
 
       setData(response.data);
       setStatus("idle");
 
-      if (response.data.isConfirmed && response.data.confirmationToken) {
+      if (response.data.isConfirmed) {
         router.replace(
-          `/booking-confirmed/${response.data.booking.id}?token=${encodeURIComponent(
-            response.data.confirmationToken
-          )}`
+          `/booking-confirmed/${response.data.booking.id}`
         );
       }
     } catch (error) {
@@ -186,13 +189,15 @@ export default function BookingRecoveryPage() {
           : "This booking recovery link could not be opened."
       );
     }
-  }, [bookingId, router, token]);
+  }, [bookingId, router]);
 
   useEffect(() => {
     isMountedRef.current = true;
     void loadRecovery();
+    const unsubscribe = listenForTravellerSessionChanges(() => { setData(null); void loadRecovery(); });
 
     return () => {
+      unsubscribe();
       isMountedRef.current = false;
     };
   }, [loadRecovery]);
@@ -226,6 +231,16 @@ export default function BookingRecoveryPage() {
       throw new Error("Razorpay checkout could not be opened");
     }
 
+    let didReceivePaymentResponse = false;
+    let didEndPaymentAttempt = false;
+    const endPaymentAttempt = (reason?: string) => {
+      if (didReceivePaymentResponse || didEndPaymentAttempt) return;
+      didEndPaymentAttempt = true;
+      const message = paymentFailureMessage(reason);
+      setStatus("idle");
+      setMessage(message);
+      setPaymentRetryMessage(message);
+    };
     const checkout = new razorpayWindow.Razorpay({
       amount: order.checkout.amount,
       currency: order.checkout.currency,
@@ -234,6 +249,7 @@ export default function BookingRecoveryPage() {
       name: order.checkout.name,
       order_id: order.checkout.orderId,
       prefill: order.checkout.prefill,
+      modal: { ondismiss: () => endPaymentAttempt() },
       retry: {
         enabled: false,
       },
@@ -241,17 +257,18 @@ export default function BookingRecoveryPage() {
         color: "#d47220",
       },
       handler: (paymentResponse) => {
+        if (didReceivePaymentResponse) return;
+        didReceivePaymentResponse = true;
+        setPaymentRetryMessage(null);
         setStatus("verifying");
         setMessage("Verifying payment and confirming your booking...");
 
         verifyBookingPayment(paymentResponse)
           .then((verificationResponse) => {
-            const { booking, confirmationToken } = verificationResponse.data;
+            const { booking } = verificationResponse.data;
 
             router.push(
-              `/booking-confirmed/${booking.id}?token=${encodeURIComponent(
-                confirmationToken
-              )}`
+              `/booking-confirmed/${booking.id}`
             );
           })
           .catch((error: unknown) => {
@@ -266,12 +283,7 @@ export default function BookingRecoveryPage() {
     });
 
     checkout.on("payment.failed", (failureResponse) => {
-      setStatus("idle");
-      setMessage(
-        failureResponse.error?.description ||
-          failureResponse.error?.reason ||
-          "Payment failed. You can retry from this page."
-      );
+      endPaymentAttempt(failureResponse.error?.description || failureResponse.error?.reason);
     });
 
     checkout.open();
@@ -282,11 +294,12 @@ export default function BookingRecoveryPage() {
       return;
     }
 
+    setPaymentRetryMessage(null);
     setStatus("creating");
     setMessage("Checking availability and creating a secure payment link...");
 
     try {
-      const response = await createBookingRecoveryPaymentOrder(bookingId, token);
+      const response = await createBookingRecoveryPaymentOrder(bookingId);
 
       await openRazorpayCheckout(response.data);
     } catch (error) {
@@ -307,13 +320,14 @@ export default function BookingRecoveryPage() {
   const isBusy = status === "loading" || status === "creating" || status === "verifying";
 
   return (
-    <main className="min-h-screen bg-background text-secondary">
+    <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-secondary">
       <Header />
+      <PaymentRetryNotice message={paymentRetryMessage} busy={status !== "idle"} onRetry={() => void handleRetryPayment()} onDismiss={() => setPaymentRetryMessage(null)} />
       <section className="mx-auto flex min-h-[72vh] w-full max-w-[900px] flex-col justify-center px-5 py-10">
         <div className="rounded-[8px] border border-border bg-card p-5 shadow-[0_14px_34px_rgba(67,43,27,0.08)] sm:p-7">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="font-sans text-[12px] font-bold uppercase text-primary">
+              <p className="font-sans text-[12px] font-bold uppercase text-button-outline">
                 Payment Pending
               </p>
               <h1 className="mt-2 font-heading text-[32px] font-bold leading-tight text-secondary">
@@ -325,7 +339,7 @@ export default function BookingRecoveryPage() {
               </p>
             </div>
             {booking?.bookingReference ? (
-              <span className="inline-flex rounded-full bg-primary/10 px-4 py-2 font-sans text-[12px] font-bold text-primary">
+              <span className="inline-flex rounded-full bg-primary/10 px-4 py-2 font-sans text-[12px] font-bold text-brand-text">
                 {booking.bookingReference}
               </span>
             ) : null}
@@ -333,7 +347,7 @@ export default function BookingRecoveryPage() {
 
           {status === "loading" ? (
             <div className="mt-8 flex items-center gap-3 rounded-[8px] bg-background p-4 font-sans text-[14px] font-semibold text-secondary/68">
-              <Loader2 className="size-5 animate-spin text-primary" />
+              <Loader2 className="size-5 animate-spin text-brand-text" />
               Checking booking status...
             </div>
           ) : null}
@@ -401,7 +415,7 @@ export default function BookingRecoveryPage() {
             </button>
             <Link
               href={booking?.tourId ? `/tours/${booking.tourId}` : "/tours"}
-              className="inline-flex h-11 items-center justify-center rounded-full border border-border bg-white px-6 font-sans text-[14px] font-bold text-secondary transition-colors hover:border-primary hover:text-primary"
+              className="inline-flex h-11 items-center justify-center rounded-full border border-button-outline bg-white px-6 font-sans text-[14px] font-bold text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
             >
               Back to Tour
             </Link>
@@ -423,7 +437,7 @@ function SummaryItem({
 }) {
   return (
     <div className="min-w-0 rounded-[8px] border border-border bg-white p-3">
-      <Icon className="size-4 text-primary" />
+      <Icon className="size-4 text-brand-text" />
       <span className="mt-3 block font-sans text-[11px] font-bold uppercase text-secondary/48">
         {label}
       </span>

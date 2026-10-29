@@ -1,4 +1,12 @@
 import { Header } from "@/components/layout/header";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata({
+  title: "Terms and Conditions",
+  description: "Read the Ancient Trails terms for tour bookings, payments, cancellations and traveller responsibilities so you can plan your heritage journey with confidence.",
+  path: "/terms-and-conditions",
+});
+import { BookingTermExplanation, BookingTermsLink } from "@/components/booking-term-help";
 import {
   defaultSiteContactSettings,
   getContactCallDisplay,
@@ -21,7 +29,7 @@ export default async function TermsAndConditionsPage() {
         <Header />
       </div>
 
-      <main className="border-t border-primary/10">
+      <main id="main-content" tabIndex={-1} className="border-t border-primary/10">
         <div className="mx-auto w-full max-w-275 px-5 py-12 sm:px-8 lg:py-16">
           <h1 className="font-heading text-[32px] font-bold leading-tight text-secondary sm:text-[46px] sm:leading-none">
             Terms and Conditions
@@ -86,6 +94,8 @@ export default async function TermsAndConditionsPage() {
 
             <Section title="Booking Terms">
               <Subsection title="Registration for the tour">
+                <BookingTermExplanation term="registration-amount" className="text-sm" />
+                <BookingTermsLink />
                 <p>
                   Registering for a tour online or offline by paying a
                   registration amount indicates that the guest has read and
@@ -167,6 +177,7 @@ export default async function TermsAndConditionsPage() {
                 </p>
               </Subsection>
 
+              <div id="cancellation-policy" className="scroll-mt-24" />
               <Subsection title="Cancellation of booking">
                 <p>
                   Cancellation requests must be submitted in writing together
@@ -488,7 +499,7 @@ export default async function TermsAndConditionsPage() {
                 Conditions may be sent to{" "}
                 <a
                   href={getMailtoHref(email)}
-                  className="font-medium text-primary"
+                  className="font-medium text-brand-text"
                 >
                   {email}
                 </a>

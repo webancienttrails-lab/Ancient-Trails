@@ -1,5 +1,13 @@
 "use client";
+import type { CalendarPageData } from "@/lib/travel-page-data";
 
+import {
+  getBookableDepartures,
+  getNextBookableDeparture,
+  getDepartureTotalSeats as getDepartureCapacity,
+  getDepartureFilledSeats as getFilledSeats,
+  getDepartureSeatsLeft,
+} from "@/lib/tour-departures";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -75,7 +83,7 @@ const monthNameFormatter = new Intl.DateTimeFormat("en-US", {
   month: "long",
 });
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const departureCapacityFallback = 25;
+
 const currentDateDotClassName = "bg-[#2faa5d]";
 const departureDateDotClassName = "bg-primary";
 const festivalDateDotClassName = "bg-primary/50";
@@ -340,25 +348,13 @@ function getUpcomingDepartureMonth(
   destinationId: string,
   tourId: string
 ) {
-  if (destinationId === "all" && tourId === "all") {
-    return startOfMonth(new Date());
-  }
-
-  const today = startOfDay(new Date()).getTime();
-  const nextDeparture = departures
+  const nextDeparture = getNextBookableDeparture(departures
     .filter((item) => matchesDepartureSelection(item, destinationId, tourId))
-    .filter(({ departure }) => getDateValue(departure.departureDate) >= today)
-    .sort(
-      (left, right) =>
-        getDateValue(left.departure.departureDate) -
-        getDateValue(right.departure.departureDate)
-    )[0];
+    .map((item) => item.departure));
 
-  if (!nextDeparture?.departure.departureDate) {
-    return startOfMonth(new Date());
-  }
-
-  return startOfMonth(new Date(nextDeparture.departure.departureDate));
+  return nextDeparture?.departureDate
+    ? startOfMonth(new Date(nextDeparture.departureDate))
+    : startOfMonth(new Date());
 }
 
 function getDepartureIdentifier(departure: PublicTourDeparture) {
@@ -394,7 +390,7 @@ function getDepartureStatus(departures: EnrichedDeparture[]): DepartureStatus {
 function statusBadgeClassName(status: DepartureStatus) {
   switch (status) {
     case "available":
-      return "bg-primary text-white";
+      return "bg-brand-button-dark text-white";
     case "few":
       return "bg-[#f0a22a] text-white";
     case "almost":
@@ -518,66 +514,6 @@ function resolveDestinationFilter(
   );
 }
 
-function getDepartureCapacity(departure: PublicTourDeparture) {
-  const departureWithCapacity = departure as PublicTourDeparture & {
-    capacity?: number;
-    maxSeats?: number;
-    seatsTotal?: number;
-    totalSeats?: number;
-  };
-  const declaredCapacity = [
-    departureWithCapacity.capacity,
-    departureWithCapacity.totalSeats,
-    departureWithCapacity.seatsTotal,
-    departureWithCapacity.maxSeats,
-  ].find((value) => typeof value === "number" && value > 0);
-
-  return Math.max(
-    departure.seatsAvailable,
-    declaredCapacity || departureCapacityFallback
-  );
-}
-
-function getDeclaredFilledSeats(departure: PublicTourDeparture) {
-  const departureWithSeats = departure as PublicTourDeparture & {
-    bookedSeats?: number;
-    seatsBooked?: number;
-  };
-  const filledSeats = [
-    departure.filledSeats,
-    departureWithSeats.bookedSeats,
-    departureWithSeats.seatsBooked,
-  ].find((value) => typeof value === "number" && value >= 0);
-
-  return typeof filledSeats === "number"
-    ? Math.max(0, Math.trunc(filledSeats))
-    : null;
-}
-
-function getFilledSeats(departure: PublicTourDeparture) {
-  const capacity = getDepartureCapacity(departure);
-  const declaredFilledSeats = getDeclaredFilledSeats(departure);
-
-  if (declaredFilledSeats !== null) {
-    return Math.min(capacity, declaredFilledSeats);
-  }
-
-  return Math.min(
-    capacity,
-    Math.max(0, Math.trunc(capacity - departure.seatsAvailable))
-  );
-}
-
-function getDepartureSeatsLeft(departure: PublicTourDeparture) {
-  const declaredFilledSeats = getDeclaredFilledSeats(departure);
-
-  if (declaredFilledSeats !== null) {
-    return Math.max(0, getDepartureCapacity(departure) - declaredFilledSeats);
-  }
-
-  return Math.max(0, Math.trunc(departure.seatsAvailable));
-}
-
 function getFilledSeatPercent(departure: PublicTourDeparture) {
   const capacity = getDepartureCapacity(departure);
 
@@ -639,224 +575,6 @@ function sortDeparturesByPrice(
   });
 }
 
-function createFallbackExperts(): PublicExpert[] {
-  return [
-    {
-      id: "fallback-expert-1",
-      expertId: "GIRINATH-BHARADE",
-      fullName: "Mr. Girinath Bharade",
-      image: "/home assets/Khajuraho.webp",
-      fullBiography:
-        "Founder and Indologist, researcher and storyteller with special reverence for South India.",
-      expertiseTags: ["Founder & Indologist"],
-      qualifications: ["Temple Architecture"],
-      languages: ["English", "Hindi"],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "fallback-expert-2",
-      expertId: "MEERA-NAIR",
-      fullName: "Meera Nair",
-      image: "/home assets/destination/Udaipur.webp",
-      fullBiography:
-        "Expert in temple architecture and cultural heritage trails.",
-      expertiseTags: ["Heritage Specialist"],
-      qualifications: ["Cultural Historian"],
-      languages: ["English", "Malayalam"],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "fallback-expert-3",
-      expertId: "ROHIT-SINGH",
-      fullName: "Rohit Singh",
-      image: "/home assets/destination/Hampi.webp",
-      fullBiography:
-        "Archaeologist and historian passionate about ancient civilizations and art.",
-      expertiseTags: ["Archaeologist"],
-      qualifications: ["Ancient Civilizations"],
-      languages: ["English", "Hindi"],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: "fallback-expert-4",
-      expertId: "VIKRAM-DESHPANDE",
-      fullName: "Vikram Deshpande",
-      image: "/home assets/destination/Varanasi.webp",
-      fullBiography:
-        "Researcher and author specialising in Indian history and philosophy.",
-      expertiseTags: ["History Researcher"],
-      qualifications: ["Indian Philosophy"],
-      languages: ["English", "Hindi", "Marathi"],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ];
-}
-
-function createFallbackData(): EnrichedDeparture[] {
-  const now = new Date();
-  const experts = createFallbackExperts();
-  const tourSeeds = [
-    {
-      tourId: "BADAMI-HAMPI",
-      tourName: "Flavours of Badami & Hampi",
-      destinationId: "HAMPI",
-      durationDn: "6D/5N",
-      category: "Heritage",
-      image: "/home assets/destination/Hampi.webp",
-      city: "Hampi",
-      state: "Karnataka",
-      seats: 25,
-      price: 35500,
-      expert: experts[0],
-      dayOffset: 24,
-    },
-    {
-      tourId: "KERALA-TEMPLE",
-      tourName: "Kerala Backwaters & Temple Trail",
-      destinationId: "KERALA",
-      durationDn: "6D/7N",
-      category: "Cultural",
-      image: "/home assets/Vietnam.webp",
-      city: "Kochi",
-      state: "Kerala",
-      seats: 12,
-      price: 42500,
-      expert: experts[1],
-      dayOffset: 38,
-    },
-    {
-      tourId: "SACRED-SOUTH",
-      tourName: "Sacred South Trail",
-      destinationId: "TAMIL-NADU",
-      durationDn: "7D/6N",
-      category: "Spiritual",
-      image: "/home assets/Khajuraho.webp",
-      city: "Thanjavur",
-      state: "Tamil Nadu",
-      seats: 30,
-      price: 37000,
-      expert: experts[2],
-      dayOffset: 52,
-    },
-    {
-      tourId: "HIMALAYAN-HERITAGE",
-      tourName: "Himalayan Heritage Journey",
-      destinationId: "HIMALAYA",
-      durationDn: "9D/8N",
-      category: "Nature",
-      image: "/home assets/destination/North_d.webp",
-      city: "Kangra",
-      state: "Himachal",
-      seats: 10,
-      price: 46500,
-      expert: experts[3],
-      dayOffset: 72,
-    },
-  ];
-
-  return tourSeeds.map((seed, index) => {
-    const departureDate = new Date(now);
-    departureDate.setDate(now.getDate() + seed.dayOffset);
-
-    const returnDate = new Date(departureDate);
-    returnDate.setDate(departureDate.getDate() + 5);
-
-    const tour: PublicTour = {
-      id: `fallback-tour-${index + 1}`,
-      tourId: seed.tourId,
-      tourName: seed.tourName,
-      tourType: "Curated Tour",
-      tourFormat: index % 2 === 0 ? "Long Trails" : "Short Trails",
-      destinationId: seed.destinationId,
-      destinationIds: [seed.destinationId],
-      durationDn: seed.durationDn,
-      category: seed.category,
-      isBestseller: index === 0,
-      difficulty: "Easy",
-      bestSeason: "Oct - Mar",
-      description:
-        "A carefully designed journey through living heritage, local culture and timeless monuments.",
-      inclusions: [],
-      exclusions: [],
-      expertId: seed.expert.expertId,
-      notes: "",
-      bannerImage: seed.image,
-      galleryImages: [],
-      video: "",
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    };
-
-    return {
-      departure: {
-        id: `fallback-departure-${index + 1}`,
-        departureId: `${seed.tourId}-DEP-${index + 1}`,
-        tourId: seed.tourId,
-        destinationId: seed.destinationId,
-        departureDate: departureDate.toISOString(),
-        returnDate: returnDate.toISOString(),
-        seatsAvailable: seed.seats,
-        priceAdult: seed.price,
-        priceExtraBed: seed.price,
-        priceChildWithoutExtraBed: seed.price,
-        singleOccupancy: seed.price,
-        depositType: "fixed",
-        depositValue: 0,
-        depositAppliesTo: "per_person",
-        balanceDueDaysBefore: 0,
-        earlyBirdOffer: null,
-        bookingDeadline: departureDate.toISOString(),
-        status: "scheduled",
-        childPricingRules: [
-          {
-            minAge: 0,
-            maxAge: 11,
-            allowExtraBed: true,
-            allowWithoutExtraBed: true,
-          },
-        ],
-        roomPolicy: {
-          allowChildBedSharing: true,
-          maxChildrenWithoutExtraBedPerRoom: 1,
-          allowExtraBed: true,
-          allowChildSingleRoom: false,
-        },
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-      },
-      destination: {
-        id: `fallback-destination-${index + 1}`,
-        destinationId: seed.destinationId,
-        destinationName: seed.city,
-        destinationType: "Domestic",
-        countryRegion: "India",
-        state: seed.state,
-        city: seed.city,
-        primaryHeritageFocus: seed.category,
-        unescoSite: index === 0,
-        keyLandmarks: [],
-        recommendedDurationDays: 6,
-        shortDescription: "",
-        dressCode: "",
-        footwear: "",
-        permits: "",
-        idRequirement: "",
-        restrictions: "",
-        bannerImage: seed.image,
-        galleryImages: [],
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-      },
-      expert: seed.expert,
-      tour,
-    };
-  });
-}
-
 function buildEnrichedDepartures(
   tours: PublicTour[],
   departures: PublicTourDeparture[],
@@ -869,7 +587,7 @@ function buildEnrichedDepartures(
   );
   const expertById = new Map(experts.map((expert) => [expert.expertId, expert]));
 
-  return departures
+  return getBookableDepartures(departures)
     .map((departure) => {
       const tour = tourById.get(departure.tourId);
 
@@ -949,44 +667,31 @@ function getUniqueExperts(
 }
 
 export function TourCalendarPage({
+  initialData,
   initialDestinationQuery = "",
   initialTourQuery = "",
 }: {
+  initialData?: CalendarPageData;
   initialDestinationQuery?: string;
   initialTourQuery?: string;
 }) {
-  const fallbackData = useMemo(() => createFallbackData(), []);
-  const fallbackExperts = useMemo(() => createFallbackExperts(), []);
-  const fallbackTours = useMemo(
-    () => fallbackData.map(({ tour }) => tour),
-    [fallbackData]
-  );
-  const fallbackDestinations = useMemo(
-    () =>
-      fallbackData
-        .map(({ destination }) => destination)
-        .filter((destination): destination is PublicDestination =>
-          Boolean(destination)
-        ),
-    [fallbackData]
-  );
   const [enrichedDepartures, setEnrichedDepartures] =
-    useState<EnrichedDeparture[]>(fallbackData);
-  const [experts, setExperts] = useState<PublicExpert[]>(fallbackExperts);
-  const [festivals, setFestivals] = useState<PublicTourCalendarFestival[]>([]);
+    useState<EnrichedDeparture[]>(() => initialData ? buildEnrichedDepartures(initialData.tours, initialData.departures, initialData.destinations, initialData.experts) : []);
+  const [experts, setExperts] = useState<PublicExpert[]>(initialData?.experts ?? []);
+  const [festivals, setFestivals] = useState<PublicTourCalendarFestival[]>(initialData?.calendar?.festivals ?? []);
   const [selectedTourId, setSelectedTourId] = useState(() =>
-    resolveTourFilter(initialTourQuery, fallbackTours)
+    resolveTourFilter(initialTourQuery, initialData?.tours ?? [])
   );
   const [selectedDestinationId, setSelectedDestinationId] = useState(() =>
-    resolveDestinationFilter(initialDestinationQuery, fallbackDestinations)
+    resolveDestinationFilter(initialDestinationQuery, initialData?.destinations ?? [])
   );
   const [selectedDateKey, setSelectedDateKey] = useState(() => getTodayKey());
   const [isDateFilterActive, setIsDateFilterActive] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("price-low");
   const [visibleMonth, setVisibleMonth] = useState(() =>
-    startOfMonth(new Date())
+    getUpcomingDepartureMonth(enrichedDepartures, selectedDestinationId, selectedTourId)
   );
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!initialData);
   const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
@@ -1016,8 +721,7 @@ export function TourCalendarPage({
           destinationsResponse.data.destinations,
           expertsResponse.data.experts
         );
-        const sourceDepartures =
-          nextDepartures.length > 0 ? nextDepartures : createFallbackData();
+        const sourceDepartures = nextDepartures;
         const nextTours =
           toursResponse.data.tours.length > 0
             ? toursResponse.data.tours
@@ -1040,7 +744,7 @@ export function TourCalendarPage({
           setExperts(
             expertsResponse.data.experts.length > 0
               ? expertsResponse.data.experts
-              : createFallbackExperts()
+              : []
           );
           setEnrichedDepartures(sourceDepartures);
           setFestivals(tourCalendarResponse?.data.tourCalendar.festivals || []);
@@ -1058,7 +762,7 @@ export function TourCalendarPage({
         }
       } catch {
         if (isMounted) {
-          const fallbackDepartures = createFallbackData();
+          const fallbackDepartures: EnrichedDeparture[] = [];
           const nextTours = fallbackDepartures.map(({ tour }) => tour);
           const nextDestinations = fallbackDepartures
             .map(({ destination }) => destination)
@@ -1072,7 +776,7 @@ export function TourCalendarPage({
           );
 
           setLoadError("Live tour calendar is temporarily unavailable.");
-          setExperts(createFallbackExperts());
+          setExperts([]);
           setEnrichedDepartures(fallbackDepartures);
           setFestivals([]);
           setSelectedTourId(nextSelectedTourId);
@@ -1094,12 +798,12 @@ export function TourCalendarPage({
       }
     }
 
-    loadCalendarData();
+    if (!initialData) loadCalendarData();
 
     return () => {
       isMounted = false;
     };
-  }, [initialDestinationQuery, initialTourQuery]);
+  }, [initialDestinationQuery, initialTourQuery, initialData]);
 
   const calendarFilteredDepartures = useMemo(() => {
     return enrichedDepartures.filter((item) =>
@@ -1190,7 +894,7 @@ export function TourCalendarPage({
   }
 
   return (
-    <main className="min-h-screen bg-background text-secondary">
+    <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-secondary">
       <HeaderBand />
 
       <section className="home-wide-frame mx-auto grid w-full items-start gap-5 px-3 pb-6 pt-6 sm:px-6 sm:pt-8 lg:grid-cols-[430px_minmax(0,1fr)] lg:px-0">
@@ -1237,7 +941,7 @@ export function TourCalendarPage({
 
 function HeaderBand() {
   return (
-    <section className="relative h-[200px] overflow-hidden bg-secondary">
+    <section className="relative h-[100px] overflow-hidden bg-secondary lg:h-[120px]">
       <Image
         src="/home assets/Heritage Banner.webp"
         alt="Ancient Trails heritage landscape"
@@ -1249,6 +953,7 @@ function HeaderBand() {
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(35,18,9,0.12)_0%,rgba(35,18,9,0.34)_100%)]" />
       <div className="home-wide-frame relative z-10 mx-auto w-full px-5 sm:px-8 lg:px-0">
         <Header />
+        <h1 className="sr-only">Tour Calendar</h1>
       </div>
     </section>
   );
@@ -1295,7 +1000,7 @@ function CalendarPanel({
             <button
               type="button"
               onClick={onClearDate}
-              className="font-sans text-[12px] font-semibold text-primary transition-colors hover:text-accent hover:underline"
+              className="font-sans text-[12px] font-semibold text-button-outline transition-colors hover:text-accent hover:underline"
             >
               Clear All
             </button>
@@ -1309,7 +1014,7 @@ function CalendarPanel({
 
               onMonthChange(previousMonth.getMonth(), previousMonth.getFullYear());
             }}
-            className="grid size-9 place-items-center rounded-full border border-transparent text-secondary/60 transition-all hover:border-primary/20 hover:bg-[#fff1e5] hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
+            className="grid size-9 place-items-center rounded-full border border-transparent text-button-outline transition-all hover:border-button-outline hover:bg-[#fff1e5] hover:text-button-outline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
             aria-label="Previous month"
           >
             <ChevronLeft className="size-5" />
@@ -1371,7 +1076,7 @@ function CalendarPanel({
 
               onMonthChange(nextMonth.getMonth(), nextMonth.getFullYear());
             }}
-            className="grid size-9 place-items-center rounded-full border border-transparent text-secondary/60 transition-all hover:border-primary/20 hover:bg-[#fff1e5] hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
+            className="grid size-9 place-items-center rounded-full border border-transparent text-button-outline transition-all hover:border-button-outline hover:bg-[#fff1e5] hover:text-button-outline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
             aria-label="Next month"
           >
             <ChevronRight className="size-5" />
@@ -1406,13 +1111,13 @@ function CalendarPanel({
                 aria-pressed={isSelected}
                 className={cn(
                   "relative mx-auto grid size-8 place-items-center rounded-full border border-transparent font-sans text-[12px] font-semibold leading-none transition-all disabled:cursor-default focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary sm:size-10 sm:text-[13px]",
-                  day.isCurrentMonth ? "text-secondary" : "text-secondary/32",
+                  day.isCurrentMonth ? "text-button-outline" : "text-button-outline",
                   hasDepartures &&
-                  "bg-primary text-secondary text-white",
+                  "bg-primary text-white text-white",
                   hasFestivals &&
-                  "rounded-full  border border-[#002678c4]",
+                  "rounded-full  border border-button-outline text-button-outline",
                   isToday &&
-                  "rounded-full bg-[#d1fce1] border border-[#2faa5d] ",
+                  "rounded-full bg-[#d1fce1] border border-button-outline  text-button-outline",
                   isSelected &&
                   "border-primary/45 bg-primary text-white "
                 )}
@@ -1479,7 +1184,7 @@ function FestivalDatesList({
                 "flex flex-col items-start gap-2 rounded-[7px] border px-3 py-2 text-left transition-colors min-[420px]:flex-row min-[420px]:justify-between min-[420px]:gap-3",
                 isSelected
                   ? "border-accent bg-accent/10 text-accent"
-                  : "border-[#ead8c5] bg-[#fffaf4] text-secondary hover:border-accent/45"
+                  : "border-button-outline bg-[#fffaf4] text-button-outline hover:border-accent/45"
               )}
             >
               <span className="min-w-0">
@@ -1492,7 +1197,7 @@ function FestivalDatesList({
                   </span>
                 ) : null}
               </span>
-              <span className="shrink-0 text-[12px] font-bold text-primary min-[420px]:text-right">
+              <span className="shrink-0 text-[12px] font-bold text-brand-text min-[420px]:text-right">
                 {formatOrdinalDate(festival.date)}
               </span>
             </button>
@@ -1592,7 +1297,7 @@ function UpcomingDeparturesPanel({
               <button
                 type="button"
                 onClick={() => onDestinationChange("all")}
-                className="shrink-0 font-sans text-[12px] font-semibold text-primary transition-colors hover:text-accent hover:underline"
+                className="shrink-0 font-sans text-[12px] font-semibold text-button-outline transition-colors hover:text-accent hover:underline"
               >
                 Clear All
               </button>
@@ -1663,7 +1368,7 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
     <article className="overflow-visible rounded-[12px] border border-[#e8cbaa] bg-white p-2 transition-all hover:-translate-y-0.5 hover:border-primary/55 sm:p-2.5">
       <div className="grid gap-2.5 xl:grid-cols-[245px_minmax(0,1fr)_210px] xl:items-stretch">
         <div className="relative h-[150px] overflow-hidden rounded-[8px] bg-muted sm:h-[165px] xl:h-auto">
-          <Link
+          <Link prefetch={false}
             href={getTourHref(item.tour)}
             aria-label={`View ${item.tour.tourName}`}
             className="absolute inset-0 block focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/25"
@@ -1698,15 +1403,15 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
 
         <div className="flex min-w-0 flex-col px-1 sm:px-0.5">
           <h3 className="font-heading text-[19px] font-bold leading-[1.08] tracking-normal text-secondary sm:text-[23px]">
-            <Link
+            <Link prefetch={false}
               href={getTourHref(item.tour)}
-              className="line-clamp-2 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
+              className="line-clamp-2 transition-colors hover:text-brand-text focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
             >
               {item.tour.tourName}
             </Link>
           </h3>
 
-          <time className="mt-2 block font-sans text-[15px] font-medium leading-none text-primary sm:text-[16px]">
+          <time className="mt-2 block font-sans text-[15px] font-medium leading-none text-brand-text sm:text-[16px]">
             {formatOrdinalDate(item.departure.departureDate)}
           </time>
 
@@ -1726,7 +1431,7 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
               <span className="font-sans text-[12px] font-medium leading-none text-secondary/62">
                 Tour Includes
               </span>
-              <div className="flex shrink-0 items-center gap-3 text-primary">
+              <div className="flex shrink-0 items-center gap-3 text-brand-text">
                 {tourIncludes.map(({ icon, label }) => (
                   <DepartureIncludeIcon key={label} icon={icon} label={label} />
                 ))}
@@ -1757,20 +1462,20 @@ function DepartureCard({ index, item }: { index: number; item: EnrichedDeparture
             </div>
           </div>
 
-          <Link
+          <Link prefetch={false}
             href={getTourHref(item.tour)}
             aria-label={`View itinerary for ${item.tour.tourName}`}
-            className="justify-self-start font-sans text-[15px] font-semibold leading-none text-primary underline-offset-4 transition-colors hover:underline xl:justify-self-end"
+            className="justify-self-start font-sans text-[15px] font-semibold leading-none text-brand-text underline-offset-4 transition-colors hover:underline xl:justify-self-end"
           >
             View Itinerary
           </Link>
 
-          <Link
+          <Link prefetch={false}
             href={getTourHref(item.tour)}
             aria-label={`Book Now ${item.tour.tourName}`}
             className={buttonVariants({
               className:
-                "mt-auto h-9 w-full justify-center gap-3 px-4 text-[13px] font-normal hover:border-primary hover:bg-white hover:text-primary hover:shadow-none xl:justify-between",
+                "mt-auto h-9 w-full justify-center gap-3 px-4 text-[13px] font-normal hover:border-primary hover:bg-white hover:text-brand-text hover:shadow-none xl:justify-between",
             })}
           >
             Book Now
@@ -1796,7 +1501,7 @@ function DepartureSeatProgress({
   return (
     <div className="w-full min-w-0 max-w-none">
       <p className="flex items-center justify-between gap-2 font-sans text-[12px] font-semibold leading-none text-secondary/60">
-        <span className="font-bold text-primary">
+        <span className="font-bold text-brand-text">
           {seatsLeft > 0 ? `${seatsLeft} seats left` : "Seats full"}
         </span>
         <span>{filled}/{capacity}</span>
@@ -1840,7 +1545,7 @@ function ExpertCard({ expert, index }: { expert: PublicExpert; index: number }) 
           <h3 className="truncate font-heading text-[16px] font-bold leading-tight text-secondary">
             {expert.fullName}
           </h3>
-          <p className="mt-1 truncate font-sans text-[11px] font-semibold text-primary">
+          <p className="mt-1 truncate font-sans text-[11px] font-semibold text-brand-text">
             {getExpertRole(expert)}
           </p>
         </div>
@@ -1848,14 +1553,14 @@ function ExpertCard({ expert, index }: { expert: PublicExpert; index: number }) 
       <p className="mt-4 line-clamp-3 min-h-[58px] font-sans text-[11px] leading-[1.7] text-secondary/74">
         {getExpertBio(expert)}
       </p>
-      <div className="mt-4 flex items-center justify-center gap-4 text-primary">
+      <div className="mt-4 flex items-center justify-center gap-4 text-brand-text">
         <Landmark className="size-5" strokeWidth={1.6} />
         <BookOpen className="size-5" strokeWidth={1.6} />
         <Clock3 className="size-5" strokeWidth={1.6} />
       </div>
-      <Link
+      <Link prefetch={false}
         href="/about"
-        className="mt-4 inline-flex h-8 items-center gap-2 rounded-[6px] border border-primary bg-white px-3 font-sans text-[11px] font-bold text-primary  transition-all hover:bg-primary hover:text-white  focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
+        className="mt-4 inline-flex h-8 items-center gap-2 rounded-[6px] border border-button-outline bg-white px-3 font-sans text-[11px] font-bold text-button-outline  transition-all hover:bg-brand-button-dark hover:text-white  focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/20"
       >
         View Profile
         <ArrowRight className="size-3.5" />
@@ -1876,7 +1581,7 @@ function BenefitsBand() {
               index > 0 && "border-t border-[#ead8c5] sm:border-l sm:border-t-0"
             )}
           >
-            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[#fff1e5] text-primary">
+            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[#fff1e5] text-brand-text">
               <Icon className="size-5" strokeWidth={1.6} />
             </span>
             <span className="min-w-0">
