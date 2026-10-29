@@ -1,4 +1,5 @@
 import {
+  sessionFetch,
   apiBaseUrl,
   apiRequest,
   ApiError,
@@ -36,12 +37,12 @@ export type ExpertImageUploadResponse = {
 function getAdminHeaders(): HeadersInit {
   const session = getAdminSession();
 
-  if (!session?.token) {
+  if (!session?.sessionId) {
     throw new ApiError(401, "Please sign in to continue");
   }
 
   return {
-    Authorization: `Bearer ${session.token}`,
+    "X-Session-Id": session.sessionId,
   };
 }
 
@@ -124,7 +125,7 @@ export async function uploadExpertImage(image: File) {
   formData.append("image", image);
 
   return readUploadResponse<ExpertImageUploadResponse>(
-    await fetch(`${apiBaseUrl}/api/admin/experts/upload`, {
+    await sessionFetch(`${apiBaseUrl}/api/admin/experts/upload`, {
       method: "POST",
       headers: getAdminHeaders(),
       body: formData,

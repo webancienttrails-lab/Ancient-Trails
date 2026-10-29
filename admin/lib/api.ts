@@ -38,7 +38,8 @@ async function readResponse(response: Response): Promise<unknown> {
 
 export async function apiRequest<TData>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  allowSessionRefresh = true
 ): Promise<ApiResponse<TData>> {
   const { signal: providedSignal, ...requestOptions } = options;
   const timeoutController = new AbortController();
@@ -54,15 +55,14 @@ export async function apiRequest<TData>(
     providedSignal?.addEventListener("abort", abortRequest, { once: true });
   }
 
+  const headers = cookieHeaders(requestOptions.headers);
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   let response: Response;
 
   try {
     response = await fetch(`${apiBaseUrl}${path}`, {
       ...requestOptions,
-      headers: {
-        "Content-Type": "application/json",
-        ...requestOptions.headers,
-      },
+      headers,
       credentials: "include",
       signal: timeoutController.signal,
     });
@@ -80,9 +80,27 @@ export async function apiRequest<TData>(
     providedSignal?.removeEventListener("abort", abortRequest);
   }
 
+  const expectedSessionId = headers.get("X-Session-Id");
+  if (response.status === 401 && allowSessionRefresh && expectedSessionId
+      && path !== "/api/auth/refresh" && path !== "/api/auth/logout") {
+    const auth = await import("@/lib/admin-auth");
+    try {
+      const session = typeof auth.refreshAdminSession === "function"
+        ? await auth.refreshAdminSession(expectedSessionId) : null;
+      if (session) return apiRequest<TData>(path, options, false);
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.statusCode !== 401) throw error;
+    }
+  }
+
   const body = (await readResponse(response)) as Partial<ApiResponse<TData>> | null;
 
   if (!response.ok) {
+    if (response.status === 401 && expectedSessionId && path !== "/api/auth/logout") {
+      const { clearAdminSession, getAdminSession } = await import("@/lib/admin-auth");
+      if (getAdminSession()?.sessionId === expectedSessionId) clearAdminSession();
+    }
+
     throw new ApiError(
       response.status,
       body?.message || "Request failed",
@@ -95,4 +113,28 @@ export async function apiRequest<TData>(
   }
 
   return body as ApiResponse<TData>;
+}
+
+function cookieHeaders(source?: HeadersInit): Headers {
+  const headers = new Headers(source);
+  headers.delete("Authorization");
+  headers.set("X-Requested-With", "XMLHttpRequest");
+  headers.set("X-Session-Audience", "admin");
+  return headers;
+}
+
+// Uploads refresh once while preserving multipart boundaries and file contents.
+export async function sessionFetch(url: string, options: RequestInit): Promise<Response> {
+  const request = { ...options, credentials: "include" as const, headers: cookieHeaders(options.headers) };
+  const response = await fetch(url, request);
+  const expectedSessionId = request.headers.get("X-Session-Id");
+  if (response.status !== 401 || !expectedSessionId) return response;
+  const { refreshAdminSession } = await import("@/lib/admin-auth");
+  try {
+    const session = await refreshAdminSession(expectedSessionId);
+    if (session) return fetch(url, request);
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.statusCode !== 401) throw error;
+  }
+  return response;
 }

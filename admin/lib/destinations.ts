@@ -1,4 +1,5 @@
 import {
+  sessionFetch,
   apiBaseUrl,
   apiRequest,
   ApiError,
@@ -104,12 +105,12 @@ export function getDestinationMediaUrl(source: string): string {
 function getAdminHeaders(): HeadersInit {
   const session = getAdminSession();
 
-  if (!session?.token) {
+  if (!session?.sessionId) {
     throw new ApiError(401, "Please sign in to continue");
   }
 
   return {
-    Authorization: `Bearer ${session.token}`,
+    "X-Session-Id": session.sessionId,
   };
 }
 
@@ -188,7 +189,7 @@ export async function uploadDestinationImages(
   });
 
   return readUploadResponse<DestinationImageUploadResponse>(
-    await fetch(`${apiBaseUrl}/api/admin/destinations/upload`, {
+    await sessionFetch(`${apiBaseUrl}/api/admin/destinations/upload`, {
       method: "POST",
       headers: getAdminHeaders(),
       body: formData,

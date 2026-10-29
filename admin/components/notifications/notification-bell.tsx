@@ -17,7 +17,7 @@ export function NotificationBell() {
   const button = useRef<HTMLButtonElement>(null), panel = useRef<HTMLDivElement>(null), version = useRef(0);
   const request = useCallback(async <T,>(path = "", options: RequestInit = {}) => {
     const session = getSession(); if (!session) throw new Error("Please sign in to view notifications.");
-    return apiRequest<T>("/api/notifications/" + audience + path, { ...options, headers: { Authorization: "Bearer " + session.token } });
+    return apiRequest<T>("/api/notifications/" + audience + path, { ...options, headers: { "X-Session-Id": session.sessionId } });
   }, []);
   const load = useCallback(async (cursor?: string) => {
     const session = getSession(), epoch = version.current; if (!session) return;

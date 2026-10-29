@@ -32,7 +32,7 @@ export type AdminUserStats = {
 
 function headers(): HeadersInit {
   const session = getAdminSession();
-  return session?.token ? { Authorization: `Bearer ${session.token}` } : {};
+  return session?.sessionId ? { "X-Session-Id": session.sessionId } : {};
 }
 
 export async function listAdminUsers() {
@@ -40,4 +40,17 @@ export async function listAdminUsers() {
     users: AdminDirectoryUser[];
     stats: AdminUserStats;
   }>("/api/admin/users", { headers: headers() });
+}
+
+export type AdminUserUpdate = {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  status?: "active" | "blocked";
+};
+
+export async function updateAdminUser(id: string, changes: AdminUserUpdate) {
+  return apiRequest<{ user: AdminDirectoryUser }>(`/api/admin/users/${encodeURIComponent(id)}`, {
+    method: "PATCH", headers: headers(), body: JSON.stringify(changes),
+  });
 }

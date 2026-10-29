@@ -1,6 +1,7 @@
 "use client";
 
 import type { FormEvent, ReactNode } from "react";
+import { ApiError } from "@/lib/api";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import {
   usePathname,
@@ -779,6 +780,7 @@ function ToursPageContent() {
   const [tourForm, setTourForm] = useState<TourFormState>(emptyTourForm);
   const [departureForm, setDepartureForm] =
     useState<DepartureFormState>(emptyDepartureForm);
+  const [departureErrors, setDepartureErrors] = useState<Record<string, string>>({});
   const [itineraryForm, setItineraryForm] =
     useState<ItineraryFormState>(emptyItineraryForm);
   const [isSavingTour, setIsSavingTour] = useState(false);
@@ -845,6 +847,7 @@ function ToursPageContent() {
             } else if (routeState.type === "departure") {
               setSelectedDeparture(null);
               setDepartureForm(emptyDepartureForm);
+              setDepartureErrors({});
               setDepartureSheetMode("add");
             } else if (routeState.type === "itinerary") {
               setSelectedItinerary(null);
@@ -878,6 +881,7 @@ function ToursPageContent() {
               if (departure) {
                 setSelectedDeparture(departure);
                 setDepartureForm(departureToForm(departure));
+                setDepartureErrors(Object.fromEntries((departure.validationErrors || []).map(issue => [issue.path, issue.message])));
                 setDepartureSheetMode(routeState.mode);
               }
             } else if (
@@ -1346,6 +1350,7 @@ function ToursPageContent() {
 
   async function handleSaveDeparture(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setDepartureErrors({});
 
     if (departureSheetMode === "view") {
       return;
@@ -1389,6 +1394,12 @@ function ToursPageContent() {
       toast.success("Departure added", response.message);
       router.push("/tours");
     } catch (error) {
+      if (error instanceof ApiError && Array.isArray(error.details)) {
+        setDepartureErrors(Object.fromEntries(error.details.filter(issue =>
+          issue && typeof issue.path === "string" && typeof issue.message === "string"
+        ).map(issue => [issue.path, issue.message])));
+      }
+
       toast.error(
         departureSheetMode === "edit"
           ? "Departure not updated"
@@ -1568,6 +1579,7 @@ function ToursPageContent() {
           {routeState.type === "departure" &&
           departureSheetMode ? (
             <DepartureFormDialog
+              errors={departureErrors}
               form={departureForm}
               isBusy={isSavingDeparture}
               isOpen
@@ -1726,6 +1738,7 @@ function ToursPageContent() {
       />
 
       <DepartureFormDialog
+        errors={departureErrors}
         form={departureForm}
         isBusy={isSavingDeparture}
         isOpen={departureSheetMode !== null}
@@ -2172,6 +2185,11 @@ function TourDepartureTable({
                       <span className="block truncate">
                         {departure.departureId}
                       </span>
+                      {departure.validationErrors?.length ? (
+                        <span className="mt-1 block text-red-600" title={departure.validationErrors.map(issue => issue.message).join(" ")}>
+                          Needs correction
+                        </span>
+                      ) : null}
                     </td>
                     <td
                       data-label="Tour"
@@ -2859,6 +2877,7 @@ function NeedToKnowEditor({
 
 function DepartureFormDialog({
   form,
+  errors,
   isBusy,
   isOpen,
   isSaving,
@@ -2869,6 +2888,7 @@ function DepartureFormDialog({
   tours,
 }: {
   form: DepartureFormState;
+  errors: Record<string, string>;
   isBusy: boolean;
   isOpen: boolean;
   isSaving: boolean;
@@ -3056,11 +3076,12 @@ function DepartureFormDialog({
                   <SelectItem value="coming_soon">Coming Soon</SelectItem>
                   <SelectItem value="closed">Closed</SelectItem>
                   <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
                 </SelectContent>
               </Select>
             </FormField>
 
-            <FormField label="Departure Date" required={!isComingSoon}>
+            <FormField error={errors.departureDate} label="Departure Date" required={!isComingSoon}>
               <DatePicker
                 required={!isComingSoon}
                 readOnly={isReadOnly}
@@ -3070,7 +3091,7 @@ function DepartureFormDialog({
               />
             </FormField>
 
-            <FormField label="Return Date" required={!isComingSoon}>
+            <FormField error={errors.returnDate} label="Return Date" required={!isComingSoon}>
               <DatePicker
                 required={!isComingSoon}
                 readOnly={isReadOnly}
@@ -3106,7 +3127,7 @@ function DepartureFormDialog({
               />
             </FormField>
 
-            <FormField label="Adult Price">
+            <FormField error={errors.priceAdult} label="Adult Price">
               <input
                 min={0}
                 readOnly={isReadOnly}
@@ -3143,7 +3164,7 @@ function DepartureFormDialog({
               />
             </FormField>
 
-            <FormField label="Single Occupancy Price">
+            <FormField error={errors.singleOccupancy} label="Single Occupancy Price">
               <input
                 min={0}
                 readOnly={isReadOnly}
@@ -3177,7 +3198,7 @@ function DepartureFormDialog({
               </Select>
             </FormField>
 
-            <FormField label="Deposit Value">
+            <FormField error={errors.depositValue} label="Deposit Value">
               <input
                 min={0}
                 readOnly={isReadOnly}
@@ -3224,7 +3245,7 @@ function DepartureFormDialog({
               />
             </FormField>
 
-            <FormField label="Booking Deadline" required={!isComingSoon}>
+            <FormField error={errors.bookingDeadline} label="Booking Deadline" required={!isComingSoon}>
               <DatePicker
                 required={!isComingSoon}
                 readOnly={isReadOnly}
@@ -3942,12 +3963,14 @@ function UploadField({
 
 function FormField({
   children,
+  error,
   className,
   label,
   renderAsDiv = false,
   required = false,
 }: {
   children: ReactNode;
+  error?: string;
   className?: string;
   label: string;
   renderAsDiv?: boolean;
@@ -3960,6 +3983,7 @@ function FormField({
         {required ? <span className="text-primary"> *</span> : null}
       </span>
       {children}
+      {error ? <span role="alert" className="text-xs text-red-600">{error}</span> : null}
     </>
   );
 

@@ -1,4 +1,4 @@
-import { apiBaseUrl, apiRequest, ApiError, type ApiResponse } from "@/lib/api";
+import { sessionFetch, apiBaseUrl, apiRequest, ApiError, type ApiResponse } from "@/lib/api";
 import { getAdminSession } from "@/lib/admin-auth";
 
 export type BookingGuestDetails = {
@@ -234,12 +234,12 @@ export type BookingAccommodationOptionsPayload = {
 function getAdminHeaders(): HeadersInit {
   const session = getAdminSession();
 
-  if (!session?.token) {
+  if (!session?.sessionId) {
     throw new ApiError(401, "Please sign in to continue");
   }
 
   return {
-    Authorization: `Bearer ${session.token}`,
+    "X-Session-Id": session.sessionId,
   };
 }
 
@@ -303,7 +303,7 @@ export async function uploadAdminBookingKycDocument(payload: {
   formData.append("document", payload.file);
 
   return readUploadResponse<{ booking: AdminBooking }>(
-    await fetch(
+    await sessionFetch(
       `${apiBaseUrl}/api/admin/bookings/${encodeURIComponent(payload.bookingId)}/kyc`,
       {
         method: "POST",

@@ -6,8 +6,8 @@ export type FaqContent = { id: string; categories: FaqCategory[]; createdAt: str
 
 function headers(): HeadersInit {
   const session = getAdminSession();
-  if (!session?.token) throw new ApiError(401, "Please sign in to continue");
-  return { Authorization: "Bearer " + session.token };
+  if (!session?.sessionId) throw new ApiError(401, "Please sign in to continue");
+  return { "X-Session-Id": session.sessionId };
 }
 export function getAdminFaq() { return apiRequest<{ faq: FaqContent }>("/api/admin/faq", { headers: headers(), cache: "no-store" }); }
 export function updateAdminFaq(categories: FaqCategory[]) {

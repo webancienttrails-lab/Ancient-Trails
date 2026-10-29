@@ -20,7 +20,7 @@ export type BankTransferRequest = { purpose: "advance" | "full" | "partial" | "f
 
 function headers(): HeadersInit {
   const session = getAdminSession();
-  return session?.token ? { Authorization: "Bearer " + session.token } : {};
+  return session?.sessionId ? { "X-Session-Id": session.sessionId } : {};
 }
 const base = (id: string) => "/api/admin/bookings/" + id + "/bank-transfer";
 export function getAdminBankTransfer(id: string) {

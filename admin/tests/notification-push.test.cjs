@@ -9,7 +9,7 @@ const crypto = require("node:crypto");
 function browser(application, options = {}) {
   const records = new Map(), requests = [], messages = [], events = [];
   let permissionRequests = 0, registered = 0, unregistered = 0, onRegistered, onMessage;
-  const identity = { token: "signed-in-token", user: { id: "customer-one" } };
+  const identity = { sessionId: "signed-in-token", user: { id: "customer-one" } };
   const notification = { permission: "default", async requestPermission() { permissionRequests++; if (options.permission) return options.permission(notification); notification.permission = "granted"; return "granted"; } };
   class MessageChannel { constructor() { this.port1 = { close() {}, onmessage: null }; this.port2 = { channel: this }; } }
   const worker = { active: { postMessage(value, ports) { messages.push(value); const acknowledge = () => ports[0].channel.port1.onmessage({ data: { ok: true } }); if (options.workerMessage) options.workerMessage(value, acknowledge); else queueMicrotask(acknowledge); } } };
@@ -41,7 +41,7 @@ for (const application of ["frontend", "admin"]) {
     await client.api.enableBrowserPush(client.identity);
     assert.equal(client.counts().permissionRequests, 1); assert.equal(client.counts().registered, 1);
     const upload = client.requests.find(request => request.method === "POST");
-    assert.equal(upload.parsedBody.fid, "c123456789012345678901"); assert.match(upload.parsedBody.deviceKey, /^[a-f0-9]{64}$/); assert.equal(upload.headers.Authorization, "Bearer signed-in-token");
+    assert.equal(upload.parsedBody.fid, "c123456789012345678901"); assert.match(upload.parsedBody.deviceKey, /^[a-f0-9]{64}$/); assert.equal(upload.headers["X-Session-Id"], "signed-in-token");
     assert(client.messages.some(message => message.type === "PUSH_BINDING"));
     client.fidChanged("d123456789012345678901"); await tick();
     assert.equal(client.requests.filter(request => request.method === "POST").length, 2);

@@ -164,17 +164,7 @@ const genderOptions = [
   "Other",
 ];
 
-const countryCodeOptions = [
-  "+91",
-  "+1",
-  "+44",
-  "+61",
-  "+971",
-  "+65",
-  "+94",
-  "+977",
-  "+880",
-];
+const countryCodeOptions = ["+91"];
 
 const paymentMethodOptions: Array<{
   label: string;
@@ -1536,7 +1526,7 @@ function BookingInnerPageContent() {
       await requestAdminLeadOtp({ countryCode: guest.countryCode, mobileNumber: guest.mobileNumber });
       if (currentLeadPhone.current !== phone) return;
       setLeadOtpSentTo(phone); setLeadOtp(""); setLeadVerification(null); setLeadOtpResendAt(Date.now() + 60000);
-      toast.success("OTP sent", "Ask the lead traveller for the OTP sent to their mobile.");
+      toast.success("OTP sent", "Ask the lead traveller for the 6-digit OTP sent to their mobile. Code valid for 5 minutes.");
     } catch (error) { toast.error("Could not send OTP", getErrorMessage(error)); }
     finally { setLeadOtpBusy(false); }
   }
@@ -3406,8 +3396,8 @@ function BookingInnerPageContent() {
                             <div className="flex flex-wrap items-center gap-2">
                               <Button type="button" variant="outline" className="h-11 shrink-0" disabled={leadOtpBusy || leadVerified || !guest.mobileNumber} onClick={() => void sendLeadOtp()}>{leadVerified ? "Verified" : leadOtpBusy ? "Please wait..." : "Send OTP"}</Button>
                               {leadOtpSentTo === leadPhone && !leadVerified ? <>
-                                <input aria-label="Lead traveller OTP" inputMode="numeric" autoComplete="one-time-code" maxLength={9} value={leadOtp} onChange={event => setLeadOtp(event.target.value.replace(/\D/g, ""))} className="h-11 w-24 rounded-sm border border-border bg-white px-3" placeholder="Enter OTP" />
-                                <Button type="button" className="h-11 shrink-0" disabled={leadOtpBusy || !/^\d{4,9}$/.test(leadOtp)} onClick={() => void verifyLeadOtp()}>Verify OTP</Button>
+                                <input aria-label="Lead traveller OTP" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={leadOtp} onChange={event => setLeadOtp(event.target.value.replace(/\D/g, ""))} className="h-11 w-24 rounded-sm border border-border bg-white px-3" placeholder="Enter OTP" />
+                                <Button type="button" className="h-11 shrink-0" disabled={leadOtpBusy || !/^\d{6}$/.test(leadOtp)} onClick={() => void verifyLeadOtp()}>Verify OTP</Button>
                               </> : null}
                             </div>
                           ) : null}

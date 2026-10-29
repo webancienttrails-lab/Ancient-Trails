@@ -23,12 +23,12 @@ export type TourCalendarPayload = {
 function getAdminHeaders(): HeadersInit {
   const session = getAdminSession();
 
-  if (!session?.token) {
+  if (!session?.sessionId) {
     throw new ApiError(401, "Please sign in to continue");
   }
 
   return {
-    Authorization: `Bearer ${session.token}`,
+    "X-Session-Id": session.sessionId,
   };
 }
 

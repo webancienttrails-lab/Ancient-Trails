@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   BadgeCheck,
@@ -22,6 +22,7 @@ import {
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,7 +40,7 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { shouldOpenTableRow } from "@/lib/table-row-click";
 import { cn } from "@/lib/utils";
-import { listAdminUsers, type AdminDirectoryUser, type AdminUserStats } from "@/lib/users";
+import { listAdminUsers, updateAdminUser, type AdminDirectoryUser, type AdminUserStats } from "@/lib/users";
 
 type UserMetric = {
   label: string;
@@ -52,6 +53,8 @@ type UserMetric = {
 
 type UserRecord = {
   id: string;
+  firstName: string;
+  lastName: string;
   email: string;
   initials: string;
   joinedOn: string;
@@ -68,7 +71,8 @@ const statusOptions = ["All Status", "Active", "Inactive"];
 const registrationOptions = ["All Time", "Today", "This Week", "This Month"];
 
 function toUserRecord(user: AdminDirectoryUser): UserRecord {
-  const name = `${user.firstName} ${user.lastName}`.trim();
+  const profileName = [user.firstName, user.lastName].map((part) => part?.trim()).filter(Boolean).join(" ");
+  const name = profileName || "Profile incomplete";
   const adminRole = user.roles.find((role) => role !== "traveller" && role !== "super_admin");
   const role = user.roles.includes("traveller")
     ? "Traveller"
@@ -80,12 +84,14 @@ function toUserRecord(user: AdminDirectoryUser): UserRecord {
 
   return {
     id: user.id,
+    firstName: user.firstName || "",
+    lastName: user.lastName || "",
     name,
     email: user.email,
     phone: user.mobileNumber,
     role,
     status: user.status === "active" ? "Active" : "Inactive",
-    initials: name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
+    initials: profileName ? profileName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() : "TR",
     tone: role === "Traveller" ? "bg-primary" : "bg-sky-700",
     joinedOn: new Date(user.createdAt).toLocaleDateString("en-GB"),
     lastActive: user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString("en-GB") : "Never",
@@ -201,7 +207,9 @@ export default function UsersPage() {
             onSearchQueryChange={setSearchQuery}
             onStatusChange={setSelectedStatus}
           />
-          <UsersTable users={filteredUsers} isLoading={isLoading} />
+          <UsersTable users={filteredUsers} isLoading={isLoading} onUserUpdated={(updatedUser) => {
+            setUsers((current) => current.map((user) => user.id === updatedUser.id ? toUserRecord(updatedUser) : user));
+          }} />
         </section>
       </div>
     </AdminDashboardShell>
@@ -404,11 +412,13 @@ function ToolbarSelect({
 function UsersTable({
   users: visibleUsers,
   isLoading,
+  onUserUpdated,
 }: {
   users: UserRecord[];
   isLoading: boolean;
+  onUserUpdated: (user: AdminDirectoryUser) => void;
 }) {
-  const toast = useToast();
+  const [action, setAction] = useState<{ user: UserRecord; mode: UserActionMode } | null>(null);
 
   return (
     <>
@@ -444,10 +454,10 @@ function UsersTable({
             ) : visibleUsers.length ? (
               visibleUsers.map((user) => (
                 <tr
-                  key={user.email}
+                  key={user.id}
                   onClick={(event) => {
                     if (shouldOpenTableRow(event)) {
-                      toast.info("View User", `${user.name} details.`);
+                      setAction({ user, mode: "view" });
                     }
                   }}
                   className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
@@ -467,7 +477,7 @@ function UsersTable({
                           {user.name}
                         </p>
                         <p className="mt-1 truncate text-[11px] text-foreground/55">
-                          {user.email}
+                          {user.email || "Email not provided"}
                         </p>
                       </div>
                     </div>
@@ -516,7 +526,7 @@ function UsersTable({
                     {user.lastActive}
                   </td>
                   <td data-actions data-label="Actions" className="px-4 py-4">
-                    <UserActions user={user} />
+                    <UserActions user={user} onAction={(mode) => setAction({ user, mode })} />
                   </td>
                 </tr>
               ))
@@ -535,12 +545,15 @@ function UsersTable({
       </div>
 
       <TableFooter label="users" showing={visibleUsers.length ? `1 to ${visibleUsers.length}` : "0"} total={String(visibleUsers.length)} />
+      {action ? <UserDetailsDialog key={`${action.user.id}-${action.mode}`} user={action.user} mode={action.mode}
+        onClose={() => setAction(null)} onUserUpdated={onUserUpdated} /> : null}
     </>
   );
 }
 
-function UserActions({ user }: { user: UserRecord }) {
-  const toast = useToast();
+type UserActionMode = "view" | "edit" | "status";
+
+function UserActions({ user, onAction }: { user: UserRecord; onAction: (mode: UserActionMode) => void }) {
 
   return (
     <div className="flex justify-end">
@@ -561,22 +574,20 @@ function UserActions({ user }: { user: UserRecord }) {
           className="w-36 rounded-sm border border-border bg-white p-1 shadow-lg shadow-stone-200/70"
         >
           <DropdownMenuItem
-            onClick={() => toast.info("View User", `${user.name} details.`)}
+            onClick={() => onAction("view")}
             className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
           >
             View
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => toast.info("Edit User", `${user.name} can be edited.`)}
+            onClick={() => onAction("edit")}
             className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
           >
             Edit
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            onClick={() =>
-              toast.info("User Status", `${user.name} status can be changed.`)
-            }
+            onClick={() => onAction("status")}
             className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
           >
             Change Status
@@ -585,6 +596,83 @@ function UserActions({ user }: { user: UserRecord }) {
       </DropdownMenu>
     </div>
   );
+}
+
+function UserDetailsDialog({ user, mode, onClose, onUserUpdated }: {
+  user: UserRecord;
+  mode: UserActionMode;
+  onClose: () => void;
+  onUserUpdated: (user: AdminDirectoryUser) => void;
+}) {
+  const toast = useToast();
+  const [firstName, setFirstName] = useState(user.firstName);
+  const [lastName, setLastName] = useState(user.lastName);
+  const [email, setEmail] = useState(user.email);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
+  const nextStatus = user.status === "Active" ? "blocked" : "active";
+
+  async function handleSave(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (isSaving || mode === "view") return;
+    setError("");
+    setIsSaving(true);
+    try {
+      const response = await updateAdminUser(user.id, mode === "status" ? { status: nextStatus } : {
+        firstName: firstName.trim(), lastName: lastName.trim(), email: email.trim(),
+      });
+      onUserUpdated(response.data.user);
+      toast.success("User updated", response.message);
+      onClose();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to update user. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return <Dialog open onOpenChange={(open) => { if (!open && !isSaving) onClose(); }}>
+    <DialogContent showCloseButton={!isSaving} className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>{mode === "view" ? "User Details" : mode === "edit" ? "Edit User" : "Change User Status"}</DialogTitle>
+        <DialogDescription>{user.name}</DialogDescription>
+      </DialogHeader>
+      <form onSubmit={handleSave} data-admin-ignore-save-reminder="true" className="grid gap-4">
+        {mode === "edit" ? <>
+          <label className="grid gap-1.5 text-xs font-semibold">First Name
+            <input value={firstName} onChange={(event) => setFirstName(event.target.value)} maxLength={80} disabled={isSaving}
+              className="h-10 rounded-sm border border-border px-3 text-sm font-normal" />
+          </label>
+          <label className="grid gap-1.5 text-xs font-semibold">Last Name
+            <input value={lastName} onChange={(event) => setLastName(event.target.value)} maxLength={80} disabled={isSaving}
+              className="h-10 rounded-sm border border-border px-3 text-sm font-normal" />
+          </label>
+          <label className="grid gap-1.5 text-xs font-semibold">Email
+            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} disabled={isSaving}
+              className="h-10 rounded-sm border border-border px-3 text-sm font-normal" />
+          </label>
+          <p className="text-xs text-foreground/60">Phone: {user.phone || "Not provided"}</p>
+        </> : mode === "status" ? <p className="text-sm text-foreground/75">
+          {nextStatus === "blocked" ? "Deactivate" : "Activate"} this user account?
+        </p> : <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-3 text-sm">
+          <dt className="text-foreground/60">Name</dt><dd className="break-words">{user.name}</dd>
+          <dt className="text-foreground/60">Email</dt><dd className="break-all">{user.email || "Not provided"}</dd>
+          <dt className="text-foreground/60">Phone</dt><dd>{user.phone || "Not provided"}</dd>
+          <dt className="text-foreground/60">Role</dt><dd>{user.role}</dd>
+          <dt className="text-foreground/60">Status</dt><dd>{user.status}</dd>
+          <dt className="text-foreground/60">Joined On</dt><dd>{user.joinedOn}</dd>
+          <dt className="text-foreground/60">Last Active</dt><dd>{user.lastActive}</dd>
+        </dl>}
+        {error ? <p role="alert" className="text-sm text-red-600">{error}</p> : null}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>{mode === "view" ? "Close" : "Cancel"}</Button>
+          {mode !== "view" ? <Button type="submit" disabled={isSaving}>
+            {isSaving ? "Saving..." : mode === "edit" ? "Save Changes" : nextStatus === "blocked" ? "Deactivate" : "Activate"}
+          </Button> : null}
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>;
 }
 
 function TableFooter({

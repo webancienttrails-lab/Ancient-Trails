@@ -1,4 +1,5 @@
 import {
+  sessionFetch,
   apiBaseUrl,
   apiRequest,
   ApiError,
@@ -95,12 +96,12 @@ export function getBlogMediaUrl(source: string): string {
 function getAdminHeaders(): HeadersInit {
   const session = getAdminSession();
 
-  if (!session?.token) {
+  if (!session?.sessionId) {
     throw new ApiError(401, "Please sign in to continue");
   }
 
   return {
-    Authorization: `Bearer ${session.token}`,
+    "X-Session-Id": session.sessionId,
   };
 }
 
@@ -170,7 +171,7 @@ export async function uploadBlogImages(payload: BlogImageUploadPayload) {
   }
 
   return readUploadResponse<BlogImageUploadResponse>(
-    await fetch(`${apiBaseUrl}/api/admin/blogs/upload`, {
+    await sessionFetch(`${apiBaseUrl}/api/admin/blogs/upload`, {
       method: "POST",
       headers: getAdminHeaders(),
       body: formData,

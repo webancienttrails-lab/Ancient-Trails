@@ -1,4 +1,5 @@
 import {
+  sessionFetch,
   apiBaseUrl,
   apiRequest,
   ApiError,
@@ -84,12 +85,12 @@ export const EXPERIENCE_PHOTO_MAX_SIZE = 2 * 1024 * 1024;
 function getAdminHeaders(): HeadersInit {
   const session = getAdminSession();
 
-  if (!session?.token) {
+  if (!session?.sessionId) {
     throw new ApiError(401, "Please sign in to continue");
   }
 
   return {
-    Authorization: `Bearer ${session.token}`,
+    "X-Session-Id": session.sessionId,
   };
 }
 
@@ -236,7 +237,7 @@ export async function uploadExperienceMedia(
   });
 
   return readUploadResponse<ExperienceMediaUploadResponse>(
-    await fetch(`${apiBaseUrl}/api/admin/experiences/upload`, {
+    await sessionFetch(`${apiBaseUrl}/api/admin/experiences/upload`, {
       method: "POST",
       headers: getAdminHeaders(),
       body: formData,

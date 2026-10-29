@@ -1,4 +1,4 @@
-import { ApiError, apiBaseUrl, apiRequest } from "@/lib/api";
+import { sessionFetch, ApiError, apiBaseUrl, apiRequest } from "@/lib/api";
 import { getAdminSession } from "@/lib/admin-auth";
 
 export type SiteContactSettings = {
@@ -13,6 +13,7 @@ export type SiteContactSettings = {
 export type SiteSocialLinks = { facebook: string; instagram: string; linkedin: string; youtube: string; };
 
 export type SiteSettings = {
+  quoteAssistanceTitle?: string;
   logo?: string;
   googleBusinessReviewsUrl?: string;
   googleBusinessReviewsVerified?: boolean;
@@ -25,6 +26,7 @@ export type SiteSettings = {
 };
 
 export type SiteSettingsPayload = {
+  quoteAssistanceTitle?: string;
   contact: SiteContactSettings;
   socialLinks?: SiteSocialLinks;
   googleBusinessReviewsUrl?: string;
@@ -34,12 +36,12 @@ export type SiteSettingsPayload = {
 function getAdminHeaders(): HeadersInit {
   const session = getAdminSession();
 
-  if (!session?.token) {
+  if (!session?.sessionId) {
     throw new ApiError(401, "Please sign in to continue");
   }
 
   return {
-    Authorization: `Bearer ${session.token}`,
+    "X-Session-Id": session.sessionId,
   };
 }
 
@@ -59,7 +61,7 @@ export async function updateAdminSiteSettings(payload: SiteSettingsPayload) {
 
 export async function uploadAdminSiteLogo(file: File) {
   const body = new FormData(); body.append("logo", file);
-  const response = await fetch(apiBaseUrl + "/api/admin/site-settings/logo", { method: "POST", headers: getAdminHeaders(), body, credentials: "include" });
+  const response = await sessionFetch(apiBaseUrl + "/api/admin/site-settings/logo", { method: "POST", headers: getAdminHeaders(), body, credentials: "include" });
   const result = await response.json();
   if (!response.ok) throw new ApiError(response.status, result.message || "Unable to upload logo");
   return result as { data: { settings: SiteSettings } };

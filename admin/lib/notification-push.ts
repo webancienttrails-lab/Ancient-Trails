@@ -4,7 +4,7 @@ import { getApps, initializeApp } from "firebase/app";
 import { getMessaging, isSupported, onMessage, onRegistered, register, unregister } from "firebase/messaging";
 import { apiBaseUrl } from "@/lib/api";
 
-type Identity = { token: string; user: { id: string } };
+type Identity = { sessionId: string; user: { id: string } };
 const audience = "admin";
 const prefix = "ancient-trails-push:" + audience + ":";
 let activeUser = "", generation = 0, stopRegistration: (() => void) | undefined, stopMessage: (() => void) | undefined;
@@ -64,7 +64,7 @@ async function enableBrowserPushNow(identity: Identity, epoch: number) {
     if (epoch !== generation || activeUser !== identity.user.id || fid !== currentFid) return;
     try {
       const response = await fetch(apiBaseUrl + "/api/notifications/" + audience + "/registrations", {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + identity.token },
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json", "X-Session-Id": identity.sessionId, "X-Session-Audience": "admin", "X-Requested-With": "XMLHttpRequest" },
         body: JSON.stringify({ fid, deviceKey: deviceKey() }), signal: AbortSignal.timeout(10000),
       });
       if (!response.ok) throw new Error("Could not register this browser. Please retry.");
@@ -120,8 +120,8 @@ export function disableBrowserPush(identity?: Identity) {
   localStorage.removeItem(prefix + "binding");
   if (identity) {
     localStorage.removeItem(prefix + "enabled:" + identity.user.id);
-    void fetch(apiBaseUrl + "/api/notifications/" + audience + "/registrations", { method: "DELETE", keepalive: true,
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + identity.token }, body: JSON.stringify({ deviceKey: deviceKey() }),
+    void fetch(apiBaseUrl + "/api/notifications/" + audience + "/registrations", { method: "DELETE", keepalive: true, credentials: "include",
+      headers: { "Content-Type": "application/json", "X-Session-Id": identity.sessionId, "X-Session-Audience": "admin", "X-Requested-With": "XMLHttpRequest" }, body: JSON.stringify({ deviceKey: deviceKey() }),
     }).catch(() => {});
   }
   const clear = workerMessage("PUSH_CLEAR").catch(() => {});

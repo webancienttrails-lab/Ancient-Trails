@@ -66,6 +66,7 @@ export default function SettingsPage() {
   const [googleBusinessReviewsUrl, setGoogleBusinessReviewsUrl] = useState("");
   const [googleBusinessReviewsVerified, setGoogleBusinessReviewsVerified] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [quoteAssistanceTitle, setQuoteAssistanceTitle] = useState("Looking for assistance?");
 
   useEffect(() => {
     let isMounted = true;
@@ -76,6 +77,7 @@ export default function SettingsPage() {
 
         if (isMounted) {
           setContactSettings(response.data.settings.contact);
+          setQuoteAssistanceTitle(response.data.settings.quoteAssistanceTitle || "Looking for assistance?");
           setSocialLinks(response.data.settings.socialLinks);
       setGoogleBusinessReviewsUrl(response.data.settings.googleBusinessReviewsUrl || "");
       setGoogleBusinessReviewsVerified(response.data.settings.googleBusinessReviewsVerified === true);
@@ -125,6 +127,9 @@ export default function SettingsPage() {
 
   async function saveSettings(section: string) {
     if (!settingsLoaded || isSaving) return;
+    if (!quoteAssistanceTitle.trim() || quoteAssistanceTitle.trim().length > 160) {
+      toast.error("Invalid assistance heading", "Enter an assistance heading between 1 and 160 characters."); return;
+    }
     if (googleBusinessReviewsUrl.trim() && !isGoogleBusinessReviewsUrl(googleBusinessReviewsUrl)) {
       toast.error("Invalid Google reviews link", "Enter a valid HTTPS Google Business Profile reviews URL."); return;
     }
@@ -145,6 +150,7 @@ export default function SettingsPage() {
 
     try {
       const response = await updateAdminSiteSettings({
+        quoteAssistanceTitle: quoteAssistanceTitle.trim(),
         contact: contactSettings,
         socialLinks,
         googleBusinessReviewsUrl: googleBusinessReviewsUrl.trim(),
@@ -152,6 +158,7 @@ export default function SettingsPage() {
       });
 
       setContactSettings(response.data.settings.contact);
+      setQuoteAssistanceTitle(response.data.settings.quoteAssistanceTitle || "Looking for assistance?");
       setSocialLinks(response.data.settings.socialLinks);
       setGoogleBusinessReviewsUrl(response.data.settings.googleBusinessReviewsUrl || "");
       setGoogleBusinessReviewsVerified(response.data.settings.googleBusinessReviewsVerified === true);
@@ -184,10 +191,15 @@ export default function SettingsPage() {
                   Contact Details
                 </h3>
                 <p className="mt-1 text-[11px] font-medium text-foreground/55">
-                  These details appear in website help and contact sections.
+                  These details appear in website help, contact sections, and the Get Quote popup.
                 </p>
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <ContactField
+                    label="Get Quote Assistance Heading"
+                    value={quoteAssistanceTitle}
+                    onChange={setQuoteAssistanceTitle}
+                  />
                   <ContactField
                     label="Primary Calling"
                     value={contactSettings.primaryCalling}

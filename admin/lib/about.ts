@@ -1,4 +1,5 @@
 import {
+  sessionFetch,
   apiBaseUrl,
   apiRequest,
   ApiError,
@@ -50,12 +51,12 @@ export type AboutImageUploadResponse = {
 function getAdminHeaders(): HeadersInit {
   const session = getAdminSession();
 
-  if (!session?.token) {
+  if (!session?.sessionId) {
     throw new ApiError(401, "Please sign in to continue");
   }
 
   return {
-    Authorization: `Bearer ${session.token}`,
+    "X-Session-Id": session.sessionId,
   };
 }
 
@@ -120,7 +121,7 @@ export async function uploadAboutImage(image: File) {
   formData.append("image", image);
 
   return readUploadResponse<AboutImageUploadResponse>(
-    await fetch(`${apiBaseUrl}/api/admin/about/upload`, {
+    await sessionFetch(`${apiBaseUrl}/api/admin/about/upload`, {
       method: "POST",
       headers: getAdminHeaders(),
       body: formData,

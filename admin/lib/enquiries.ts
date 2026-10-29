@@ -23,7 +23,7 @@ export type EnquiryPayload = Omit<AdminEnquiry, "id" | "enquiryReference" | "cre
 
 function headers(): HeadersInit {
   const session = getAdminSession();
-  return session?.token ? { Authorization: `Bearer ${session.token}` } : {};
+  return session?.sessionId ? { "X-Session-Id": session.sessionId } : {};
 }
 
 export async function listAdminEnquiries() {

@@ -28,7 +28,7 @@ export default function TourNotificationPage() {
       if (!requestId.current) requestId.current = crypto.randomUUID();
       setBusy(true); setStatus("");
       try {
-        await apiRequest("/api/notifications/admin/tour-updates", { method: "POST", headers: { Authorization: "Bearer " + session.token }, body: JSON.stringify({ tourId, ...(departureId ? { departureId } : {}), title, body, requestId: requestId.current }) });
+        await apiRequest("/api/notifications/admin/tour-updates", { method: "POST", headers: { "X-Session-Id": session.sessionId }, body: JSON.stringify({ tourId, ...(departureId ? { departureId } : {}), title, body, requestId: requestId.current }) });
         setStatus("Update queued successfully."); setTitle(""); setBody(""); requestId.current = "";
       } catch (error) { setStatus(error instanceof Error ? error.message : "Could not send this update. Please retry."); }
       finally { setBusy(false); }
