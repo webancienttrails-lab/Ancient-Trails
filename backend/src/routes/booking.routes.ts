@@ -1,6 +1,9 @@
 import { getCancellationRequestPreview, requestBookingCancellation } from "../controllers/bookingCancellationRequest.controller";
+import { startCancellationRefund } from "../controllers/bookingCancellationRequest.controller";
 import { requestAdminBookingLeadOtp, verifyAdminBookingLeadOtp } from "../controllers/bookingLead.controller";
 import { Router } from "express";
+import { verifyBookingTcsExemption } from "../controllers/booking.controller";
+import { authorizePrebookingKycUpload, uploadPrebookingKycDocument } from "../controllers/booking.controller";
 import {
   bankTransferConfig, createInitialBankTransfer, createCustomerBankTransfer, getCustomerBankTransfer,
   createAdminBankTransfer, getAdminBankTransfer, refreshAdminBankTransfer, closeAdminBankTransfer,
@@ -32,8 +35,10 @@ import {
   resendAdminBookingPaymentLinkWhatsapp,
   sendBookingRecoveryEmailManually,
   sendBookingFinalPaymentWhatsappManually,
+  sendAdminBookingFeedbackWhatsapp,
   updateBooking,
   updateBookingAirFlightCharges,
+  updateBookingTravelDetails,
   uploadAdminBookingKycDocument,
   uploadTravellerBookingKycDocument,
   verifyBookingBalancePayment,
@@ -43,6 +48,7 @@ import {
 import { requireAdmin } from "../middleware/adminAuth";
 
 export const publicBookingRoutes = Router();
+publicBookingRoutes.post("/kyc/upload", authorizePrebookingKycUpload, bookingKycUpload.single("document"), uploadPrebookingKycDocument);
 
 publicBookingRoutes.get("/bank-transfer/config", bankTransferConfig);
 publicBookingRoutes.post("/bank-transfer", createInitialBankTransfer);
@@ -72,10 +78,12 @@ publicBookingRoutes.post("/:id/recovery/payment/order", createBookingRecoveryPay
 const router = Router();
 
 router.use(requireAdmin);
+router.patch("/:id/tcs-exemption", verifyBookingTcsExemption);
 
 router.post("/lead/request-otp", requestAdminBookingLeadOtp);
 router.post("/lead/verify-otp", verifyAdminBookingLeadOtp);
 router.get("/", listBookings);
+router.post("/:id/cancellation-request/refund", startCancellationRefund);
 router.get("/:id/bank-transfer", getAdminBankTransfer);
 router.post("/:id/bank-transfer", createAdminBankTransfer);
 router.post("/:id/bank-transfer/:accountId/refresh", refreshAdminBankTransfer);
@@ -88,6 +96,7 @@ router.post(
 );
 router.patch("/:id/archive", archiveBooking);
 router.post("/:id/recovery-email", sendBookingRecoveryEmailManually);
+router.post("/:id/feedback-whatsapp", sendAdminBookingFeedbackWhatsapp);
 router.post("/:id/final-payment-whatsapp", sendBookingFinalPaymentWhatsappManually);
 router.get("/:id/payment-links", listAdminBookingPaymentLinks);
 router.post("/:id/payment-links", createAdminBookingPaymentLink);
@@ -103,6 +112,7 @@ router.post("/:id/payment-links/:linkId/cancel", cancelAdminBookingPaymentLink);
 router.patch("/:id/cancel", cancelPendingBooking);
 router.patch("/:id/expire", markPendingBookingExpired);
 router.patch("/:id/air-flight-charges", updateBookingAirFlightCharges);
+router.patch("/:id/travel-details", updateBookingTravelDetails);
 router.patch("/:id", updateBooking);
 router.delete("/:id", deleteBooking);
 router.post("/", createBooking);

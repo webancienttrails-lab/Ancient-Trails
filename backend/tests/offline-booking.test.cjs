@@ -39,6 +39,31 @@ function mockTour(t, departure) {
   t.mock.method(TourDeparture, 'findOne', async () => departure);
 }
 
+for (const tourType of ['Domestic', 'International']) {
+  test(`${tourType} booking persists server-calculated TCS and rejects client exemption overrides`, async t => {
+    const { departure, payload } = fixture();
+    mockTour(t, departure);
+    t.mock.method(Tour, 'findOne', async () => ({ tourId: 'TOURTEST', tourName: 'Test', tourType, inclusions: [], exclusions: [] }));
+    t.mock.method(SmartCollectAccount, 'exists', async () => false);
+    t.mock.method(Booking, 'findOne', async () => null);
+    let saved;
+    t.mock.method(Booking, 'create', async values => { saved = new Booking({ ...values, bookingReference: 'ATTEST' }); return saved; });
+    t.mock.method(alerts, 'notifyOfflineBookingAdmins', async () => {});
+    payload.guestDetails[0].isNri = true;
+    payload.travellers[0].isNri = true;
+    const result = response();
+    await createOfflineBooking({ body: { ...payload, tcsAmount: 0, tcsPercentage: 0, tcsExemptionVerified: true } }, result);
+    const international = tourType === 'International';
+    assert.equal(saved.tcsApplicable, international);
+    assert.equal(saved.tcsExemptionVerified, false);
+    assert.equal(saved.tcsAmount, international ? Math.round(saved.packageTotal * 0.02) : 0);
+    assert.equal(saved.grandTotal, saved.packageTotal + saved.tcsAmount);
+    assert.equal(saved.balanceAmount, saved.grandTotal);
+    assert.equal(saved.amountPaid, 0);
+    assert.equal(saved.pricingSnapshot.tcsAmount, saved.tcsAmount);
+  });
+}
+
 test('offline requests cannot claim payment, do not reserve seats or confirm, and retries reuse the request', async t => {
   t.mock.method(SmartCollectAccount, "exists", async () => false);
   const { departure, payload } = fixture();

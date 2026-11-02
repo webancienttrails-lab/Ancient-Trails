@@ -20,6 +20,7 @@ router.post(
   "/upload",
   experienceMediaUpload.fields([
     { name: "travellerPhotoGallery" },
+    { name: "whatsappReviewImages" },
     { name: "travellerVideos" },
     { name: "attractionPhotoGallery" },
   ]),

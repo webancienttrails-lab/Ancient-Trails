@@ -184,6 +184,7 @@ const experiencePayloadSchema = z.object({
     .default(""),
   title: textField(160),
   writtenReview: textField(3000),
+  whatsappReviewImages: mediaListSchema,
   googleReviewUrl: z.string().trim().max(2048).refine(value => !value || isGoogleReviewUrl(value), "Enter a valid HTTPS Google review URL").optional(),
   googleReviewTimeDescription: z.string().trim().max(80).optional(),
   googleReviewPublishedAt: z.iso.datetime({ offset: true }).nullable().optional().refine(value => !value || new Date(value).getTime() <= Date.now(), "Google review publication date cannot be in the future"),
@@ -302,6 +303,7 @@ function formatPublicExperience(experience: ExperienceDocument, tourNameById: Ma
     travellerReviewCount,
     title: experience.title,
     writtenReview: experience.writtenReview,
+    whatsappReviewImages: experience.whatsappReviewImages || [],
     googleReviewUrl: experience.googleReviewUrl || "",
     googleReviewPublishedAt: experience.googleReviewPublishedAt || null,
     googleReviewTimeDescription: experience.googleReviewTimeDescription || "",
@@ -345,6 +347,7 @@ function formatExperience(
     travellerEmail: experience.travellerEmail,
     title: experience.title,
     writtenReview: experience.writtenReview,
+    whatsappReviewImages: experience.whatsappReviewImages || [],
     googleReviewUrl: experience.googleReviewUrl || "",
     googleReviewPublishedAt: experience.googleReviewPublishedAt || null,
     googleReviewTimeDescription: experience.googleReviewTimeDescription || "",
@@ -373,6 +376,7 @@ function createExperiencePayload(
     travellerName: payload.travellerName,
     travellerEmail: payload.travellerEmail,
     writtenReview: payload.writtenReview,
+    whatsappReviewImages: payload.whatsappReviewImages,
     ...(payload.googleReviewUrl !== undefined ? { googleReviewUrl: payload.googleReviewUrl } : {}),
     ...(payload.googleReviewTimeDescription !== undefined ? { googleReviewTimeDescription: payload.googleReviewTimeDescription } : {}),
     ...(payload.googleReviewPublishedAt !== undefined ? { googleReviewPublishedAt: payload.googleReviewPublishedAt } : {}),
@@ -664,6 +668,7 @@ export async function uploadExperienceMedia(
   const files = request.files as
     | {
         travellerPhotoGallery?: Express.Multer.File[];
+        whatsappReviewImages?: Express.Multer.File[];
         travellerVideos?: Express.Multer.File[];
         attractionPhotoGallery?: Express.Multer.File[];
       }
@@ -671,6 +676,7 @@ export async function uploadExperienceMedia(
   const travellerPhotoGallery = (files?.travellerPhotoGallery || []).map(
     getUploadUrl
   );
+  const whatsappReviewImages = (files?.whatsappReviewImages || []).map(getUploadUrl);
   const travellerVideos = (files?.travellerVideos || []).map(getUploadUrl);
   const attractionPhotoGallery = (files?.attractionPhotoGallery || []).map(
     getUploadUrl
@@ -678,6 +684,7 @@ export async function uploadExperienceMedia(
 
   if (
     travellerPhotoGallery.length === 0 &&
+    whatsappReviewImages.length === 0 &&
     travellerVideos.length === 0 &&
     attractionPhotoGallery.length === 0
   ) {
@@ -689,6 +696,7 @@ export async function uploadExperienceMedia(
     message: "Experience media uploaded successfully",
     data: {
       travellerPhotoGallery,
+      whatsappReviewImages,
       travellerVideos,
       attractionPhotoGallery,
     },

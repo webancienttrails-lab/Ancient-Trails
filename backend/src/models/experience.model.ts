@@ -20,6 +20,7 @@ export interface IExperience {
   travellerEmail: string;
   title: string;
   writtenReview: string;
+  whatsappReviewImages: string[];
   googleReviewUrl?: string;
   googleReviewPublishedAt?: Date | null;
   googleReviewTimeDescription?: string;
@@ -144,6 +145,7 @@ const experienceSchema = new Schema<IExperience>(
       ...trimmedString,
       maxlength: 3000,
     },
+    whatsappReviewImages: trimmedStringList,
     googleReviewUrl: {
       ...trimmedString,
       maxlength: 2048,

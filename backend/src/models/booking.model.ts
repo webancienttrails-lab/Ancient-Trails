@@ -22,6 +22,8 @@ export interface IBookingGuestDetails {
   dateOfBirth: Date;
   gender: string;
   address: string;
+  pincode?: string;
+  isNri?: boolean;
   panNumber?: string;
 }
 
@@ -44,7 +46,9 @@ export interface IBookingKycDocument {
     | "driving_license"
     | "voter_id"
     | "passport"
-    | "pan_card";
+    | "pan_card"
+    | "visa"
+    | "oci";
   documentLabel: string;
   fileName: string;
   fileUrl: string;
@@ -67,12 +71,31 @@ export interface IBookingTraveller {
   dateOfBirth?: Date;
   gender?: string;
   address?: string;
+  pincode?: string;
+  isNri?: boolean;
   panNumber?: string;
   ageOnDeparture?: number;
   kycDocuments?: IBookingKycDocument[];
 }
 
+export interface BookingHotelDetail {
+  destination: string;
+  hotel: string;
+  category: string;
+  nights: number;
+}
+
+export interface BookingFlightDetail {
+  from: string;
+  to: string;
+  airline: string;
+  seats: number;
+  dateTime: string;
+}
+
 export interface IBooking {
+  hotelDetails?: BookingHotelDetail[];
+  flightDetails?: BookingFlightDetail[];
   cancellation?: {
     reason: string;
     chargePercentage: number;
@@ -106,6 +129,13 @@ export interface IBooking {
   subtotal?: number;
   gstPercentage?: number;
   gstAmount?: number;
+  packageTotal?: number;
+  tcsApplicable?: boolean;
+  tcsPercentage?: number;
+  tcsAmount?: number;
+  tcsExemptionVerified?: boolean;
+  tcsExemptionVerifiedBy?: string;
+  tcsExemptionVerifiedAt?: Date | null;
   grandTotal?: number;
   airFlightCharges?: number;
   airfareIncludedInTotal?: boolean;
@@ -147,6 +177,12 @@ export interface IBooking {
   recoveryEmailSentAt?: Date | null;
   recoveryEmailError?: string;
   whatsappMarketingConsent?: boolean;
+  whatsappFeedbackStatus?: "not_sent" | "sending" | "sent" | "failed";
+  whatsappFeedbackLastSentAt?: Date | null;
+  whatsappFeedbackLastAttemptAt?: Date | null;
+  whatsappFeedbackRecipient?: string;
+  whatsappFeedbackRequestId?: string;
+  whatsappFeedbackError?: string;
   whatsappRecoveryStatus?:
     | "pending"
     | "sending"
@@ -242,7 +278,7 @@ const guestDetailsSchema = new Schema<IBookingGuestDetails>(
       maxlength: 8,
     },
     mobileNumber: {
-      ...requiredTrimmedString,
+      ...trimmedString,
       maxlength: 20,
     },
     email: {
@@ -270,6 +306,12 @@ const guestDetailsSchema = new Schema<IBookingGuestDetails>(
       ...requiredTrimmedString,
       maxlength: 500,
     },
+    pincode: {
+      ...trimmedString,
+      match: /^(?:[0-9]{6})?$/,
+      maxlength: 6,
+    },
+    isNri: { type: Boolean, default: false },
     panNumber: {
       ...trimmedString,
       maxlength: 20,
@@ -308,6 +350,8 @@ const kycDocumentSchema = new Schema<IBookingKycDocument>(
         "voter_id",
         "passport",
         "pan_card",
+        "visa",
+        "oci",
       ],
       required: true,
     },
@@ -398,6 +442,12 @@ const travellerSchema = new Schema<IBookingTraveller>(
       ...trimmedString,
       maxlength: 500,
     },
+    pincode: {
+      ...trimmedString,
+      match: /^(?:[0-9]{6})?$/,
+      maxlength: 6,
+    },
+    isNri: { type: Boolean, default: false },
     panNumber: {
       ...trimmedString,
       maxlength: 20,
@@ -543,6 +593,25 @@ const bookingSchema = new Schema<IBooking>(
       required: true,
       default: {},
     },
+    hotelDetails: {
+      type: [new Schema<BookingHotelDetail>({
+        destination: { type: String, trim: true, required: true, maxlength: 200 },
+        hotel: { type: String, trim: true, required: true, maxlength: 200 },
+        category: { type: String, trim: true, required: true, maxlength: 160 },
+        nights: { type: Number, required: true, min: 1, max: 365 },
+      }, { _id: false })],
+      default: [],
+    },
+    flightDetails: {
+      type: [new Schema<BookingFlightDetail>({
+        from: { type: String, trim: true, required: true, maxlength: 200 },
+        to: { type: String, trim: true, required: true, maxlength: 200 },
+        airline: { type: String, trim: true, required: true, maxlength: 300 },
+        seats: { type: Number, required: true, min: 1, max: 1000 },
+        dateTime: { type: String, required: true, maxlength: 16 },
+      }, { _id: false })],
+      default: [],
+    },
     pricingSnapshot: {
       type: Schema.Types.Mixed,
       default: undefined,
@@ -559,6 +628,13 @@ const bookingSchema = new Schema<IBooking>(
       ...nonNegativeNumber,
       max: 1000000000,
     },
+    packageTotal: { type: Number, min: 0 },
+    tcsApplicable: { type: Boolean },
+    tcsPercentage: { type: Number, min: 0, max: 100 },
+    tcsAmount: { type: Number, min: 0 },
+    tcsExemptionVerified: { type: Boolean, default: false },
+    tcsExemptionVerifiedBy: { type: String },
+    tcsExemptionVerifiedAt: { type: Date },
     grandTotal: {
       ...nonNegativeNumber,
       max: 1000000000,
@@ -674,6 +750,16 @@ const bookingSchema = new Schema<IBooking>(
       type: Boolean,
       default: true,
     },
+    whatsappFeedbackStatus: {
+      type: String,
+      enum: ["not_sent", "sending", "sent", "failed"],
+      default: "not_sent",
+    },
+    whatsappFeedbackLastSentAt: { type: Date, default: null },
+    whatsappFeedbackLastAttemptAt: { type: Date, default: null },
+    whatsappFeedbackRecipient: { ...trimmedString, maxlength: 20 },
+    whatsappFeedbackRequestId: { ...trimmedString, maxlength: 160 },
+    whatsappFeedbackError: { ...trimmedString, maxlength: 500 },
     whatsappRecoveryStatus: {
       type: String,
       enum: ["pending", "sending", "sent", "failed", "disabled"],
@@ -806,6 +892,11 @@ bookingSchema.pre("save", async function assignBookingReference() {
 });
 
 bookingSchema.pre("validate", function requireLeadTravellerEmail() {
+  this.guestDetails.forEach((guest, index) => {
+    if (index < Math.max(1, this.adultCount) && !guest.mobileNumber?.trim()) {
+      this.invalidate(`guestDetails.${index}.mobileNumber`, "Adult traveller mobile number is required");
+    }
+  });
   if (this.guestDetails.length > 0 && !this.guestDetails[0].email?.trim()) {
     this.invalidate("guestDetails.0.email", "Lead traveller email is required");
   }

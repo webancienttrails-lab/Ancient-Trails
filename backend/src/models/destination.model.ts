@@ -5,6 +5,7 @@ import {
   type HydratedDocument,
   type Model,
 } from "mongoose";
+import type { DestinationPageContent } from "../services/destination-page-content";
 
 export enum DestinationType {
   DOMESTIC = "Domestic",
@@ -12,6 +13,7 @@ export enum DestinationType {
 }
 
 export interface IDestination {
+  pageContent?: DestinationPageContent;
   destinationId: string;
   destinationName: string;
   destinationType: DestinationType;
@@ -60,6 +62,7 @@ const requiredTrimmedString = {
 
 const destinationSchema = new Schema<IDestination>(
   {
+    pageContent: { type: Schema.Types.Mixed, default: undefined },
     destinationId: {
       ...requiredTrimmedString,
       uppercase: true,

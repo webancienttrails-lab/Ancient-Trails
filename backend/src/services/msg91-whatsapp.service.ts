@@ -618,3 +618,12 @@ export function sendTourFullPaymentConfirmationWhatsapp(payload: {
   return sendPaymentLifecycleTemplate("tour_full_payment_confirmation", payload.recipientNumber,
     [payload.travellerName, payload.tourName, payload.bookingReference, payload.amountPaid, payload.paymentDate], payload.crqId);
 }
+
+export function sendFeedbackRequestWhatsapp(payload: {
+  recipientNumber: string;
+  travellerName: string;
+  crqId: string;
+}) {
+  return sendPaymentLifecycleTemplate("ancient_trails_feedback_request", payload.recipientNumber,
+    [payload.travellerName], payload.crqId);
+}

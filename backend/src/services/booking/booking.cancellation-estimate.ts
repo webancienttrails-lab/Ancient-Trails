@@ -35,7 +35,7 @@ export function cancellationEstimate(booking: IBooking, departure: Date, configu
   const cancellationCharge = chargePercentage !== null && knownPrices ? Math.round(Number(subtotal) * chargePercentage) / 100 : null;
   const nonRefundableGst = Math.max(0, gst || 0);
   const estimatedRefund = cancellationCharge === null ? null : Math.max(0, Math.round((amountPaid - cancellationCharge - nonRefundableGst) * 100) / 100);
-  return { daysBeforeDeparture, chargePercentage, amountPaid, cancellationCharge, nonRefundableGst, estimatedRefund,
+  return { daysBeforeDeparture, chargePercentage, amountPaid, chargeableSubtotal: Number.isFinite(subtotal) ? Number(subtotal) : null, cancellationCharge, nonRefundableGst, estimatedRefund,
     departureDate: departure.toISOString(), policyRows,
     notes: ["Estimate only; the team confirms eligibility, charges and the final refund. Refunds remain manual under the published policy.",
       "GST is non-refundable. Non-refundable airfare and applicable airline charges may further reduce this estimate.",

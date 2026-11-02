@@ -156,6 +156,8 @@ function formatUser(user: UserDocument) {
     nationality: user.nationality || "",
     dateOfBirth: user.dateOfBirth || "",
     roles: user.roles,
+    profession: user.profession || "",
+    adminTabs: user.adminTabs,
     status: user.status,
     isMobileVerified: user.isMobileVerified,
     lastLoginAt: user.lastLoginAt,

@@ -115,6 +115,13 @@ const homeExperiencePayloadSchema = z.object({
   sortOrder: sortOrderField,
 });
 
+const homeEventPayloadSchema = z.object({
+  title: z.string().trim().max(120).default(""),
+  image: z.string().trim().min(1, "Event image is required").max(500),
+  href: z.string().trim().max(2048).default(""),
+  sortOrder: sortOrderField,
+});
+
 const homePagePayloadSchema = z.object({
   upcomingTours: z.array(homeUpcomingTourPayloadSchema).max(6).default([]),
   trendingDestinations: z
@@ -126,6 +133,8 @@ const homePagePayloadSchema = z.object({
     .max(6)
     .default([]),
   homeExperiences: z.array(homeExperiencePayloadSchema).max(5).default([]),
+  eventsEnabled: z.boolean().default(true),
+  events: z.array(homeEventPayloadSchema).max(20).default([]),
 });
 
 type HomePagePayload = z.infer<typeof homePagePayloadSchema>;
@@ -205,6 +214,14 @@ function formatHomePage(page: HomePageDocument) {
         sortOrder: experience.sortOrder,
       })
     ),
+    eventsEnabled: page.eventsEnabled ?? true,
+    events: sortBySortOrder(page.events || []).map((event, index) => ({
+      id: getSubdocumentId(event, `home-event-${index}`),
+      title: event.title,
+      image: event.image,
+      href: event.href || "",
+      sortOrder: event.sortOrder,
+    })),
     createdAt: page.createdAt,
     updatedAt: page.updatedAt,
   };
@@ -512,6 +529,8 @@ export async function updateHomePage(
         trendingDestinations: payload.trendingDestinations,
         customisedTourDestinations: payload.customisedTourDestinations,
         homeExperiences: payload.homeExperiences,
+        eventsEnabled: payload.eventsEnabled,
+        events: payload.events,
       },
       $setOnInsert: {
         pageKey: homePageKey,

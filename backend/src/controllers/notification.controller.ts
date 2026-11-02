@@ -24,6 +24,9 @@ export async function requireNotificationUser(request: Request, response: Respon
     if (scheme !== "Bearer" || !token) throw new HttpError(401, "Please sign in to continue");
     const claims = verifyAuthToken(token), user = await User.findById(claims.userId);
     if (!user || user.status !== "active" || !(audience === "admin" ? user.roles.some(isAdminRole) : user.roles.includes("traveller"))) throw new HttpError(403, "Notification access is not permitted");
+    if (audience === "admin" && user.adminTabs !== undefined && !user.roles.includes("super_admin")) {
+      throw new HttpError(403, "This account does not have access to the general admin notification inbox");
+    }
     response.locals.notificationOwner = { recipientId: user.id, audience }; next();
   } catch (error) { next(error); }
 }

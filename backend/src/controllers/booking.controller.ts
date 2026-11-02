@@ -1,4 +1,9 @@
 import { normalizeMobileNumber } from "../utils/mobileNumber";
+import { calculateDeposit } from "../services/booking/booking.deposit";
+import { adjustBookingTcs } from "../services/booking/booking.pricing";
+import { resolvePrebookingKycUploads, signPrebookingKycUpload } from "../services/booking/booking.prebooking-kyc";
+import { getBookingKycDocumentTypes, getTravellerKycDocumentTypes, hasRequiredBookingKycDocuments, isTravellerTcsExempt } from "../services/booking/booking.kyc";
+import { bookingTravelDetailsSchema } from "../services/booking/booking.travel-details";
 import { PUBLIC_BOOKING_GST_PERCENTAGE } from "../config/booking-pricing";
 import { withPaymentOrderLock } from "../services/booking/booking.order-lock";
 import { queueBookingNotifications, stageNotificationEvent } from "../services/notifications/notification-events.service";
@@ -40,6 +45,7 @@ import {
   type BookingPaymentLinkPurpose,
   type BookingPaymentLinkRequestDocument,
 } from "../models/bookingPaymentLinkRequest.model";
+import { BookingCancellationRequest } from "../models/bookingCancellationRequest.model";
 import {
   Destination,
   type DestinationDocument,
@@ -72,6 +78,7 @@ import {
   sendBookingConfirmationWhatsapp,
   sendBookingPaymentLinkWhatsapp,
   sendBookingRecoveryWhatsapp,
+  sendFeedbackRequestWhatsapp,
 } from "../services/msg91-whatsapp.service";
 import { SmartCollectAccount, SmartCollectTransfer } from "../models/smartCollect.model";
 import { HttpError } from "../utils/httpError";
@@ -102,6 +109,8 @@ const bookingKycDocumentLabels: Record<IBookingKycDocument["documentType"], stri
   voter_id: "Voter ID",
   passport: "Passport",
   pan_card: "PAN Card",
+  visa: "Visa",
+  oci: "OCI Document",
 };
 
 mkdirSync(bookingKycUploadDirectory, { recursive: true });
@@ -117,6 +126,8 @@ const bookingKycUploadPayloadSchema = z.object({
     "voter_id",
     "passport",
     "pan_card",
+    "visa",
+    "oci",
   ]),
   travellerId: requiredTextField("Traveller ID", 80),
 });
@@ -189,16 +200,15 @@ const guestDetailsPayloadSchema = z.object({
     /^\+[0-9]{1,4}$/,
     "Country code must start with + and contain digits only"
   ),
-  mobileNumber: requiredTextField("Mobile number", 20).regex(
-    /^[0-9\s-]{5,20}$/,
-    "Mobile number can contain digits, spaces, and hyphens only"
-  ),
+  mobileNumber: optionalMobileNumberField,
   email: optionalEmailField,
   emergencyContactName: optionalTextField(120),
   emergencyContactMobileNumber: optionalMobileNumberField,
   dateOfBirth: requiredDateField("Date of birth"),
   gender: requiredTextField("Gender", 40),
   address: requiredTextField("Address", 500),
+  pincode: z.string().trim().regex(/^(?:[0-9]{6})?$/, "PIN code must contain 6 digits").default(""),
+  isNri: z.boolean().default(false),
   panNumber: optionalTextField(20),
 });
 
@@ -221,6 +231,7 @@ const accommodationDetailsPayloadSchema = z.object({
 });
 
 const adminAccommodationOptionsPayloadSchema = z.object({
+  bookingId: z.string().optional(),
   departureId: requiredCodeField("Departure ID", 40),
   adultCount: nonNegativeIntegerField("Adult count", 25).min(
     1,
@@ -244,8 +255,11 @@ const travellerPayloadSchema = z.object({
   dateOfBirth: z.string().trim().optional(),
   gender: optionalTextField(40),
   address: optionalTextField(500),
+  pincode: z.string().trim().regex(/^(?:[0-9]{6})?$/, "PIN code must contain 6 digits").default(""),
+  isNri: z.boolean().default(false),
   panNumber: optionalTextField(20),
   ageOnDeparture: z.coerce.number().int().min(0).max(120).optional(),
+  nriDocumentTokens: z.array(z.string().min(1).max(8000)).max(2).default([]),
 });
 
 const bookingPayloadSchema = z
@@ -282,6 +296,11 @@ const bookingPayloadSchema = z
     gstPercentage: z.coerce.number().min(0).max(100).default(0),
   })
   .superRefine((payload, context) => {
+    payload.guestDetails.forEach((guest, index) => {
+      if (index < Math.max(1, payload.adultCount) && !guest.mobileNumber) {
+        context.addIssue({ code: "custom", path: ["guestDetails", index, "mobileNumber"], message: "Adult traveller mobile number is required" });
+      }
+    });
     if (payload.guestDetails.length > 0 && !payload.guestDetails[0].email) {
       context.addIssue({
         code: "custom",
@@ -645,6 +664,8 @@ function formatGuestDetails(guest: IBookingGuestDetails) {
     dateOfBirth: guest.dateOfBirth,
     gender: guest.gender,
     address: guest.address,
+    pincode: guest.pincode || "",
+    isNri: Boolean(guest.isNri),
     panNumber: guest.panNumber || "",
   };
 }
@@ -668,9 +689,23 @@ function formatKycDocument(document: IBookingKycDocument) {
   };
 }
 
+export async function updateBookingTravelDetails(request: Request, response: Response): Promise<void> {
+  if (!mongoose.isValidObjectId(request.params.id)) throw new HttpError(400, "Invalid booking ID");
+  const payload = parseRequestBody(bookingTravelDetailsSchema, request.body);
+  const booking = await Booking.findOneAndUpdate(
+    { _id: request.params.id, archivedAt: null },
+    { $set: payload },
+    { new: true, runValidators: true }
+  );
+  if (!booking) throw new HttpError(404, "Booking not found");
+  response.json({ success: true, message: "Travel details saved", data: { booking: formatBooking(booking) } });
+}
+
 export function formatBooking(booking: BookingDocument, tour?: { inclusions?: string[]; exclusions?: string[] } | null) {
   return {
     id: booking._id.toString(),
+    hotelDetails: booking.hotelDetails || [],
+    flightDetails: booking.flightDetails || [],
     cancellation: booking.cancellation || null,
     ...resolveBookingEmergencyContact(booking),
     bookingReference:
@@ -702,6 +737,9 @@ export function formatBooking(booking: BookingDocument, tour?: { inclusions?: st
       dateOfBirth: traveller.dateOfBirth,
       gender: traveller.gender,
       address: traveller.address,
+      pincode: traveller.pincode || "",
+      isNri: Boolean(traveller.isNri),
+      tcsExempt: isTravellerTcsExempt({ isNri: traveller.isNri, kycDocuments: traveller.kycDocuments, tcsExemptionVerified: booking.tcsExemptionVerified && traveller.id === booking.travellers[0]?.id }),
       panNumber: traveller.panNumber,
       ageOnDeparture: traveller.ageOnDeparture,
       kycDocuments: (traveller.kycDocuments || []).map(formatKycDocument),
@@ -719,6 +757,11 @@ export function formatBooking(booking: BookingDocument, tour?: { inclusions?: st
     subtotal: booking.subtotal,
     gstPercentage: booking.gstPercentage,
     gstAmount: booking.gstAmount,
+    packageTotal: booking.packageTotal,
+    tcsApplicable: booking.tcsApplicable,
+    tcsPercentage: booking.tcsPercentage,
+    tcsAmount: booking.tcsAmount,
+    tcsExemptionVerified: booking.tcsExemptionVerified || false,
     grandTotal: booking.grandTotal,
     airFlightCharges: booking.airFlightCharges || 0,
     airfareIncludedInTotal: booking.airfareIncludedInTotal || false,
@@ -744,6 +787,12 @@ export function formatBooking(booking: BookingDocument, tour?: { inclusions?: st
     finalPaymentUrl: getFinalPaymentUrl(booking),
     recoveryEmailStatus: booking.recoveryEmailStatus || "pending",
     whatsappMarketingConsent: booking.whatsappMarketingConsent !== false,
+    whatsappFeedbackStatus: booking.whatsappFeedbackStatus || "not_sent",
+    whatsappFeedbackLastSentAt: booking.whatsappFeedbackLastSentAt || null,
+    whatsappFeedbackLastAttemptAt: booking.whatsappFeedbackLastAttemptAt || null,
+    whatsappFeedbackRecipient: booking.whatsappFeedbackRecipient || "",
+    whatsappFeedbackRequestId: booking.whatsappFeedbackRequestId || "",
+    whatsappFeedbackError: booking.whatsappFeedbackError || "",
     whatsappRecoveryStatus: booking.whatsappRecoveryStatus || "pending",
     recoveryReminderCount: booking.recoveryReminderCount || 0,
     archivedAt: booking.archivedAt || null,
@@ -792,7 +841,8 @@ function toPricedDeparture(departure: TourDepartureDocument): PricedDeparture {
 
 function toBookingTravellers(
   travellers: z.infer<typeof travellerPayloadSchema>[],
-  departure: PricedDeparture
+  departure: PricedDeparture,
+  leadPhone: string
 ) {
   return travellers.map((traveller) => {
     const dateOfBirth = traveller.dateOfBirth
@@ -817,8 +867,13 @@ function toBookingTravellers(
       dateOfBirth,
       gender: traveller.gender,
       address: traveller.address,
+      pincode: traveller.pincode || "",
+      isNri: Boolean(traveller.isNri),
       panNumber: traveller.panNumber,
       ageOnDeparture,
+      kycDocuments: traveller.isNri && traveller.nriDocumentTokens.length
+        ? resolvePrebookingKycUploads(traveller.nriDocumentTokens, traveller.id, leadPhone)
+        : [],
     };
   });
 }
@@ -852,11 +907,12 @@ async function createSnapshotPayload(
     pricedDeparture.seatsAvailable += getBookingReservedSeatCount(existingBooking);
   }
 
+  const tour = await Tour.findOne({ tourId: departure.tourId });
   const departureValidation = validateDepartureForBooking(
     pricedDeparture,
     payload.totalGuest,
     new Date(),
-    (await Tour.findOne({ tourId: departure.tourId }))?.durationDn
+    tour?.durationDn
   );
 
   if (!departureValidation.isValid) {
@@ -886,12 +942,27 @@ async function createSnapshotPayload(
     accommodationOption: selectedAccommodationOption,
     departure: pricedDeparture,
     gstPercentage: payload.gstPercentage,
+    tcsApplicable: tour?.tourType?.trim().toLowerCase() === "international" &&
+      (!existingBooking || existingBooking.tourId !== payload.tourId || existingBooking.tcsApplicable === true),
+    tcsExemptionVerified: Boolean(existingBooking?.tcsExemptionVerified && payload.guestDetails[0]?.isNri &&
+      payload.guestDetails[0]?.mobileNumber === existingBooking.guestDetails[0]?.mobileNumber &&
+      payload.guestDetails[0]?.countryCode === existingBooking.guestDetails[0]?.countryCode &&
+      payload.guestDetails[0]?.firstName === existingBooking.guestDetails[0]?.firstName &&
+      payload.guestDetails[0]?.lastName === existingBooking.guestDetails[0]?.lastName &&
+      payload.tourId === existingBooking.tourId),
   });
+
+  const lead = payload.guestDetails[0];
+  const leadDigits = lead.mobileNumber.replace(/\D/g, "");
+  const countryCode = lead.countryCode.replace(/\D/g, "");
+  const leadPhone = leadDigits.length > 10 && leadDigits.startsWith(countryCode)
+    ? leadDigits : countryCode + leadDigits;
 
   return {
     departure,
     pricingSnapshot,
-    travellers: toBookingTravellers(payload.travellers, pricedDeparture),
+    travellers: toBookingTravellers(payload.travellers, pricedDeparture,
+      normalizeMobileNumber(leadPhone)),
   };
 }
 
@@ -1022,6 +1093,11 @@ async function createBookingDraft(
     subtotal: snapshotPayload.pricingSnapshot.subtotal,
     gstPercentage: snapshotPayload.pricingSnapshot.gstPercentage,
     gstAmount: snapshotPayload.pricingSnapshot.gstAmount,
+    packageTotal: snapshotPayload.pricingSnapshot.packageTotal,
+    tcsApplicable: snapshotPayload.pricingSnapshot.tcsApplicable,
+    tcsPercentage: snapshotPayload.pricingSnapshot.tcsPercentage,
+    tcsAmount: snapshotPayload.pricingSnapshot.tcsAmount,
+    tcsExemptionVerified: snapshotPayload.pricingSnapshot.tcsExemptionVerified,
     grandTotal: snapshotPayload.pricingSnapshot.grandTotal + (airfareIncludedInTotal ? 0 : airFlightCharges),
     depositAmount: snapshotPayload.pricingSnapshot.depositAmount,
     balanceAmount: snapshotPayload.pricingSnapshot.balanceAmount + (airfareIncludedInTotal ? 0 : airFlightCharges),
@@ -1042,19 +1118,34 @@ function mergeTravellerKycDocuments(
 
   return nextTravellers.map((traveller) => ({
     ...traveller,
-    kycDocuments: documentsByTravellerId.get(traveller.id) || traveller.kycDocuments || [],
+    kycDocuments: [...new Map([
+      ...(documentsByTravellerId.get(traveller.id) || []),
+      ...(traveller.kycDocuments || []),
+    ].map((document) => [document.documentType, document])).values()],
   }));
 }
 
-function hasKycForEveryTraveller(booking: BookingDocument) {
+async function getRequiredBookingKycTypes(booking: BookingDocument) {
+  const tour = await Tour.findOne({ tourId: booking.tourId });
+  const destination = tour?.destinationId
+    ? await Destination.findOne({ destinationId: tour.destinationId })
+    : null;
+  return getBookingKycDocumentTypes(tour?.tourType, destination?.countryRegion);
+}
+
+async function hasKycForEveryTraveller(booking: BookingDocument) {
+  const allowedTypes = await getRequiredBookingKycTypes(booking);
   return (
     booking.travellers.length > 0 &&
-    booking.travellers.every((traveller) => (traveller.kycDocuments || []).length > 0)
+    booking.travellers.every((traveller) => hasRequiredBookingKycDocuments(
+      (traveller.kycDocuments || []).map((document) => document.documentType),
+      getTravellerKycDocumentTypes(allowedTypes, Boolean(traveller.isNri))
+    ))
   );
 }
 
 async function sendKycCompletionAlertIfNeeded(booking: BookingDocument) {
-  if (!hasKycForEveryTraveller(booking) || booking.kycCompletionEmailSentAt) {
+  if (booking.kycCompletionEmailSentAt || !await hasKycForEveryTraveller(booking)) {
     return;
   }
 
@@ -2649,6 +2740,13 @@ function getBookingEmailAmounts(booking: BookingDocument) {
     amountPaid,
     balanceAmount,
     totalAmount,
+    subtotal: booking.subtotal,
+    gstPercentage: booking.gstPercentage,
+    gstAmount: booking.gstAmount,
+    packageTotal: booking.packageTotal,
+    tcsApplicable: booking.tcsApplicable,
+    tcsPercentage: booking.tcsPercentage,
+    tcsAmount: booking.tcsAmount,
   };
 }
 
@@ -2741,6 +2839,13 @@ function createBookingDraftFromBooking(booking: BookingDocument): BookingDraft {
     grandTotal: booking.grandTotal,
     gstAmount: booking.gstAmount,
     gstPercentage: booking.gstPercentage,
+    packageTotal: booking.packageTotal,
+    tcsApplicable: booking.tcsApplicable,
+    tcsPercentage: booking.tcsPercentage,
+    tcsAmount: booking.tcsAmount,
+    tcsExemptionVerified: booking.tcsExemptionVerified,
+    tcsExemptionVerifiedBy: booking.tcsExemptionVerifiedBy,
+    tcsExemptionVerifiedAt: booking.tcsExemptionVerifiedAt,
     guestDetails: booking.guestDetails,
     paymentOption: booking.paymentOption,
     pricingSnapshot: booking.pricingSnapshot,
@@ -3160,6 +3265,13 @@ async function sendBookingConfirmationEmailIfNeeded(
       recipientEmail,
       returnDate: returnDate || null,
       totalAmount: amounts.totalAmount,
+      subtotal: claimedBooking.subtotal,
+      gstPercentage: claimedBooking.gstPercentage,
+      gstAmount: claimedBooking.gstAmount,
+      packageTotal: claimedBooking.packageTotal,
+      tcsApplicable: claimedBooking.tcsApplicable,
+      tcsPercentage: claimedBooking.tcsPercentage,
+      tcsAmount: claimedBooking.tcsAmount,
       airFlightCharges: claimedBooking.airFlightCharges || 0,
       airfareIncludedInTotal: claimedBooking.airfareIncludedInTotal || false,
       airfareExcluded: claimedBooking.airfareExcluded ?? isAirfareExcluded(tour),
@@ -3387,6 +3499,7 @@ function formatPublicTour(tour: TourDocument | null) {
     tourId: tour.tourId,
     tourName: tour.tourName,
     durationDn: tour.durationDn,
+    tourType: tour.tourType,
     destinationId: tour.destinationId,
     destinationIds: tour.destinationIds,
     category: tour.category,
@@ -4286,6 +4399,76 @@ export async function sendBookingFinalPaymentWhatsappManually(
   await withBookingCollectionLock(request, () => createAdminBookingPaymentLinkInternal(request, response, true));
 }
 
+async function sendAdminBookingFeedbackWhatsappInternal(request: Request, response: Response): Promise<void> {
+  const parsed = z.object({ resend: z.boolean().default(false) }).strict().safeParse(request.body ?? {});
+  if (!parsed.success) throw new HttpError(400, "Invalid feedback request");
+  const booking = await Booking.findById(request.params.id);
+  if (!booking) throw new HttpError(404, "Booking not found");
+  if (booking.whatsappMarketingConsent === false) throw new HttpError(403, "This customer has not consented to WhatsApp messages");
+
+  const currentStatus = booking.whatsappFeedbackStatus || "not_sent";
+  if (currentStatus === "sending") throw new HttpError(409, "A feedback message is already being sent");
+  if (currentStatus === "sent" && !parsed.data.resend) throw new HttpError(409, "Feedback was already sent. Confirm resend to send it again.");
+  if (parsed.data.resend && currentStatus !== "sent") throw new HttpError(409, "Only a previously sent feedback message can be resent");
+
+  const leadGuest = booking.guestDetails?.[0];
+  if (!leadGuest?.mobileNumber?.trim()) throw new HttpError(400, "Customer WhatsApp number is missing");
+  let recipientNumber: string;
+  try {
+    recipientNumber = normalizeMobileNumber(normalizeWhatsappRecipientNumber(leadGuest));
+  } catch {
+    throw new HttpError(400, "Customer WhatsApp number is invalid");
+  }
+  const travellerName = getGuestFullName(leadGuest).trim();
+  if (!travellerName) throw new HttpError(400, "Customer name is missing");
+
+  const now = new Date();
+  const claimFilter: Record<string, unknown> = {
+    _id: booking._id,
+    whatsappMarketingConsent: { $ne: false },
+    ...(parsed.data.resend
+      ? { whatsappFeedbackStatus: "sent" }
+      : { $or: [
+        { whatsappFeedbackStatus: { $in: ["not_sent", "failed"] } },
+        { whatsappFeedbackStatus: { $exists: false } },
+      ] }),
+  };
+  const claimed = await Booking.findOneAndUpdate(claimFilter, {
+    $set: { whatsappFeedbackStatus: "sending", whatsappFeedbackLastAttemptAt: now, whatsappFeedbackRecipient: recipientNumber },
+    $unset: { whatsappFeedbackError: "" },
+  }, { new: true });
+  if (!claimed) throw new HttpError(409, "Feedback is already being processed or the booking changed. Refresh and try again.");
+
+  try {
+    const result = await sendFeedbackRequestWhatsapp({
+      recipientNumber,
+      travellerName,
+      crqId: `feedback_${booking.id}_${Date.now()}`,
+    });
+    claimed.whatsappFeedbackStatus = "sent";
+    claimed.whatsappFeedbackLastSentAt = new Date();
+    claimed.whatsappFeedbackRequestId = result.requestId;
+    claimed.whatsappFeedbackRecipient = recipientNumber;
+    claimed.whatsappFeedbackError = "";
+    await claimed.save();
+    response.status(200).json({
+      success: true,
+      message: parsed.data.resend ? "Feedback request resent successfully on WhatsApp" : "Feedback request sent successfully on WhatsApp",
+      data: { booking: formatBooking(claimed), requestId: result.requestId },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "MSG91 could not send the feedback request";
+    await Booking.updateOne({ _id: booking._id, whatsappFeedbackStatus: "sending" }, {
+      $set: { whatsappFeedbackStatus: "failed", whatsappFeedbackError: message.slice(0, 500) },
+    }).catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function sendAdminBookingFeedbackWhatsapp(request: Request, response: Response): Promise<void> {
+  await withBookingCollectionLock(request, () => sendAdminBookingFeedbackWhatsappInternal(request, response));
+}
+
 export async function listAdminBookingPaymentLinks(
   request: Request,
   response: Response
@@ -5150,6 +5333,30 @@ export async function verifyRazorpayWebhook(
   });
 }
 
+export async function authorizePrebookingKycUpload(request: Request, response: Response, next: import("express").NextFunction) {
+  const traveller = await getAuthenticatedTraveller(request);
+  if (!traveller.isMobileVerified) throw new HttpError(403, "Verify your mobile number before uploading documents");
+  response.locals.prebookingLeadPhone = normalizeMobileNumber(traveller.mobileNumber || "");
+  next();
+}
+
+export async function uploadPrebookingKycDocument(request: Request, response: Response): Promise<void> {
+  const payload = parseRequestBody(bookingKycUploadPayloadSchema, request.body);
+  if (!["visa", "oci"].includes(payload.documentType)) throw new HttpError(400, "Select a Visa or OCI document");
+  const file = request.file;
+  if (!file) throw new HttpError(400, "Select a document to upload");
+  const document: IBookingKycDocument = {
+    id: crypto.randomUUID(), documentType: payload.documentType,
+    documentLabel: bookingKycDocumentLabels[payload.documentType],
+    fileName: file.originalname, fileUrl: getBookingKycUploadUrl(file),
+    mimeType: file.mimetype, uploadedBy: "traveller", uploadedAt: new Date(),
+  };
+  response.status(201).json({ success: true, message: "Document uploaded", data: {
+    token: signPrebookingKycUpload(document, payload.travellerId, response.locals.prebookingLeadPhone),
+    fileName: document.fileName,
+  } });
+}
+
 async function attachKycDocumentToBooking(
   booking: BookingDocument,
   request: Request,
@@ -5168,6 +5375,17 @@ async function attachKycDocumentToBooking(
 
   if (!traveller) {
     throw new HttpError(404, "Traveller not found for this booking");
+  }
+
+  if (uploadedBy === "traveller") {
+    const allowedTypes = getTravellerKycDocumentTypes(await getRequiredBookingKycTypes(booking), Boolean(traveller.isNri));
+    if (!allowedTypes.includes(payload.documentType)) {
+      throw new HttpError(400, allowedTypes.includes("visa")
+        ? "Upload a PAN card, Visa or optional OCI document for this NRI traveller."
+        : allowedTypes.length === 1
+        ? "A PAN card is required for international tours."
+        : "Upload a Voter ID, Driving License or PAN card for domestic tours.");
+    }
   }
 
   const document: IBookingKycDocument = {
@@ -5396,6 +5614,14 @@ export async function listBookings(
     .sort({ createdAt: -1 })
     .limit(300);
 
+  const allCancellationRequests = await BookingCancellationRequest.find({}).lean();
+  const presentBookingIds = new Set(bookings.map(booking => String(booking._id)));
+  const additionalCancellationBookingIds = allCancellationRequests.map(item => String(item.bookingId)).filter(id => !presentBookingIds.has(id));
+  if (additionalCancellationBookingIds.length) {
+    const additionalBookings = await Booking.find({ ...filters, _id: { $in: additionalCancellationBookingIds } });
+    bookings = [...bookings, ...additionalBookings].sort((first, second) => second.createdAt.getTime() - first.createdAt.getTime());
+  }
+
   const airfareTours = await Tour.find({ tourId: { $in: [...new Set(bookings.map(booking => booking.tourId))] } })
     .select("tourId inclusions exclusions");
   const airfareToursById = new Map(airfareTours.map(tour => [tour.tourId, tour]));
@@ -5413,12 +5639,17 @@ export async function listBookings(
     paymentId: { $in: bankPaymentIds },
   }).select("paymentId mode") : [];
   const bankMethods = new Map(latestBankTransfers.map(transfer => [transfer.paymentId, verifiedPaymentMethod(transfer.mode, "bank_transfer")]));
+  const cancellationByBookingId = new Map(allCancellationRequests.map(item => [String(item.bookingId), item]));
   response.status(200).json({
     success: true,
     message: "Bookings fetched successfully",
     data: {
       bookings: bookings.map(booking => ({
         ...formatBooking(booking, airfareToursById.get(booking.tourId)),
+        cancellationRequest: cancellationByBookingId.has(String(booking._id)) ? {
+          ...cancellationByBookingId.get(String(booking._id)),
+          id: String(cancellationByBookingId.get(String(booking._id))!._id),
+        } : null,
         paymentMethod: bankMethods.get(booking.paymentId || "") || (bankTransferBookings.has(String(booking._id)) && !(booking.amountPaid || 0) ? "bank_transfer" : booking.paymentMethod || (booking.paymentMode === "bank_transfer" ? "bank_transfer" : "")),
         hasBankTransfer: bankTransferBookings.has(String(booking._id)),
       })),
@@ -5443,6 +5674,9 @@ export async function listBookingAccommodationOptions(
   }
 
   const pricedDeparture = toPricedDeparture(departure);
+  const quoteTour = await Tour.findOne({ tourId: departure.tourId });
+  const quoteBooking = payload.bookingId && mongoose.isValidObjectId(payload.bookingId)
+    ? await Booking.findById(payload.bookingId) : null;
   const totalTravellers = payload.adultCount + payload.childDetails.length;
   const departureValidation = validateDepartureForBooking(
     pricedDeparture,
@@ -5467,6 +5701,9 @@ export async function listBookingAccommodationOptions(
       accommodationOption: option,
       departure: pricedDeparture,
       gstPercentage: payload.gstPercentage,
+      tcsApplicable: quoteTour?.tourType?.trim().toLowerCase() === "international" &&
+        (!quoteBooking || quoteBooking.tourId !== departure.tourId || quoteBooking.tcsApplicable === true),
+      tcsExemptionVerified: quoteBooking?.tourId === departure.tourId && quoteBooking?.tcsExemptionVerified || false,
     });
 
     return {
@@ -5482,6 +5719,10 @@ export async function listBookingAccommodationOptions(
       subtotal: snapshot.subtotal,
       gstPercentage: snapshot.gstPercentage,
       gstAmount: snapshot.gstAmount,
+      packageTotal: snapshot.packageTotal,
+      tcsApplicable: snapshot.tcsApplicable,
+      tcsPercentage: snapshot.tcsPercentage,
+      tcsAmount: snapshot.tcsAmount,
       grandTotal: snapshot.grandTotal,
       depositAmount: snapshot.depositAmount,
       balanceAmount: snapshot.balanceAmount,
@@ -5942,13 +6183,61 @@ export function recordAirfareCollection(booking: BookingDocument, paymentId: str
   return true;
 }
 
-async function assertNoOpenAirfareCollection(booking: BookingDocument) {
+async function assertNoOpenAirfareCollection(booking: BookingDocument, subject = "airfare") {
   const [link, order, bank] = await Promise.all([
     BookingPaymentLinkRequest.exists({ bookingId: booking._id, status: { $in: ["created", "sent"] } }),
     BookingBalancePaymentSession.exists({ bookingId: booking._id, status: "pending" }),
     SmartCollectAccount.exists({ bookingId: booking._id, activeKey: { $exists: true } }),
   ]);
-  if (link || order || bank) throw new HttpError(409, "An existing payment collection must be completed or cancelled before changing airfare");
+  if (link || order || bank) throw new HttpError(409, `An existing payment collection must be completed or cancelled before changing ${subject}`);
+}
+
+export async function verifyBookingTcsExemption(request: Request, response: Response): Promise<void> {
+  const { verified } = parseRequestBody(z.object({ verified: z.boolean() }), request.body);
+  await withBookingCollectionLock(request, async () => {
+    const booking = await Booking.findById(request.params.id);
+    if (!booking) throw new HttpError(404, "Booking not found");
+    if (!booking.tcsApplicable) throw new HttpError(400, "TCS does not apply to this booking");
+    const buyer = booking.travellers[0];
+    if (verified && (!booking.guestDetails[0]?.isNri || !buyer?.isNri ||
+        !["pan_card", "visa"].every((type) => buyer.kycDocuments?.some((doc) => doc.documentType === type && doc.fileUrl)))) {
+      throw new HttpError(400, "Review the NRI buyer's PAN and Visa documents before verifying exemption eligibility");
+    }
+    await assertNoOpenAirfareCollection(booking, "TCS");
+    if (await BookingPaymentSession.exists({ bookingId: booking._id, status: "pending" })) {
+      throw new HttpError(409, "Complete or cancel the pending payment before changing TCS");
+    }
+    const packageTotal = booking.packageTotal ?? (booking.subtotal || 0) + (booking.gstAmount || 0);
+    const adjusted = adjustBookingTcs({ packageTotal, grandTotal: booking.grandTotal || packageTotal,
+      tcsAmount: booking.tcsAmount || 0, amountPaid: booking.amountPaid || 0, verified });
+    const tcsAmount = adjusted.tcsAmount;
+    booking.grandTotal = adjusted.grandTotal;
+    booking.packageTotal = packageTotal;
+    booking.tcsAmount = tcsAmount;
+    booking.tcsPercentage = verified ? 0 : 2;
+    booking.tcsExemptionVerified = verified;
+    booking.tcsExemptionVerifiedBy = verifyAuthToken(getBearerToken(request)).userId;
+    booking.tcsExemptionVerifiedAt = verified ? new Date() : null;
+    booking.balanceAmount = adjusted.balanceAmount;
+    if (booking.pricingSnapshot) {
+      Object.assign(booking.pricingSnapshot, { packageTotal, tcsAmount, tcsPercentage: booking.tcsPercentage, tcsExemptionVerified: verified,
+        grandTotal: packageTotal + tcsAmount });
+      booking.pricingSnapshot.depositAmount = calculateDeposit({ ...booking.pricingSnapshot,
+        totalTravellers: booking.totalGuest });
+      booking.pricingSnapshot.balanceAmount = Math.max(0, booking.pricingSnapshot.grandTotal - booking.pricingSnapshot.depositAmount);
+      booking.depositAmount = booking.pricingSnapshot.depositAmount;
+      booking.markModified("pricingSnapshot");
+    }
+    await booking.save();
+    if (booking.paymentStatus === "paid") {
+      booking.emailBookingConfirmationStatus = "pending";
+      booking.emailBookingConfirmationSentAt = null;
+      booking.emailBookingConfirmationAttemptedAt = null;
+      await booking.save();
+      queueBookingConfirmationNotifications(booking);
+    }
+    response.json({ success: true, message: verified ? "NRI buyer exemption verified; TCS is 0%" : "Exemption revoked; TCS is 2%", data: { booking: formatBooking(booking) } });
+  });
 }
 
 export async function withBookingCollectionLockById<T>(bookingId: string, action: () => Promise<T>): Promise<T> {

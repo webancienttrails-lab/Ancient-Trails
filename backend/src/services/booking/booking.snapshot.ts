@@ -10,14 +10,20 @@ export function createPricingSnapshot({
   accommodationOption,
   departure,
   gstPercentage = 0,
+  tcsApplicable = false,
+  tcsExemptionVerified = false,
 }: {
   accommodationOption: AccommodationOption;
   departure: PricedDeparture;
   gstPercentage?: number;
+  tcsApplicable?: boolean;
+  tcsExemptionVerified?: boolean;
 }) {
   const totals = calculateBookingTotals({
     accommodationOption,
     gstPercentage,
+    tcsApplicable,
+    tcsExemptionVerified,
   });
   const depositAmount = calculateDeposit({
     depositAppliesTo: departure.depositAppliesTo,
@@ -55,6 +61,11 @@ export function createPricingSnapshot({
     subtotal: totals.subtotal,
     gstPercentage: totals.gstPercentage,
     gstAmount: totals.gstAmount,
+    packageTotal: totals.packageTotal,
+    tcsApplicable: totals.tcsApplicable,
+    tcsPercentage: totals.tcsPercentage,
+    tcsAmount: totals.tcsAmount,
+    tcsExemptionVerified: totals.tcsExemptionVerified,
     grandTotal: totals.grandTotal,
     depositType: departure.depositType,
     depositValue: departure.depositValue,

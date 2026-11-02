@@ -8,6 +8,13 @@ import { HttpError } from "../utils/httpError";
 import { SiteSettings } from "../models/siteSettings.model";
 
 export type BookingConfirmationEmailPayload = {
+  subtotal?: number;
+  gstPercentage?: number;
+  gstAmount?: number;
+  packageTotal?: number;
+  tcsApplicable?: boolean;
+  tcsPercentage?: number;
+  tcsAmount?: number;
   airFlightCharges?: number;
   airfareIncludedInTotal?: boolean;
   airfareExcluded?: boolean;
@@ -86,6 +93,16 @@ type SmtpConfig = {
   secure: boolean;
   user: string;
 };
+
+function taxPaymentRows(payload: BookingConfirmationEmailPayload) {
+  if (payload.subtotal === undefined) return [];
+  return [
+    { label: "Subtotal", value: formatCurrency(payload.subtotal) },
+    { label: `GST (${payload.gstPercentage || 0}%)`, value: formatCurrency(payload.gstAmount || 0) },
+    ...(payload.tcsApplicable ? [{ label: `TCS (${payload.tcsPercentage ?? 2}%)`, value: formatCurrency(payload.tcsAmount || 0) }] : []),
+    { label: "Package Total (Excluding TCS)", value: formatCurrency(payload.packageTotal ?? payload.subtotal + (payload.gstAmount || 0)) },
+  ];
+}
 
 const brandName = "Ancient Trails";
 const colors = {
@@ -380,10 +397,12 @@ function buildBookingConfirmationEmailContent(
     { label: "Travellers", value: payload.travellersLabel },
   ], true);
   const paymentRows = renderPaymentRows([
+    ...taxPaymentRows(payload),
     ...(payload.airfareExcluded ? [{ label: payload.airfareIncludedInTotal ? "Air-Flight Charges (Included in Total)" : "+ Air-Flight Charges (Additional)", value: payload.airfareAddedAt || (payload.airFlightCharges || 0) > 0 ? formatCurrency(payload.airFlightCharges || 0) : "Air-Flight Charges: To Be Added" }] : []),
     { label: payload.airfareExcluded && !payload.airfareAddedAt && !payload.airFlightCharges ? "Current Total (Excluding Airfare)" : payload.airfareExcluded ? "Updated Total" : "Total", value: formatCurrency(payload.totalAmount) },
     { label: "Amount Paid", value: formatCurrency(payload.amountPaid) },
     { label: "Balance", value: formatCurrency(payload.balanceAmount) },
+    ...(payload.amountPaid > payload.totalAmount ? [{ label: "Refund Due", value: formatCurrency(payload.amountPaid - payload.totalAmount) }] : []),
     { label: "Balance Due", value: balanceDueDate },
     ...(fullPayment ? [{ label: "Payment Date", value: confirmedAt }, { label: "Payment Status", value: "FULLY PAID" }] : []),
   ]);
@@ -561,6 +580,7 @@ function buildBookingConfirmationEmailContent(
     `Travellers: ${payload.travellersLabel}`,
     "",
     "Payment Summary",
+    ...taxPaymentRows(payload).map((row) => `${row.label}: ${row.value}`),
     ...(payload.airfareExcluded ? [
       payload.airfareIncludedInTotal ? "Air-Flight Charges (Included in Total)" : "+ Air-Flight Charges (Additional)",
       payload.airfareAddedAt || (payload.airFlightCharges || 0) > 0 ? `Air-Flight Charges: ${formatCurrency(payload.airFlightCharges || 0)}` : "Air-Flight Charges: To Be Added",
@@ -568,6 +588,7 @@ function buildBookingConfirmationEmailContent(
     `Total: ${formatCurrency(payload.totalAmount)}`,
     `Amount Paid: ${formatCurrency(payload.amountPaid)}`,
     `Balance: ${formatCurrency(payload.balanceAmount)}`,
+    ...(payload.amountPaid > payload.totalAmount ? [`Refund Due: ${formatCurrency(payload.amountPaid - payload.totalAmount)}`] : []),
     `Balance Due: ${balanceDueDate}`,
     airfareNote,
     pendingAirfareNote,

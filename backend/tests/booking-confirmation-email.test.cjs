@@ -37,6 +37,20 @@ function setup(t, settings) {
   return { payload, mails, send: changes => sendBookingConfirmationEmail({ ...payload, ...changes }) };
 }
 
+test("TCS confirmation breakdown is identical in HTML and text and omitted for domestic bookings", async t => {
+  const f = setup(t, { contact: {} });
+  for (const [applicable, percentage, tax] of [[true, 2, 2100], [true, 0, 0], [false, 0, 0]]) {
+    await f.send({ subtotal: 100000, gstPercentage: 5, gstAmount: 5000, packageTotal: 105000,
+      tcsApplicable: applicable, tcsPercentage: percentage, tcsAmount: tax, totalAmount: 105000 + tax });
+    const mail = f.mails.at(-1);
+    for (const body of [mail.html, mail.text]) {
+      assert.ok(body.includes('Package Total (Excluding TCS)'));
+      assert.equal((body.match(/TCS \(\d+%\)/g) || []).length, applicable ? 1 : 0);
+      if (applicable) assert.ok(body.indexOf(`TCS (${percentage}%)`) > body.indexOf('GST (5%)'));
+    }
+  }
+});
+
 test("confirmation uses a bordered booking table, removes city/reference, and reads current admin support contacts", async t => {
   const settings = { contact: {
     emailId: "help@example.com", primaryCalling: "9000000002",

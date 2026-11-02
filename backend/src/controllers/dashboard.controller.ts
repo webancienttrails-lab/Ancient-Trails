@@ -15,6 +15,7 @@ import {
 } from "../models/tourDeparture.model";
 import { Tour, type TourDocument } from "../models/tour.model";
 import { User, UserRole } from "../models/user.model";
+import { createTourEnquiryCounts } from "../services/dashboard-tour-enquiries";
 
 type TrendMetric = {
   current: number;
@@ -451,6 +452,7 @@ export async function getAdminDashboardSummary(
       ),
       bookingStatus: createStatusItems(bookingStatusCounts),
       enquiryStats: createEnquiryItems(enquiryStatusCounts),
+      tourEnquiries: createTourEnquiryCounts(tours, enquiries),
       metrics: {
         totalBookings: createTrend({
           current: currentMonthBookings,

@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from "express";
 import { User, UserRole, UserStatus } from "../models/user.model";
 import { HttpError } from "../utils/httpError";
 import { verifyAuthToken } from "../utils/jwt";
+import { canAccessAdminApi } from "../services/admin-access";
 
 function getBearerToken(request: Request): string {
   const authorizationHeader = request.headers.authorization;
@@ -42,6 +43,10 @@ export async function requireAdmin(
 
     if (!user || user.status !== UserStatus.ACTIVE || !user.roles.some(isAdminRole)) {
       throw new HttpError(403, "Admin access is required");
+    }
+
+    if (!canAccessAdminApi(user, request.method, request.originalUrl)) {
+      throw new HttpError(403, "You do not have access to this admin section");
     }
 
     next();

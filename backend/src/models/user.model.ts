@@ -5,6 +5,7 @@ import {
   type HydratedDocument,
   type Model,
 } from "mongoose";
+import { adminTabs } from "../services/admin-access";
 
 export enum UserRole {
   EXPERT = "expert",
@@ -29,6 +30,8 @@ export interface IUser {
   dateOfBirth?: string;
   firebaseUid?: string;
   roles: string[];
+  profession?: string;
+  adminTabs?: string[];
   status: UserStatus;
   isMobileVerified: boolean;
   lastLoginAt?: Date;
@@ -110,6 +113,8 @@ const userSchema = new Schema<IUser>(
         message: "Role must be traveller or an admin role",
       },
     },
+    profession: { type: String, trim: true, maxlength: 120, default: "" },
+    adminTabs: { type: [String], enum: [...adminTabs], default: undefined },
     status: {
       type: String,
       enum: Object.values(UserStatus),
@@ -130,7 +135,10 @@ const userSchema = new Schema<IUser>(
   }
 );
 
-userSchema.index({ mobileNumber: 1 }, { unique: true, sparse: true });
+userSchema.index(
+  { mobileNumber: 1 },
+  { unique: true, partialFilterExpression: { mobileNumber: { $type: "string", $gt: "" } } }
+);
 userSchema.index({ firebaseUid: 1 }, { unique: true, sparse: true });
 userSchema.index({ email: 1 }, { unique: true, sparse: true });
 userSchema.index({ roles: 1 });

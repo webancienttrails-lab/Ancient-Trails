@@ -5,6 +5,8 @@ import {
   createPublicCallbackEnquiry,
   createPublicContactEnquiry,
   createPublicTourEnquiry,
+  addEnquiryReply,
+  setEnquiryBlacklist,
   listEnquiries,
   updateEnquiry,
   updateEnquiryStatus,
@@ -23,5 +25,7 @@ router.get("/", listEnquiries);
 router.post("/", createEnquiry);
 router.patch("/:id", updateEnquiry);
 router.patch("/:id/status", updateEnquiryStatus);
+router.post("/:id/replies", addEnquiryReply);
+router.patch("/:id/blacklist", setEnquiryBlacklist);
 
 export default router;

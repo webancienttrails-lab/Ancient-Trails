@@ -29,9 +29,18 @@ export interface IHomeExperience {
   sortOrder: number;
 }
 
+export interface IHomeEvent {
+  title: string;
+  image: string;
+  href: string;
+  sortOrder: number;
+}
+
 export interface IHomePage {
   customisedTourDestinations: IHomeCustomisedTourDestination[];
   homeExperiences: IHomeExperience[];
+  eventsEnabled: boolean;
+  events: IHomeEvent[];
   pageKey: string;
   trendingDestinations: IHomeTrendingDestination[];
   upcomingTours: IHomeUpcomingTour[];
@@ -131,6 +140,16 @@ const homeExperienceSchema = new Schema<IHomeExperience>(
   }
 );
 
+const homeEventSchema = new Schema<IHomeEvent>(
+  {
+    title: { ...trimmedString, maxlength: 120 },
+    image: { ...trimmedString, required: true, maxlength: 500 },
+    href: { ...trimmedString, maxlength: 2048 },
+    sortOrder: sortOrderField,
+  },
+  { _id: true }
+);
+
 const homePageSchema = new Schema<IHomePage>(
   {
     pageKey: {
@@ -155,6 +174,8 @@ const homePageSchema = new Schema<IHomePage>(
       type: [homeExperienceSchema],
       default: [],
     },
+    eventsEnabled: { type: Boolean, default: true },
+    events: { type: [homeEventSchema], default: [] },
   },
   {
     timestamps: true,

@@ -1,9 +1,11 @@
+import { resolveDestinationMapContent } from "../services/destination-map.service";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
 import type { Request, Response } from "express";
 import multer from "multer";
 import { z } from "zod";
+import { destinationPageContentSchema, getDestinationPageContent } from "../services/destination-page-content";
 
 import {
   Destination,
@@ -97,6 +99,7 @@ const landmarkImageListSchema = z
   });
 
 const destinationPayloadSchema = z.object({
+  pageContent: destinationPageContentSchema.optional(),
   destinationId: requiredTextField("Destination ID", 40)
     .regex(
       /^[A-Za-z0-9_-]+$/,
@@ -178,8 +181,9 @@ function isCastError(error: unknown): boolean {
   );
 }
 
-function formatDestination(destination: DestinationDocument) {
+async function formatDestination(destination: DestinationDocument) {
   return {
+    pageContent: await resolveDestinationMapContent(getDestinationPageContent(destination)),
     id: destination._id.toString(),
     destinationId: destination.destinationId,
     destinationName: destination.destinationName,
@@ -254,7 +258,7 @@ export async function listDestinations(
     success: true,
     message: "Destinations fetched successfully",
     data: {
-      destinations: destinations.map(formatDestination),
+      destinations: await Promise.all(destinations.map(formatDestination)),
     },
   });
 }
@@ -281,7 +285,7 @@ export async function createDestination(
       success: true,
       message: "Destination created successfully",
       data: {
-        destination: formatDestination(destination),
+        destination: await formatDestination(destination),
       },
     });
   } catch (error) {
@@ -326,7 +330,7 @@ export async function updateDestination(
       success: true,
       message: "Destination updated successfully",
       data: {
-        destination: formatDestination(destination),
+        destination: await formatDestination(destination),
       },
     });
   } catch (error) {
