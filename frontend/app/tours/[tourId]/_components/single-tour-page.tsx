@@ -6230,10 +6230,10 @@ function SidebarTourActions({
         <div className="rounded-[6px] border border-blue-200 bg-blue-50 px-3 py-2.5 font-sans">
           <p className="flex items-center gap-2 text-[12px] font-bold leading-[1.4] text-secondary">
             <Info aria-hidden="true" className="size-3.5 shrink-0 text-blue-600" />
-            Air-Flight Charges (Additional)
+            Airfare/Trainfare charges (Additional)
           </p>
           <p className="mt-1.5 text-[12px] font-medium leading-[1.5] text-secondary/70">
-            Air-Flight Charges: To Be Added in the booking summary, invoice, booking voucher, and confirmation email.
+            Airfare/Trainfare charges: To Be Added in the booking summary, invoice, booking voucher, and confirmation email.
           </p>
         </div>
       </article>

@@ -398,7 +398,7 @@ function getFinalInvoiceLineItems(booking: UserBooking) {
           ...roomItems,
           {
             amount: airFlightCharges,
-            description: "Air-flight charges",
+            description: "Airfare/Trainfare charges",
             quantity: 1,
             rate: airFlightCharges,
           },
@@ -426,7 +426,7 @@ function getFinalInvoiceLineItems(booking: UserBooking) {
         ...items,
         {
           amount: airFlightCharges,
-          description: "Air-flight charges",
+          description: "Airfare/Trainfare charges",
           quantity: 1,
           rate: airFlightCharges,
         },
@@ -545,7 +545,7 @@ function getVoucherFlightRows(booking: UserBooking) {
   return [
     {
       airline: booking.booking.airfareExcluded && !booking.booking.airfareAddedAt && !booking.booking.airFlightCharges
-        ? "Air-Flight Charges: To Be Added"
+        ? "Airfare/Trainfare charges: To Be Added"
         : "Flight details will be shared after airline confirmation",
       dateTime: departureDate,
       from: "Departure city",
@@ -570,7 +570,7 @@ function getVoucherInclusions(booking: UserBooking) {
     : [
         "Accommodation in selected hotels as per booking.",
         "Meals, sightseeing and transfers included in the tour package.",
-        ...(booking.booking.airFlightCharges ? ["Air-flight charges shown separately in the final booking amount."] : []),
+        ...(booking.booking.airFlightCharges ? ["Airfare/Trainfare charges shown separately in the final booking amount."] : []),
         "Tour assistance from the Ancient Trails team.",
         "Applicable taxes as shown in the payment summary.",
       ];
@@ -1068,7 +1068,7 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
       ["PACKAGE TOTAL (EXCLUDING TCS)", formatPdfCurrency(tax.packageTotal, currency)],
       [`TAX AMOUNT (GST ${gstPercentage}%)`, formatPdfCurrency(gstAmount, currency)],
       ...(tax.applicable ? [[tax.label, formatPdfCurrency(tax.amount, currency)]] : []),
-      ...(booking.booking.airfareExcluded || airFlightCharges > 0 ? [[booking.booking.airfareIncludedInTotal ? "Air-Flight Charges (Included in Total)" : "+ Air-Flight Charges (Additional)", booking.booking.airfareAddedAt || airFlightCharges > 0 ? formatPdfCurrency(airFlightCharges, currency) : "Air-Flight Charges: To Be Added"]] : []),
+      ...(booking.booking.airfareExcluded || airFlightCharges > 0 ? [[booking.booking.airfareIncludedInTotal ? "Airfare/Trainfare charges (Included in Total)" : "+ Airfare/Trainfare charges (Additional)", booking.booking.airfareAddedAt || airFlightCharges > 0 ? formatPdfCurrency(airFlightCharges, currency) : "Airfare/Trainfare charges: To Be Added"]] : []),
       ["OUTSTANDING BALANCE", formatPdfCurrency(getBalanceAmount(booking), currency)],
       ["DUE DATE", formatDate(booking.booking.balanceDueDate || booking.booking.createdAt)],
       ["ROUNDOFF", formatPdfCurrency(0, currency)],
@@ -1091,12 +1091,12 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
       const fill = rowIndex % 2 === 0 ? [255, 255, 255] : [253, 250, 247];
 
       rounded(cardX, cardY, paymentCardWidth, paymentCardHeight, fill as [number, number, number]);
-      text(label, cardX + 10, cardY + (label.includes("Air-Flight Charges") ? 8 : 15.5), {
+      text(label, cardX + 10, cardY + (label.includes("Airfare/Trainfare charges") ? 8 : 15.5), {
         color: navy,
         size: 7.2,
         style: "bold",
       });
-      text(value, cardX + paymentCardWidth - 10, cardY + (label.includes("Air-Flight Charges") ? 21 : 15.5), {
+      text(value, cardX + paymentCardWidth - 10, cardY + (label.includes("Airfare/Trainfare charges") ? 21 : 15.5), {
         align: "right",
         color: [31, 52, 74],
         size: 9.8,
@@ -1309,8 +1309,8 @@ async function downloadBookingInvoicePdf(booking: UserBooking) {
     "Payment Summary",
     `Tour Package Amount: ${formatPdfCurrency(getTourPackageAmount(booking), currency)}`,
     ...(booking.booking.airfareExcluded || airFlightCharges > 0 ? [
-      booking.booking.airfareIncludedInTotal ? "Air-Flight Charges (Included in Total)" : "+ Air-Flight Charges (Additional)",
-      booking.booking.airfareAddedAt || airFlightCharges > 0 ? `Air-Flight Charges: ${formatPdfCurrency(airFlightCharges, currency)}` : "Air-Flight Charges: To Be Added",
+      booking.booking.airfareIncludedInTotal ? "Airfare/Trainfare charges (Included in Total)" : "+ Airfare/Trainfare charges (Additional)",
+      booking.booking.airfareAddedAt || airFlightCharges > 0 ? `Airfare/Trainfare charges: ${formatPdfCurrency(airFlightCharges, currency)}` : "Airfare/Trainfare charges: To Be Added",
       ...(!booking.booking.airfareAddedAt && !airFlightCharges ? [AIRFARE_NOTE] : []),
     ] : []),
     `Total Booking Amount: ${formatPdfCurrency(getTotalAmount(booking), currency)}`,
@@ -2082,7 +2082,7 @@ function PaymentHistory({ booking }: { booking: UserBooking }) {
   return (
     <DetailShell icon={WalletCards} title="Payment History">
       {(booking.booking.collectionHistory || []).map(entry => <p key={entry.paymentId} className="mb-2 text-sm">
-        {formatCurrency(entry.amount, currency)} received | Air-Flight Charges: {formatCurrency(entry.airfareAmount, currency)} | {entry.paymentId} | {formatDate(entry.paidAt)}
+        {formatCurrency(entry.amount, currency)} received | Airfare/Trainfare charges: {formatCurrency(entry.airfareAmount, currency)} | {entry.paymentId} | {formatDate(entry.paidAt)}
       </p>)}
       {paidAmount > 0 ? (
         <article className="flex flex-col gap-2 rounded-[7px] border border-border bg-background px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
