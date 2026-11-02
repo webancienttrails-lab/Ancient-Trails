@@ -1207,11 +1207,11 @@ function getDepartureFillProgress(departure: PublicTourDeparture) {
 }
 
 function getSeatProgressColorClass(filledPercent: number) {
-  if (filledPercent >= 70) {
+  if (filledPercent > 200 / 3) {
     return "bg-[#d6452f]";
   }
 
-  if (filledPercent >= 25) {
+  if (filledPercent > 100 / 3) {
     return "bg-[#f5b82e]";
   }
 
