@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import mongoose, { type HydratedDocument } from "mongoose";
 import type { Request, Response } from "express";
+import type { Refunds } from "razorpay/dist/types/refunds";
 import { z } from "zod";
 import { formatBooking, getAuthenticatedTravellerBookingById } from "./booking.controller";
 import { BookingCancellationRequest, type IBookingCancellationRequest } from "../models/bookingCancellationRequest.model";
@@ -131,7 +132,7 @@ export async function startCancellationRefund(request: Request, response: Respon
     for (let index = 0; index < segments.length; index += 1) {
       const segment = segments[index];
       if (segment.refundId && segment.status !== "failed") continue;
-      let refund: Awaited<ReturnType<typeof razorpay.payments.refund>>;
+      let refund: Refunds.RazorpayRefund;
       try {
         refund = await razorpay.payments.refund(segment.paymentId, {
           amount: segment.amountPaise,
