@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Archive,
+  AlertCircle,
   Ban,
   CalendarDays,
   CheckCircle2,
@@ -13,16 +13,20 @@ import {
   FileText,
   Hourglass,
   Mail,
+  MessageCircle,
   MoreHorizontal,
   Pencil,
   Plus,
   Search,
   Ticket,
+  Trash2,
   WalletCards,
   type LucideIcon,
 } from "lucide-react";
 
+import { BookingTravelDetailsDialog } from "@/components/booking-travel-details-dialog";
 import { AdminDashboardShell } from "@/components/admin-dashboard/admin-dashboard-shell";
+import { AdminMobileFilter } from "@/components/admin-dashboard/admin-mobile-filter";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -44,13 +48,15 @@ import {
 import { useToast } from "@/components/ui/toast";
 
 import {
-  archiveAdminBooking,
   cancelAdminBooking,
   createAdminBookingPaymentLink,
+  deleteAdminBooking,
   expireAdminBooking,
   listAdminBookings,
   sendAdminBookingFinalPaymentWhatsapp,
+  sendAdminBookingFeedbackWhatsapp,
   sendAdminBookingRecoveryEmail,
+  startAdminCancellationRefund,
   updateAdminBookingAirFlightCharges,
   type AdminBooking,
   type BookingCancellationPayload,
@@ -323,9 +329,13 @@ function getPaymentStatus(
 ) {
   if (booking.bookingStatus === "cancelled") {
     return {
-      label: "Cancelled",
+      label: booking.cancellation?.requestedBy === "Customer"
+        ? "Cancelled by Traveller"
+        : "Cancelled",
       tone:
-        "bg-stone-100 text-stone-600 border-stone-200",
+        booking.cancellation?.requestedBy === "Customer"
+          ? "bg-rose-100 text-rose-700 border-rose-200"
+          : "bg-stone-100 text-stone-600 border-stone-200",
     };
   }
 
@@ -493,7 +503,10 @@ export default function BookingsPage() {
   const router = useRouter();
   const toast = useToast();
 
+  const [travelDetails, setTravelDetails] = useState<{ booking: AdminBooking; kind: "hotel" | "flight" } | null>(null);
   const [cancellationBooking, setCancellationBooking] = useState<AdminBooking | null>(null);
+  const [cancellationRequestBooking, setCancellationRequestBooking] = useState<AdminBooking | null>(null);
+  const [feedbackBooking, setFeedbackBooking] = useState<{ booking: AdminBooking; tourName: string } | null>(null);
 
   const [bookings, setBookings] =
     useState<AdminBooking[]>([]);
@@ -509,10 +522,9 @@ export default function BookingsPage() {
     setIsLoadingBookings,
   ] = useState(true);
 
-  const [
-    isArchivingBookingId,
-    setIsArchivingBookingId,
-  ] = useState<string | null>(null);
+  const [isDeletingBookingId, setIsDeletingBookingId] = useState<string | null>(null);
+  const [selectedBookingIds, setSelectedBookingIds] = useState<string[]>([]);
+  const [isBulkDeletingBookings, setIsBulkDeletingBookings] = useState(false);
 
   const [
     pendingActionBookingId,
@@ -700,61 +712,36 @@ export default function BookingsPage() {
     );
   }
 
-  /* =======================================================
-     ARCHIVE
-  ======================================================= */
-
-  async function handleArchiveBooking(
-    booking: AdminBooking
-  ) {
+  async function handleDeleteBooking(booking: AdminBooking) {
     const primaryGuest =
       booking.guestDetails[0];
-
-    const shouldArchive =
-      window.confirm(
-        `Archive booking ${getBookingReference(
-          booking
-        )} for ${getGuestName(
-          primaryGuest
-        )}?`
-      );
-
-    if (!shouldArchive) {
-      return;
-    }
-
-    setIsArchivingBookingId(
-      booking.id
-    );
+    if (!window.confirm(`Permanently delete booking ${getBookingReference(booking)} for ${getGuestName(primaryGuest)}? This cannot be undone.`)) return;
+    setIsDeletingBookingId(booking.id);
 
     try {
-      const response =
-        await archiveAdminBooking(
-          booking.id
-        );
-
-      setBookings(
-        (currentBookings) =>
-          currentBookings.filter(
-            (currentBooking) =>
-              currentBooking.id !==
-              booking.id
-          )
-      );
-
-      toast.success(
-        "Booking archived",
-        response.message ||
-          "Booking archived successfully."
-      );
+      const response = await deleteAdminBooking(booking.id);
+      setBookings(current => current.filter(item => item.id !== booking.id));
+      setSelectedBookingIds(current => current.filter(id => id !== booking.id));
+      toast.success("Booking deleted", response.message || "Booking deleted successfully.");
     } catch (error) {
-      toast.error(
-        "Booking not archived",
-        getErrorMessage(error)
-      );
+      toast.error("Booking not deleted", getErrorMessage(error));
     } finally {
-      setIsArchivingBookingId(null);
+      setIsDeletingBookingId(null);
     }
+  }
+
+  async function handleBulkDeleteBookings() {
+    const ids = selectedBookingIds;
+    if (!ids.length || !window.confirm(`Permanently delete ${ids.length} selected booking${ids.length === 1 ? "" : "s"}? This cannot be undone.`)) return;
+    setIsBulkDeletingBookings(true);
+    const results = await Promise.allSettled(ids.map(id => deleteAdminBooking(id)));
+    const deletedIds = ids.filter((_id, index) => results[index].status === "fulfilled");
+    setBookings(current => current.filter(booking => !deletedIds.includes(booking.id)));
+    setSelectedBookingIds(current => current.filter(id => !deletedIds.includes(id)));
+    const failedCount = ids.length - deletedIds.length;
+    if (deletedIds.length) toast.success("Bookings deleted", `${deletedIds.length} booking${deletedIds.length === 1 ? " was" : "s were"} deleted.`);
+    if (failedCount) toast.error("Some bookings were not deleted", `${failedCount} booking${failedCount === 1 ? " could" : "s could"} not be deleted.`);
+    setIsBulkDeletingBookings(false);
   }
 
   async function handleCopyRecoveryLink(booking: AdminBooking) {
@@ -961,6 +948,27 @@ export default function BookingsPage() {
     }
   }
 
+  async function submitFeedbackRequest() {
+    if (!feedbackBooking || pendingActionBookingId === feedbackBooking.booking.id) return;
+    const { booking } = feedbackBooking;
+    const resend = booking.whatsappFeedbackStatus === "sent";
+    setPendingActionBookingId(booking.id);
+    try {
+      const response = await sendAdminBookingFeedbackWhatsapp(booking.id, resend);
+      setBookings(current => current.map(item => item.id === booking.id ? response.data.booking : item));
+      setFeedbackBooking(null);
+      toast.success(resend ? "Feedback request resent" : "Feedback request sent", response.message);
+    } catch (error) {
+      toast.error("Feedback message not sent", getErrorMessage(error));
+    } finally {
+      setPendingActionBookingId(null);
+    }
+  }
+
+  function openFeedbackDialog(booking: AdminBooking) {
+    setFeedbackBooking({ booking, tourName: tourNameById.get(booking.tourId) || booking.tourId });
+  }
+
   function handleCancelPendingBooking(booking: AdminBooking) {
     setCancellationBooking(booking);
   }
@@ -979,6 +987,22 @@ export default function BookingsPage() {
         : `${availability.seatsReleased} seat(s) released. ${availability.seatsAvailable} seat(s) now available.`);
     } catch (error) {
       toast.error("Booking not cancelled", getErrorMessage(error));
+    } finally {
+      setPendingActionBookingId(null);
+    }
+  }
+
+  async function submitCancellationRequestRefund(payload: { refundPercentage: number; refundAmount: number; adminNote: string }) {
+    if (!cancellationRequestBooking || pendingActionBookingId === cancellationRequestBooking.id) return;
+    const booking = cancellationRequestBooking;
+    setPendingActionBookingId(booking.id);
+    try {
+      const response = await startAdminCancellationRefund(booking.id, payload);
+      if (response.data.booking) setBookings(current => current.map(item => item.id === booking.id ? response.data.booking! : item));
+      setCancellationRequestBooking(null);
+      toast.success(response.data.refundMode === "razorpay" ? "Refund started" : "Offline refund recorded", response.message);
+    } catch (error) {
+      toast.error("Cancellation not processed", getErrorMessage(error));
     } finally {
       setPendingActionBookingId(null);
     }
@@ -1007,6 +1031,23 @@ export default function BookingsPage() {
 
   return (
     <>
+    {cancellationRequestBooking?.cancellationRequest ? (
+      <CancellationRequestReviewDialog
+        booking={cancellationRequestBooking}
+        isSubmitting={pendingActionBookingId === cancellationRequestBooking.id}
+        onClose={() => { if (pendingActionBookingId !== cancellationRequestBooking.id) setCancellationRequestBooking(null); }}
+        onSubmit={submitCancellationRequestRefund}
+      />
+    ) : null}
+    {feedbackBooking ? (
+      <BookingFeedbackDialog
+        booking={feedbackBooking.booking}
+        tourName={feedbackBooking.tourName}
+        isSubmitting={pendingActionBookingId === feedbackBooking.booking.id}
+        onClose={() => { if (pendingActionBookingId !== feedbackBooking.booking.id) setFeedbackBooking(null); }}
+        onConfirm={submitFeedbackRequest}
+      />
+    ) : null}
     {cancellationBooking ? (
       <BookingCancellationDialog
         booking={cancellationBooking}
@@ -1177,6 +1218,12 @@ export default function BookingsPage() {
       </DialogContent>
     </Dialog>
 
+    {travelDetails && <BookingTravelDetailsDialog
+      key={travelDetails.booking.id + travelDetails.kind}
+      booking={travelDetails.booking} kind={travelDetails.kind}
+      onClose={() => setTravelDetails(null)}
+      onSaved={updated => setBookings(current => current.map(item => item.id === updated.id ? { ...item, hotelDetails: updated.hotelDetails, flightDetails: updated.flightDetails } : item))}
+    />}
     <AdminDashboardShell
       activeLabel="Booking"
     >
@@ -1244,20 +1291,25 @@ export default function BookingsPage() {
             }
           />
 
+          {selectedBookingIds.length ? <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-orange-50/70 px-4 py-3">
+            <span className="text-xs font-semibold text-foreground">{selectedBookingIds.length} booking{selectedBookingIds.length === 1 ? "" : "s"} selected</span>
+            <div className="flex items-center gap-2"><button type="button" onClick={() => setSelectedBookingIds([])} className="rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold">Clear</button><button type="button" disabled={isBulkDeletingBookings} onClick={handleBulkDeleteBookings} className="inline-flex items-center gap-2 rounded-md bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"><Trash2 className="size-4"/>{isBulkDeletingBookings ? "Deleting…" : "Delete selected"}</button></div>
+          </div> : null}
+
           <BookingTable
             bookings={filteredBookings}
-            isArchivingBookingId={
-              isArchivingBookingId
-            }
+            isDeletingBookingId={isDeletingBookingId}
+            selectedBookingIds={selectedBookingIds}
+            onToggleSelection={(id) => setSelectedBookingIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])}
+            onToggleAllSelection={() => setSelectedBookingIds(current => filteredBookings.every(booking => current.includes(booking.id)) ? current.filter(id => !filteredBookings.some(booking => booking.id === id)) : [...new Set([...current, ...filteredBookings.map(booking => booking.id)])])}
             pendingActionBookingId={
               pendingActionBookingId
             }
             isLoading={
               isLoadingBookings
             }
-            onArchive={
-              handleArchiveBooking
-            }
+            onDelete={handleDeleteBooking}
+            onTravelDetails={(booking, kind) => setTravelDetails({ booking, kind })}
             onAddAirFlightCharges={
               handleAddAirFlightCharges
             }
@@ -1285,6 +1337,8 @@ export default function BookingsPage() {
             onView={
               openViewBookingPage
             }
+            onReviewCancellationRequest={setCancellationRequestBooking}
+            onFeedback={openFeedbackDialog}
             totalCount={
               bookings.length
             }
@@ -1302,6 +1356,118 @@ export default function BookingsPage() {
 /* =========================================================
    METRIC CARD
 ========================================================= */
+
+function CancellationRequestReviewDialog({ booking, isSubmitting, onClose, onSubmit }: {
+  booking: AdminBooking;
+  isSubmitting: boolean;
+  onClose: () => void;
+  onSubmit: (payload: { refundPercentage: number; refundAmount: number; adminNote: string }) => Promise<void>;
+}) {
+  const request = booking.cancellationRequest!;
+  const estimate = request.estimate;
+  const completed = request.status === "refund_initiated" || request.status === "offline_refund_recorded";
+  const [refundPercentage, setRefundPercentage] = useState(String(request.refundPercentage ?? estimate.chargePercentage ?? ""));
+  const [refundAmount, setRefundAmount] = useState(request.refundAmount !== undefined ? String(request.refundAmount) : estimate.estimatedRefund === null ? "" : String(estimate.estimatedRefund));
+  const [adminNote, setAdminNote] = useState("");
+  const hasGatewayPayment = Boolean(booking.paymentProvider === "razorpay" || booking.paymentId || booking.collectionHistory?.some(item => item.paymentId));
+  const offline = booking.paymentMode === "offline" || (!hasGatewayPayment && booking.paymentMode !== "online");
+  const amount = Number(refundAmount);
+  const chargeableSubtotal = estimate.chargeableSubtotal ?? booking.subtotal ?? (estimate.chargePercentage && estimate.cancellationCharge !== null ? estimate.cancellationCharge * 100 / estimate.chargePercentage : null);
+  const valid = refundPercentage !== "" && Number(refundPercentage) >= 0 && Number(refundPercentage) <= 100 && Number.isFinite(amount) && amount > 0 && (!offline || amount <= toMoney(booking.amountPaid));
+  const percentageOptions = [...new Set([...Array.from({ length: 11 }, (_, index) => index * 10), ...(estimate.chargePercentage === null ? [] : [estimate.chargePercentage])])].sort((a, b) => a - b);
+  function handleChargePercentageChange(value: string) {
+    const nextPercentage = Number(value);
+    setRefundPercentage(value);
+    if (chargeableSubtotal !== null) {
+      const nextRefund = Math.max(0, Math.round((estimate.amountPaid - estimate.nonRefundableGst - chargeableSubtotal * nextPercentage / 100) * 100) / 100);
+      setRefundAmount(String(nextRefund));
+    }
+  }
+  return <Dialog open onOpenChange={(open) => { if (!open && !isSubmitting) onClose(); }}>
+    <DialogContent className="max-h-[90dvh] w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-white p-0 sm:max-w-[620px]" showCloseButton={!isSubmitting}>
+      <form className="flex max-h-[90dvh] flex-col" data-admin-ignore-save-reminder="true" onSubmit={event => { event.preventDefault(); if (valid && !isSubmitting) void onSubmit({ refundPercentage: Number(refundPercentage), refundAmount: amount, adminNote: adminNote.trim() }); }}>
+        <DialogHeader className="shrink-0 border-b border-border px-5 py-4 sm:px-6">
+          <DialogTitle className="text-xl font-bold">Review cancellation request</DialogTitle>
+          <DialogDescription>{getBookingReference(booking)} · {getGuestName(booking.guestDetails[0])}</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 overflow-y-auto px-5 py-5 sm:px-6">
+          <section className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-950"><div className="flex items-center gap-2 font-bold"><AlertCircle className="size-4"/>Traveller’s reason</div><p className="mt-2 whitespace-pre-wrap leading-relaxed">{request.reason}</p><p className="mt-2 text-xs text-red-800/70">Requested {new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(request.requestedAt))}</p></section>
+          <section className="grid grid-cols-2 gap-3 rounded-lg border border-border p-4 text-sm"><div><span className="block text-xs text-foreground/55">Recorded payments</span><strong>{formatCurrency(estimate.amountPaid)}</strong></div><div><span className="block text-xs text-foreground/55">Estimated refund</span><strong>{estimate.estimatedRefund === null ? "Not available" : formatCurrency(estimate.estimatedRefund)}</strong></div><div><span className="block text-xs text-foreground/55">Cancellation charge estimate</span><strong>{estimate.chargePercentage === null ? "Not available" : `${estimate.chargePercentage}%`}</strong></div><div><span className="block text-xs text-foreground/55">Payment method</span><strong>{offline ? "Offline / bank transfer" : "Razorpay"}</strong></div></section>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1.5 text-xs font-semibold">Cancellation charge (%)
+              <select required disabled={completed || request.status === "processing"} value={refundPercentage} onChange={event => handleChargePercentageChange(event.target.value)} className="h-10 rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary disabled:bg-stone-50">
+                <option value="">Select percentage</option>{percentageOptions.map(value => <option key={value} value={value}>{value}%</option>)}
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-xs font-semibold">Refund amount (₹)
+              <input required type="number" min="0.01" max={offline ? toMoney(booking.amountPaid) : undefined} step="0.01" disabled={completed || request.status === "processing"} value={refundAmount} onChange={event => setRefundAmount(event.target.value)} className="h-10 rounded-md border border-border px-3 text-sm outline-none focus:border-primary disabled:bg-stone-50" placeholder="Enter amount"/>
+            </label>
+          </div>
+          {completed ? <p className="rounded-md bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{offline ? "Offline refund recorded:" : "Razorpay refund initiated:"} {formatCurrency(request.refundAmount || 0)}{request.processedAt ? ` · ${new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(request.processedAt))}` : ""}</p> : null}
+          {offline ? <p className="rounded-md bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">This booking was paid offline. The amount you enter will be saved as the manually issued refund; it cannot exceed the recorded payment.</p> : <p className="rounded-md bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">Starting the refund sends this amount to Razorpay for refund to the original payment method. Razorpay refund requests cannot be reversed.</p>}
+          <label className="grid gap-1.5 text-xs font-semibold">Admin note (optional)<textarea rows={2} maxLength={1000} value={adminNote} onChange={event => setAdminNote(event.target.value)} className="rounded-md border border-border px-3 py-2 text-sm outline-none focus:border-primary" placeholder="Add an internal note"/></label>
+          {request.status === "processing" ? <p role="status" className="text-xs font-semibold text-amber-700">A refund attempt is in progress. Retrying will continue the same recorded amount.</p> : null}
+        </div>
+        <DialogFooter className="shrink-0 border-t border-border bg-stone-50 px-5 pt-4 pb-8 sm:px-6"><Button type="button" variant="outline" disabled={isSubmitting} onClick={onClose}>Close</Button>{!completed ? <Button type="submit" disabled={!valid || isSubmitting} className="bg-primary text-white hover:bg-primary/90 hover:text-white disabled:bg-stone-300 disabled:text-stone-600 disabled:opacity-100 disabled:hover:bg-stone-300 disabled:hover:text-stone-600">{isSubmitting ? "Processing…" : offline ? "Record refund & cancel booking" : request.status === "processing" ? "Retry refund & cancel" : "Start Razorpay refund"}</Button> : null}</DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>;
+}
+
+function getFeedbackWhatsappNumber(booking: AdminBooking) {
+  const guest = booking.guestDetails[0];
+  if (!guest?.mobileNumber) return "";
+  const country = guest.countryCode.replace(/\D/g, "");
+  let mobile = guest.mobileNumber.replace(/\D/g, "").replace(/^0+/, "");
+  if (country && mobile.startsWith(country) && mobile.length > 10) return `+${mobile}`;
+  if (mobile.length === 10) return `+${country || "91"}${mobile}`;
+  if (!country && mobile.length >= 10 && mobile.length <= 15) return `+${mobile}`;
+  return `+${country}${mobile}`;
+}
+
+function BookingFeedbackDialog({ booking, tourName, isSubmitting, onClose, onConfirm }: {
+  booking: AdminBooking;
+  tourName: string;
+  isSubmitting: boolean;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const guest = booking.guestDetails[0];
+  const whatsappNumber = getFeedbackWhatsappNumber(booking);
+  const digits = whatsappNumber.replace(/\D/g, "");
+  const validNumber = /^\d{10,15}$/.test(digits);
+  const hasConsent = booking.whatsappMarketingConsent !== false;
+  const alreadySent = booking.whatsappFeedbackStatus === "sent";
+  const lastSentDate = booking.whatsappFeedbackLastSentAt
+    ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(booking.whatsappFeedbackLastSentAt))
+    : "";
+
+  return <Dialog open onOpenChange={open => { if (!open && !isSubmitting) onClose(); }}>
+    <DialogContent className="max-h-[90dvh] w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-white p-0 sm:max-w-[520px]" showCloseButton={!isSubmitting}>
+      <div className="flex max-h-[90dvh] flex-col">
+        <DialogHeader className="shrink-0 border-b border-border px-5 py-5 sm:px-7">
+          <DialogTitle className="text-xl font-bold">{alreadySent ? "Resend Feedback" : "Send Feedback"}</DialogTitle>
+          <DialogDescription>Confirm the customer and WhatsApp number before sending.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 overflow-y-auto px-5 py-5 sm:px-7">
+          <div className="grid gap-3 rounded-lg border border-border bg-stone-50 p-4 text-sm">
+            <div><span className="block text-xs text-foreground/55">Customer</span><strong>{getGuestName(guest)}</strong></div>
+            <div><span className="block text-xs text-foreground/55">WhatsApp number</span><strong>{whatsappNumber || "Not provided"}</strong></div>
+            <div><span className="block text-xs text-foreground/55">Tour</span><strong>{tourName}</strong></div>
+          </div>
+          {alreadySent ? <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">A feedback request was already sent{lastSentDate ? ` on ${lastSentDate}` : ""}. Send another request?</p> : <p className="rounded-md bg-orange-50 p-3 text-xs leading-relaxed text-orange-900">This sends the approved feedback request template to the customer’s registered WhatsApp number.</p>}
+          {!validNumber ? <p role="alert" className="text-xs font-semibold text-red-700">A valid WhatsApp number with country code is required.</p> : null}
+          {!hasConsent ? <p role="alert" className="text-xs font-semibold text-red-700">The customer has not consented to WhatsApp messages.</p> : null}
+          {booking.whatsappFeedbackStatus === "failed" && booking.whatsappFeedbackError ? <p role="status" className="text-xs text-red-700">Previous attempt failed: {booking.whatsappFeedbackError}</p> : null}
+        </div>
+        <DialogFooter className="shrink-0 border-t border-border bg-stone-50 px-5 py-4 sm:px-7">
+          <Button type="button" variant="outline" disabled={isSubmitting} onClick={onClose}>Cancel</Button>
+          <Button type="button" disabled={isSubmitting || !validNumber || !hasConsent} onClick={() => void onConfirm()} className="bg-primary text-white hover:bg-primary/90 hover:text-white disabled:bg-stone-300 disabled:text-stone-600 disabled:opacity-100 disabled:hover:bg-stone-300 disabled:hover:text-stone-600">{isSubmitting ? "Sending…" : alreadySent ? "Resend Feedback" : "Send Feedback"}</Button>
+        </DialogFooter>
+      </div>
+    </DialogContent>
+  </Dialog>;
+}
 
 function BookingCancellationDialog({
   booking,
@@ -1364,7 +1530,7 @@ function BookingCancellationDialog({
             <textarea rows={2} maxLength={2000} value={notes} disabled={isSubmitting} onChange={(event) => setNotes(event.target.value)} className="w-full rounded-sm border border-border px-3 py-2 outline-none focus:border-primary" />
           </label>
           <p className="rounded-sm bg-muted/35 p-3 text-xs leading-relaxed text-foreground/70">
-            Cancelling releases this booking's reserved seats. No automatic refund is issued.
+            Cancelling releases this booking&apos;s reserved seats. No automatic refund is issued.
           </p>
           <label className="flex items-start gap-2 text-xs">
             <input type="checkbox" required disabled={isSubmitting} className="mt-0.5 accent-primary" />
@@ -1447,6 +1613,7 @@ function BookingFilters({
   ) => void;
 }) {
   return (
+    <AdminMobileFilter label="Bookings">
     <div className="flex items-center border-b border-border p-5">
       <label className="relative w-full max-w-[360px]">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground/40" />
@@ -1475,6 +1642,7 @@ function BookingFilters({
         />
       </label>
     </div>
+    </AdminMobileFilter>
   );
 }
 
@@ -1497,11 +1665,15 @@ function BookingFilters({
 
 function BookingTable({
   bookings,
-  isArchivingBookingId,
+  isDeletingBookingId,
+  selectedBookingIds,
+  onToggleSelection,
+  onToggleAllSelection,
   isLoading,
   pendingActionBookingId,
-  onArchive,
+  onDelete,
   onAddAirFlightCharges,
+  onTravelDetails,
   onCancelPending,
   onCopyRecoveryLink,
   onEdit,
@@ -1510,20 +1682,26 @@ function BookingTable({
   onSendFinalPaymentWhatsapp,
   onSendRecoveryEmail,
   onView,
+  onReviewCancellationRequest,
+  onFeedback,
   totalCount,
   tourNameById,
 }: {
   bookings: AdminBooking[];
-  isArchivingBookingId:
+  isDeletingBookingId:
     | string
     | null;
+  selectedBookingIds: string[];
+  onToggleSelection: (id: string) => void;
+  onToggleAllSelection: () => void;
   isLoading: boolean;
   pendingActionBookingId:
     | string
     | null;
-  onArchive: (
+  onDelete: (
     booking: AdminBooking
   ) => void;
+  onTravelDetails: (booking: AdminBooking, kind: "hotel" | "flight") => void;
   onAddAirFlightCharges: (
     booking: AdminBooking
   ) => void;
@@ -1551,6 +1729,8 @@ function BookingTable({
   onView: (
     booking: AdminBooking
   ) => void;
+  onReviewCancellationRequest: (booking: AdminBooking) => void;
+  onFeedback: (booking: AdminBooking) => void;
   totalCount: number;
   tourNameById: Map<
     string,
@@ -1567,6 +1747,7 @@ function BookingTable({
 
   <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
     <tr className="border-b border-border">
+      <th className="w-10 border-r border-border px-3 py-4 text-center"><input aria-label="Select all visible bookings" type="checkbox" checked={bookings.length > 0 && bookings.every(booking => selectedBookingIds.includes(booking.id))} onChange={onToggleAllSelection} className="size-4 accent-primary"/></th>
       <th className="whitespace-nowrap border-r border-border px-5 py-4 font-bold last:border-r-0">
         ID
       </th>
@@ -1617,7 +1798,7 @@ function BookingTable({
     {isLoading ? (
       <tr>
         <td
-          colSpan={10}
+          colSpan={11}
           className="px-5 py-10 text-center text-xs text-foreground/55"
         >
           Loading bookings...
@@ -1628,7 +1809,7 @@ function BookingTable({
     {!isLoading && bookings.length === 0 ? (
       <tr>
         <td
-          colSpan={10}
+          colSpan={11}
           className="px-5 py-10 text-center text-xs text-foreground/55"
         >
           No bookings found.
@@ -1658,13 +1839,15 @@ function BookingTable({
           return (
             <tr
               key={booking.id}
+              data-cancellation-request={booking.cancellationRequest ? "true" : undefined}
               onClick={(event) => {
                 if (shouldOpenTableRow(event)) {
                   onView(booking);
                 }
               }}
-              className="cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-muted/20"
+              className={cn("cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-muted/20", booking.cancellationRequest && "bg-red-50/80 hover:bg-red-100/80")}
             >
+              <td data-no-row-open data-label="Select" className="border-r border-border px-3 py-4 text-center align-middle"><input aria-label={`Select booking ${getBookingReference(booking)}`} type="checkbox" checked={selectedBookingIds.includes(booking.id)} onClick={event => event.stopPropagation()} onChange={() => onToggleSelection(booking.id)} className="size-4 accent-primary"/></td>
               {/* ID */}
 
               <td
@@ -1710,12 +1893,21 @@ function BookingTable({
                   <p className="mt-0.5 max-w-[240px] truncate text-[11px] text-foreground/50">
                     {primaryGuest?.email || "-"}
                   </p>
+                  <p className={cn("mt-1 text-[10px] font-semibold", booking.whatsappFeedbackStatus === "sent" ? "text-emerald-700" : booking.whatsappFeedbackStatus === "failed" ? "text-red-700" : booking.whatsappFeedbackStatus === "sending" ? "text-amber-700" : "text-foreground/45")}>
+                    Feedback: {booking.whatsappFeedbackStatus === "sending" ? "Sending" : booking.whatsappFeedbackStatus === "sent" ? `Sent${booking.whatsappFeedbackLastSentAt ? ` · ${formatDate(booking.whatsappFeedbackLastSentAt)}` : ""}` : booking.whatsappFeedbackStatus === "failed" ? "Failed" : "Not Sent"}
+                  </p>
 
                   {extraGuestCount > 0 ? (
                     <p className="mt-1 text-[10px] font-semibold text-primary">
                       +{extraGuestCount} more guest
                       {extraGuestCount === 1 ? "" : "s"}
                     </p>
+                  ) : null}
+                  {booking.cancellationRequest ? (
+                    <button type="button" onClick={(event) => { event.stopPropagation(); onReviewCancellationRequest(booking); }} className="mt-2 flex max-w-[270px] items-start gap-1.5 text-left text-[10px] font-semibold leading-snug text-red-700 hover:underline">
+                      <AlertCircle className="mt-0.5 size-3 shrink-0" />
+                      <span><span className="block">Cancellation request · {booking.cancellationRequest.status.replaceAll("_", " ")}</span><span className="mt-0.5 block line-clamp-2 font-normal">{booking.cancellationRequest.reason}</span><span className="mt-0.5 block font-normal text-red-700/70">{formatDate(booking.cancellationRequest.requestedAt)} · Review request</span></span>
+                    </button>
                   ) : null}
                 </div>
               </td>
@@ -1745,7 +1937,7 @@ function BookingTable({
                 data-label="Paid"
                 className="whitespace-nowrap border-r border-border px-5 py-4 align-middle"
               >
-                <span className="text-xs font-bold text-emerald-600">
+                <span className={cn("text-xs font-bold", paidAmount === 0 ? "text-rose-600" : "text-emerald-600")}>
                   {formatCurrency(paidAmount, currency)}
                 </span>
               </td>
@@ -1808,13 +2000,14 @@ function BookingTable({
               >
                 <BookingActionsMenu
                   booking={booking}
-                  isArchiving={
-                    isArchivingBookingId === booking.id
+                  isDeleting={
+                    isDeletingBookingId === booking.id
                   }
                   isPendingAction={
                     pendingActionBookingId === booking.id
                   }
-                  onArchive={onArchive}
+                  onDelete={onDelete}
+                  onTravelDetails={onTravelDetails}
                   onAddAirFlightCharges={onAddAirFlightCharges}
                   onCancelPending={onCancelPending}
                   onCopyRecoveryLink={onCopyRecoveryLink}
@@ -1824,6 +2017,8 @@ function BookingTable({
                   onSendFinalPaymentWhatsapp={onSendFinalPaymentWhatsapp}
                   onSendRecoveryEmail={onSendRecoveryEmail}
                   onView={onView}
+                  onReviewCancellationRequest={() => onReviewCancellationRequest(booking)}
+                  onFeedback={() => onFeedback(booking)}
                 />
               </td>
             </tr>
@@ -1878,18 +2073,16 @@ function BookingTable({
 /* =========================================================
    ACTION MENU
 
-   Delete completely removed.
-   Archive added instead.
-
    View/Edit navigate to inner pages.
 ========================================================= */
 
 function BookingActionsMenu({
   booking,
-  isArchiving,
+  isDeleting,
   isPendingAction,
-  onArchive,
+  onDelete,
   onAddAirFlightCharges,
+  onTravelDetails,
   onCancelPending,
   onCopyRecoveryLink,
   onEdit,
@@ -1898,13 +2091,16 @@ function BookingActionsMenu({
   onSendFinalPaymentWhatsapp,
   onSendRecoveryEmail,
   onView,
+  onReviewCancellationRequest,
+  onFeedback,
 }: {
   booking: AdminBooking;
-  isArchiving: boolean;
+  isDeleting: boolean;
   isPendingAction: boolean;
-  onArchive: (
+  onDelete: (
     booking: AdminBooking
   ) => void;
+  onTravelDetails: (booking: AdminBooking, kind: "hotel" | "flight") => void;
   onAddAirFlightCharges: (
     booking: AdminBooking
   ) => void;
@@ -1932,6 +2128,8 @@ function BookingActionsMenu({
   onView: (
     booking: AdminBooking
   ) => void;
+  onReviewCancellationRequest: () => void;
+  onFeedback: () => void;
 }) {
   const primaryGuest =
     booking.guestDetails[0];
@@ -1956,9 +2154,10 @@ function BookingActionsMenu({
   const canCancelBooking =
     booking.bookingStatus !== "cancelled" &&
     booking.bookingStatus !== "expired" &&
+    !booking.cancellationRequest &&
     !isPendingAction;
-  const canArchive =
-    !isArchiving;
+  const feedbackIsSending = booking.whatsappFeedbackStatus === "sending";
+  const canDelete = !isDeleting && !isPendingAction;
 
   return (
     <div className="flex justify-end">
@@ -1982,7 +2181,7 @@ function BookingActionsMenu({
                 primaryGuest
               )}`}
               disabled={
-                isArchiving || isPendingAction
+                isDeleting || isPendingAction
               }
             />
           }
@@ -1994,6 +2193,8 @@ function BookingActionsMenu({
           align="end"
           className="w-56 rounded-sm border border-border bg-white p-1 shadow-lg shadow-stone-200/70"
         >
+          {booking.cancellationRequest ? <DropdownMenuItem onClick={onReviewCancellationRequest} className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold text-red-700"><AlertCircle className="size-4"/>Review cancellation request</DropdownMenuItem> : null}
+          <DropdownMenuItem disabled={isPendingAction || feedbackIsSending} onClick={onFeedback} className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"><MessageCircle className="size-4 text-primary"/>{booking.whatsappFeedbackStatus === "sent" ? "Resend Feedback" : feedbackIsSending ? "Sending Feedback…" : "Send Feedback"}</DropdownMenuItem>
           {booking.hasBankTransfer || booking.paymentMode === "bank_transfer" || booking.paymentMethod === "bank_transfer" ? (
           <DropdownMenuItem
             render={<a href={"/bookings/bank-transfer/?bookingId=" + encodeURIComponent(booking.id)} />}
@@ -2003,6 +2204,14 @@ function BookingActionsMenu({
             Bank Transfer
           </DropdownMenuItem>
           ) : null}
+          <DropdownMenuItem onClick={() => onTravelDetails(booking, "hotel")} className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold">
+            <Plus className="size-4 text-primary" />
+            {booking.hotelDetails?.length ? "Edit hotel details" : "Add hotel details"}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onTravelDetails(booking, "flight")} className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold">
+            <Plus className="size-4 text-primary" />
+            {booking.flightDetails?.length ? "Edit flight details" : "Add flight details"}
+          </DropdownMenuItem>
           {/* View */}
 
           <DropdownMenuItem
@@ -2129,23 +2338,17 @@ function BookingActionsMenu({
             </>
           ) : null}
 
-          {/* Archive */}
-
-          {canArchive ? (
+          {/* Delete */}
+          {canDelete ? (
             <>
               <DropdownMenuSeparator />
 
               <DropdownMenuItem
-                onClick={() =>
-                  onArchive(
-                    booking
-                  )
-                }
-                className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold text-amber-700 focus:bg-amber-50 focus:text-amber-700"
+                onClick={() => onDelete(booking)}
+                className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold text-red-700 focus:bg-red-50 focus:text-red-700"
               >
-                <Archive className="size-4" />
-
-                Archive
+                <Trash2 className="size-4" />
+                Delete
               </DropdownMenuItem>
             </>
           ) : null}

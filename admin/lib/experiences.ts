@@ -23,6 +23,7 @@ export type AdminExperience = {
   travellerEmail: string;
   title: string;
   writtenReview: string;
+  whatsappReviewImages: string[];
   googleReviewUrl?: string;
   googleReviewPublishedAt?: string | null;
   googleReviewTimeDescription?: string;
@@ -48,6 +49,7 @@ export type ExperiencePayload = {
   travellerEmail: string;
   title?: string;
   writtenReview: string;
+  whatsappReviewImages: string[];
   googleReviewUrl?: string;
   googleReviewPublishedAt?: string | null;
   googleReviewTimeDescription?: string;
@@ -65,12 +67,14 @@ export type ExperiencePayload = {
 
 type ExperienceMediaUploadPayload = {
   travellerPhotoGallery?: File[];
+  whatsappReviewImages?: File[];
   travellerVideos?: File[];
   attractionPhotoGallery?: File[];
 };
 
 export type ExperienceMediaUploadResponse = {
   travellerPhotoGallery: string[];
+  whatsappReviewImages: string[];
   travellerVideos: string[];
   attractionPhotoGallery: string[];
 };
@@ -226,6 +230,9 @@ export async function uploadExperienceMedia(
 
   payload.travellerPhotoGallery?.forEach((photo) => {
     formData.append("travellerPhotoGallery", photo);
+  });
+  payload.whatsappReviewImages?.forEach((photo) => {
+    formData.append("whatsappReviewImages", photo);
   });
 
   payload.travellerVideos?.forEach((video) => {

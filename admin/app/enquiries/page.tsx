@@ -1,7 +1,7 @@
 "use client";
 
 import type { FormEvent, ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   CheckCircle2,
@@ -9,7 +9,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
-  Filter,
   Eye,
   Mail,
   MessageCircle,
@@ -19,6 +18,10 @@ import {
   Save,
   Search,
   XCircle,
+  Send,
+  Upload,
+  ShieldBan,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -26,6 +29,7 @@ import {
   AdminDashboardShell,
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
+import { AdminMobileFilter } from "@/components/admin-dashboard/admin-mobile-filter";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -50,8 +54,12 @@ import {
   listAdminEnquiries,
   updateAdminEnquiry,
   updateAdminEnquiryStatus,
+  addAdminEnquiryReply,
+  setAdminEnquiryBlacklist,
   type EnquiryPayload,
 } from "@/lib/enquiries";
+import { listAdminTours, type AdminTour } from "@/lib/tours";
+import * as XLSX from "xlsx";
 
 type EnquiryMetric = {
   label: string;
@@ -68,10 +76,16 @@ type EnquiryRecord = {
   initials: string;
   avatarTone: string;
   name: string;
+  gender: string;
   email: string;
   phone: string;
   subject: string;
   message: string;
+  tourId?: string;
+  tourName?: string;
+  replies?: Array<{ message: string; sentAt: string }>;
+  isBlacklisted?: boolean;
+  blacklistedAt?: string | null;
   socialMediaReferral: string;
   source: "Website" | "Contact Form" | "Email" | "Phone Call";
   status: "New" | "In Progress" | "Replied" | "Closed";
@@ -90,14 +104,15 @@ const sourceOptions = [
   "Phone Call",
 ];
 const dateRangeOptions = ["All Time", "Today", "This Week", "This Month"];
+const blacklistOptions = ["All Enquiries", "Active", "Blacklisted"];
 
 function createEnquiriesCsv(enquiries: EnquiryRecord[]) {
   const header = [
-    "Enquiry ID", "Name", "Email", "Phone", "Subject", "Message",
+    "Enquiry ID", "Name", "Gender", "Email", "Phone", "Subject", "Message",
     "Source", "Status", "Date", "Time", "Created At", "Updated At", "Social Media Referral",
   ];
   const rows = enquiries.map((item) => [
-    item.enquiryReference, item.name, item.email, item.phone,
+    item.enquiryReference, item.name, item.gender || "", item.email, item.phone,
     item.subject, item.message, item.source, item.status,
     item.date, item.time, item.createdAt, item.updatedAt, item.socialMediaReferral,
   ]);
@@ -115,10 +130,13 @@ function createEnquiriesCsv(enquiries: EnquiryRecord[]) {
 function createEmptyEnquiry(): EnquiryPayload {
   return {
     name: "",
+    gender: "",
     email: "",
     phone: "",
     subject: "",
     message: "",
+    tourId: "",
+    tourName: "",
     socialMediaReferral: "",
     source: "Website",
     status: "New",
@@ -130,6 +148,7 @@ function toEnquiryRecord(enquiry: import("@/lib/enquiries").AdminEnquiry): Enqui
 
   return {
     ...enquiry,
+    gender: enquiry.gender || "",
     socialMediaReferral: enquiry.socialMediaReferral || "",
     initials: enquiry.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
     avatarTone: "bg-primary",
@@ -151,6 +170,11 @@ export default function EnquiriesPage() {
   const [selectedStatus, setSelectedStatus] = useState("All Status");
   const [selectedSource, setSelectedSource] = useState("All Sources");
   const [selectedDateRange, setSelectedDateRange] = useState("All Time");
+  const [selectedBlacklist, setSelectedBlacklist] = useState("All Enquiries");
+  const [tours, setTours] = useState<AdminTour[]>([]);
+  const [replyingEnquiry, setReplyingEnquiry] = useState<EnquiryRecord | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const importInput = useRef<HTMLInputElement>(null);
 
   async function loadEnquiries() {
     try {
@@ -172,6 +196,8 @@ export default function EnquiriesPage() {
       .finally(() => setIsLoading(false));
   }, [toast]);
 
+  useEffect(() => { void listAdminTours().then((result) => setTours(result.data.tours)).catch(() => {}); }, []);
+
   const filteredEnquiries = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
@@ -181,26 +207,39 @@ export default function EnquiriesPage() {
             enquiry.id,
             enquiry.enquiryReference,
             enquiry.name,
+            enquiry.gender,
             enquiry.email,
             enquiry.phone,
             enquiry.subject,
             enquiry.message,
+            enquiry.tourName,
             enquiry.source,
             enquiry.socialMediaReferral,
             enquiry.status,
+            ...(enquiry.replies || []).map((reply) => reply.message),
           ]
             .join(" ")
             .toLowerCase()
             .includes(query)
         : true;
-      const matchesStatus =
-        selectedStatus === "All Status" || enquiry.status === selectedStatus;
-      const matchesSource =
-        selectedSource === "All Sources" || enquiry.source === selectedSource;
+      const matchesStatus = selectedStatus === "All Status" || enquiry.status === selectedStatus;
+      const matchesSource = selectedSource === "All Sources" || enquiry.source === selectedSource;
+      const matchesBlacklist = selectedBlacklist === "All Enquiries" ||
+        (selectedBlacklist === "Blacklisted" ? enquiry.isBlacklisted : !enquiry.isBlacklisted);
+      const createdAt = new Date(enquiry.createdAt);
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startOfWeek = new Date(startOfToday);
+      startOfWeek.setDate(startOfWeek.getDate() - ((startOfWeek.getDay() + 6) % 7));
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const matchesDateRange = selectedDateRange === "All Time" ||
+        (createdAt <= now && selectedDateRange === "Today" && createdAt >= startOfToday) ||
+        (createdAt <= now && selectedDateRange === "This Week" && createdAt >= startOfWeek) ||
+        (createdAt <= now && selectedDateRange === "This Month" && createdAt >= startOfMonth);
 
-      return matchesSearch && matchesStatus && matchesSource;
+      return matchesSearch && matchesStatus && matchesSource && matchesBlacklist && matchesDateRange;
     });
-  }, [enquiries, searchQuery, selectedSource, selectedStatus]);
+  }, [enquiries, searchQuery, selectedStatus, selectedSource, selectedDateRange, selectedBlacklist]);
 
   const enquiryMetrics: EnquiryMetric[] = [
     ["Total Enquiries", enquiries.length, MessageCircle, "bg-primary/10 text-primary"],
@@ -227,10 +266,13 @@ export default function EnquiriesPage() {
     setEditingEnquiry(enquiry);
     setForm({
       name: enquiry.name,
+      gender: enquiry.gender || "",
       email: enquiry.email,
       phone: enquiry.phone,
       subject: enquiry.subject,
       message: enquiry.message,
+      tourId: enquiry.tourId || "",
+      tourName: enquiry.tourName || "",
       socialMediaReferral: enquiry.socialMediaReferral,
       source: enquiry.source,
       status: enquiry.status,
@@ -265,6 +307,18 @@ export default function EnquiriesPage() {
     }
   }
 
+  async function changeBlacklist(enquiry: EnquiryRecord) {
+    try {
+      const response = await setAdminEnquiryBlacklist(enquiry.id, !enquiry.isBlacklisted);
+      const updated = toEnquiryRecord(response.data.enquiry);
+      setEnquiries(current => current.map(item => item.id === updated.id ? updated : item));
+      if (viewingEnquiry?.id === updated.id) setViewingEnquiry(updated);
+      toast.success(updated.isBlacklisted ? "Enquiry blacklisted" : "Enquiry restored", updated.isBlacklisted ? `${updated.name} has been added to the blacklist.` : `${updated.name} has been removed from the blacklist.`);
+    } catch (error) {
+      toast.error("Unable to update blacklist", error instanceof Error ? error.message : "Please try again.");
+    }
+  }
+
   function exportEnquiries() {
     const csv = createEnquiriesCsv(filteredEnquiries);
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
@@ -275,6 +329,41 @@ export default function EnquiriesPage() {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function importEnquiries(file: File) {
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
+      const normalized = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).map(([key, value]) => [key.toLowerCase().replace(/[^a-z]/g, ""), value]));
+      const imported = rows.map(normalized).filter(row => String(row.name || "").trim()).map(row => ({
+        ...createEmptyEnquiry(),
+        name: String(row.name || "").trim(), email: String(row.email || "").trim(), phone: String(row.phone || "").trim(),
+        gender: String(row.gender || "").trim(),
+        subject: String(row.subject || row.tourname || "Imported enquiry").trim(), message: String(row.message || "").trim(),
+        socialMediaReferral: String(row.socialmediareferral || "").trim(),
+        source: sourceOptions.slice(1).includes(String(row.source)) ? String(row.source) as EnquiryPayload["source"] : "Website",
+        status: statusOptions.slice(1).includes(String(row.status)) ? String(row.status) as EnquiryPayload["status"] : "New",
+        tourName: String(row.tourname || "").trim(), tourId: String(row.tourid || "").trim(),
+      }));
+      if (!imported.length) throw new Error("No rows with a Name column were found.");
+      for (const item of imported) await createAdminEnquiry(item);
+      await loadEnquiries();
+      toast.success("Import complete", `${imported.length} enquiries imported.`);
+    } catch (error) { toast.error("Unable to import enquiries", error instanceof Error ? error.message : "Choose a valid Excel file."); }
+  }
+
+  async function sendReply() {
+    if (!replyingEnquiry || !replyText.trim()) return;
+    try {
+      const response = await addAdminEnquiryReply(replyingEnquiry.id, replyText.trim());
+      const updated = toEnquiryRecord(response.data.enquiry);
+      setEnquiries(current => current.map(item => item.id === updated.id ? updated : item));
+      const phone = replyingEnquiry.phone.replace(/\D/g, "");
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(replyText.trim())}`, "_blank", "noopener,noreferrer");
+      setReplyingEnquiry(null); setReplyText("");
+      toast.success("Reply prepared", "The reply is saved in history. Send it in the WhatsApp window to deliver it.");
+    } catch (error) { toast.error("Unable to prepare reply", error instanceof Error ? error.message : "Please try again."); }
   }
 
   return (
@@ -299,6 +388,10 @@ export default function EnquiriesPage() {
           >
             <span>Export Enquiries</span>
           </Button>
+          <Button type="button" onClick={() => importInput.current?.click()} className="h-11 rounded-sm px-4 text-xs font-bold">
+            <Upload className="size-4" data-icon="inline-start" />Import Enquiries
+          </Button>
+          <input ref={importInput} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void importEnquiries(file); event.currentTarget.value = ""; }} />
         </div>
 
         <section
@@ -316,16 +409,19 @@ export default function EnquiriesPage() {
             selectedDateRange={selectedDateRange}
             selectedSource={selectedSource}
             selectedStatus={selectedStatus}
+            selectedBlacklist={selectedBlacklist}
             onDateRangeChange={setSelectedDateRange}
             onSearchQueryChange={setSearchQuery}
             onSourceChange={setSelectedSource}
             onStatusChange={setSelectedStatus}
+            onBlacklistChange={setSelectedBlacklist}
           />
-          <EnquiriesTable enquiries={filteredEnquiries} isLoading={isLoading} onEdit={openEditForm} onView={setViewingEnquiry} onStatusChange={changeEnquiryStatus} />
+          <EnquiriesTable enquiries={filteredEnquiries} isLoading={isLoading} onEdit={openEditForm} onView={setViewingEnquiry} onReply={enquiry => { setReplyingEnquiry(enquiry); setReplyText(""); }} onBlacklist={changeBlacklist} onStatusChange={changeEnquiryStatus} />
         </section>
       </div>
       <EnquiryView enquiry={viewingEnquiry} onClose={() => setViewingEnquiry(null)} />
-      {isFormOpen ? <EnquiryForm editing={Boolean(editingEnquiry)} form={form} onChange={setForm} onClose={() => setIsFormOpen(false)} onSubmit={saveEnquiry} /> : null}
+      {replyingEnquiry ? <Dialog open onOpenChange={open => { if (!open) setReplyingEnquiry(null); }}><DialogContent className="rounded-sm bg-white sm:max-w-xl"><DialogHeader><DialogTitle>Reply to {replyingEnquiry.name}</DialogTitle><DialogDescription>WhatsApp: {replyingEnquiry.phone}</DialogDescription></DialogHeader><textarea autoFocus value={replyText} onChange={event => setReplyText(event.target.value)} className="min-h-32 rounded-sm border border-border p-3 text-sm" placeholder="Write your reply..."/><Button type="button" disabled={!replyText.trim()} onClick={() => void sendReply()}><Send className="size-4" data-icon="inline-start"/>Open WhatsApp &amp; Save Reply</Button></DialogContent></Dialog> : null}
+      {isFormOpen ? <EnquiryForm editing={Boolean(editingEnquiry)} form={form} tours={tours} onChange={setForm} onClose={() => setIsFormOpen(false)} onSubmit={saveEnquiry} /> : null}
     </AdminDashboardShell>
   );
 }
@@ -420,22 +516,27 @@ function EnquiriesToolbar({
   onSearchQueryChange,
   onSourceChange,
   onStatusChange,
+  onBlacklistChange,
   searchQuery,
   selectedDateRange,
   selectedSource,
   selectedStatus,
+  selectedBlacklist,
 }: {
   onDateRangeChange: (value: string) => void;
   onSearchQueryChange: (value: string) => void;
   onSourceChange: (value: string) => void;
   onStatusChange: (value: string) => void;
+  onBlacklistChange: (value: string) => void;
   searchQuery: string;
   selectedDateRange: string;
   selectedSource: string;
   selectedStatus: string;
+  selectedBlacklist: string;
 }) {
   return (
-    <div className="grid gap-3 border-b border-border p-4 xl:grid-cols-[minmax(260px,1fr)_160px_170px_170px_120px] xl:items-end">
+    <AdminMobileFilter label="Enquiries">
+    <div className="grid gap-3 border-b border-border p-4 xl:grid-cols-[minmax(220px,1fr)_145px_145px_145px_150px] xl:items-end">
       <label className="relative min-w-0">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground/40" />
         <input
@@ -465,16 +566,10 @@ function EnquiriesToolbar({
         options={dateRangeOptions}
         onChange={onDateRangeChange}
       />
+      <FilterSelect label="Blacklist" value={selectedBlacklist} options={blacklistOptions} onChange={onBlacklistChange} />
 
-      <Button
-        type="button"
-        variant="outline"
-        className="h-11 rounded-sm border-border bg-white px-4 text-xs font-bold"
-      >
-        <Filter className="size-4" data-icon="inline-start" />
-        Filter
-      </Button>
     </div>
+    </AdminMobileFilter>
   );
 }
 
@@ -516,12 +611,16 @@ function EnquiriesTable({
   isLoading,
   onEdit,
   onView,
+  onReply,
+  onBlacklist,
   onStatusChange,
 }: {
   enquiries: EnquiryRecord[];
   isLoading: boolean;
   onEdit: (enquiry: EnquiryRecord) => void;
   onView: (enquiry: EnquiryRecord) => void;
+  onReply: (enquiry: EnquiryRecord) => void;
+  onBlacklist: (enquiry: EnquiryRecord) => Promise<void>;
   onStatusChange: (enquiry: EnquiryRecord, status: EnquiryRecord["status"]) => Promise<void>;
 }) {
   return (
@@ -603,6 +702,7 @@ function EnquiriesTable({
                     <p className="truncate text-xs font-bold text-foreground">
                       {enquiry.subject}
                     </p>
+                    {enquiry.isBlacklisted ? <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700"><ShieldBan className="size-3"/>Blacklisted</span> : null}
                   </td>
                   <td data-label="Source" className="px-4 py-4">
                     <span
@@ -636,7 +736,7 @@ function EnquiriesTable({
                     </span>
                   </td>
                   <td data-actions data-label="Actions" className="px-4 py-4">
-                    <EnquiryActions enquiry={enquiry} onEdit={onEdit} onView={onView} onStatusChange={onStatusChange} />
+                    <EnquiryActions enquiry={enquiry} onEdit={onEdit} onView={onView} onReply={onReply} onBlacklist={onBlacklist} onStatusChange={onStatusChange} />
                   </td>
                 </tr>
               ))
@@ -677,11 +777,15 @@ function EnquiryActions({
   enquiry,
   onEdit,
   onView,
+  onReply,
+  onBlacklist,
   onStatusChange,
 }: {
   enquiry: EnquiryRecord;
   onEdit: (enquiry: EnquiryRecord) => void;
   onView: (enquiry: EnquiryRecord) => void;
+  onReply: (enquiry: EnquiryRecord) => void;
+  onBlacklist: (enquiry: EnquiryRecord) => Promise<void>;
   onStatusChange: (enquiry: EnquiryRecord, status: EnquiryRecord["status"]) => Promise<void>;
 }) {
   const [isUpdating, setIsUpdating] = useState(false);
@@ -722,11 +826,24 @@ function EnquiryActions({
             View
           </DropdownMenuItem>
           <DropdownMenuItem
+            onClick={() => onReply(enquiry)}
+            className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
+          >
+            <MessageCircle className="size-4 text-foreground/60" />Reply
+          </DropdownMenuItem>
+          <DropdownMenuItem
             onClick={() => onEdit(enquiry)}
             className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
           >
             <Pencil className="size-4 text-foreground/60" />
             Edit
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => void onBlacklist(enquiry)}
+            className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold text-red-700"
+          >
+            {enquiry.isBlacklisted ? <ShieldCheck className="size-4" /> : <ShieldBan className="size-4" />}
+            {enquiry.isBlacklisted ? "Remove from Blacklist" : "Blacklist"}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           {(["In Progress", "Replied", "Closed"] as const).map((status) => (
@@ -754,21 +871,28 @@ function EnquiryView({
 }) {
   return (
     <Dialog open={Boolean(enquiry)} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-h-[85dvh] overflow-y-auto rounded-sm border border-border bg-white p-5 sm:max-w-2xl">
-        <DialogHeader className="border-b border-border pb-3 pr-8">
+      <DialogContent showCloseButton={false} className="flex max-h-[85dvh] flex-col overflow-hidden rounded-sm border border-border bg-white p-5 sm:max-w-2xl">
+        <DialogHeader className="sticky top-0 z-10 shrink-0 border-b border-border bg-white pb-3 pr-12">
           <DialogTitle className="text-lg font-bold">View Enquiry</DialogTitle>
           <DialogDescription>{enquiry?.enquiryReference}</DialogDescription>
+          <button type="button" aria-label="Close enquiry details" onClick={onClose} className="absolute right-0 top-0 grid size-9 place-items-center rounded-full border border-border bg-white text-foreground shadow-sm transition-colors hover:border-primary hover:bg-primary hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <XCircle className="size-5" />
+          </button>
         </DialogHeader>
         {enquiry ? (
-          <div className="space-y-4">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pt-4">
             <dl className="grid gap-4 sm:grid-cols-2">
               {([
                 ["Name", enquiry.name],
+                ["Gender", enquiry.gender],
                 ["Email", enquiry.email],
                 ["Phone", enquiry.phone],
+                ["Tour", enquiry.tourName || ""],
                 ["Source", enquiry.source],
                 ["Social Media Referral", enquiry.socialMediaReferral],
                 ["Status", enquiry.status],
+                ["Blacklist", enquiry.isBlacklisted ? "Blacklisted" : "Active"],
+                ["Blacklisted At", enquiry.blacklistedAt ? new Date(enquiry.blacklistedAt).toLocaleString("en-IN") : ""],
                 ["Date & Time", `${enquiry.date} ${enquiry.time}`],
               ] as const).map(([label, value]) => (
                 <div key={label} className="min-w-0">
@@ -785,6 +909,10 @@ function EnquiryView({
               <h3 className="text-[11px] font-bold uppercase text-foreground/55">Message</h3>
               <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed break-words text-foreground/70">{enquiry.message || "-"}</p>
             </div>
+            <div className="border-t border-border pt-4">
+              <h3 className="text-[11px] font-bold uppercase text-foreground/55">Reply History</h3>
+              {enquiry.replies?.length ? <ol className="mt-3 space-y-3">{enquiry.replies.map((reply, index) => <li key={`${reply.sentAt}-${index}`} className="rounded-sm bg-muted/35 p-3"><p className="whitespace-pre-wrap text-sm">{reply.message}</p><time className="mt-2 block text-[11px] text-foreground/55">{new Date(reply.sentAt).toLocaleString("en-IN")}</time></li>)}</ol> : <p className="mt-2 text-sm text-foreground/55">No replies yet.</p>}
+            </div>
           </div>
         ) : null}
       </DialogContent>
@@ -795,12 +923,14 @@ function EnquiryView({
 function EnquiryForm({
   editing,
   form,
+  tours,
   onChange,
   onClose,
   onSubmit,
 }: {
   editing: boolean;
   form: EnquiryPayload;
+  tours: AdminTour[];
   onChange: (form: EnquiryPayload) => void;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -817,12 +947,24 @@ function EnquiryForm({
           <button type="button" onClick={onClose} className="text-sm font-semibold text-foreground/55 hover:text-foreground">Close</button>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1.5 text-xs font-semibold sm:col-span-2">Available Tour
+            <select value={form.tourId || ""} onChange={event => { const tour = tours.find(item => item.id === event.target.value); onChange({ ...form, tourId: tour?.id || "", tourName: tour?.tourName || "", subject: tour ? `Tour enquiry - ${tour.tourName}` : form.subject }); }} className="h-10 rounded-sm border border-border px-3">
+              <option value="">Select a tour (optional)</option>{tours.map(tour => <option key={tour.id} value={tour.id}>{tour.tourName}</option>)}
+            </select>
+          </label>
           {(["name", "email", "phone", "subject"] as const).map((field) => (
             <label key={field} className="grid gap-1.5 text-xs font-semibold capitalize">
               {field}
               <input required value={form[field]} onChange={(event) => update(field, event.target.value)} className="h-10 rounded-sm border border-border px-3 outline-none focus:border-primary" />
             </label>
           ))}
+          <label className="grid gap-1.5 text-xs font-semibold">
+            Gender
+            <select value={form.gender || ""} onChange={(event) => update("gender", event.target.value)} className="h-10 rounded-sm border border-border px-3">
+              <option value="">Select gender (optional)</option>
+              <option>Female</option><option>Male</option><option>Non-binary</option><option>Other</option><option>Prefer not to say</option>
+            </select>
+          </label>
           <label className="grid gap-1.5 text-xs font-semibold">
             Source
             <select value={form.source} onChange={(event) => update("source", event.target.value)} className="h-10 rounded-sm border border-border px-3">

@@ -28,12 +28,22 @@ export type HomeExperienceSetting = {
   sortOrder: number;
 };
 
+export type HomeEventSetting = {
+  id: string;
+  title: string;
+  image: string;
+  href: string;
+  sortOrder: number;
+};
+
 export type HomePageContent = {
   id: string;
   upcomingTours: HomeUpcomingTourSetting[];
   trendingDestinations: HomeTrendingDestinationSetting[];
   customisedTourDestinations: HomeCustomisedTourDestinationSetting[];
   homeExperiences: HomeExperienceSetting[];
+  eventsEnabled: boolean;
+  events: HomeEventSetting[];
   createdAt: string;
   updatedAt: string;
 };
@@ -45,6 +55,8 @@ export type HomePagePayload = {
     Omit<HomeCustomisedTourDestinationSetting, "id">
   >;
   homeExperiences: Array<Omit<HomeExperienceSetting, "id">>;
+  eventsEnabled: boolean;
+  events: Array<Omit<HomeEventSetting, "id">>;
 };
 
 type MarkerDestination = {

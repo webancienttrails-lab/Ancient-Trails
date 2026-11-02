@@ -54,6 +54,7 @@ import {
   type AdminTourDeparture,
 } from "@/lib/tours";
 import { cn } from "@/lib/utils";
+import { getAboutMediaUrl, uploadAboutImage } from "@/lib/about";
 
 type HomeFormState = HomePagePayload;
 
@@ -64,6 +65,8 @@ const emptyForm: HomeFormState = {
   trendingDestinations: [],
   customisedTourDestinations: [],
   homeExperiences: [],
+  eventsEnabled: true,
+  events: [],
 };
 
 function getErrorMessage(error: unknown): string {
@@ -92,6 +95,10 @@ function createFormState(
   content: HomePageContent
 ): HomeFormState {
   return {
+    eventsEnabled: content.eventsEnabled ?? true,
+    events: [...(content.events || [])]
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .map(({ title, image, href, sortOrder }) => ({ title, image, href, sortOrder })),
     upcomingTours: [...content.upcomingTours]
       .sort((left, right) => left.sortOrder - right.sortOrder)
       .map(({ departureId, sortOrder, tourId }) => ({
@@ -126,6 +133,8 @@ function createFormState(
 
 function createPayload(form: HomeFormState): HomePagePayload {
   return {
+    eventsEnabled: form.eventsEnabled,
+    events: form.events.map((event, index) => ({ ...event, href: "", sortOrder: index })),
     upcomingTours: form.upcomingTours.map((tour, index) => ({
       ...tour,
       sortOrder: index,
@@ -209,6 +218,7 @@ export default function PagesHomePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [activeDestinationIndex, setActiveDestinationIndex] = useState(0);
+  const [uploadingEventIndex, setUploadingEventIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -394,6 +404,51 @@ export default function PagesHomePage() {
             : experience
       ),
     }));
+  }
+
+  function updateHomeEvent<K extends keyof HomeFormState["events"][number]>(
+    index: number,
+    field: K,
+    value: HomeFormState["events"][number][K]
+  ) {
+    setForm((currentForm) => ({
+      ...currentForm,
+      events: currentForm.events.map((event, eventIndex) =>
+        eventIndex === index ? { ...event, [field]: value } : event
+      ),
+    }));
+  }
+
+  function addHomeEvent() {
+    if (form.events.length >= 20) {
+      toast.error("Limit reached", "The Events section can contain up to 20 cards.");
+      return;
+    }
+    setForm((currentForm) => ({
+      ...currentForm,
+      events: [...currentForm.events, { title: "", image: "", href: "", sortOrder: currentForm.events.length }],
+    }));
+  }
+
+  function removeHomeEvent(index: number) {
+    setForm((currentForm) => ({
+      ...currentForm,
+      events: currentForm.events.filter((_event, eventIndex) => eventIndex !== index),
+    }));
+  }
+
+  async function handleHomeEventImage(index: number, file?: File) {
+    if (!file) return;
+    setUploadingEventIndex(index);
+    try {
+      const response = await uploadAboutImage(file);
+      updateHomeEvent(index, "image", response.data.image);
+      toast.success("Image uploaded", "Event image is ready to save.");
+    } catch (error) {
+      toast.error("Image upload failed", getErrorMessage(error));
+    } finally {
+      setUploadingEventIndex(null);
+    }
   }
 
   function addUpcomingTour() {
@@ -640,6 +695,14 @@ export default function PagesHomePage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (uploadingEventIndex !== null) {
+      toast.error("Image upload in progress", "Wait for the event image to finish uploading before saving.");
+      return;
+    }
+    if (form.events.some((event) => !event.image.trim())) {
+      toast.error("Event image required", "Upload an image for each event before saving.");
+      return;
+    }
     setIsSaving(true);
 
     try {
@@ -744,6 +807,47 @@ export default function PagesHomePage() {
                   <EmptyState label="No trending destinations selected." />
                 )}
               </div>
+            </div>
+          </EditorPanel>
+
+          <EditorPanel actionLabel="Add Event" onAction={addHomeEvent} title="Events">
+            <div className="mb-4 flex items-center justify-between gap-4 rounded-sm border border-border bg-[#fffaf7] p-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Enable Events Section</p>
+                <p className="mt-1 text-xs text-foreground/60">When disabled, the section is removed from the Home page.</p>
+              </div>
+              <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  checked={form.eventsEnabled}
+                  onChange={(event) => setForm((current) => ({ ...current, eventsEnabled: event.target.checked }))}
+                  className="size-4 accent-primary"
+                />
+                {form.eventsEnabled ? "Enabled" : "Disabled"}
+              </label>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {form.events.length ? form.events.map((event, index) => (
+                <article key={`home-event-${index}`} className="grid gap-3 rounded-sm border border-border bg-[#fffaf7] p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="relative aspect-video w-36 shrink-0 overflow-hidden rounded-sm border border-border bg-white">
+                      {event.image ? <img src={getAboutMediaUrl(event.image)} alt={event.title || "Event preview"} className="size-full object-cover" /> : <span className="grid size-full place-items-center text-xs text-foreground/50">No image</span>}
+                    </div>
+                    <div className="grid flex-1 gap-2">
+                      <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-sm border border-border bg-white px-3 py-2 text-xs font-semibold hover:bg-muted">
+                        {uploadingEventIndex === index ? "Uploading…" : "Upload image"}
+                        <input type="file" accept="image/*" className="sr-only" disabled={uploadingEventIndex !== null} onChange={(e) => { void handleHomeEventImage(index, e.target.files?.[0]); e.currentTarget.value = ""; }} />
+                      </label>
+                      <Button type="button" variant="outline" onClick={() => removeHomeEvent(index)} className="h-9 w-fit rounded-sm px-3 text-xs font-bold text-red-700">
+                        <Trash2 className="size-4" /> Remove
+                      </Button>
+                    </div>
+                  </div>
+                  <FormField label="Event name (optional)">
+                    <input value={event.title} maxLength={120} onChange={(e) => updateHomeEvent(index, "title", e.target.value)} className={inputClassName} placeholder="Event name" />
+                  </FormField>
+                </article>
+              )) : <EmptyState label="No events added. Add up to 20 event cards." />}
             </div>
           </EditorPanel>
 

@@ -442,7 +442,7 @@ function InvoiceSheet({ booking, departure, destinationLabel, invoiceRef, tour, 
     <style>{invoiceLayoutStyles}</style>
     <header className="flex items-start justify-between gap-6 border-b border-border pb-3">
       <div className="min-w-0">
-        <SiteLogo alt="Ancient Trails" width={200} height={70} priority className="h-auto w-[170px] object-contain" />
+        <SiteLogo data-pdf-logo alt="Ancient Trails" width={200} height={70} priority className="h-auto w-[170px] object-contain" />
         <p className="mt-2 text-[10px]">A quest for Indian heritage</p>
       </div>
       <div className="min-w-[220px] text-right">
@@ -502,10 +502,13 @@ function InvoiceSheet({ booking, departure, destinationLabel, invoiceRef, tour, 
       <InvoiceSection title="Totals">
         <InvoiceField label="Subtotal (Taxable Value)" value={formatCurrency(subtotal, currency)} />
         <InvoiceField label={"GST (" + gstPercentage + "%)"} value={formatCurrency(gstAmount, currency)} />
+        {booking.tcsApplicable ? <InvoiceField label={`TCS (${booking.tcsPercentage ?? 2}%)`} value={formatCurrency(booking.tcsAmount || 0, currency)} /> : null}
+        <InvoiceField label="Package Total (Excluding TCS)" value={formatCurrency(booking.packageTotal ?? subtotal + gstAmount, currency)} />
         {airFlightCharges > 0 ? <InvoiceField label={booking.airfareIncludedInTotal ? "Airfare (Included)" : "Additional Airfare"} value={formatCurrency(airFlightCharges, currency)} /> : null}
         <div className="flex justify-between gap-4 border-t border-border pt-3"><span className="font-bold">{booking.airfareExcluded && !booking.airfareAddedAt && !airFlightCharges ? "Total (Excluding Airfare)" : "Total Payable"}</span><strong className="text-[18px] text-primary">{formatCurrency(grandTotal, currency)}</strong></div>
         <InvoiceField label="Amount Paid" value={formatCurrency(amountPaid, currency)} />
         <InvoiceField label="Balance Due" value={formatCurrency(balanceDue, currency)} />
+        {amountPaid > grandTotal ? <InvoiceField label="Refund Due" value={formatCurrency(amountPaid - grandTotal, currency)} /> : null}
       </InvoiceSection>
     </div>
     <div className="mt-3 grid grid-cols-2 gap-3">
@@ -656,6 +659,8 @@ function BookingInvoiceContent() {
 
       invoiceElement.classList.add("admin-invoice-exporting");
       await document.fonts.ready;
+      const logo = invoiceElement.querySelector<HTMLImageElement>("img[data-pdf-logo]");
+      if (logo) await logo.decode().catch(() => {});
 
       const canvas = await html2canvas(invoiceElement, {
         backgroundColor: "#ffffff",
@@ -666,8 +671,15 @@ function BookingInvoiceContent() {
           clonedDocument.head.appendChild(style);
           const sheet = clonedDocument.querySelector<HTMLElement>(".admin-invoice-sheet");
           if (sheet) { sheet.style.width = "794px"; sheet.style.padding = "24px"; }
+          const clonedLogo = clonedDocument.querySelector<HTMLImageElement>("img[data-pdf-logo]");
+          if (clonedLogo && logo?.naturalWidth && logo.naturalHeight) {
+            // Canvas export cannot rely on object-fit to preserve the logo's shape.
+            const scale = Math.min(170 / logo.naturalWidth, 70 / logo.naturalHeight);
+            clonedLogo.style.width = `${logo.naturalWidth * scale}px`;
+            clonedLogo.style.height = `${logo.naturalHeight * scale}px`;
+          }
         },
-        scale: Math.min(3, window.devicePixelRatio || 2),
+        scale: 3,
         scrollX: 0,
         scrollY: -window.scrollY,
         useCORS: true,

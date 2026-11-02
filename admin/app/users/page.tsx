@@ -8,7 +8,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Filter,
   MoreHorizontal,
   Search,
   UserPlus,
@@ -21,6 +20,7 @@ import {
   AdminDashboardShell,
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
+import { AdminMobileFilter } from "@/components/admin-dashboard/admin-mobile-filter";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -40,7 +40,10 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { shouldOpenTableRow } from "@/lib/table-row-click";
 import { cn } from "@/lib/utils";
-import { listAdminUsers, updateAdminUser, type AdminDirectoryUser, type AdminUserStats } from "@/lib/users";
+import { listAdminUsers, updateAdminUser, type AdminDirectoryUser, type AdminUserStats, type AdminUserUpdate } from "@/lib/users";
+import { AddAdminUserDialog } from "@/components/add-admin-user-dialog";
+import { getAdminSession, listenForAdminSessionChanges } from "@/lib/admin-auth";
+import { adminTabOptions } from "@/lib/admin-access";
 
 type UserMetric = {
   label: string;
@@ -65,8 +68,10 @@ type UserRecord = {
   status: "Active" | "Inactive";
   tone: string;
   createdAt: string;
+  profession?: string;
+  adminTabs?: string[];
 };
-const roleOptions = ["All Roles", "Traveller", "Expert", "Staff", "Admin"];
+const roleOptions = ["All Roles", "Admin", "Staff"];
 const statusOptions = ["All Status", "Active", "Inactive"];
 const registrationOptions = ["All Time", "Today", "This Week", "This Month"];
 
@@ -74,13 +79,13 @@ function toUserRecord(user: AdminDirectoryUser): UserRecord {
   const profileName = [user.firstName, user.lastName].map((part) => part?.trim()).filter(Boolean).join(" ");
   const name = profileName || "Profile incomplete";
   const adminRole = user.roles.find((role) => role !== "traveller" && role !== "super_admin");
-  const role = user.roles.includes("traveller")
-    ? "Traveller"
-    : adminRole === "expert"
-      ? "Expert"
-      : adminRole === "staff"
-        ? "Staff"
-        : "Admin";
+  const role = adminRole === "expert"
+    ? "Expert"
+    : adminRole === "staff"
+      ? "Staff"
+      : adminRole
+        ? "Admin"
+        : "Traveller";
 
   return {
     id: user.id,
@@ -96,6 +101,8 @@ function toUserRecord(user: AdminDirectoryUser): UserRecord {
     joinedOn: new Date(user.createdAt).toLocaleDateString("en-GB"),
     lastActive: user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString("en-GB") : "Never",
     createdAt: user.createdAt,
+    profession: user.profession,
+    adminTabs: user.adminTabs,
   };
 }
 
@@ -112,6 +119,14 @@ export default function UsersPage() {
   const [selectedRole, setSelectedRole] = useState("All Roles");
   const [selectedStatus, setSelectedStatus] = useState("All Status");
   const [selectedRegistration, setSelectedRegistration] = useState("All Time");
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isAddAdminOpen, setIsAddAdminOpen] = useState(false);
+
+  useEffect(() => {
+    const sync = () => setIsSuperAdmin(Boolean(getAdminSession()?.user.roles.includes("super_admin")));
+    sync();
+    return listenForAdminSessionChanges(sync);
+  }, []);
 
   useEffect(() => {
     async function loadUsers() {
@@ -143,13 +158,23 @@ export default function UsersPage() {
             .toLowerCase()
             .includes(query)
         : true;
-      const matchesRole = selectedRole === "All Roles" || user.role === selectedRole;
+      const matchesRole = activeTab === "traveller" || selectedRole === "All Roles" || user.role === selectedRole;
       const matchesStatus =
         selectedStatus === "All Status" || user.status === selectedStatus;
+      const createdAt = new Date(user.createdAt);
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startOfWeek = new Date(startOfToday);
+      startOfWeek.setDate(startOfWeek.getDate() - ((startOfWeek.getDay() + 6) % 7));
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const matchesRegistration = selectedRegistration === "All Time" ||
+        (createdAt <= now && selectedRegistration === "Today" && createdAt >= startOfToday) ||
+        (createdAt <= now && selectedRegistration === "This Week" && createdAt >= startOfWeek) ||
+        (createdAt <= now && selectedRegistration === "This Month" && createdAt >= startOfMonth);
 
-      return matchesSearch && matchesRole && matchesStatus;
+      return matchesSearch && matchesRole && matchesStatus && matchesRegistration;
     });
-  }, [searchQuery, selectedRole, selectedStatus, tabUsers]);
+  }, [activeTab, searchQuery, selectedRole, selectedStatus, selectedRegistration, tabUsers]);
 
   const userMetrics: UserMetric[] = activeTab === "traveller"
     ? [
@@ -194,10 +219,14 @@ export default function UsersPage() {
           {userMetrics.map((metric) => (
             <MetricCard key={metric.label} metric={metric} />
           ))}
+          {activeTab === "admin" && isSuperAdmin ? <div className="flex items-center justify-end sm:col-span-2 xl:col-span-2">
+            <Button type="button" onClick={() => setIsAddAdminOpen(true)} className="h-11 rounded-sm px-4 text-xs font-bold"><UserPlus className="size-4" />Add Admin User</Button>
+          </div> : null}
         </section>
 
         <section className="overflow-hidden rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
           <UsersToolbar
+            showRole={activeTab !== "traveller"}
             searchQuery={searchQuery}
             selectedRegistration={selectedRegistration}
             selectedRole={activeTab === "traveller" ? selectedRole : "All Roles"}
@@ -207,10 +236,19 @@ export default function UsersPage() {
             onSearchQueryChange={setSearchQuery}
             onStatusChange={setSelectedStatus}
           />
-          <UsersTable users={filteredUsers} isLoading={isLoading} onUserUpdated={(updatedUser) => {
+          <UsersTable showRole={activeTab !== "traveller"} users={filteredUsers} isLoading={isLoading} onUserUpdated={(updatedUser) => {
             setUsers((current) => current.map((user) => user.id === updatedUser.id ? toUserRecord(updatedUser) : user));
           }} />
         </section>
+        {isAddAdminOpen && isSuperAdmin ? <AddAdminUserDialog onClose={() => setIsAddAdminOpen(false)} onCreated={(user) => {
+          setUsers((current) => [toUserRecord(user), ...current.filter((item) => item.id !== user.id)]);
+          setStats((current) => ({ ...current, admins: {
+            ...current.admins,
+            admin: current.admins.admin + (user.roles.includes("admin") ? 1 : 0),
+            staff: current.admins.staff + (user.roles.includes("staff") ? 1 : 0),
+            expert: current.admins.expert + (user.roles.includes("expert") ? 1 : 0),
+          } }));
+        }} /> : null}
       </div>
     </AdminDashboardShell>
   );
@@ -314,6 +352,7 @@ function MetricCard({ metric }: { metric: UserMetric }) {
 }
 
 function UsersToolbar({
+  showRole,
   onRegistrationChange,
   onRoleChange,
   onSearchQueryChange,
@@ -323,6 +362,7 @@ function UsersToolbar({
   selectedRole,
   selectedStatus,
 }: {
+  showRole: boolean;
   onRegistrationChange: (value: string) => void;
   onRoleChange: (value: string) => void;
   onSearchQueryChange: (value: string) => void;
@@ -333,7 +373,11 @@ function UsersToolbar({
   selectedStatus: string;
 }) {
   return (
-    <div className="grid gap-3 border-b border-border p-4 xl:grid-cols-[minmax(260px,1fr)_170px_170px_170px_120px] xl:items-end">
+    <AdminMobileFilter label="Users">
+    <div className={cn("grid gap-3 border-b border-border p-4 xl:items-end", showRole
+      ? "xl:grid-cols-[minmax(260px,1fr)_170px_170px_170px]"
+      : "xl:grid-cols-[minmax(260px,1fr)_170px_170px]")}
+    >
       <label className="relative min-w-0">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground/40" />
         <input
@@ -344,12 +388,12 @@ function UsersToolbar({
           onChange={(event) => onSearchQueryChange(event.target.value)}
         />
       </label>
-      <ToolbarSelect
+      {showRole ? <ToolbarSelect
         label="Role"
         options={roleOptions}
         value={selectedRole}
         onChange={onRoleChange}
-      />
+      /> : null}
       <ToolbarSelect
         label="Status"
         options={statusOptions}
@@ -362,15 +406,8 @@ function UsersToolbar({
         value={selectedRegistration}
         onChange={onRegistrationChange}
       />
-      <Button
-        type="button"
-        variant="outline"
-        className="h-10 rounded-sm border-border bg-white px-4 text-xs font-bold"
-      >
-        <Filter className="size-4" data-icon="inline-start" />
-        Filter
-      </Button>
     </div>
+    </AdminMobileFilter>
   );
 }
 
@@ -410,10 +447,12 @@ function ToolbarSelect({
 }
 
 function UsersTable({
+  showRole,
   users: visibleUsers,
   isLoading,
   onUserUpdated,
 }: {
+  showRole: boolean;
   users: UserRecord[];
   isLoading: boolean;
   onUserUpdated: (user: AdminDirectoryUser) => void;
@@ -425,8 +464,8 @@ function UsersTable({
       <div className="max-w-full overflow-hidden">
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <colgroup>
-            <col className="w-[22%]" />
-            <col className="w-[13%]" />
+            <col className={showRole ? "w-[22%]" : "w-[35%]"} />
+            {showRole ? <col className="w-[13%]" /> : null}
             <col className="w-[15%]" />
             <col className="w-[13%]" />
             <col className="w-[15%]" />
@@ -436,7 +475,7 @@ function UsersTable({
           <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
             <tr>
               <th className="px-4 py-3 font-bold">User</th>
-              <th className="px-4 py-3 font-bold">Role</th>
+              {showRole ? <th className="px-4 py-3 font-bold">Profession</th> : null}
               <th className="px-4 py-3 font-bold">Phone</th>
               <th className="px-4 py-3 font-bold">Status</th>
               <th className="px-4 py-3 font-bold">Joined On</th>
@@ -447,7 +486,7 @@ function UsersTable({
           <tbody>
             {isLoading ? (
               <tr>
-                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={7}>
+                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={showRole ? 7 : 6}>
                   Loading users...
                 </td>
               </tr>
@@ -482,18 +521,16 @@ function UsersTable({
                       </div>
                     </div>
                   </td>
-                  <td data-label="Role" className="px-4 py-4">
+                  {showRole ? <td data-label="Profession" className="px-4 py-4">
                     <span
                       className={cn(
                         "inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold",
-                        user.role === "Traveller"
-                          ? "bg-amber-100 text-amber-700"
-                          : "bg-sky-100 text-sky-700"
+                        "bg-sky-100 text-sky-700"
                       )}
                     >
-                      {user.role}
+                      {user.profession || "—"}
                     </span>
-                  </td>
+                  </td> : null}
                   <td
                     data-label="Phone"
                     className="px-4 py-4 text-xs font-semibold text-foreground/70"
@@ -534,7 +571,7 @@ function UsersTable({
               <tr>
                 <td
                   className="px-5 py-8 text-center text-xs text-foreground/55"
-                  colSpan={7}
+                  colSpan={showRole ? 7 : 6}
                 >
                   No users found.
                 </td>
@@ -585,6 +622,7 @@ function UserActions({ user, onAction }: { user: UserRecord; onAction: (mode: Us
           >
             Edit
           </DropdownMenuItem>
+          {user.role !== "Traveller" ? <>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={() => onAction("status")}
@@ -592,6 +630,7 @@ function UserActions({ user, onAction }: { user: UserRecord; onAction: (mode: Us
           >
             Change Status
           </DropdownMenuItem>
+          </> : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -608,6 +647,12 @@ function UserDetailsDialog({ user, mode, onClose, onUserUpdated }: {
   const [firstName, setFirstName] = useState(user.firstName);
   const [lastName, setLastName] = useState(user.lastName);
   const [email, setEmail] = useState(user.email);
+  const [phone, setPhone] = useState(user.phone);
+  const [profession, setProfession] = useState(user.profession || "");
+  const [role, setRole] = useState<"admin" | "staff" | "expert">(user.role === "Staff" ? "staff" : user.role === "Expert" ? "expert" : "admin");
+  const [status, setStatus] = useState<"active" | "blocked">(user.status === "Active" ? "active" : "blocked");
+  const [adminTabs, setAdminTabs] = useState<string[]>(user.adminTabs ?? adminTabOptions.map((tab) => tab.key));
+  const [password, setPassword] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const nextStatus = user.status === "Active" ? "blocked" : "active";
@@ -616,11 +661,26 @@ function UserDetailsDialog({ user, mode, onClose, onUserUpdated }: {
     event.preventDefault();
     if (isSaving || mode === "view") return;
     setError("");
+    if (mode === "edit" && user.role !== "Traveller" && adminTabs.length === 0) {
+      setError("Select at least one dashboard tab.");
+      return;
+    }
     setIsSaving(true);
     try {
-      const response = await updateAdminUser(user.id, mode === "status" ? { status: nextStatus } : {
-        firstName: firstName.trim(), lastName: lastName.trim(), email: email.trim(),
-      });
+      const changes: AdminUserUpdate = mode === "status" ? { status: nextStatus } : {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim(),
+        mobileNumber: phone.trim(),
+        status,
+        ...(user.role !== "Traveller" ? {
+          profession: profession.trim(),
+          role,
+          adminTabs,
+        } : {}),
+        ...(password ? { password } : {}),
+      };
+      const response = await updateAdminUser(user.id, changes);
       onUserUpdated(response.data.user);
       toast.success("User updated", response.message);
       onClose();
@@ -632,12 +692,13 @@ function UserDetailsDialog({ user, mode, onClose, onUserUpdated }: {
   }
 
   return <Dialog open onOpenChange={(open) => { if (!open && !isSaving) onClose(); }}>
-    <DialogContent showCloseButton={!isSaving} className="sm:max-w-md">
-      <DialogHeader>
+    <DialogContent showCloseButton={!isSaving} className={cn(mode === "edit" ? "flex h-[90dvh] max-h-[90dvh] flex-col overflow-hidden sm:max-w-lg" : "sm:max-w-md")}>
+      <DialogHeader className={cn(mode === "edit" && "shrink-0 border-b border-border pb-3 pr-8")}>
         <DialogTitle>{mode === "view" ? "User Details" : mode === "edit" ? "Edit User" : "Change User Status"}</DialogTitle>
         <DialogDescription>{user.name}</DialogDescription>
       </DialogHeader>
-      <form onSubmit={handleSave} data-admin-ignore-save-reminder="true" className="grid gap-4">
+      <form onSubmit={handleSave} data-admin-ignore-save-reminder="true" className={cn(mode === "edit" ? "flex min-h-0 flex-1 flex-col gap-4 overflow-hidden" : "grid gap-4")}>
+        <div className={cn(mode === "edit" && "min-h-0 flex-1 space-y-4 overflow-y-auto pt-4")}>
         {mode === "edit" ? <>
           <label className="grid gap-1.5 text-xs font-semibold">First Name
             <input value={firstName} onChange={(event) => setFirstName(event.target.value)} maxLength={80} disabled={isSaving}
@@ -651,7 +712,33 @@ function UserDetailsDialog({ user, mode, onClose, onUserUpdated }: {
             <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={254} disabled={isSaving}
               className="h-10 rounded-sm border border-border px-3 text-sm font-normal" />
           </label>
-          <p className="text-xs text-foreground/60">Phone: {user.phone || "Not provided"}</p>
+          <label className="grid gap-1.5 text-xs font-semibold">Phone Number
+            <input type="tel" inputMode="numeric" pattern={user.role === "Traveller" ? "[0-9]{10,15}" : "[0-9]{10}"} maxLength={user.role === "Traveller" ? 15 : 10} value={phone} onChange={(event) => setPhone(event.target.value.replace(/\D/g, "").slice(0, user.role === "Traveller" ? 15 : 10))} disabled={isSaving}
+              className="h-10 rounded-sm border border-border px-3 text-sm font-normal" />
+          </label>
+          {user.role !== "Traveller" ? <>
+            <label className="grid gap-1.5 text-xs font-semibold">Profession
+              <input value={profession} onChange={(event) => setProfession(event.target.value)} maxLength={120} disabled={isSaving} className="h-10 rounded-sm border border-border px-3 text-sm font-normal" />
+            </label>
+            <label className="grid gap-1.5 text-xs font-semibold">Role
+              <select value={role} onChange={(event) => setRole(event.target.value as "admin" | "staff" | "expert")} disabled={isSaving} className="h-10 rounded-sm border border-border bg-white px-3 text-sm font-normal">
+                <option value="admin">Admin</option><option value="staff">Staff</option><option value="expert">Expert</option>
+              </select>
+            </label>
+            <fieldset className="grid gap-2">
+              <legend className="text-xs font-semibold">Dashboard Tab Access</legend>
+              <div className="grid grid-cols-2 gap-2">{adminTabOptions.map((tab) => <label key={tab.key} className="flex items-center gap-2 rounded-sm border border-border px-3 py-2 text-xs font-medium"><input type="checkbox" checked={adminTabs.includes(tab.key)} disabled={isSaving} onChange={(event) => setAdminTabs(current => event.target.checked ? [...current, tab.key] : current.filter(key => key !== tab.key))} className="size-4 accent-primary" />{tab.label}</label>)}</div>
+            </fieldset>
+            <label className="grid gap-1.5 text-xs font-semibold">New Password (optional)
+              <input type="password" minLength={12} maxLength={72} value={password} onChange={(event) => setPassword(event.target.value)} disabled={isSaving} className="h-10 rounded-sm border border-border px-3 text-sm font-normal" />
+              <span className="font-normal text-foreground/60">Leave blank to keep the current password.</span>
+            </label>
+          </> : null}
+          <label className="grid gap-1.5 text-xs font-semibold">Status
+            <select value={status} onChange={(event) => setStatus(event.target.value as "active" | "blocked")} disabled={isSaving} className="h-10 rounded-sm border border-border bg-white px-3 text-sm font-normal">
+              <option value="active">Active</option><option value="blocked">Inactive</option>
+            </select>
+          </label>
         </> : mode === "status" ? <p className="text-sm text-foreground/75">
           {nextStatus === "blocked" ? "Deactivate" : "Activate"} this user account?
         </p> : <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-3 text-sm">
@@ -659,12 +746,17 @@ function UserDetailsDialog({ user, mode, onClose, onUserUpdated }: {
           <dt className="text-foreground/60">Email</dt><dd className="break-all">{user.email || "Not provided"}</dd>
           <dt className="text-foreground/60">Phone</dt><dd>{user.phone || "Not provided"}</dd>
           <dt className="text-foreground/60">Role</dt><dd>{user.role}</dd>
+          {user.role !== "Traveller" ? <>
+            <dt className="text-foreground/60">Profession</dt><dd>{user.profession || "Not provided"}</dd>
+            <dt className="text-foreground/60">Tab Access</dt><dd>{user.adminTabs === undefined ? "All tabs" : adminTabOptions.filter((tab) => user.adminTabs?.includes(tab.key)).map((tab) => tab.label).join(", ") || "None"}</dd>
+          </> : null}
           <dt className="text-foreground/60">Status</dt><dd>{user.status}</dd>
           <dt className="text-foreground/60">Joined On</dt><dd>{user.joinedOn}</dd>
           <dt className="text-foreground/60">Last Active</dt><dd>{user.lastActive}</dd>
         </dl>}
+        </div>
         {error ? <p role="alert" className="text-sm text-red-600">{error}</p> : null}
-        <DialogFooter>
+        <DialogFooter className={cn(mode === "edit" && "shrink-0")}>
           <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>{mode === "view" ? "Close" : "Cancel"}</Button>
           {mode !== "view" ? <Button type="submit" disabled={isSaving}>
             {isSaving ? "Saving..." : mode === "edit" ? "Save Changes" : nextStatus === "blocked" ? "Deactivate" : "Activate"}

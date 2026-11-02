@@ -10,6 +10,7 @@ import { getAdminSession } from "@/lib/admin-auth";
 export type DestinationType = "Domestic" | "International";
 
 export type AdminDestination = {
+  pageContent?: import("./destination-page-content").DestinationPageContent;
   id: string;
   destinationId: string;
   destinationName: string;
@@ -43,6 +44,7 @@ export type AdminDestination = {
 };
 
 export type DestinationPayload = {
+  pageContent?: import("./destination-page-content").DestinationPageContent;
   destinationId: string;
   destinationName: string;
   destinationType: DestinationType;

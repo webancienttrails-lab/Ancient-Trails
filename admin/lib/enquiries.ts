@@ -8,10 +8,16 @@ export type AdminEnquiry = {
   id: string;
   enquiryReference: string;
   name: string;
+  gender?: string;
   email: string;
   phone: string;
   subject: string;
   message: string;
+  tourId?: string;
+  tourName?: string;
+  replies?: Array<{ message: string; sentAt: string }>;
+  isBlacklisted?: boolean;
+  blacklistedAt?: string | null;
   socialMediaReferral?: string;
   source: EnquirySource;
   status: EnquiryStatus;
@@ -53,5 +59,17 @@ export async function updateAdminEnquiryStatus(id: string, status: EnquiryStatus
     method: "PATCH",
     headers: headers(),
     body: JSON.stringify({ status }),
+  });
+}
+
+export async function addAdminEnquiryReply(id: string, message: string) {
+  return apiRequest<{ enquiry: AdminEnquiry }>(`/api/admin/enquiries/${id}/replies`, {
+    method: "POST", headers: headers(), body: JSON.stringify({ message }),
+  });
+}
+
+export async function setAdminEnquiryBlacklist(id: string, isBlacklisted: boolean) {
+  return apiRequest<{ enquiry: AdminEnquiry }>(`/api/admin/enquiries/${id}/blacklist`, {
+    method: "PATCH", headers: headers(), body: JSON.stringify({ isBlacklisted }),
   });
 }

@@ -27,6 +27,7 @@ import {
   AdminDashboardShell,
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
+import { AdminMobileFilter } from "@/components/admin-dashboard/admin-mobile-filter";
 import { HeaderDateRangePicker } from "@/components/admin-dashboard/header-date-range-picker";
 import { Button } from "@/components/ui/button";
 import {
@@ -209,6 +210,8 @@ export default function BlogPage() {
   const [categoryFilter, setCategoryFilter] = useState("All Categories");
   const [isLoadingBlogs, setIsLoadingBlogs] = useState(true);
   const [isDeletingBlogId, setIsDeletingBlogId] = useState<string | null>(null);
+  const [selectedBlogIds, setSelectedBlogIds] = useState<string[]>([]);
+  const [isBulkDeletingBlogs, setIsBulkDeletingBlogs] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -284,12 +287,26 @@ export default function BlogPage() {
       setBlogs((currentBlogs) =>
         currentBlogs.filter((currentBlog) => currentBlog.id !== blog.id)
       );
+      setSelectedBlogIds(current => current.filter(id => id !== blog.id));
       toast.success("Blog deleted", response.message);
     } catch (error) {
       toast.error("Blog not deleted", getErrorMessage(error));
     } finally {
       setIsDeletingBlogId(null);
     }
+  }
+
+  async function handleBulkDeleteBlogs() {
+    const ids = selectedBlogIds;
+    if (!ids.length || !window.confirm(`Permanently delete ${ids.length} selected blog post${ids.length === 1 ? "" : "s"}? This cannot be undone.`)) return;
+    setIsBulkDeletingBlogs(true);
+    const results = await Promise.allSettled(ids.map(id => deleteAdminBlog(id)));
+    const deleted = ids.filter((_id, index) => results[index].status === "fulfilled");
+    setBlogs(current => current.filter(blog => !deleted.includes(blog.id)));
+    setSelectedBlogIds(current => current.filter(id => !deleted.includes(id)));
+    if (deleted.length) toast.success("Blog posts deleted", `${deleted.length} post${deleted.length === 1 ? " was" : "s were"} deleted.`);
+    if (deleted.length < ids.length) toast.error("Some blog posts were not deleted", `${ids.length - deleted.length} post${ids.length - deleted.length === 1 ? " could" : "s could"} not be deleted.`);
+    setIsBulkDeletingBlogs(false);
   }
 
   return (
@@ -336,8 +353,12 @@ export default function BlogPage() {
             searchQuery={searchQuery}
             statusFilter={statusFilter}
           />
+          {selectedBlogIds.length ? <div className="flex items-center justify-between gap-3 border-b border-border bg-orange-50/70 px-4 py-3"><span className="text-xs font-semibold">{selectedBlogIds.length} selected</span><div className="flex gap-2"><button type="button" onClick={() => setSelectedBlogIds([])} className="rounded-md border border-border bg-white px-3 py-2 text-xs">Clear</button><button type="button" disabled={isBulkDeletingBlogs} onClick={handleBulkDeleteBlogs} className="inline-flex items-center gap-2 rounded-md bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"><Trash2 size={14}/>{isBulkDeletingBlogs ? "Deleting…" : "Delete selected"}</button></div></div> : null}
           <BlogTable
             blogs={filteredBlogs}
+            selectedBlogIds={selectedBlogIds}
+            onToggleSelection={id => setSelectedBlogIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])}
+            onToggleAllSelection={() => setSelectedBlogIds(current => filteredBlogs.every(blog => current.includes(blog.id)) ? current.filter(id => !filteredBlogs.some(blog => blog.id === id)) : [...new Set([...current, ...filteredBlogs.map(blog => blog.id)])])}
             isDeletingBlogId={isDeletingBlogId}
             isLoading={isLoadingBlogs}
             onDelete={handleDeleteBlog}
@@ -447,6 +468,7 @@ function BlogToolbar({
   statusFilter: string;
 }) {
   return (
+    <AdminMobileFilter label="Blog">
     <div className="grid gap-3 border-b border-border p-4 xl:grid-cols-[minmax(260px,1fr)_180px_190px_120px] xl:items-end">
       <label className="relative min-w-0">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground/40" />
@@ -479,6 +501,7 @@ function BlogToolbar({
         Filter
       </Button>
     </div>
+    </AdminMobileFilter>
   );
 }
 
@@ -523,12 +546,18 @@ function ToolbarSelect({
 
 function BlogTable({
   blogs,
+  selectedBlogIds,
+  onToggleSelection,
+  onToggleAllSelection,
   isDeletingBlogId,
   isLoading,
   onDelete,
   totalCount,
 }: {
   blogs: AdminBlog[];
+  selectedBlogIds: string[];
+  onToggleSelection: (id: string) => void;
+  onToggleAllSelection: () => void;
   isDeletingBlogId: string | null;
   isLoading: boolean;
   onDelete: (blog: AdminBlog) => void;
@@ -541,6 +570,7 @@ function BlogTable({
       <div className="max-w-full overflow-hidden">
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <colgroup>
+            <col className="w-[4%]" />
             <col className="w-[34%]" />
             <col className="w-[13%]" />
             <col className="w-[14%]" />
@@ -551,6 +581,7 @@ function BlogTable({
           </colgroup>
           <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
             <tr>
+              <th className="px-2 py-3 text-center"><input aria-label="Select all visible blog posts" type="checkbox" checked={blogs.length > 0 && blogs.every(blog => selectedBlogIds.includes(blog.id))} onChange={onToggleAllSelection} className="size-4 accent-primary"/></th>
               <th className="px-4 py-3 font-bold">Blog</th>
               <th className="px-4 py-3 font-bold">Category</th>
               <th className="px-4 py-3 font-bold">Author</th>
@@ -563,7 +594,7 @@ function BlogTable({
           <tbody>
             {isLoading ? (
               <tr>
-                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={7}>
+                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={8}>
                   Loading blogs...
                 </td>
               </tr>
@@ -571,7 +602,7 @@ function BlogTable({
 
             {!isLoading && blogs.length === 0 ? (
               <tr>
-                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={7}>
+                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={8}>
                   No blogs added yet.
                 </td>
               </tr>
@@ -588,6 +619,7 @@ function BlogTable({
                     }}
                     className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
                   >
+                    <td data-no-row-open data-label="Select" className="px-2 py-3 text-center"><input aria-label={`Select blog ${post.title}`} type="checkbox" checked={selectedBlogIds.includes(post.id)} onClick={event => event.stopPropagation()} onChange={() => onToggleSelection(post.id)} className="size-4 accent-primary"/></td>
                     <td data-label="Blog" data-mobile-primary className="px-4 py-3">
                       <div className="min-w-0">
                         <p className="line-clamp-2 text-xs font-bold text-foreground">

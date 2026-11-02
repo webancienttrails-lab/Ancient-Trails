@@ -18,10 +18,12 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import {
   hasValidAdminSession,
+  getAdminSession,
   isAdminRole,
   loginAdmin,
   saveAdminSession,
 } from "@/lib/admin-auth";
+import { canAccessAdminPath, getAdminHomePath } from "@/lib/admin-access";
 
 const authenticatedHomePath = "/";
 const rememberedEmailKey = "ancient_trails_admin_remembered_email";
@@ -49,7 +51,9 @@ function sanitizeRedirectPath(value: string | null): string {
 function getInitialRedirectPath(): string {
   const params = new URLSearchParams(window.location.search);
 
-  return sanitizeRedirectPath(params.get("redirect"));
+  const path = sanitizeRedirectPath(params.get("redirect"));
+  const user = getAdminSession()?.user;
+  return canAccessAdminPath(user, path) ? path : getAdminHomePath(user);
 }
 
 export function AdminLoginCard() {

@@ -59,6 +59,30 @@ function isSaveReminderAction(target: EventTarget | null) {
   return /\b(add|remove|upload|delete|archive|publish|duplicate|use hero|auto place)\b/.test(label);
 }
 
+function isCancelAction(target: EventTarget | null) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  const action = target.closest("button, a[href], [role='button']");
+
+  if (!action) {
+    return false;
+  }
+
+  const label = [
+    action.textContent,
+    action.getAttribute("aria-label"),
+    action.getAttribute("title"),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim()
+    .toLowerCase();
+
+  return /\b(cancel|close|discard)\b/.test(label);
+}
+
 function getUnsavedForm() {
   const form = document.querySelector("form[data-admin-unsaved='true']");
 
@@ -152,12 +176,12 @@ export function AdminSaveReminder() {
       return;
     }
 
-    function showReminder(form: HTMLFormElement, forceToast = false) {
+    function showReminder(form: HTMLFormElement) {
       form.dataset.adminUnsaved = "true";
 
       const now = Date.now();
 
-      if (!forceToast && now - lastToastAtRef.current < 1200) {
+      if (now - lastToastAtRef.current < 2500) {
         return;
       }
 
@@ -169,7 +193,7 @@ export function AdminSaveReminder() {
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
-      showReminder(form, true);
+      showReminder(form);
       focusSaveControl(form);
     }
 
@@ -186,6 +210,17 @@ export function AdminSaveReminder() {
     }
 
     function handleActionClick(event: MouseEvent) {
+      if (isCancelAction(event.target)) {
+        const action = event.target instanceof Element
+          ? event.target.closest("button, a[href], [role='button']")
+          : null;
+        const form = action?.closest("form") || getUnsavedForm();
+        if (form instanceof HTMLFormElement) {
+          delete form.dataset.adminUnsaved;
+        }
+        return;
+      }
+
       const unsavedForm = getUnsavedForm();
 
       if (unsavedForm && getNavigationLink(event.target)) {
@@ -205,7 +240,7 @@ export function AdminSaveReminder() {
       }
 
       if (form) {
-        showReminder(form, true);
+        showReminder(form);
         focusSaveControl(form);
       }
     }

@@ -8,6 +8,8 @@ export type AdminDirectoryUser = {
   email: string;
   mobileNumber: string;
   roles: string[];
+  profession?: string;
+  adminTabs?: string[];
   status: string;
   isMobileVerified: boolean;
   lastLoginAt?: string;
@@ -42,10 +44,32 @@ export async function listAdminUsers() {
   }>("/api/admin/users", { headers: headers() });
 }
 
+export type CreateAdminUserPayload = {
+  firstName: string;
+  lastName: string;
+  profession: string;
+  email: string;
+  mobileNumber: string;
+  role: "admin" | "staff";
+  password: string;
+  adminTabs: string[];
+};
+
+export function createAdminUser(payload: CreateAdminUserPayload) {
+  return apiRequest<{ user: AdminDirectoryUser }>("/api/admin/users", {
+    method: "POST", headers: headers(), body: JSON.stringify(payload),
+  });
+}
+
 export type AdminUserUpdate = {
   firstName?: string;
   lastName?: string;
   email?: string;
+  mobileNumber?: string;
+  profession?: string;
+  role?: "admin" | "staff" | "expert";
+  adminTabs?: string[];
+  password?: string;
   status?: "active" | "blocked";
 };
 

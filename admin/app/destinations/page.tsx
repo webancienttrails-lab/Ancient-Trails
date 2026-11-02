@@ -1,4 +1,5 @@
 "use client";
+import { DestinationPageContentEditor } from "@/components/destination-page-content-editor";
 
 import type { FormEvent, ReactNode } from "react";
 import { Suspense, useEffect, useMemo, useState } from "react";
@@ -29,6 +30,7 @@ import {
   AdminDashboardShell,
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
+import { AdminMobileFilter } from "@/components/admin-dashboard/admin-mobile-filter";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -102,6 +104,7 @@ type DestinationRouteState = {
 };
 
 const emptyDestinationForm: DestinationFormState = {
+  pageContent: {},
   destinationId: "",
   destinationName: "",
   destinationType: "Domestic",
@@ -268,6 +271,7 @@ function createKeyLandmarkPayload(destinationForm: DestinationFormState) {
 
 function destinationToForm(destination: AdminDestination): DestinationFormState {
   return {
+    pageContent: destination.pageContent || {},
     destinationId: destination.destinationId,
     destinationName: destination.destinationName,
     destinationType: destination.destinationType,
@@ -348,6 +352,13 @@ function createHomePagePayload(
   trendingDestinations: HomeTrendingDestinationInput[]
 ): HomePagePayload {
   return {
+    eventsEnabled: content.eventsEnabled ?? true,
+    events: (content.events || []).map(({ title, image, href }, index) => ({
+      title,
+      image,
+      href,
+      sortOrder: index,
+    })),
     upcomingTours: sortBySortOrder(content.upcomingTours).map(
       ({ departureId, tourId }, index) => ({
         departureId,
@@ -540,6 +551,7 @@ function DestinationsPageContent() {
     useState<string | null>(null);
   const [destinationForm, setDestinationForm] =
     useState<DestinationFormState>(emptyDestinationForm);
+  const [isUploadingPageContentImage, setIsUploadingPageContentImage] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -645,6 +657,7 @@ function DestinationsPageContent() {
     [destinations, topDestinationSettings.length]
   );
   const isDestinationFormBusy =
+    isUploadingPageContentImage ||
     isSavingDestination ||
     isUploadingThumbnailImage ||
     isUploadingBannerImage ||
@@ -919,6 +932,7 @@ function DestinationsPageContent() {
 
     if (
       destinationSheetMode === "view" ||
+      isUploadingPageContentImage ||
       isUploadingThumbnailImage ||
       isUploadingBannerImage ||
       uploadingKeyLandmarkImageIndex !== null ||
@@ -1041,6 +1055,7 @@ function DestinationsPageContent() {
       </div>
 
       <DestinationFormDialog
+        onPageContentUploadStateChange={setIsUploadingPageContentImage}
         form={destinationForm}
         mode={destinationSheetMode}
         isOpen={isDestinationSheetOpen}
@@ -1175,6 +1190,7 @@ function DestinationFilters({
   onSearchQueryChange: (value: string) => void;
 }) {
   return (
+    <AdminMobileFilter label="Destinations">
     <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
       <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap">
         <label className="relative min-w-[220px]">
@@ -1189,6 +1205,7 @@ function DestinationFilters({
         </label>
       </div>
     </div>
+    </AdminMobileFilter>
   );
 }
 
@@ -1532,6 +1549,7 @@ function DestinationThumb({ photo, tone }: { photo?: string; tone: string }) {
 }
 
 function DestinationFormDialog({
+  onPageContentUploadStateChange,
   form,
   isBusy,
   mode,
@@ -1553,6 +1571,7 @@ function DestinationFormDialog({
   onSubmit,
   onUpdate,
 }: {
+  onPageContentUploadStateChange: (uploading: boolean) => void;
   form: DestinationFormState;
   isBusy: boolean;
   mode: DestinationSheetMode | null;
@@ -1850,46 +1869,6 @@ function DestinationFormDialog({
             />
           </FormField>
 
-          <FormField label="Weather">
-            <input
-              readOnly={isReadOnly}
-              value={form.weather}
-              onChange={(event) => onUpdate("weather", event.target.value)}
-                className={inputClassName}
-              placeholder="Dry and sunny"
-            />
-          </FormField>
-
-          <FormField label="Elevation">
-            <input
-              readOnly={isReadOnly}
-              value={form.elevation}
-              onChange={(event) => onUpdate("elevation", event.target.value)}
-                className={inputClassName}
-              placeholder="467 m"
-            />
-          </FormField>
-
-          <FormField label="Temperature">
-            <input
-              readOnly={isReadOnly}
-              value={form.temperature}
-              onChange={(event) => onUpdate("temperature", event.target.value)}
-                className={inputClassName}
-              placeholder="Min 10 C / Max 32 C"
-            />
-          </FormField>
-
-          <FormField label="Season">
-            <input
-              readOnly={isReadOnly}
-              value={form.season}
-              onChange={(event) => onUpdate("season", event.target.value)}
-                className={inputClassName}
-              placeholder="Oct - Mar"
-            />
-          </FormField>
-
             <FormField className="sm:col-span-2" label="Thumbnail Image">
               {!isReadOnly ? (
                 <UploadField
@@ -1942,6 +1921,8 @@ function DestinationFormDialog({
                 onRemove={!isReadOnly ? onRemoveGalleryImage : undefined}
               />
           </FormField>
+          <DestinationPageContentEditor value={form.pageContent} readOnly={isReadOnly} disabled={isBusy}
+            onChange={content => onUpdate("pageContent", content)} onUploadStateChange={onPageContentUploadStateChange} />
         </div>
 
           {!isReadOnly ? (

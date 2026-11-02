@@ -33,6 +33,7 @@ import {
   AdminDashboardShell,
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
+import { AdminMobileFilter } from "@/components/admin-dashboard/admin-mobile-filter";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -796,6 +797,10 @@ function ToursPageContent() {
   const [isDeletingTourId, setIsDeletingTourId] = useState<string | null>(null);
   const [isDeletingDepartureId, setIsDeletingDepartureId] =
     useState<string | null>(null);
+  const [selectedTourIds, setSelectedTourIds] = useState<string[]>([]);
+  const [selectedDepartureIds, setSelectedDepartureIds] = useState<string[]>([]);
+  const [isBulkDeletingTours, setIsBulkDeletingTours] = useState(false);
+  const [isBulkDeletingDepartures, setIsBulkDeletingDepartures] = useState(false);
   useEffect(() => {
     let isMounted = true;
 
@@ -1322,9 +1327,11 @@ function ToursPageContent() {
             tour.id === selectedTour.id ? response.data.tour : tour
           )
         );
-        setTourSheetMode(null);
-        setSelectedTour(null);
-        setTourForm(emptyTourForm);
+        if (!routeState.mode) {
+          setTourSheetMode(null);
+          setSelectedTour(null);
+          setTourForm(emptyTourForm);
+        }
         toast.success("Tour updated", response.message);
         router.push("/tours");
         return;
@@ -1333,9 +1340,11 @@ function ToursPageContent() {
       const response = await createAdminTour(payload);
 
       setTours((currentTours) => [response.data.tour, ...currentTours]);
-      setTourSheetMode(null);
-      setSelectedTour(null);
-      setTourForm(emptyTourForm);
+      if (!routeState.mode) {
+        setTourSheetMode(null);
+        setSelectedTour(null);
+        setTourForm(emptyTourForm);
+      }
       toast.success("Tour added", response.message);
       router.push("/tours");
     } catch (error) {
@@ -1374,9 +1383,11 @@ function ToursPageContent() {
               : departure
           )
         );
-        setDepartureSheetMode(null);
-        setSelectedDeparture(null);
-        setDepartureForm(emptyDepartureForm);
+        if (!routeState.mode) {
+          setDepartureSheetMode(null);
+          setSelectedDeparture(null);
+          setDepartureForm(emptyDepartureForm);
+        }
         toast.success("Departure updated", response.message);
         router.push("/tours");
         return;
@@ -1388,9 +1399,11 @@ function ToursPageContent() {
         response.data.departure,
         ...currentDepartures,
       ]);
-      setDepartureSheetMode(null);
-      setSelectedDeparture(null);
-      setDepartureForm(emptyDepartureForm);
+      if (!routeState.mode) {
+        setDepartureSheetMode(null);
+        setSelectedDeparture(null);
+        setDepartureForm(emptyDepartureForm);
+      }
       toast.success("Departure added", response.message);
       router.push("/tours");
     } catch (error) {
@@ -1436,9 +1449,11 @@ function ToursPageContent() {
               : itinerary
           )
         );
-        setItinerarySheetMode(null);
-        setSelectedItinerary(null);
-        setItineraryForm(emptyItineraryForm);
+        if (!routeState.mode) {
+          setItinerarySheetMode(null);
+          setSelectedItinerary(null);
+          setItineraryForm(emptyItineraryForm);
+        }
         toast.success("Itinerary updated", response.message);
         router.push("/tours");
         return;
@@ -1450,9 +1465,11 @@ function ToursPageContent() {
         response.data.itinerary,
         ...currentItineraries,
       ]);
-      setItinerarySheetMode(null);
-      setSelectedItinerary(null);
-      setItineraryForm(emptyItineraryForm);
+      if (!routeState.mode) {
+        setItinerarySheetMode(null);
+        setSelectedItinerary(null);
+        setItineraryForm(emptyItineraryForm);
+      }
       toast.success("Itinerary added", response.message);
       router.push("/tours");
     } catch (error) {
@@ -1482,6 +1499,7 @@ function ToursPageContent() {
       setTours((currentTours) =>
         currentTours.filter((currentTour) => currentTour.id !== tour.id)
       );
+      setSelectedTourIds(current => current.filter(id => id !== tour.id));
       toast.success("Tour deleted", response.message);
     } catch (error) {
       toast.error("Tour not deleted", getErrorMessage(error));
@@ -1507,12 +1525,39 @@ function ToursPageContent() {
           (currentDeparture) => currentDeparture.id !== departure.id
         )
       );
+      setSelectedDepartureIds(current => current.filter(id => id !== departure.id));
       toast.success("Departure deleted", response.message);
     } catch (error) {
       toast.error("Departure not deleted", getErrorMessage(error));
     } finally {
       setIsDeletingDepartureId(null);
     }
+  }
+
+  async function handleBulkDeleteTours() {
+    const ids = selectedTourIds;
+    if (!ids.length || !window.confirm(`Permanently delete ${ids.length} selected tour${ids.length === 1 ? "" : "s"}? Tours with linked bookings may be rejected. This cannot be undone.`)) return;
+    setIsBulkDeletingTours(true);
+    const results = await Promise.allSettled(ids.map(id => deleteAdminTour(id)));
+    const deleted = ids.filter((_id, index) => results[index].status === "fulfilled");
+    setTours(current => current.filter(tour => !deleted.includes(tour.id)));
+    setSelectedTourIds(current => current.filter(id => !deleted.includes(id)));
+    if (deleted.length) toast.success("Tours deleted", `${deleted.length} tour${deleted.length === 1 ? " was" : "s were"} deleted.`);
+    if (deleted.length < ids.length) toast.error("Some tours were not deleted", `${ids.length - deleted.length} tour${ids.length - deleted.length === 1 ? " could" : "s could"} not be deleted. Linked records may prevent deletion.`);
+    setIsBulkDeletingTours(false);
+  }
+
+  async function handleBulkDeleteDepartures() {
+    const ids = selectedDepartureIds;
+    if (!ids.length || !window.confirm(`Permanently delete ${ids.length} selected departure${ids.length === 1 ? "" : "s"}? Departures with linked bookings may be rejected. This cannot be undone.`)) return;
+    setIsBulkDeletingDepartures(true);
+    const results = await Promise.allSettled(ids.map(id => deleteAdminTourDeparture(id)));
+    const deleted = ids.filter((_id, index) => results[index].status === "fulfilled");
+    setDepartures(current => current.filter(departure => !deleted.includes(departure.id)));
+    setSelectedDepartureIds(current => current.filter(id => !deleted.includes(id)));
+    if (deleted.length) toast.success("Departures deleted", `${deleted.length} departure${deleted.length === 1 ? " was" : "s were"} deleted.`);
+    if (deleted.length < ids.length) toast.error("Some departures were not deleted", `${ids.length - deleted.length} departure${ids.length - deleted.length === 1 ? " could" : "s could"} not be deleted. Linked bookings may prevent deletion.`);
+    setIsBulkDeletingDepartures(false);
   }
 
   if (routeState.mode) {
@@ -1676,6 +1721,8 @@ function ToursPageContent() {
             onTabChange={(tab) => {
               setActiveTab(tab);
               setSearchQuery("");
+              setSelectedTourIds([]);
+              setSelectedDepartureIds([]);
             }}
           />
           <TourFilters
@@ -1683,6 +1730,8 @@ function ToursPageContent() {
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
           />
+          {activeTab === "master" && selectedTourIds.length ? <div className="flex items-center justify-between gap-3 border-b border-border bg-orange-50/70 px-4 py-3"><span className="text-xs font-semibold">{selectedTourIds.length} tours selected</span><div className="flex gap-2"><button type="button" onClick={() => setSelectedTourIds([])} className="rounded-md border border-border bg-white px-3 py-2 text-xs">Clear</button><button type="button" disabled={isBulkDeletingTours} onClick={handleBulkDeleteTours} className="inline-flex items-center gap-2 rounded-md bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"><Trash2 size={14}/>{isBulkDeletingTours ? "Deleting…" : "Delete selected"}</button></div></div> : null}
+          {activeTab === "departures" && selectedDepartureIds.length ? <div className="flex items-center justify-between gap-3 border-b border-border bg-orange-50/70 px-4 py-3"><span className="text-xs font-semibold">{selectedDepartureIds.length} departures selected</span><div className="flex gap-2"><button type="button" onClick={() => setSelectedDepartureIds([])} className="rounded-md border border-border bg-white px-3 py-2 text-xs">Clear</button><button type="button" disabled={isBulkDeletingDepartures} onClick={handleBulkDeleteDepartures} className="inline-flex items-center gap-2 rounded-md bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"><Trash2 size={14}/>{isBulkDeletingDepartures ? "Deleting…" : "Delete selected"}</button></div></div> : null}
           {activeTab === "master" ? (
             <TourMasterTable
               destinationNameById={destinationNameById}
@@ -1694,6 +1743,9 @@ function ToursPageContent() {
               onView={openViewTourSheet}
               totalCount={tours.length}
               tours={filteredTours}
+              selectedTourIds={selectedTourIds}
+              onToggleSelection={id => setSelectedTourIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])}
+              onToggleAllSelection={() => setSelectedTourIds(current => filteredTours.every(tour => current.includes(tour.id)) ? current.filter(id => !filteredTours.some(tour => tour.id === id)) : [...new Set([...current, ...filteredTours.map(tour => tour.id)])])}
             />
           ) : (
             <TourDepartureTable
@@ -1705,6 +1757,9 @@ function ToursPageContent() {
               onView={openViewDepartureSheet}
               totalCount={departures.length}
               tourNameById={tourNameById}
+              selectedDepartureIds={selectedDepartureIds}
+              onToggleSelection={id => setSelectedDepartureIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])}
+              onToggleAllSelection={() => setSelectedDepartureIds(current => filteredDepartures.every(departure => current.includes(departure.id)) ? current.filter(id => !filteredDepartures.some(departure => departure.id === id)) : [...new Set([...current, ...filteredDepartures.map(departure => departure.id)])])}
             />
           )}
         </section>
@@ -1938,6 +1993,7 @@ function TourFilters({
       : "Search departures...";
 
   return (
+    <AdminMobileFilter label="Tours">
     <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
       <label className="relative min-w-[220px]">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground/40" />
@@ -1950,11 +2006,15 @@ function TourFilters({
         />
       </label>
     </div>
+    </AdminMobileFilter>
   );
 }
 
 function TourMasterTable({
   destinationNameById,
+  selectedTourIds,
+  onToggleSelection,
+  onToggleAllSelection,
   isDeletingTourId,
   isLoading,
   onDelete,
@@ -1965,6 +2025,9 @@ function TourMasterTable({
   tours,
 }: {
   destinationNameById: Map<string, string>;
+  selectedTourIds: string[];
+  onToggleSelection: (id: string) => void;
+  onToggleAllSelection: () => void;
   isDeletingTourId: string | null;
   isLoading: boolean;
   onDelete: (tour: AdminTour) => void;
@@ -1979,6 +2042,7 @@ function TourMasterTable({
       <div className="max-w-full overflow-hidden">
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <colgroup>
+            <col className="w-[4%]" />
             <col className="w-[14%]" />
             <col className="w-[34%]" />
             <col className="w-[28%]" />
@@ -1987,6 +2051,7 @@ function TourMasterTable({
           </colgroup>
           <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
             <tr>
+              <th className="px-2 py-3 text-center"><input aria-label="Select all visible tours" type="checkbox" checked={tours.length > 0 && tours.every(tour => selectedTourIds.includes(tour.id))} onChange={onToggleAllSelection} className="size-4 accent-primary"/></th>
               <th className="px-1.5 py-2 font-bold">Tour ID</th>
               <th className="px-1.5 py-2 font-bold">Tour Name</th>
               <th className="px-1.5 py-2 font-bold">Destination ID</th>
@@ -1999,7 +2064,7 @@ function TourMasterTable({
               <tr>
                 <td
                   className="px-5 py-8 text-center text-xs text-foreground/55"
-                  colSpan={8}
+                  colSpan={6}
                 >
                   Loading tours...
                 </td>
@@ -2010,7 +2075,7 @@ function TourMasterTable({
               <tr>
                 <td
                   className="px-5 py-8 text-center text-xs text-foreground/55"
-                  colSpan={8}
+                  colSpan={6}
                 >
                   No tour masters added yet.
                 </td>
@@ -2031,6 +2096,7 @@ function TourMasterTable({
                   }}
                   className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
                 >
+                  <td data-no-row-open data-label="Select" className="px-2 py-2 text-center"><input aria-label={`Select tour ${tour.tourName}`} type="checkbox" checked={selectedTourIds.includes(tour.id)} onClick={event => event.stopPropagation()} onChange={() => onToggleSelection(tour.id)} className="size-4 accent-primary"/></td>
                   <td
                     data-label="Tour ID"
                     className="px-1.5 py-2 text-xs font-semibold leading-snug text-foreground/70"
@@ -2101,6 +2167,9 @@ function TourMasterTable({
 
 function TourDepartureTable({
   departures,
+  selectedDepartureIds,
+  onToggleSelection,
+  onToggleAllSelection,
   isDeletingDepartureId,
   isLoading,
   onDelete,
@@ -2110,6 +2179,9 @@ function TourDepartureTable({
   tourNameById,
 }: {
   departures: AdminTourDeparture[];
+  selectedDepartureIds: string[];
+  onToggleSelection: (id: string) => void;
+  onToggleAllSelection: () => void;
   isDeletingDepartureId: string | null;
   isLoading: boolean;
   onDelete: (departure: AdminTourDeparture) => void;
@@ -2123,6 +2195,7 @@ function TourDepartureTable({
       <div className="max-w-full overflow-hidden">
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <colgroup>
+            <col className="w-[4%]" />
             <col className="w-[12%]" />
             <col className="w-[20%]" />
             <col className="w-[16%]" />
@@ -2134,6 +2207,7 @@ function TourDepartureTable({
           </colgroup>
           <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
             <tr>
+              <th className="px-2 py-3 text-center"><input aria-label="Select all visible departures" type="checkbox" checked={departures.length > 0 && departures.every(departure => selectedDepartureIds.includes(departure.id))} onChange={onToggleAllSelection} className="size-4 accent-primary"/></th>
               <th className="px-2 py-3 font-bold">Departure ID</th>
               <th className="px-2 py-3 font-bold">Tour</th>
               <th className="px-2 py-3 font-bold">Dates</th>
@@ -2149,7 +2223,7 @@ function TourDepartureTable({
               <tr>
                 <td
                   className="px-5 py-8 text-center text-xs text-foreground/55"
-                  colSpan={8}
+                  colSpan={9}
                 >
                   Loading departures...
                 </td>
@@ -2160,7 +2234,7 @@ function TourDepartureTable({
               <tr>
                 <td
                   className="px-5 py-8 text-center text-xs text-foreground/55"
-                  colSpan={8}
+                  colSpan={9}
                 >
                   No tour departures added yet.
                 </td>
@@ -2178,6 +2252,7 @@ function TourDepartureTable({
                     }}
                     className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
                   >
+                    <td data-no-row-open data-label="Select" className="px-2 py-3 text-center"><input aria-label={`Select departure ${departure.departureId}`} type="checkbox" checked={selectedDepartureIds.includes(departure.id)} onClick={event => event.stopPropagation()} onChange={() => onToggleSelection(departure.id)} className="size-4 accent-primary"/></td>
                     <td
                       data-label="Departure ID"
                       className="px-2 py-3 text-xs font-semibold text-foreground/70"

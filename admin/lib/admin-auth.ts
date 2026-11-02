@@ -11,6 +11,8 @@ export type AdminUser = {
   nationality?: string;
   dateOfBirth?: string;
   roles: string[];
+  profession?: string;
+  adminTabs?: string[];
   status: string;
   isMobileVerified: boolean;
   lastLoginAt?: string;

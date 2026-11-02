@@ -239,6 +239,11 @@
   background: color-mix(in srgb, var(--muted) 35%, transparent);
 }
 
+.admin-dashboard-main table tbody tr[data-cancellation-request="true"],
+.admin-dashboard-main table tbody tr[data-cancellation-request="true"]:hover {
+  background: #fff1f2;
+}
+
 .admin-dashboard-main section:has(table) {
   border-radius: 1rem;
   overflow: hidden;

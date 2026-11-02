@@ -75,6 +75,7 @@ export type AdminDashboardSummary = {
   bookingChart: DashboardChartBucket[];
   bookingStatus: DashboardStatusItem[];
   enquiryStats: DashboardEnquiryItem[];
+  tourEnquiries: Array<{ tourId: string; title: string; enquiries: number }>;
   metrics: Record<DashboardMetricKey, DashboardMetric>;
   notificationCount: number;
   recentBookings: DashboardRecentBooking[];

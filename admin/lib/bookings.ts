@@ -2,6 +2,7 @@ import { sessionFetch, apiBaseUrl, apiRequest, ApiError, type ApiResponse } from
 import { getAdminSession } from "@/lib/admin-auth";
 
 export type BookingGuestDetails = {
+  isNri?: boolean;
   title: string;
   firstName: string;
   lastName: string;
@@ -34,6 +35,7 @@ export type BookingPaymentLinkPurpose =
   | "custom";
 
 export type BookingTravellerDetails = {
+  isNri?: boolean;
   id: string;
   type: "adult" | "child";
   title?: string;
@@ -56,7 +58,9 @@ export type BookingKycDocument = {
     | "driving_license"
     | "voter_id"
     | "passport"
-    | "pan_card";
+    | "pan_card"
+    | "visa"
+    | "oci";
   documentLabel: string;
   fileName: string;
   fileUrl: string;
@@ -85,6 +89,10 @@ export type BookingAccommodationOption = {
   subtotal: number;
   gstPercentage: number;
   gstAmount: number;
+  packageTotal?: number;
+  tcsApplicable?: boolean;
+  tcsPercentage?: number;
+  tcsAmount?: number;
   grandTotal: number;
   depositAmount: number;
   balanceAmount: number;
@@ -97,14 +105,26 @@ export type BookingCancellationPayload = {
   requestedBy: "Customer" | "Admin" | "Tour Operator";
   notes: string;
 };
+export type AdminCancellationRequest = {
+  id: string; reason: string; status: "requested" | "processing" | "refund_initiated" | "offline_refund_recorded";
+  estimate: { estimatedRefund: number | null; cancellationCharge: number | null; nonRefundableGst: number; daysBeforeDeparture: number; amountPaid: number; chargeableSubtotal?: number | null; chargePercentage: number | null; notes: string[] };
+  requestedAt: string; refundPercentage?: number; refundAmount?: number; refundMode?: "razorpay" | "offline";
+  adminNote?: string; processedAt?: string;
+};
+
+export type BookingHotelDetail = { destination: string; hotel: string; category: string; nights: number };
+export type BookingFlightDetail = { from: string; to: string; airline: string; seats: number; dateTime: string };
 
 export type AdminBooking = {
+  hotelDetails?: BookingHotelDetail[];
+  flightDetails?: BookingFlightDetail[];
   cancellation?: (BookingCancellationPayload & { cancelledAt: string }) | null;
   paymentMode?: "online" | "offline" | "bank_transfer";
   hasBankTransfer?: boolean;
   emergencyContactName?: string;
   emergencyContactMobileNumber?: string;
   id: string;
+  cancellationRequest?: AdminCancellationRequest | null;
   bookingReference?: string;
   bookingStatus?:
     | "draft"
@@ -135,6 +155,11 @@ export type AdminBooking = {
   subtotal?: number;
   gstPercentage?: number;
   gstAmount?: number;
+  packageTotal?: number;
+  tcsApplicable?: boolean;
+  tcsPercentage?: number;
+  tcsAmount?: number;
+  tcsExemptionVerified?: boolean;
   grandTotal?: number;
   airFlightCharges?: number;
   airfareIncludedInTotal?: boolean;
@@ -153,6 +178,11 @@ export type AdminBooking = {
   paymentCurrency?: string;
   amountPaid?: number;
   paymentCapturedAt?: string | null;
+  whatsappMarketingConsent?: boolean;
+  whatsappFeedbackStatus?: "not_sent" | "sending" | "sent" | "failed";
+  whatsappFeedbackLastSentAt?: string | null;
+  whatsappFeedbackRecipient?: string;
+  whatsappFeedbackError?: string;
   heldSeatCount?: number;
   holdExpiresAt?: string | null;
   recoveryExpiresAt?: string | null;
@@ -225,6 +255,7 @@ export type BookingPayload = {
 };
 
 export type BookingAccommodationOptionsPayload = {
+  bookingId?: string;
   departureId: string;
   adultCount: number;
   childDetails: BookingChildDetails[];
@@ -287,6 +318,21 @@ export function getBookingKycDocumentUrl(source = "") {
 export async function listAdminBookings() {
   return apiRequest<{ bookings: AdminBooking[] }>("/api/admin/bookings", {
     headers: getAdminHeaders(),
+  });
+}
+
+export function updateAdminBookingTravelDetails(id: string, payload: {
+  hotelDetails?: BookingHotelDetail[];
+  flightDetails?: BookingFlightDetail[];
+}) {
+  return apiRequest<{ booking: AdminBooking }>(`/api/admin/bookings/${encodeURIComponent(id)}/travel-details`, {
+    method: "PATCH", headers: getAdminHeaders(), body: JSON.stringify(payload),
+  });
+}
+
+export function verifyBookingTcsExemption(bookingId: string, verified: boolean) {
+  return apiRequest<{ booking: AdminBooking }>(`/api/admin/bookings/${encodeURIComponent(bookingId)}/tcs-exemption`, {
+    method: "PATCH", headers: getAdminHeaders(), body: JSON.stringify({ verified }),
   });
 }
 
@@ -372,6 +418,12 @@ export async function sendAdminBookingFinalPaymentWhatsapp(id: string) {
   }>(`/api/admin/bookings/${id}/final-payment-whatsapp`, {
     method: "POST",
     headers: getAdminHeaders(),
+  });
+}
+
+export async function sendAdminBookingFeedbackWhatsapp(id: string, resend = false) {
+  return apiRequest<{ booking: AdminBooking; requestId: string }>(`/api/admin/bookings/${encodeURIComponent(id)}/feedback-whatsapp`, {
+    method: "POST", headers: getAdminHeaders(), body: JSON.stringify({ resend }),
   });
 }
 
@@ -466,6 +518,12 @@ export async function cancelAdminBooking(id: string, payload: BookingCancellatio
       headers: getAdminHeaders(),
     }
   );
+}
+
+export async function startAdminCancellationRefund(id: string, payload: { refundPercentage: number; refundAmount: number; adminNote?: string }) {
+  return apiRequest<{ request: AdminCancellationRequest; booking: AdminBooking | null; refundMode: "razorpay" | "offline" }>(`/api/admin/bookings/${encodeURIComponent(id)}/cancellation-request/refund`, {
+    method: "POST", headers: getAdminHeaders(), body: JSON.stringify(payload),
+  }, true, 60_000);
 }
 
 export async function expireAdminBooking(id: string) {

@@ -26,6 +26,7 @@ import {
   AdminDashboardShell,
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
+import { AdminMobileFilter } from "@/components/admin-dashboard/admin-mobile-filter";
 import { HeaderDateRangePicker } from "@/components/admin-dashboard/header-date-range-picker";
 import { Button } from "@/components/ui/button";
 import {
@@ -379,6 +380,7 @@ function LinkedMetricCard({ metric }: { metric: TestimonialMetric }) {
 
 function TestimonialsToolbar() {
   return (
+    <AdminMobileFilter label="Testimonials">
     <div className="grid gap-3 border-b border-border p-4 xl:grid-cols-[minmax(230px,1fr)_150px_150px_150px_150px_120px] xl:items-end">
       <label className="relative min-w-0">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground/40" />
@@ -405,6 +407,7 @@ function TestimonialsToolbar() {
         Filter
       </Button>
     </div>
+    </AdminMobileFilter>
   );
 }
 

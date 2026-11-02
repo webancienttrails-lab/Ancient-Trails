@@ -28,24 +28,32 @@ const DEFAULT_API_TIMEOUT_MS = 10_000;
 
 async function readResponse(response: Response): Promise<unknown> {
   const contentType = response.headers.get("content-type") || "";
-
-  if (!contentType.includes("application/json")) {
-    return null;
+  const responseText = await response.text();
+  if (!responseText) return null;
+  if (contentType.includes("application/json")) {
+    try {
+      return JSON.parse(responseText);
+    } catch {
+      return null;
+    }
   }
 
-  return response.json();
+  // Proxies and the dev server sometimes return plain-text/HTML errors. Keep
+  // a short useful excerpt so the dashboard does not hide the real failure.
+  return { message: responseText.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 240) };
 }
 
 export async function apiRequest<TData>(
   path: string,
   options: RequestInit = {},
-  allowSessionRefresh = true
+  allowSessionRefresh = true,
+  timeoutMs = DEFAULT_API_TIMEOUT_MS
 ): Promise<ApiResponse<TData>> {
   const { signal: providedSignal, ...requestOptions } = options;
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(
     () => timeoutController.abort(),
-    DEFAULT_API_TIMEOUT_MS
+    timeoutMs
   );
   const abortRequest = () => timeoutController.abort();
 
@@ -70,7 +78,9 @@ export async function apiRequest<TData>(
     if (timeoutController.signal.aborted) {
       throw new ApiError(
         408,
-        "Request timed out. Please check if the backend server is running."
+        timeoutMs > DEFAULT_API_TIMEOUT_MS
+          ? "Refund processing timed out. Check the cancellation request status before retrying; the server may still be processing it."
+          : "Request timed out. Please check if the backend server is running."
       );
     }
 

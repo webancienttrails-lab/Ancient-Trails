@@ -6,6 +6,7 @@ import {
   type ReactNode,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import Link from "next/link";
@@ -17,6 +18,7 @@ import {
 
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import { cn } from "@/lib/utils";
+import { adminTabOptions, getAdminHomePath, hasRestrictedAdminAccess } from "@/lib/admin-access";
 
 import {
   getAdminSession,
@@ -26,6 +28,7 @@ import {
 
 import { AdminDashboardGuard } from "./admin-dashboard-guard";
 import { AdminSidebar } from "./admin-sidebar";
+import { HorizontalTableArrows } from "./horizontal-table-arrows";
 
 type AdminDashboardShellProps = {
   activeLabel?: string;
@@ -96,6 +99,15 @@ function getInitials(name: string) {
   return name.slice(0, 2).toUpperCase() || "SA";
 }
 
+function getAdminRoleName(user: AdminUser | null) {
+  if (!user) return "Administrator";
+  if (user.roles.includes("super_admin")) return "Super Admin";
+  if (user.roles.includes("admin")) return "Admin";
+  if (user.roles.includes("staff")) return "Staff";
+  if (user.roles.includes("expert")) return "Expert";
+  return "Administrator";
+}
+
 function getMobilePageTitle(activeLabel: string) {
   if (activeLabel === "Report") {
     return "Reports";
@@ -161,6 +173,9 @@ export function AdminSidebarToggle({
 function AdminHeader() {
   const [adminUser, setAdminUser] =
     useState<AdminUser | null>(null);
+  const [isProfileHovered, setIsProfileHovered] = useState(false);
+  const [isProfilePinned, setIsProfilePinned] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
   const [saveTarget, setSaveTarget] = useState<{
     disabled: boolean;
     form: HTMLFormElement;
@@ -175,6 +190,29 @@ function AdminHeader() {
 
     return listenForAdminSessionChanges(syncAdminUser);
   }, []);
+
+  const isProfileOpen = isProfileHovered || isProfilePinned;
+
+  useEffect(() => {
+    if (!isProfileOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!profileRef.current?.contains(event.target as Node)) {
+        setIsProfilePinned(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsProfilePinned(false);
+        setIsProfileHovered(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isProfileOpen]);
 
   useEffect(() => {
     function syncSaveTarget() {
@@ -246,7 +284,7 @@ function AdminHeader() {
       {/* ============================= */}
 
       <Link
-        href="/"
+        href={getAdminHomePath(adminUser)}
         aria-label="Ancient Trails admin dashboard"
         className="hidden shrink-0 items-center lg:inline-flex"
       >
@@ -286,42 +324,70 @@ function AdminHeader() {
 
         {/* Notification */}
 
-        <NotificationBell />
+        {adminUser && !hasRestrictedAdminAccess(adminUser) ? <NotificationBell /> : null}
 
         {/* Admin profile */}
 
-        <button
-          className={cn(
-            "hidden h-11 items-center gap-2.5 rounded-xl lg:flex",
-            "border border-border bg-white",
-            "px-2.5 pr-3",
-            "text-sm font-semibold text-foreground",
-            "shadow-sm shadow-stone-200/30",
-            "transition-all duration-200",
-            "hover:border-primary hover:shadow-md"
-          )}
-          type="button"
-          aria-label="Admin profile"
+        <div
+          ref={profileRef}
+          className="relative hidden lg:block"
+          onMouseEnter={() => setIsProfileHovered(true)}
+          onMouseLeave={() => setIsProfileHovered(false)}
         >
-          <span
+          <button
             className={cn(
-              "grid size-8 shrink-0 place-items-center",
-              "rounded-full bg-[#7a3b22]",
-              "text-[11px] font-bold text-white"
+              "flex h-11 items-center gap-2.5 rounded-xl",
+              "border border-border bg-white",
+              "px-2.5 pr-3",
+              "text-sm font-semibold text-foreground",
+              "shadow-sm shadow-stone-200/30",
+              "transition-all duration-200",
+              "hover:border-primary hover:shadow-md",
+              isProfileOpen && "border-primary shadow-md"
             )}
+            type="button"
+            aria-label="Admin profile"
+            aria-expanded={isProfileOpen}
+            aria-haspopup="dialog"
+            onClick={() => setIsProfilePinned((open) => !open)}
           >
-            {initials}
-          </span>
+            <span
+              className={cn(
+                "grid size-8 shrink-0 place-items-center",
+                "rounded-full bg-[#7a3b22]",
+                "text-[11px] font-bold text-white"
+              )}
+            >
+              {initials}
+            </span>
 
-          <span className="max-w-[160px] truncate">
-            {displayName}
-          </span>
+            <span className="max-w-[160px] truncate">
+              {displayName}
+            </span>
 
-          <ChevronDown
-            className="size-4 shrink-0 text-foreground/45"
-            strokeWidth={2}
-          />
-        </button>
+            <ChevronDown
+              className={cn("size-4 shrink-0 text-foreground/45 transition-transform", isProfileOpen && "rotate-180")}
+              strokeWidth={2}
+            />
+          </button>
+
+          {isProfileOpen ? (
+            <section role="dialog" aria-label="Admin profile information" className="absolute right-0 top-full z-[130] mt-2 w-[290px] rounded-xl border border-border bg-white p-4 shadow-xl shadow-stone-300/40">
+              <div className="flex items-center gap-3 border-b border-border pb-3">
+                <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[#7a3b22] text-xs font-bold text-white">{initials}</span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-foreground">{displayName}</p>
+                  <p className="mt-0.5 text-xs text-foreground/55">{getAdminRoleName(adminUser)}</p>
+                </div>
+              </div>
+              <dl className="mt-3 grid gap-3 text-xs">
+                <div className="min-w-0"><dt className="font-semibold text-foreground/55">Email</dt><dd className="mt-0.5 break-all text-foreground">{adminUser?.email || "Not provided"}</dd></div>
+                <div><dt className="font-semibold text-foreground/55">Phone</dt><dd className="mt-0.5 text-foreground">{adminUser?.mobileNumber || "Not provided"}</dd></div>
+                {adminUser?.profession ? <div><dt className="font-semibold text-foreground/55">Profession</dt><dd className="mt-0.5 text-foreground">{adminUser.profession}</dd></div> : null}
+              </dl>
+            </section>
+          ) : null}
+        </div>
       </div>
     </header>
   );
@@ -471,6 +537,7 @@ export function AdminDashboardShell({
 
             {children}
           </main>
+          <HorizontalTableArrows />
         </div>
       </AdminSidebarContext.Provider>
     </AdminDashboardGuard>

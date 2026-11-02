@@ -64,6 +64,7 @@ import {
   sendAdminBookingFinalPaymentWhatsapp,
   updateAdminBooking,
   uploadAdminBookingKycDocument,
+  verifyBookingTcsExemption,
   type AdminBooking,
   type BookingAccommodationOption,
   type BookingAccommodationDetails,
@@ -501,6 +502,7 @@ function bookingGuestToForm(
 
   return {
     title: guest.title,
+    isNri: guest.isNri,
     firstName: guest.firstName,
     lastName: guest.lastName,
 
@@ -711,6 +713,7 @@ function createBookingPayload(
 
             address:
               guest.address.trim(),
+            isNri: guest.isNri,
           };
         }
       ),
@@ -768,6 +771,7 @@ function createBookingPayload(
                   ]?.age || "0"
                 )
               : undefined,
+            isNri: guest.isNri,
           };
         }
       ),
@@ -1174,6 +1178,18 @@ function AdminKycDocumentsSection({
         <p className="text-xs font-medium leading-relaxed text-foreground/55">
           Upload identity documents for each traveller in this booking.
         </p>
+        {booking.tcsApplicable && booking.guestDetails[0]?.isNri ? (
+          <Button type="button" variant="outline" disabled={isUploading} onClick={async () => {
+            onUploadStart();
+            try {
+              const response = await verifyBookingTcsExemption(booking.id, !booking.tcsExemptionVerified);
+              onBookingChange(response.data.booking);
+            } catch (error) { window.alert(getErrorMessage(error)); }
+            finally { onUploadEnd(); }
+          }}>
+            {booking.tcsExemptionVerified ? "Revoke NRI buyer TCS exemption" : "Verify NRI buyer eligibility for 0% TCS (review PAN and Visa)"}
+          </Button>
+        ) : null}
 
         {travellers.map((traveller, index) => {
           const documents = traveller.kycDocuments || [];
@@ -1375,10 +1391,11 @@ function AccommodationPriceBreakdown({
         </span>
         <span>{formatCurrency(option.gstAmount)}</span>
       </div>
+      {option.tcsApplicable ? <div className="flex items-center justify-between gap-4"><span>TCS ({option.tcsPercentage ?? 2}%)</span><span>{formatCurrency(option.tcsAmount || 0)}</span></div> : null}
 
       <div className="flex items-center justify-between gap-4 border-t border-border pt-2 font-bold text-foreground">
         <span>Package total</span>
-        <span>{formatCurrency(option.grandTotal)}</span>
+        <span>{formatCurrency(option.packageTotal ?? option.subtotal + option.gstAmount)}</span>
       </div>
 
       {airFlightCharges > 0 ? (
@@ -1937,6 +1954,7 @@ function BookingInnerPageContent() {
                 })
               ),
               gstPercentage: 5,
+              bookingId: selectedBooking?.id,
             }
           );
 
@@ -2012,6 +2030,8 @@ function BookingInnerPageContent() {
     bookingForm.childDetails,
     bookingForm.departureId,
     bookingForm.selectedAccommodationOptionId,
+    selectedBooking?.id,
+    selectedBooking?.tcsPercentage,
   ]);
 
   /* =======================================================

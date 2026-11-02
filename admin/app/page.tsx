@@ -7,7 +7,6 @@ import {
   Bell,
   CalendarDays,
   CheckCircle2,
-  ChevronDown,
   Clock3,
   FilePlus,
   Mail,
@@ -28,7 +27,7 @@ import {
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
 import { HeaderDateRangePicker } from "@/components/admin-dashboard/header-date-range-picker";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import {
   getAdminSession,
@@ -133,7 +132,7 @@ const quickActions: QuickAction[] = [
     tone: "text-blue-600",
   },
   {
-    label: "View Enquiries",
+    label: "Enquiry",
     href: "/enquiries",
     icon: MessageCircle,
     tone: "text-violet-600",
@@ -345,13 +344,13 @@ export default function DashboardPage() {
           <QuickActions />
         </DashboardPanel>
 
-        <section className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr_0.85fr]">
+        <section className="grid items-stretch gap-4 xl:grid-cols-[0.9fr_1.15fr_0.9fr]">
           <UpcomingTours
             isLoading={isLoading}
             tours={summary?.upcomingTours ?? []}
           />
-          <BookingsOverview
-            buckets={summary?.bookingChart ?? []}
+          <TourEnquiriesOverview
+            tours={summary?.tourEnquiries ?? []}
             isLoading={isLoading}
           />
           <EnquiriesOverview
@@ -523,163 +522,44 @@ function QuickActions() {
   );
 }
 
-function BookingsOverview({
-  buckets,
+function TourEnquiriesOverview({
+  tours,
   isLoading,
 }: {
-  buckets: AdminDashboardSummary["bookingChart"];
+  tours: AdminDashboardSummary["tourEnquiries"];
   isLoading: boolean;
 }) {
   return (
-    <DashboardPanel
-      title="Bookings Overview"
-      action={
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="rounded-sm border-border bg-white text-xs"
-        >
-          Weekly
-          <ChevronDown className="size-3.5" />
-        </Button>
-      }
-    >
-      <div className="mb-3 flex items-center gap-5 text-xs text-foreground/55">
-        <span className="flex items-center gap-2">
-          <span className="size-2.5 rounded-sm bg-[#8cc5ff]" />
-          This Month
-        </span>
-        <span className="flex items-center gap-2">
-          <span className="size-2.5 rounded-sm bg-[#2f7bff]" />
-          Last Month
-        </span>
-      </div>
-
+    <DashboardPanel title="Tour Enquiries" className="flex h-full flex-col">
       {isLoading ? (
-        <SkeletonBlock className="h-[220px]" />
+        <PanelListSkeleton />
+      ) : tours.length > 0 ? (
+        <div className="max-h-[260px] min-h-0 flex-1 space-y-2 overflow-y-auto pr-3 [scrollbar-color:rgb(168_162_158)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-stone-400 [&::-webkit-scrollbar-thumb:hover]:bg-stone-500 [&::-webkit-scrollbar-track]:bg-transparent">
+          {tours.map((tour) => (
+            <div
+              key={tour.tourId}
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
+            >
+              <p className="truncate text-xs font-bold text-foreground">
+                {tour.title}
+              </p>
+              <div className="text-right">
+                <p className="text-lg font-bold leading-none">
+                  {formatNumber(tour.enquiries)}
+                </p>
+                <p className="mt-1 text-[10px] font-semibold text-primary">
+                  Enquiries
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
-        <BookingLineChart buckets={buckets} />
+        <EmptyPanelMessage message="No tours found." />
       )}
     </DashboardPanel>
   );
 }
-
-function BookingLineChart({
-  buckets,
-}: {
-  buckets: AdminDashboardSummary["bookingChart"];
-}) {
-  const visibleBuckets =
-    buckets.length > 0
-      ? buckets
-      : [{ current: 0, label: "This month", previous: 0 }];
-  const maxValue = Math.max(
-    1,
-    ...visibleBuckets.flatMap((bucket) => [bucket.current, bucket.previous])
-  );
-  const chartLeft = 48;
-  const chartRight = 528;
-  const chartTop = 35;
-  const chartBottom = 200;
-  const chartHeight = chartBottom - chartTop;
-  const step = visibleBuckets.length > 1
-    ? (chartRight - chartLeft) / (visibleBuckets.length - 1)
-    : 0;
-  const getY = (value: number) =>
-    chartBottom - (value / maxValue) * chartHeight;
-  const createChartPoints = (key: "current" | "previous") =>
-    visibleBuckets
-      .map((bucket, index) => {
-        const x = chartLeft + index * step;
-        const y = getY(bucket[key]);
-
-        return { x, y };
-      });
-  const createSmoothPath = (points: Array<{ x: number; y: number }>) => {
-    if (points.length === 1) {
-      return `M${points[0].x},${points[0].y}`;
-    }
-
-    return points.reduce((path, point, index) => {
-      if (index === 0) {
-        return `M${point.x},${point.y}`;
-      }
-
-      const previous = points[index - 1];
-      const controlOffset = (point.x - previous.x) / 2;
-
-      return `${path} C${previous.x + controlOffset},${previous.y} ${point.x - controlOffset},${point.y} ${point.x},${point.y}`;
-    }, "");
-  };
-  const currentPoints = createChartPoints("current");
-  const previousPoints = createChartPoints("previous");
-  const currentPath = createSmoothPath(currentPoints);
-  const previousPath = createSmoothPath(previousPoints);
-  const currentAreaPath = `${currentPath} L${chartRight},${chartBottom} L${chartLeft},${chartBottom} Z`;
-
-  return (
-    <div className="h-[230px] w-full">
-      <svg
-        className="h-full w-full"
-        viewBox="0 0 560 240"
-        role="img"
-        aria-label="Bookings overview line chart"
-      >
-        <defs>
-          <linearGradient id="admin-bookings-area" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#8cc5ff" stopOpacity="0.5" />
-            <stop offset="100%" stopColor="#8cc5ff" stopOpacity="0.08" />
-          </linearGradient>
-        </defs>
-        {[0, 1, 2, 3, 4].map((index) => {
-          const y = chartBottom - index * (chartHeight / 4);
-
-          return (
-            <line
-              key={index}
-              x1="0"
-              x2="560"
-              y1={y}
-              y2={y}
-              stroke="#eef2f7"
-              strokeWidth="1"
-            />
-          );
-        })}
-        <path d={currentAreaPath} fill="url(#admin-bookings-area)" />
-        <path
-          d={currentPath}
-          fill="none"
-          stroke="#7ebeff"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="2"
-        />
-        <path
-          d={previousPath}
-          fill="none"
-          stroke="#2f7bff"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="2"
-        />
-        {visibleBuckets.map((bucket, index) => {
-          const x = chartLeft + index * step;
-
-          return (
-            <g key={`${bucket.label}-${index}`}>
-              <text x={x} y="224" fill="#4b5563" fontSize="12" textAnchor="middle">
-                {bucket.label}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
-}
-
 function UpcomingTours({
   isLoading,
   tours,

@@ -79,6 +79,7 @@ type ExperienceFormEntry = {
   form: ExperienceFormState;
   isUploadingAttractionPhotos: boolean;
   isUploadingPhotos: boolean;
+  isUploadingWhatsAppReviews: boolean;
   isUploadingVideos: boolean;
   localId: string;
 };
@@ -88,6 +89,7 @@ const emptyExperienceForm: ExperienceFormState = {
   travellerName: "",
   travellerEmail: "",
   writtenReview: "",
+  whatsappReviewImages: [],
   googleReviewUrl: "",
   googleReviewPublishedAt: "",
   googleReviewTimeDescription: "",
@@ -160,6 +162,7 @@ function createExperienceEntry(
       travellerEmail: form.travellerEmail || "",
       travellerName: form.travellerName || "",
       writtenReview: form.writtenReview || "",
+      whatsappReviewImages: getUniqueMediaList(form.whatsappReviewImages),
       thingsToKnow: form.thingsToKnow || "",
       travellerPhotoGallery: getUniqueMediaList(form.travellerPhotoGallery),
       travellerVideos: getUniqueMediaList(form.travellerVideos),
@@ -173,6 +176,7 @@ function createExperienceEntry(
     },
     isUploadingAttractionPhotos: false,
     isUploadingPhotos: false,
+    isUploadingWhatsAppReviews: false,
     isUploadingVideos: false,
     localId: createLocalId(),
   };
@@ -259,6 +263,7 @@ function experienceToForm(experience: AdminExperience): ExperienceFormState {
     travellerName: experience.travellerName || "",
     travellerEmail: experience.travellerEmail || "",
     writtenReview: experience.writtenReview || "",
+    whatsappReviewImages: getUniqueMediaList(experience.whatsappReviewImages || []),
     googleReviewUrl: experience.googleReviewUrl || "",
     googleReviewPublishedAt: toGoogleReviewDateInput(experience.googleReviewPublishedAt),
     googleReviewTimeDescription: experience.googleReviewTimeDescription || "",
@@ -286,6 +291,7 @@ function createExperiencePayload(form: ExperienceFormState): ExperiencePayload {
     travellerName: form.travellerName.trim(),
     travellerEmail: form.travellerEmail.trim(),
     writtenReview: form.writtenReview.trim(),
+    whatsappReviewImages: getUniqueMediaList(form.whatsappReviewImages),
     googleReviewUrl: (form.googleReviewUrl || "").trim(),
     googleReviewPublishedAt: toGoogleReviewDatePayload(form.googleReviewPublishedAt),
     googleReviewTimeDescription: (form.googleReviewTimeDescription || "").trim(),
@@ -376,6 +382,7 @@ export function ExperienceEditorPage({
     (entry) =>
       entry.isUploadingAttractionPhotos ||
       entry.isUploadingPhotos ||
+      entry.isUploadingWhatsAppReviews ||
       entry.isUploadingVideos
   );
   const isBusy = isSaving || isUploading;
@@ -482,6 +489,7 @@ export function ExperienceEditorPage({
     field:
       | "isUploadingAttractionPhotos"
       | "isUploadingPhotos"
+      | "isUploadingWhatsAppReviews"
       | "isUploadingVideos",
     value: boolean
   ) {
@@ -671,6 +679,26 @@ export function ExperienceEditorPage({
       toast.error("Photo upload failed", getErrorMessage(error));
     } finally {
       updateEntryUploadState(localId, "isUploadingPhotos", false);
+    }
+  }
+
+  async function handleWhatsAppReviewUpload(localId: string, files: FileList | null) {
+    const selectedImages = Array.from(files || []);
+    if (selectedImages.length === 0) return;
+    try {
+      const { rejectedPhotos, uploadablePhotos } = await getUploadableExperiencePhotos(selectedImages);
+      if (rejectedPhotos.length > 0) toast.error("Screenshot too large", getExperiencePhotoSizeMessage(rejectedPhotos));
+      if (uploadablePhotos.length === 0) return;
+      updateEntryUploadState(localId, "isUploadingWhatsAppReviews", true);
+      const response = await uploadExperienceMedia({ whatsappReviewImages: uploadablePhotos });
+      setEntries(currentEntries => currentEntries.map(entry => entry.localId === localId
+        ? { ...entry, form: { ...entry.form, whatsappReviewImages: getUniqueMediaList([...entry.form.whatsappReviewImages, ...response.data.whatsappReviewImages]) } }
+        : entry));
+      toast.success("WhatsApp review screenshots uploaded", response.message);
+    } catch (error) {
+      toast.error("Screenshot upload failed", getErrorMessage(error));
+    } finally {
+      updateEntryUploadState(localId, "isUploadingWhatsAppReviews", false);
     }
   }
 
@@ -944,6 +972,7 @@ export function ExperienceEditorPage({
                     onRemovePhoto={removeTravellerPhoto}
                     onRemoveVideo={removeTravellerVideo}
                     onUpdate={updateEntryForm}
+                    onWhatsAppReviewUpload={handleWhatsAppReviewUpload}
                     onVideoTitleChange={updateTravellerVideoTitle}
                     onVideoUpload={handleVideoUpload}
                   />
@@ -1035,6 +1064,7 @@ function ExperienceEntryCard({
   onRemovePhoto,
   onRemoveVideo,
   onUpdate,
+  onWhatsAppReviewUpload,
   onVideoTitleChange,
   onVideoUpload,
 }: {
@@ -1061,6 +1091,7 @@ function ExperienceEntryCard({
     field: K,
     value: ExperienceFormState[K]
   ) => void;
+  onWhatsAppReviewUpload: (localId: string, files: FileList | null) => void;
   onVideoTitleChange: (localId: string, index: number, value: string) => void;
   onVideoUpload: (localId: string, files: FileList | null) => void;
 }) {
@@ -1188,6 +1219,21 @@ function ExperienceEntryCard({
             }
             className={textareaClassName}
             placeholder="Traveller review"
+          />
+        </FormField>
+
+        <FormField className="sm:col-span-2" label="WhatsApp Review Screenshots">
+          <UploadField
+            accept="image/*"
+            disabled={isBusy}
+            isUploading={entry.isUploadingWhatsAppReviews}
+            label="Upload WhatsApp review screenshots"
+            multiple
+            onFilesSelected={(files) => onWhatsAppReviewUpload(entry.localId, files)}
+          />
+          <ImagePreviewGrid
+            images={entry.form.whatsappReviewImages}
+            onRemove={(imageIndex) => onUpdate(entry.localId, "whatsappReviewImages", entry.form.whatsappReviewImages.filter((_image, index) => index !== imageIndex))}
           />
         </FormField>
 

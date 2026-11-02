@@ -6,8 +6,10 @@ import { Loader2 } from "lucide-react";
 
 import {
   hasValidAdminSession,
+  getAdminSession,
   listenForAdminSessionChanges,
 } from "@/lib/admin-auth";
+import { canAccessAdminPath, getAdminHomePath } from "@/lib/admin-access";
 
 function getCurrentRedirectPath(pathname: string | null) {
   if (typeof window === "undefined") {
@@ -25,7 +27,10 @@ export function AdminDashboardGuard({ children }: { children: ReactNode }) {
   useEffect(() => {
     const syncAccess = () => {
       if (hasValidAdminSession()) {
-        setIsAllowed(true);
+        const user = getAdminSession()?.user;
+        const allowed = canAccessAdminPath(user, pathname || "/");
+        setIsAllowed(allowed);
+        if (!allowed) router.replace(getAdminHomePath(user));
         return;
       }
 
@@ -40,7 +45,7 @@ export function AdminDashboardGuard({ children }: { children: ReactNode }) {
     return listenForAdminSessionChanges(syncAccess);
   }, [pathname, router]);
 
-  if (!isAllowed) {
+  if (!isAllowed || !canAccessAdminPath(getAdminSession()?.user, pathname || "/")) {
     return (
       <div className="grid min-h-screen place-items-center bg-[#fbf8f5] text-primary">
         <Loader2 className="size-7 animate-spin" aria-hidden="true" />

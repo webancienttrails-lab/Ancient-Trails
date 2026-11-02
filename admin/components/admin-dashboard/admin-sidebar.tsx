@@ -1,6 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { getAdminSession, listenForAdminSessionChanges, type AdminUser } from "@/lib/admin-auth";
+import { canAccessAdminPath, getAdminHomePath } from "@/lib/admin-access";
 import {
   CalendarDays,
   ChartColumn,
@@ -117,6 +120,13 @@ export function AdminSidebar({
   onMobileClose,
   onMobileToggle,
 }: AdminSidebarProps) {
+  const [user, setUser] = useState<AdminUser | null>(null);
+  useEffect(() => {
+    const sync = () => setUser(getAdminSession()?.user ?? null);
+    sync();
+    return listenForAdminSessionChanges(sync);
+  }, []);
+  const visibleItems = items.filter((item) => canAccessAdminPath(user, item.href));
   return (
     <aside
       className={cn(
@@ -202,7 +212,7 @@ export function AdminSidebar({
 
         <div className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-white/15 px-4">
           <Link
-            href="/"
+            href={getAdminHomePath(user)}
             aria-label="Ancient Trails admin dashboard"
             onClick={onMobileClose}
             className="min-w-0"
@@ -233,7 +243,7 @@ export function AdminSidebar({
         <nav className="grid flex-1 content-start gap-1 overflow-hidden px-4 py-3">
           <SidebarLinks
             activeLabel={activeLabel}
-            items={items}
+            items={visibleItems}
             mobileDrawer
             onMobileClose={onMobileClose}
           />
@@ -294,7 +304,7 @@ export function AdminSidebar({
           <SidebarLinks
             activeLabel={activeLabel}
             isCollapsed={isCollapsed}
-            items={items}
+            items={visibleItems}
           />
         </nav>
 

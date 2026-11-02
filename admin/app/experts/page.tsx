@@ -30,6 +30,7 @@ import {
   AdminDashboardShell,
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
+import { AdminMobileFilter } from "@/components/admin-dashboard/admin-mobile-filter";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -292,6 +293,8 @@ function ExpertsPageContent() {
   const [isDeletingExpertId, setIsDeletingExpertId] = useState<string | null>(
     null
   );
+  const [selectedExpertIds, setSelectedExpertIds] = useState<string[]>([]);
+  const [isBulkDeletingExperts, setIsBulkDeletingExperts] = useState(false);
   const [expertForm, setExpertForm] =
     useState<ExpertFormState>(emptyExpertForm);
 
@@ -474,12 +477,26 @@ function ExpertsPageContent() {
       setExperts((currentExperts) =>
         currentExperts.filter((currentExpert) => currentExpert.id !== expert.id)
       );
+      setSelectedExpertIds(current => current.filter(id => id !== expert.id));
       toast.success("Expert deleted", response.message);
     } catch (error) {
       toast.error("Expert not deleted", getErrorMessage(error));
     } finally {
       setIsDeletingExpertId(null);
     }
+  }
+
+  async function handleBulkDeleteExperts() {
+    const ids = selectedExpertIds;
+    if (!ids.length || !window.confirm(`Permanently delete ${ids.length} selected expert${ids.length === 1 ? "" : "s"}? This cannot be undone.`)) return;
+    setIsBulkDeletingExperts(true);
+    const results = await Promise.allSettled(ids.map(id => deleteAdminExpert(id)));
+    const deleted = ids.filter((_id, index) => results[index].status === "fulfilled");
+    setExperts(current => current.filter(expert => !deleted.includes(expert.id)));
+    setSelectedExpertIds(current => current.filter(id => !deleted.includes(id)));
+    if (deleted.length) toast.success("Experts deleted", `${deleted.length} expert${deleted.length === 1 ? " was" : "s were"} deleted.`);
+    if (deleted.length < ids.length) toast.error("Some experts were not deleted", `${ids.length - deleted.length} expert${ids.length - deleted.length === 1 ? " could" : "s could"} not be deleted.`);
+    setIsBulkDeletingExperts(false);
   }
 
   async function handleSaveExpert(event: FormEvent<HTMLFormElement>) {
@@ -619,8 +636,12 @@ function ExpertsPageContent() {
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
           />
+          {selectedExpertIds.length ? <div className="flex items-center justify-between gap-3 border-b border-border bg-orange-50/70 px-4 py-3"><span className="text-xs font-semibold">{selectedExpertIds.length} selected</span><div className="flex gap-2"><button type="button" onClick={() => setSelectedExpertIds([])} className="rounded-md border border-border bg-white px-3 py-2 text-xs">Clear</button><button type="button" disabled={isBulkDeletingExperts} onClick={handleBulkDeleteExperts} className="inline-flex items-center gap-2 rounded-md bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"><Trash2 size={14}/>{isBulkDeletingExperts ? "Deleting…" : "Delete selected"}</button></div></div> : null}
           <ExpertTable
             experts={filteredExperts}
+            selectedExpertIds={selectedExpertIds}
+            onToggleSelection={id => setSelectedExpertIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])}
+            onToggleAllSelection={() => setSelectedExpertIds(current => filteredExperts.every(expert => current.includes(expert.id)) ? current.filter(id => !filteredExperts.some(expert => expert.id === id)) : [...new Set([...current, ...filteredExperts.map(expert => expert.id)])])}
             isDeletingExpertId={isDeletingExpertId}
             isLoading={isLoadingExperts}
             onDelete={handleDeleteExpert}
@@ -756,6 +777,7 @@ function ExpertFilters({
   onSearchQueryChange: (value: string) => void;
 }) {
   return (
+    <AdminMobileFilter label="Experts">
     <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
       <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap">
         <label className="relative min-w-[220px]">
@@ -770,11 +792,15 @@ function ExpertFilters({
         </label>
       </div>
     </div>
+    </AdminMobileFilter>
   );
 }
 
 function ExpertTable({
   experts,
+  selectedExpertIds,
+  onToggleSelection,
+  onToggleAllSelection,
   isDeletingExpertId,
   isLoading,
   onDelete,
@@ -783,6 +809,9 @@ function ExpertTable({
   totalCount,
 }: {
   experts: AdminExpert[];
+  selectedExpertIds: string[];
+  onToggleSelection: (id: string) => void;
+  onToggleAllSelection: () => void;
   isDeletingExpertId: string | null;
   isLoading: boolean;
   onDelete: (expert: AdminExpert) => void;
@@ -795,6 +824,7 @@ function ExpertTable({
       <div className="max-w-full overflow-hidden">
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <colgroup>
+            <col className="w-[4%]" />
             <col className="w-[9%]" />
             <col className="w-[22%]" />
             <col className="w-[25%]" />
@@ -804,6 +834,7 @@ function ExpertTable({
           </colgroup>
           <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
             <tr>
+              <th className="px-2 py-3 text-center"><input aria-label="Select all visible experts" type="checkbox" checked={experts.length > 0 && experts.every(expert => selectedExpertIds.includes(expert.id))} onChange={onToggleAllSelection} className="size-4 accent-primary"/></th>
               <th className="px-2 py-3 font-bold">Expert ID</th>
               <th className="px-2 py-3 font-bold">Full Name</th>
               <th className="px-2 py-3 font-bold">Expertise Tags</th>
@@ -817,7 +848,7 @@ function ExpertTable({
               <tr>
                 <td
                   className="px-5 py-8 text-center text-xs text-foreground/55"
-                  colSpan={6}
+                  colSpan={7}
                 >
                   Loading experts...
                 </td>
@@ -828,7 +859,7 @@ function ExpertTable({
               <tr>
                 <td
                   className="px-5 py-8 text-center text-xs text-foreground/55"
-                  colSpan={6}
+                  colSpan={7}
                 >
                   No experts added yet.
                 </td>
@@ -846,6 +877,7 @@ function ExpertTable({
                     }}
                     className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
                   >
+                    <td data-no-row-open data-label="Select" className="px-2 py-3 text-center"><input aria-label={`Select expert ${expert.fullName}`} type="checkbox" checked={selectedExpertIds.includes(expert.id)} onClick={event => event.stopPropagation()} onChange={() => onToggleSelection(expert.id)} className="size-4 accent-primary"/></td>
                     <td
                       data-label="Expert ID"
                       className="px-2 py-3 text-xs font-semibold text-foreground/70"

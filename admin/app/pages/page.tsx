@@ -24,6 +24,7 @@ import {
   AdminDashboardShell,
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
+import { AdminMobileFilter } from "@/components/admin-dashboard/admin-mobile-filter";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -466,6 +467,7 @@ function PagesToolbar({
   onTypeFilterChange: (value: string) => void;
 }) {
   return (
+    <AdminMobileFilter label="Pages">
     <div className="grid gap-3 border-b border-border p-4 xl:grid-cols-[minmax(260px,1fr)_170px_170px_120px] xl:items-end">
       <label className="relative min-w-0">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground/40" />
@@ -498,6 +500,7 @@ function PagesToolbar({
         Filter
       </Button>
     </div>
+    </AdminMobileFilter>
   );
 }
 

@@ -31,6 +31,7 @@ import {
   AdminDashboardShell,
   AdminSidebarToggle,
 } from "@/components/admin-dashboard/admin-dashboard-shell";
+import { AdminMobileFilter } from "@/components/admin-dashboard/admin-mobile-filter";
 import { HeaderDateRangePicker } from "@/components/admin-dashboard/header-date-range-picker";
 import { Button } from "@/components/ui/button";
 import {
@@ -93,6 +94,7 @@ type ExperienceFormState = Omit<
   | "ratingTourExpert"
   | "thingsToKnow"
   | "travellerPhotoGallery"
+  | "whatsappReviewImages"
   | "travellerVideos"
   | "travellerVideoTitles"
   | "attractionPhotoGallery"
@@ -103,6 +105,7 @@ type ExperienceFormState = Omit<
   ratingTourExpert: string;
   thingsToKnow: string;
   travellerPhotoGallery: string;
+  whatsappReviewImages: string[];
   travellerVideos: string;
   travellerVideoTitles: string;
   attractionPhotoGallery: ExperienceAttractionPhoto[];
@@ -120,6 +123,7 @@ const emptyExperienceForm: ExperienceFormState = {
   googleReviewTimeDescription: "",
   thingsToKnow: "",
   travellerPhotoGallery: "",
+  whatsappReviewImages: [],
   travellerVideos: "",
   travellerVideoTitles: "",
   attractionPhotoGallery: [],
@@ -157,6 +161,10 @@ function appendTextList(currentValue: string, newValues: string[]): string {
   return Array.from(new Set([...parseTextList(currentValue), ...newValues])).join(
     "\n"
   );
+}
+
+function getUniqueMediaList(values: string[] = []): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
 function getIndexedTextList(value: string, length: number): string[] {
@@ -233,6 +241,7 @@ function experienceToForm(experience: AdminExperience): ExperienceFormState {
     travellerEmail: experience.travellerEmail || "",
     title: experience.title,
     writtenReview: experience.writtenReview || "",
+    whatsappReviewImages: getUniqueMediaList(experience.whatsappReviewImages || []),
     googleReviewUrl: experience.googleReviewUrl || "",
     googleReviewPublishedAt: toGoogleReviewDateInput(experience.googleReviewPublishedAt),
     googleReviewTimeDescription: experience.googleReviewTimeDescription || "",
@@ -266,6 +275,7 @@ function createExperiencePayload(form: ExperienceFormState): ExperiencePayload {
     travellerEmail: form.travellerEmail.trim(),
     title: (form.title || "").trim(),
     writtenReview: form.writtenReview.trim(),
+    whatsappReviewImages: getUniqueMediaList(form.whatsappReviewImages),
     googleReviewUrl: (form.googleReviewUrl || "").trim(),
     googleReviewPublishedAt: toGoogleReviewDatePayload(form.googleReviewPublishedAt),
     googleReviewTimeDescription: (form.googleReviewTimeDescription || "").trim(),
@@ -420,9 +430,12 @@ export default function ExperiencesPage() {
   const [isUploadingAttractionPhotos, setIsUploadingAttractionPhotos] =
     useState(false);
   const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
+  const [isUploadingWhatsAppReviews, setIsUploadingWhatsAppReviews] = useState(false);
   const [isUploadingVideos, setIsUploadingVideos] = useState(false);
   const [deletingExperienceId, setDeletingExperienceId] =
     useState<string | null>(null);
+  const [selectedExperienceIds, setSelectedExperienceIds] = useState<string[]>([]);
+  const [isBulkDeletingExperiences, setIsBulkDeletingExperiences] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -470,6 +483,7 @@ export default function ExperiencesPage() {
     isSavingExperience ||
     isUploadingAttractionPhotos ||
     isUploadingPhotos ||
+    isUploadingWhatsAppReviews ||
     isUploadingVideos;
 
   const filteredExperiences = useMemo(() => {
@@ -542,6 +556,13 @@ export default function ExperiencesPage() {
       travellerPhotoGallery: parseTextList(currentForm.travellerPhotoGallery)
         .filter((_photo, index) => index !== indexToRemove)
         .join("\n"),
+    }));
+  }
+
+  function handleRemoveWhatsAppReviewImage(indexToRemove: number) {
+    setExperienceForm((currentForm) => ({
+      ...currentForm,
+      whatsappReviewImages: currentForm.whatsappReviewImages.filter((_image, index) => index !== indexToRemove),
     }));
   }
 
@@ -628,6 +649,27 @@ export default function ExperiencesPage() {
       toast.error("Photo upload failed", getErrorMessage(error));
     } finally {
       setIsUploadingPhotos(false);
+    }
+  }
+
+  async function handleWhatsAppReviewUpload(files: FileList | null) {
+    const selectedImages = Array.from(files || []);
+    if (selectedImages.length === 0) return;
+    try {
+      const { rejectedPhotos, uploadablePhotos } = await getUploadableExperiencePhotos(selectedImages);
+      if (rejectedPhotos.length > 0) toast.error("Screenshot too large", getExperiencePhotoSizeMessage(rejectedPhotos));
+      if (uploadablePhotos.length === 0) return;
+      setIsUploadingWhatsAppReviews(true);
+      const response = await uploadExperienceMedia({ whatsappReviewImages: uploadablePhotos });
+      setExperienceForm(currentForm => ({
+        ...currentForm,
+        whatsappReviewImages: getUniqueMediaList([...currentForm.whatsappReviewImages, ...response.data.whatsappReviewImages]),
+      }));
+      toast.success("WhatsApp review screenshots uploaded", response.message);
+    } catch (error) {
+      toast.error("Screenshot upload failed", getErrorMessage(error));
+    } finally {
+      setIsUploadingWhatsAppReviews(false);
     }
   }
 
@@ -778,12 +820,26 @@ export default function ExperiencesPage() {
       setExperiences((currentExperiences) =>
         currentExperiences.filter((item) => item.id !== experience.id)
       );
+      setSelectedExperienceIds(current => current.filter(id => id !== experience.id));
       toast.success("Experience deleted", response.message);
     } catch (error) {
       toast.error("Unable to delete experience", getErrorMessage(error));
     } finally {
       setDeletingExperienceId(null);
     }
+  }
+
+  async function handleBulkDeleteExperiences() {
+    const ids = selectedExperienceIds;
+    if (!ids.length || !window.confirm(`Permanently delete ${ids.length} selected experience${ids.length === 1 ? "" : "s"}? This cannot be undone.`)) return;
+    setIsBulkDeletingExperiences(true);
+    const results = await Promise.allSettled(ids.map(id => deleteAdminExperience(id)));
+    const deleted = ids.filter((_id, index) => results[index].status === "fulfilled");
+    setExperiences(current => current.filter(experience => !deleted.includes(experience.id)));
+    setSelectedExperienceIds(current => current.filter(id => !deleted.includes(id)));
+    if (deleted.length) toast.success("Experiences deleted", `${deleted.length} experience${deleted.length === 1 ? " was" : "s were"} deleted.`);
+    if (deleted.length < ids.length) toast.error("Some experiences were not deleted", `${ids.length - deleted.length} experience${ids.length - deleted.length === 1 ? " could" : "s could"} not be deleted.`);
+    setIsBulkDeletingExperiences(false);
   }
 
   return (
@@ -822,10 +878,14 @@ export default function ExperiencesPage() {
             searchQuery={searchQuery}
             statusFilter={statusFilter}
           />
+          {selectedExperienceIds.length ? <div className="flex items-center justify-between gap-3 border-b border-border bg-orange-50/70 px-4 py-3"><span className="text-xs font-semibold">{selectedExperienceIds.length} selected</span><div className="flex gap-2"><button type="button" onClick={() => setSelectedExperienceIds([])} className="rounded-md border border-border bg-white px-3 py-2 text-xs">Clear</button><button type="button" disabled={isBulkDeletingExperiences} onClick={handleBulkDeleteExperiences} className="inline-flex items-center gap-2 rounded-md bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"><Trash2 size={14}/>{isBulkDeletingExperiences ? "Deleting…" : "Delete selected"}</button></div></div> : null}
           <ExperiencesTable
             deletingExperienceId={deletingExperienceId}
             tourNameById={tourNameById}
             experiences={filteredExperiences}
+            selectedExperienceIds={selectedExperienceIds}
+            onToggleSelection={id => setSelectedExperienceIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])}
+            onToggleAllSelection={() => setSelectedExperienceIds(current => filteredExperiences.every(experience => current.includes(experience.id)) ? current.filter(id => !filteredExperiences.some(experience => experience.id === id)) : [...new Set([...current, ...filteredExperiences.map(experience => experience.id)])])}
             isLoading={isLoading}
             onDelete={handleDeleteExperience}
             onView={openViewExperienceSheet}
@@ -840,14 +900,17 @@ export default function ExperiencesPage() {
           isOpen={experienceSheetMode !== null}
           isUploadingAttractionPhotos={isUploadingAttractionPhotos}
           isUploadingPhotos={isUploadingPhotos}
+          isUploadingWhatsAppReviews={isUploadingWhatsAppReviews}
           isUploadingVideos={isUploadingVideos}
           mode={experienceSheetMode}
           onAttractionPhotoNameChange={handleAttractionPhotoNameChange}
           onAttractionPhotoUpload={handleAttractionPhotoUpload}
           onClose={closeExperienceSheet}
           onPhotoUpload={handlePhotoUpload}
+          onWhatsAppReviewUpload={handleWhatsAppReviewUpload}
           onRemoveAttractionPhoto={handleRemoveAttractionPhoto}
           onRemovePhoto={handleRemovePhoto}
+          onRemoveWhatsAppReviewImage={handleRemoveWhatsAppReviewImage}
           onRemoveVideo={handleRemoveVideo}
           onSubmit={handleSaveExperience}
           onUpdate={updateExperienceForm}
@@ -960,6 +1023,7 @@ function ExperiencesToolbar({
   statusFilter: (typeof statusOptions)[number];
 }) {
   return (
+    <AdminMobileFilter label="Experiences">
     <div className="grid gap-3 border-b border-border p-4 xl:grid-cols-[minmax(260px,1fr)_180px_240px] xl:items-end">
       <label className="relative min-w-0">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground/40" />
@@ -1004,6 +1068,7 @@ function ExperiencesToolbar({
         value={tourFilter}
       />
     </div>
+    </AdminMobileFilter>
   );
 }
 
@@ -1043,6 +1108,9 @@ function ToolbarSelect({
 
 function ExperiencesTable({
   deletingExperienceId,
+  selectedExperienceIds,
+  onToggleSelection,
+  onToggleAllSelection,
   tourNameById,
   experiences,
   isLoading,
@@ -1051,6 +1119,9 @@ function ExperiencesTable({
   totalCount,
 }: {
   deletingExperienceId: string | null;
+  selectedExperienceIds: string[];
+  onToggleSelection: (id: string) => void;
+  onToggleAllSelection: () => void;
   tourNameById: Map<string, string>;
   experiences: AdminExperience[];
   isLoading: boolean;
@@ -1063,6 +1134,7 @@ function ExperiencesTable({
       <div className="max-w-full overflow-hidden">
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <colgroup>
+            <col className="w-[4%]" />
             <col className="w-[24%]" />
             <col className="w-[16%]" />
             <col className="w-[14%]" />
@@ -1074,6 +1146,7 @@ function ExperiencesTable({
           </colgroup>
           <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
             <tr>
+              <th className="px-2 py-3 text-center"><input aria-label="Select all visible experiences" type="checkbox" checked={experiences.length > 0 && experiences.every(experience => selectedExperienceIds.includes(experience.id))} onChange={onToggleAllSelection} className="size-4 accent-primary"/></th>
               <th className="px-4 py-3 font-bold">Experience</th>
               <th className="px-4 py-3 font-bold">Tour</th>
               <th className="px-4 py-3 font-bold">Traveller</th>
@@ -1088,7 +1161,7 @@ function ExperiencesTable({
             {isLoading ? (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={9}
                   className="px-4 py-10 text-center text-sm font-semibold text-foreground/55"
                 >
                   Loading experiences...
@@ -1099,7 +1172,7 @@ function ExperiencesTable({
             {!isLoading && experiences.length === 0 ? (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={9}
                   className="px-4 py-10 text-center text-sm font-semibold text-foreground/55"
                 >
                   No experiences found.
@@ -1118,6 +1191,7 @@ function ExperiencesTable({
                     }}
                     className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
                   >
+                    <td data-no-row-open data-label="Select" className="px-2 py-4 text-center"><input aria-label={`Select experience ${getExperienceDisplayName(experience)}`} type="checkbox" checked={selectedExperienceIds.includes(experience.id)} onClick={event => event.stopPropagation()} onChange={() => onToggleSelection(experience.id)} className="size-4 accent-primary"/></td>
                     <td
                       data-label="Experience"
                       data-mobile-primary
@@ -1366,14 +1440,17 @@ function ExperienceSheet({
   isOpen,
   isUploadingAttractionPhotos,
   isUploadingPhotos,
+  isUploadingWhatsAppReviews,
   isUploadingVideos,
   mode,
   onAttractionPhotoNameChange,
   onAttractionPhotoUpload,
   onClose,
   onPhotoUpload,
+  onWhatsAppReviewUpload,
   onRemoveAttractionPhoto,
   onRemovePhoto,
+  onRemoveWhatsAppReviewImage,
   onRemoveVideo,
   onSubmit,
   onUpdate,
@@ -1387,14 +1464,17 @@ function ExperienceSheet({
   isOpen: boolean;
   isUploadingAttractionPhotos: boolean;
   isUploadingPhotos: boolean;
+  isUploadingWhatsAppReviews: boolean;
   isUploadingVideos: boolean;
   mode: ExperienceSheetMode | null;
   onAttractionPhotoNameChange: (index: number, value: string) => void;
   onAttractionPhotoUpload: (files: FileList | null) => void;
   onClose: () => void;
   onPhotoUpload: (files: FileList | null) => void;
+  onWhatsAppReviewUpload: (files: FileList | null) => void;
   onRemoveAttractionPhoto: (index: number) => void;
   onRemovePhoto: (index: number) => void;
+  onRemoveWhatsAppReviewImage: (index: number) => void;
   onRemoveVideo: (index: number) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onUpdate: <K extends keyof ExperienceFormState>(
@@ -1559,6 +1639,23 @@ function ExperienceSheet({
                 }
                 className={textareaClassName}
                 placeholder="Traveller review"
+              />
+            </FormField>
+
+            <FormField className="sm:col-span-2" label="WhatsApp Review Screenshots">
+              {!isReadOnly ? (
+                <UploadField
+                  accept="image/*"
+                  disabled={isBusy}
+                  isUploading={isUploadingWhatsAppReviews}
+                  label="Upload WhatsApp review screenshots"
+                  multiple
+                  onFilesSelected={onWhatsAppReviewUpload}
+                />
+              ) : null}
+              <ImagePreviewGrid
+                images={form.whatsappReviewImages}
+                onRemove={!isReadOnly ? onRemoveWhatsAppReviewImage : undefined}
               />
             </FormField>
 
