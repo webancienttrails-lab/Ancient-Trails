@@ -114,14 +114,14 @@ export async function startCancellationRefund(request: Request, response: Respon
     const claimed = await BookingCancellationRequest.findOneAndUpdate({ _id: cancellation._id, status: "requested" }, { $set: {
       status: "processing", refundPercentage: parsed.data.refundPercentage, refundAmount: parsed.data.refundAmount,
       refundMode: mode, adminNote: parsed.data.adminNote, refundSegments: segments,
-    } }, { new: true });
+    } }, { returnDocument: "after" });
     if (!claimed) throw new HttpError(409, "This cancellation request is already being processed");
     requestDoc = claimed;
   } else {
     const claimed = await BookingCancellationRequest.findOneAndUpdate({ _id: cancellation._id, status: "requested" }, { $set: {
       status: "processing", refundPercentage: parsed.data.refundPercentage, refundAmount: parsed.data.refundAmount,
       refundMode: mode, adminNote: parsed.data.adminNote, refundSegments: [],
-    } }, { new: true });
+    } }, { returnDocument: "after" });
     if (!claimed) throw new HttpError(409, "This cancellation request is already being processed");
     requestDoc = claimed;
   }

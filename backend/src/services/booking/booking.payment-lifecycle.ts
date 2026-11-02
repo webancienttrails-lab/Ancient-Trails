@@ -32,7 +32,7 @@ async function deliver(booking: BookingDocument, kind: Kind, version: string, ch
   const claimed = await BookingPaymentNotice.findOneAndUpdate({
     _id: id, nextAttemptAt: { $lte: now },
     $or: [{ status: { $in: ["pending", "failed"] } }, { status: "sending", attemptedAt: { $lt: new Date(now.getTime() - 15 * 60000) } }],
-  }, { $set: { status: "sending", attemptedAt: now }, $inc: { attempts: 1 } }, { new: true });
+  }, { $set: { status: "sending", attemptedAt: now }, $inc: { attempts: 1 } }, { returnDocument: "after" });
   if (claimed) {
     try {
       await action(id);
@@ -103,7 +103,7 @@ export async function processBookingPaymentLifecycle(bookingId: string, hooks: P
       if (kind === "airfare_payment_link") {
         if (paymentLink.whatsappStatus === "sent") return;
         const result = await sendBookingPaymentLinkWhatsapp({ recipientNumber, travellerName, tourName, bookingReference: reference,
-          amount: amount(state.balance), paymentPurpose: "Air-Flight Charges (Additional)", paymentUrl: paymentLink.paymentLinkUrl, crqId: id });
+          amount: amount(state.balance), paymentPurpose: "Airfare/Trainfare charges (Additional)", paymentUrl: paymentLink.paymentLinkUrl, crqId: id });
         paymentLink.whatsappStatus = "sent"; paymentLink.whatsappRequestId = result.requestId;
         paymentLink.whatsappRecipient = recipientNumber; paymentLink.whatsappError = "";
         if (paymentLink.status === "created") paymentLink.status = "sent";

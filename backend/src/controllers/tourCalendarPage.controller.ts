@@ -150,7 +150,7 @@ export async function updateTourCalendarPage(
       },
     },
     {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
       upsert: true,
     }

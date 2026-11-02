@@ -14,7 +14,7 @@ export async function notifyOfflineBookingAdmins(bookingId: string) {
       _id: bookingId, paymentMode: "offline", paymentStatus: "pending", bookingStatus: "payment_pending",
       [status]: { $ne: "sent" },
       $or: [{ [status]: { $ne: "sending" } }, { [attempted]: { $lt: new Date(Date.now() - 5 * 60 * 1000) } }],
-    }, { $set: { [status]: "sending", [attempted]: new Date() } }, { new: true });
+    }, { $set: { [status]: "sending", [attempted]: new Date() } }, { returnDocument: "after" });
     if (!booking) return;
     try {
       const tour = await Tour.findOne({ tourId: booking.tourId });

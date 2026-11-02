@@ -317,7 +317,7 @@ export async function updateDestination(
       request.params.id,
       destinationPayload,
       {
-        new: true,
+        returnDocument: "after",
         runValidators: true,
       }
     );

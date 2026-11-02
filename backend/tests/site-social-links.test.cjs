@@ -17,7 +17,7 @@ test("existing settings without persisted social links retain contact data and e
 test("all four social links persist and are returned by the public settings reader", async t => {
   let saved = new SiteSettings({ key: "site", contact });
   t.mock.method(SiteSettings, "findOneAndUpdate", async (filter, update, options) => {
-    assert.deepEqual(filter, { key: "site" }); assert.equal(options.new, true);
+    assert.deepEqual(filter, { key: "site" }); assert.equal(options.returnDocument, "after");
     if (update.$set) saved = new SiteSettings({ key: "site", ...update.$set });
     return saved;
   });

@@ -150,7 +150,7 @@ export async function runNotificationMaintenance() {
     for (const [model, action, limit] of [[NotificationEvent, materializeNotificationEvent, 25], [PushDelivery, deliverPush, 75]] as const) {
       for (let index = 0; index < limit; index++) {
         const now = new Date(), leaseToken = randomUUID();
-        const job = await (model as any).findOneAndUpdate({ nextAttemptAt: { $lte: now }, $or: [{ status: "pending" }, { status: "sending", leaseUntil: { $lt: now } }] }, { $set: { status: "sending", leaseToken, leaseUntil: new Date(Date.now() + 120000) }, $inc: { attempts: 1 } }, { new: true, sort: { nextAttemptAt: 1 } });
+        const job = await (model as any).findOneAndUpdate({ nextAttemptAt: { $lte: now }, $or: [{ status: "pending" }, { status: "sending", leaseUntil: { $lt: now } }] }, { $set: { status: "sending", leaseToken, leaseUntil: new Date(Date.now() + 120000) }, $inc: { attempts: 1 } }, { returnDocument: "after", sort: { nextAttemptAt: 1 } });
         if (!job) break;
         const heartbeat = setInterval(() => { void (model as any).updateOne({ _id: job._id, leaseToken }, { $set: { leaseUntil: new Date(Date.now() + 120000) } }).catch(() => {}); }, 30000);
         try {

@@ -441,7 +441,7 @@ export async function updateMegaMenu(
       },
     },
     {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
       upsert: true,
     }

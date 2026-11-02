@@ -12,13 +12,13 @@ export async function allocateBookingReference(tourType: string, session?: Clien
   let counter;
   try {
     counter = await BookingReferenceCounter.findOneAndUpdate(filter, update, {
-      new: true, upsert: true, ...(session ? { session } : {}),
+      returnDocument: "after", upsert: true, ...(session ? { session } : {}),
     });
   } catch (error) {
     // Concurrent first bookings can both try to insert the same counter.
     // Transactions retry as a whole; outside a transaction, increment the winning insert.
     if (session || !(error instanceof mongo.MongoServerError) || error.code !== 11000) throw error;
-    counter = await BookingReferenceCounter.findOneAndUpdate(filter, update, { new: true });
+    counter = await BookingReferenceCounter.findOneAndUpdate(filter, update, { returnDocument: "after" });
   }
   if (!counter || !Number.isSafeInteger(counter.value) || counter.value <= 0) {
     throw new HttpError(500, "Booking ID could not be generated");

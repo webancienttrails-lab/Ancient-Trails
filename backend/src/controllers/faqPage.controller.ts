@@ -48,7 +48,7 @@ export async function updateFaqPage(request: Request, response: Response): Promi
   if (!parsed.success) throw new HttpError(400, "Validation failed", parsed.error.issues.map(issue => ({ path: issue.path.join("."), message: issue.message })));
   const page = await FaqPage.findOneAndUpdate({ pageKey: "faq" }, {
     $set: { categories: parsed.data.categories }, $setOnInsert: { pageKey: "faq" },
-  }, { new: true, runValidators: true, upsert: true });
+  }, { returnDocument: "after", runValidators: true, upsert: true });
   if (!page) throw new HttpError(500, "FAQ page could not be saved");
   response.status(200).json({ success: true, message: "FAQ page saved successfully", data: { faq: formatFaqPage(page) } });
 }

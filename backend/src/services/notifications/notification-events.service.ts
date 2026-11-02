@@ -12,7 +12,7 @@ const processStartedAt = new Date();
 let activation: Date | undefined;
 export async function notificationActivationDate() {
   if (!activation) {
-    const record = await NotificationCursor.findOneAndUpdate({ _id: "activation" }, { $setOnInsert: { at: processStartedAt } }, { upsert: true, new: true });
+    const record = await NotificationCursor.findOneAndUpdate({ _id: "activation" }, { $setOnInsert: { at: processStartedAt } }, { upsert: true, returnDocument: "after" });
     activation = new Date(record!.at!);
   }
   return activation;
@@ -64,7 +64,7 @@ export function queueTourUpdate(source: "tour" | "departure" | "itinerary", befo
 }
 export async function reconcileNotificationStream(name: "bookings" | "users") {
   const started = await notificationActivationDate();
-  const state = await NotificationCursor.findOneAndUpdate({ _id: name }, { $setOnInsert: { at: started, lastId: "000000000000000000000000" } }, { upsert: true, new: true });
+  const state = await NotificationCursor.findOneAndUpdate({ _id: name }, { $setOnInsert: { at: started, lastId: "000000000000000000000000" } }, { upsert: true, returnDocument: "after" });
   const field = name === "users" ? "createdAt" : "updatedAt";
   const model: any = name === "users" ? User : Booking;
   // A transaction can commit after this checkpoint was advanced by another record.

@@ -490,7 +490,7 @@ export async function updateBlog(
     const blog = await BlogPost.findByIdAndUpdate(request.params.id, {
       ...payload, relatedTourIds: payload.relatedTourIds ?? existingBlog.relatedTourIds ?? [],
     }, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
 

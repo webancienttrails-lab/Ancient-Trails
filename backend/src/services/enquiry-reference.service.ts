@@ -9,12 +9,12 @@ export async function allocateEnquiryReference(): Promise<string> {
   let counter;
   try {
     counter = await EnquiryReferenceCounter.findOneAndUpdate(
-      counterFilter, { $inc: { value: 1 } }, { new: true, upsert: true }
+      counterFilter, { $inc: { value: 1 } }, { returnDocument: "after", upsert: true }
     );
   } catch (error) {
     if (!(error instanceof mongo.MongoServerError) || error.code !== 11000) throw error;
     counter = await EnquiryReferenceCounter.findOneAndUpdate(
-      counterFilter, { $inc: { value: 1 } }, { new: true }
+      counterFilter, { $inc: { value: 1 } }, { returnDocument: "after" }
     );
   }
   if (!counter || !Number.isSafeInteger(counter.value) || counter.value < 1) {

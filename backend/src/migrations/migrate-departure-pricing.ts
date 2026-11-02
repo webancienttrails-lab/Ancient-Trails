@@ -114,7 +114,7 @@ async function applyExactDepartureUpdates() {
         $set: update,
       },
       {
-        new: true,
+        returnDocument: "after",
         runValidators: true,
       }
     );

@@ -537,7 +537,7 @@ export async function updateHomePage(
       },
     },
     {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
       upsert: true,
     }

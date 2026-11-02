@@ -30,7 +30,7 @@ module.exports = function otpStore(t) {
       const row = rows.get(filter._id);
       if (!matches(row, filter)) return null;
       const before = copy(row); update(row, change);
-      return options.new ? copy(row) : before;
+      return options.returnDocument === "after" ? copy(row) : before;
     });
   }
   return { challenges: stores[0], limits: stores[1] };

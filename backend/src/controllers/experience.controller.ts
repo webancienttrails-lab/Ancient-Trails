@@ -597,7 +597,7 @@ export async function updateExperience(
       request.params.id,
       createExperiencePayload(payload, "update"),
       {
-        new: true,
+        returnDocument: "after",
         runValidators: true,
       }
     );

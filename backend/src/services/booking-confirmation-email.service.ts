@@ -380,14 +380,14 @@ function buildBookingConfirmationEmailContent(
   const airfareNote = !payload.airfareExcluded ? ""
     : !payload.airfareAddedAt && !payload.airFlightCharges ? AIRFARE_NOTE
     : payload.airfareIncludedInTotal
-      ? `Note: Air-flight charges of ${formatCurrency(payload.airFlightCharges || 0)} are included in the booking total shown above.`
-      : `Note: Air-flight charges of ${formatCurrency(payload.airFlightCharges || 0)} have been added to the booking total shown above. Any unpaid amount is reflected in the outstanding balance.`;
+      ? `Note: Airfare/Trainfare charges of ${formatCurrency(payload.airFlightCharges || 0)} are included in the booking total shown above.`
+      : `Note: Airfare/Trainfare charges of ${formatCurrency(payload.airFlightCharges || 0)} have been added to the booking total shown above. Any unpaid amount is reflected in the outstanding balance.`;
   const confirmedAt = formatDate(payload.confirmedAt, formatDate(new Date()));
   const previewText = fullPayment
     ? `Full payment received for your ${brandName} booking ${payload.bookingReference}.`
     : `Your ${brandName} booking ${payload.bookingReference} is confirmed.`;
   const pendingAirfareNote = fullPayment && payload.airfareExcluded && !payload.airfareAddedAt && !payload.airFlightCharges
-    ? "This confirms payment for the confirmed tour package. Air-flight charges excluded from this package will be shared separately, with a Razorpay payment link sent on WhatsApp once those charges are finalized." : "";
+    ? "This confirms payment for the confirmed tour package. Airfare/Trainfare charges excluded from this package will be shared separately, with a Razorpay payment link sent on WhatsApp once those charges are finalized." : "";
 
   const detailRows = renderDetailRows([
     { label: "Tour", value: payload.tourName },
@@ -398,7 +398,7 @@ function buildBookingConfirmationEmailContent(
   ], true);
   const paymentRows = renderPaymentRows([
     ...taxPaymentRows(payload),
-    ...(payload.airfareExcluded ? [{ label: payload.airfareIncludedInTotal ? "Air-Flight Charges (Included in Total)" : "+ Air-Flight Charges (Additional)", value: payload.airfareAddedAt || (payload.airFlightCharges || 0) > 0 ? formatCurrency(payload.airFlightCharges || 0) : "Air-Flight Charges: To Be Added" }] : []),
+    ...(payload.airfareExcluded ? [{ label: payload.airfareIncludedInTotal ? "Airfare/Trainfare charges (Included in Total)" : "+ Airfare/Trainfare charges (Additional)", value: payload.airfareAddedAt || (payload.airFlightCharges || 0) > 0 ? formatCurrency(payload.airFlightCharges || 0) : "Airfare/Trainfare charges: To Be Added" }] : []),
     { label: payload.airfareExcluded && !payload.airfareAddedAt && !payload.airFlightCharges ? "Current Total (Excluding Airfare)" : payload.airfareExcluded ? "Updated Total" : "Total", value: formatCurrency(payload.totalAmount) },
     { label: "Amount Paid", value: formatCurrency(payload.amountPaid) },
     { label: "Balance", value: formatCurrency(payload.balanceAmount) },
@@ -582,8 +582,8 @@ function buildBookingConfirmationEmailContent(
     "Payment Summary",
     ...taxPaymentRows(payload).map((row) => `${row.label}: ${row.value}`),
     ...(payload.airfareExcluded ? [
-      payload.airfareIncludedInTotal ? "Air-Flight Charges (Included in Total)" : "+ Air-Flight Charges (Additional)",
-      payload.airfareAddedAt || (payload.airFlightCharges || 0) > 0 ? `Air-Flight Charges: ${formatCurrency(payload.airFlightCharges || 0)}` : "Air-Flight Charges: To Be Added",
+      payload.airfareIncludedInTotal ? "Airfare/Trainfare charges (Included in Total)" : "+ Airfare/Trainfare charges (Additional)",
+      payload.airfareAddedAt || (payload.airFlightCharges || 0) > 0 ? `Airfare/Trainfare charges: ${formatCurrency(payload.airFlightCharges || 0)}` : "Airfare/Trainfare charges: To Be Added",
     ] : []),
     `Total: ${formatCurrency(payload.totalAmount)}`,
     `Amount Paid: ${formatCurrency(payload.amountPaid)}`,
@@ -748,7 +748,7 @@ function buildBookingAlertEmailContent(payload: BookingAlertEmailPayload): {
       { label: "Payment Method", value: "Offline (Cash / Cheque)" },
       { label: "Payment Status", value: "Pending" },
     ] : []),
-    ...(payload.airfareExcluded ? [{ label: "+ Air-Flight Charges (Additional)", value: payload.airfareAddedAt || (payload.airFlightCharges || 0) > 0 ? formatCurrency(payload.airFlightCharges || 0) : "Air-Flight Charges: To Be Added" }] : []),
+    ...(payload.airfareExcluded ? [{ label: "+ Airfare/Trainfare charges (Additional)", value: payload.airfareAddedAt || (payload.airFlightCharges || 0) > 0 ? formatCurrency(payload.airFlightCharges || 0) : "Airfare/Trainfare charges: To Be Added" }] : []),
     { label: payload.airfareExcluded && !payload.airfareAddedAt && !payload.airFlightCharges ? "Current Total (Excluding Airfare)" : "Updated Total", value: formatCurrency(payload.totalAmount) },
     { label: "Amount Paid", value: formatCurrency(payload.amountPaid) },
     { label: "Balance", value: formatCurrency(payload.balanceAmount) },
@@ -822,8 +822,8 @@ function buildBookingAlertEmailContent(payload: BookingAlertEmailPayload): {
     `Travellers: ${payload.travellersLabel}`,
     ...(payload.offlinePending ? ["Payment Method: Offline (Cash / Cheque)", "Payment Status: Pending"] : []),
     ...(payload.airfareExcluded ? [
-      "+ Air-Flight Charges (Additional)",
-      payload.airfareAddedAt || (payload.airFlightCharges || 0) > 0 ? `Air-Flight Charges: ${formatCurrency(payload.airFlightCharges || 0)}` : "Air-Flight Charges: To Be Added",
+      "+ Airfare/Trainfare charges (Additional)",
+      payload.airfareAddedAt || (payload.airFlightCharges || 0) > 0 ? `Airfare/Trainfare charges: ${formatCurrency(payload.airFlightCharges || 0)}` : "Airfare/Trainfare charges: To Be Added",
       ...(!payload.airfareAddedAt && !payload.airFlightCharges ? [AIRFARE_NOTE] : []),
     ] : []),
     `Total: ${formatCurrency(payload.totalAmount)}`,

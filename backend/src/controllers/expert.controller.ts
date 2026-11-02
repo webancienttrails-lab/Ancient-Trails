@@ -225,7 +225,7 @@ export async function updateExpert(
 
   try {
     const expert = await Expert.findByIdAndUpdate(request.params.id, payload, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
 

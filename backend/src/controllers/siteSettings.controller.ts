@@ -108,7 +108,7 @@ async function getOrCreateSiteSettings() {
       },
     },
     {
-      new: true,
+      returnDocument: "after",
       setDefaultsOnInsert: true,
       upsert: true,
     }
@@ -154,7 +154,7 @@ export async function updateSiteSettings(
       },
     },
     {
-      new: true,
+      returnDocument: "after",
       setDefaultsOnInsert: true,
       upsert: true,
     }
@@ -171,10 +171,10 @@ export async function updateSiteSettings(
 
 export async function uploadSiteLogo(request: Request, response: Response): Promise<void> {
   const logo = await saveSiteLogo(request.file);
-  const settings = await SiteSettings.findOneAndUpdate({ key: siteSettingsKey }, { $set: { logo }, $setOnInsert: { key: siteSettingsKey, contact: defaultContactSettings } }, { new: true, upsert: true, setDefaultsOnInsert: true });
+  const settings = await SiteSettings.findOneAndUpdate({ key: siteSettingsKey }, { $set: { logo }, $setOnInsert: { key: siteSettingsKey, contact: defaultContactSettings } }, { returnDocument: "after", upsert: true, setDefaultsOnInsert: true });
   response.status(200).json({ success: true, message: "Site logo updated successfully", data: { settings: formatSiteSettings(settings) } });
 }
 export async function resetSiteLogo(_request: Request, response: Response): Promise<void> {
-  const settings = await SiteSettings.findOneAndUpdate({ key: siteSettingsKey }, { $set: { logo: "" }, $setOnInsert: { key: siteSettingsKey, contact: defaultContactSettings } }, { new: true, upsert: true, setDefaultsOnInsert: true });
+  const settings = await SiteSettings.findOneAndUpdate({ key: siteSettingsKey }, { $set: { logo: "" }, $setOnInsert: { key: siteSettingsKey, contact: defaultContactSettings } }, { returnDocument: "after", upsert: true, setDefaultsOnInsert: true });
   response.status(200).json({ success: true, message: "Default site logo restored", data: { settings: formatSiteSettings(settings) } });
 }

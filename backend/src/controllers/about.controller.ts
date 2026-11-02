@@ -337,7 +337,7 @@ export async function updateAboutPage(
       },
     },
     {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
       upsert: true,
     }

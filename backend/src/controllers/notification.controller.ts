@@ -48,7 +48,7 @@ export async function listNotifications(request: Request, response: Response) {
 }
 export async function readNotification(request: Request, response: Response) {
   const { read } = parse(z.object({ read: z.boolean() }), request.body);
-  const notice = await Notification.findOneAndUpdate({ _id: request.params.id, ...owner(response) }, { $set: { readAt: read ? new Date() : null } }, { new: true });
+  const notice = await Notification.findOneAndUpdate({ _id: request.params.id, ...owner(response) }, { $set: { readAt: read ? new Date() : null } }, { returnDocument: "after" });
   if (!notice) throw new HttpError(404, "Notification not found");
   response.json({ success: true, message: "Notification updated", data: { notification: notice } });
 }
@@ -71,7 +71,7 @@ export async function registerPush(request: Request, response: Response) {
   const bindingId = existing?.active && existing.userId === userId && existing.deviceKeyHash === deviceKeyHash ? existing.bindingId : randomUUID();
   try {
     const filter = existing ? { _id: existing._id, userId: existing.userId, bindingId: existing.bindingId } : { audience, identifierHash };
-    const device = await PushRegistration.findOneAndUpdate(filter, { $set: { userId, audience, identifierHash, encryptedIdentifier: encryptRegistration(fid), deviceKeyHash, bindingId, active: true, lastSeenAt: new Date() } }, { upsert: !existing, new: true, runValidators: true });
+    const device = await PushRegistration.findOneAndUpdate(filter, { $set: { userId, audience, identifierHash, encryptedIdentifier: encryptRegistration(fid), deviceKeyHash, bindingId, active: true, lastSeenAt: new Date() } }, { upsert: !existing, returnDocument: "after", runValidators: true });
     if (!device) throw new HttpError(409, "Browser registration changed. Please retry.");
     await PushRegistration.updateMany({ audience, deviceKeyHash, _id: { $ne: device._id } }, { $set: { active: false } });
     response.json({ success: true, message: "Browser notifications enabled", data: { bindingId } });

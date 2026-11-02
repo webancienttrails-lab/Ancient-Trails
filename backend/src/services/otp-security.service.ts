@@ -65,7 +65,7 @@ export async function guardedOtpVerification<T>(mobile: string, otp: string, ver
     lockedUntil: { $lte: new Date(now) }, verifyingUntil: { $lte: new Date(now) },
   }, { $inc: { attempts: 1 }, $set: {
     verificationId, verifyingUntil: new Date(now + 30_000), lockedUntil: new Date(now + LOCK_MS),
-  } }, { new: true });
+  } }, { returnDocument: "after" });
   if (!challenge) throw expiredError();
   const filter = { _id, generation: challenge.generation, verificationId };
   let result: T;

@@ -264,7 +264,7 @@ export async function updateEnquiry(
   const enquiry = await Enquiry.findByIdAndUpdate(
     request.params.id,
     parsePayload(request.body),
-    { new: true, runValidators: true }
+    { returnDocument: "after", runValidators: true }
   );
 
   if (!enquiry) {
@@ -283,7 +283,7 @@ export async function updateEnquiryStatus(request: Request, response: Response):
   if (!result.success) throw new HttpError(400, "Invalid enquiry status");
   await ensureEnquiryReferences();
   const enquiry = await Enquiry.findByIdAndUpdate(
-    request.params.id, { $set: { status: result.data.status } }, { new: true, runValidators: true }
+    request.params.id, { $set: { status: result.data.status } }, { returnDocument: "after", runValidators: true }
   );
   if (!enquiry) throw new HttpError(404, "Enquiry not found");
   response.json({
@@ -299,7 +299,7 @@ export async function addEnquiryReply(request: Request, response: Response): Pro
   const enquiry = await Enquiry.findByIdAndUpdate(request.params.id, {
     $push: { replies: { message: result.data.message, sentAt: new Date() } },
     $set: { status: EnquiryStatus.REPLIED },
-  }, { new: true, runValidators: true });
+  }, { returnDocument: "after", runValidators: true });
   if (!enquiry) throw new HttpError(404, "Enquiry not found");
   response.json({ success: true, message: "Reply saved successfully", data: { enquiry: formatEnquiry(enquiry) } });
 }
@@ -312,7 +312,7 @@ export async function setEnquiryBlacklist(request: Request, response: Response):
       isBlacklisted: result.data.isBlacklisted,
       blacklistedAt: result.data.isBlacklisted ? new Date() : null,
     },
-  }, { new: true, runValidators: true });
+  }, { returnDocument: "after", runValidators: true });
   if (!enquiry) throw new HttpError(404, "Enquiry not found");
   response.json({
     success: true,

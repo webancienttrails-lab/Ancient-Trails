@@ -695,7 +695,7 @@ export async function updateBookingTravelDetails(request: Request, response: Res
   const booking = await Booking.findOneAndUpdate(
     { _id: request.params.id, archivedAt: null },
     { $set: payload },
-    { new: true, runValidators: true }
+    { returnDocument: "after", runValidators: true }
   );
   if (!booking) throw new HttpError(404, "Booking not found");
   response.json({ success: true, message: "Travel details saved", data: { booking: formatBooking(booking) } });
@@ -1001,7 +1001,7 @@ export async function reserveDepartureSeats(
       },
     },
     {
-      new: true,
+      returnDocument: "after",
       session,
     }
   );
@@ -1455,7 +1455,7 @@ async function releasePaymentSessionReservation(
             },
           },
           {
-            new: true,
+            returnDocument: "after",
             session: databaseSession,
           }
         );
@@ -1525,7 +1525,7 @@ async function releaseExpiredHoldForBooking(
       },
     },
     {
-      new: false,
+      returnDocument: "before",
       session: databaseSession,
     }
   );
@@ -1581,7 +1581,7 @@ async function expireRecoveryForBooking(
       },
     },
     {
-      new: false,
+      returnDocument: "before",
       session: databaseSession,
     }
   );
@@ -1947,7 +1947,7 @@ async function applyVerifiedBalancePayment({
             },
           },
           {
-            new: true,
+            returnDocument: "after",
             session: databaseSession,
           }
         );
@@ -2041,7 +2041,7 @@ async function applyVerifiedPaymentLinkRequest({
           },
         },
         {
-          new: true,
+          returnDocument: "after",
           session: databaseSession,
         }
       );
@@ -2976,7 +2976,7 @@ async function sendRecoveryWhatsappIfNeeded(booking: BookingDocument) {
         },
       },
       {
-        new: true,
+        returnDocument: "after",
       }
     );
 
@@ -3093,7 +3093,7 @@ async function sendBookingRecoveryEmailIfNeeded(
       },
     },
     {
-      new: true,
+      returnDocument: "after",
     }
   );
 
@@ -3219,7 +3219,7 @@ async function sendBookingConfirmationEmailIfNeeded(
         },
       },
       {
-        new: true,
+        returnDocument: "after",
       }
     );
 
@@ -3385,7 +3385,7 @@ async function sendBookingConfirmationWhatsappIfNeeded(
         },
       },
       {
-        new: true,
+        returnDocument: "after",
       }
     );
 
@@ -3608,7 +3608,7 @@ export async function createOfflineBooking(request: Request, response: Response)
     const updated = await Booking.findOneAndUpdate({
       _id: booking._id,
       $or: [{ offlineSubmissionToken: { $exists: false } }, { offlineSubmissionToken: "" }, { offlineSubmissionToken: null }],
-    }, { $set: { offlineSubmissionToken: createConfirmationToken() } }, { new: true });
+    }, { $set: { offlineSubmissionToken: createConfirmationToken() } }, { returnDocument: "after" });
     booking = updated || await Booking.findById(booking._id);
     if (!booking) throw new HttpError(404, "Booking request not found");
   }
@@ -4436,7 +4436,7 @@ async function sendAdminBookingFeedbackWhatsappInternal(request: Request, respon
   const claimed = await Booking.findOneAndUpdate(claimFilter, {
     $set: { whatsappFeedbackStatus: "sending", whatsappFeedbackLastAttemptAt: now, whatsappFeedbackRecipient: recipientNumber },
     $unset: { whatsappFeedbackError: "" },
-  }, { new: true });
+  }, { returnDocument: "after" });
   if (!claimed) throw new HttpError(409, "Feedback is already being processed or the booking changed. Refresh and try again.");
 
   try {
@@ -4563,7 +4563,7 @@ export async function prepareBookingPaymentLink(
       throw new HttpError(409, "Cancel the existing payment link before creating another collection");
     }
   }
-  const purposeLabel = payload.additionalChargeAlreadyApplied ? "Air-Flight Charges (Additional)" : paymentLinkPurposeLabels[payload.purpose];
+  const purposeLabel = payload.additionalChargeAlreadyApplied ? "Airfare/Trainfare charges (Additional)" : paymentLinkPurposeLabels[payload.purpose];
   const description =
     payload.description ||
     `${purposeLabel} for booking ${getBookingReference(booking)}`;
@@ -4696,7 +4696,7 @@ async function createAdminBookingPaymentLinkInternal(
     if (finalPaymentOnly && !isAirFlightFinalPaymentEligible(booking)) {
       throw new HttpError(
         400,
-        "Final payment link is available only for fully paid bookings with pending air-flight charges"
+        "Final payment link is available only for fully paid bookings with pending Airfare/Trainfare charges"
       );
     }
 
@@ -4706,7 +4706,7 @@ async function createAdminBookingPaymentLinkInternal(
         ? {
             additionalChargeAlreadyApplied: true,
             amount: getBookingOutstandingAmount(booking),
-            description: "Air-flight charge payment",
+            description: "Airfare/Trainfare charges payment",
             purpose: "additional",
           }
         : request.body
@@ -5947,7 +5947,7 @@ async function updateBookingInternal(
           request.params.id,
           bookingUpdate,
           {
-            new: true,
+            returnDocument: "after",
             runValidators: true,
             session,
           }
@@ -6032,7 +6032,7 @@ async function updateBookingAirFlightChargesInternal(
 
     response.status(200).json({
       success: true,
-      message: "Air-flight charges updated successfully",
+      message: "Airfare/Trainfare charges updated successfully",
       data: {
         booking: formatBooking(booking),
         finalPaymentUrl: getFinalPaymentUrl(booking),
@@ -6058,7 +6058,7 @@ export async function archiveBooking(
         archivedAt: new Date(),
       },
       {
-        new: true,
+        returnDocument: "after",
         runValidators: true,
       }
     );
@@ -6349,7 +6349,7 @@ function bookingPaymentLifecycleHooks(): PaymentLifecycleHooks {
         purpose: airfare ? "additional" : "final",
         additionalChargeAlreadyApplied: airfare,
         amount: getBookingOutstandingAmount(booking),
-        description: airfare ? "Air-flight charge payment" : "",
+        description: airfare ? "Airfare/Trainfare charges payment" : "",
       }, { expiresAt });
       return result.paymentLinkRequest;
     },

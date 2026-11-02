@@ -892,7 +892,7 @@ export async function updateTour(
     }
 
     const tour = await Tour.findByIdAndUpdate(request.params.id, payload, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
     });
 
@@ -1114,7 +1114,7 @@ export async function updateTourItinerary(
       request.params.id,
       payload,
       {
-        new: true,
+        returnDocument: "after",
         runValidators: true,
       }
     );
@@ -1271,7 +1271,7 @@ export async function updateTourDeparture(
       request.params.id,
       linkedPayload,
       {
-        new: true,
+        returnDocument: "after",
         runValidators: true,
       }
     );

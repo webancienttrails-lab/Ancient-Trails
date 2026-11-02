@@ -15,7 +15,7 @@ test("references start at EN0001, remain unique concurrently, and grow beyond 99
   t.mock.method(Counter, "findOneAndUpdate", async (filter, update, options) => {
     assert.deepEqual(filter, { _id: "enquiry" });
     assert.deepEqual(update, { $inc: { value: 1 } });
-    assert.equal(options.new, true);
+    assert.equal(options.returnDocument, "after");
     return { value: ++value };
   });
   const api = service();

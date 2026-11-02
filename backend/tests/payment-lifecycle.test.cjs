@@ -126,7 +126,7 @@ test("finalized additional airfare sends a separate WhatsApp payment link withou
   const f = setup(t, { airfareExcluded: true, airfareAddedAt: now, airFlightCharges: 5000,
     grandTotal: 51594, amountPaid: 46594, balanceAmount: 5000 }); await f.process(); await f.process();
   assert.equal(f.sent.airfare.length, 1); assert.equal(f.sent.airfare[0].amount, "5,000");
-  assert.equal(f.sent.airfare[0].paymentPurpose, "Air-Flight Charges (Additional)");
+  assert.equal(f.sent.airfare[0].paymentPurpose, "Airfare/Trainfare charges (Additional)");
   assert.equal(f.sent.full.length, 0); assert.equal(f.sent.reminder.length, 0);
 });
 
