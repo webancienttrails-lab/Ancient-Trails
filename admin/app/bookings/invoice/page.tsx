@@ -355,7 +355,7 @@ function createLineItems(booking: AdminBooking): InvoiceLineItem[] {
           ...roomItems,
           {
             amount: airFlightCharges,
-            description: "Air-flight charges",
+            description: "Airfare/Trainfare charges",
             quantity: 1,
             rate: airFlightCharges,
           },
@@ -379,7 +379,7 @@ function createLineItems(booking: AdminBooking): InvoiceLineItem[] {
         ...items,
         {
           amount: airFlightCharges,
-          description: "Air-flight charges",
+          description: "Airfare/Trainfare charges",
           quantity: 1,
           rate: airFlightCharges,
         },

@@ -1400,7 +1400,7 @@ function AccommodationPriceBreakdown({
 
       {airFlightCharges > 0 ? (
         <div className="flex items-center justify-between gap-4 text-foreground/65">
-          <span>{airfareIncludedInTotal ? "Air-flight charges (included in total)" : "Air-flight charges"}</span>
+          <span>{airfareIncludedInTotal ? "Airfare/Trainfare charges (included in total)" : "Airfare/Trainfare charges"}</span>
           <span>{formatCurrency(airFlightCharges)}</span>
         </div>
       ) : null}
@@ -2273,7 +2273,7 @@ function BookingInnerPageContent() {
     if (!finalPaymentBooking?.finalPaymentUrl) {
       toast.error(
         "Final payment link unavailable",
-        "Save air-flight charges for a fully paid booking first."
+        "Save Airfare/Trainfare charges for a fully paid booking first."
       );
       return;
     }
@@ -2284,7 +2284,7 @@ function BookingInnerPageContent() {
       );
       toast.success(
         "Final payment link copied",
-        "Share this link with the traveller to complete the air-flight charge."
+        "Share this link with the traveller to complete the Airfare/Trainfare charges."
       );
     } catch {
       toast.error(
@@ -3778,7 +3778,7 @@ function BookingInnerPageContent() {
               </FormField>
 
               <FormField
-                label="Air-flight Charges"
+                label="Airfare/Trainfare charges"
               >
                 <input
                   min={0}
@@ -3827,7 +3827,7 @@ function BookingInnerPageContent() {
                   <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                     <div className="min-w-0">
                       <p className="text-xs font-bold uppercase text-primary">
-                        Air-flight payment link
+                        Airfare/Trainfare payment link
                       </p>
                       <p className="mt-1 truncate text-sm font-semibold text-foreground/70">
                         {finalPaymentBooking.finalPaymentUrl}
@@ -4149,7 +4149,7 @@ function BookingInnerPageContent() {
                     </div>
 
                     {(selectedBooking?.collectionHistory || []).map(entry => <p key={entry.paymentId} className="mb-2 text-xs">
-                      {entry.paymentId}: {formatCurrency(entry.amount)} received; Air-Flight Charges: {formatCurrency(entry.airfareAmount)}
+                      {entry.paymentId}: {formatCurrency(entry.amount)} received; Airfare/Trainfare charges: {formatCurrency(entry.airfareAmount)}
                     </p>)}
                     {paymentHistoryItems.length === 0 ? (
                       <div className="rounded-sm border border-dashed border-border bg-white px-4 py-5 text-sm font-semibold text-foreground/50">

@@ -811,7 +811,7 @@ export default function BookingsPage() {
     const amount = Number(airFlightChargeAmount);
 
     if (!airFlightChargeAmount.trim() || !Number.isSafeInteger(amount) || amount < 0 || amount > 1000000000) {
-      toast.error("Invalid amount", "Enter a valid air-flight charge amount.");
+      toast.error("Invalid amount", "Enter a valid Airfare/Trainfare charges amount.");
       return;
     }
 
@@ -844,12 +844,12 @@ export default function BookingsPage() {
 
       if (response.data.finalPaymentUrl) {
         toast.success(
-          "Air-flight charges added",
+          "Airfare/Trainfare charges added",
           "Use Send to generate a secure Razorpay payment link."
         );
       } else {
         toast.success(
-          "Air-flight charges added",
+          "Airfare/Trainfare charges added",
           response.data.booking.airfareIncludedInTotal ? "Airfare is included in the booking total and has not been added again." : response.message || "Charges added to the remaining amount."
         );
       }
@@ -893,7 +893,7 @@ export default function BookingsPage() {
         {
           additionalChargeAlreadyApplied: true,
           amount: amountRupees,
-          description: "Air-flight charge payment",
+          description: "Airfare/Trainfare charges payment",
           purpose: "additional",
         }
       );
@@ -1074,21 +1074,21 @@ export default function BookingsPage() {
         >
           <DialogHeader className="border-b border-border bg-white px-5 py-6 sm:px-8">
             <DialogTitle className="font-heading text-[26px] font-bold leading-tight text-secondary">
-              Add Air-flight Charges
+              Add Airfare/Trainfare charges
             </DialogTitle>
             <DialogDescription className="mt-1 break-words text-[14px] font-semibold leading-[1.45] text-primary">
               {airFlightDialogBooking
                 ? `${getBookingReference(airFlightDialogBooking)} - ${getGuestName(
                     airFlightDialogBooking.guestDetails[0]
                   )} - ${getGuestPhone(airFlightDialogBooking.guestDetails[0])}`
-                : "Update the booking air-flight charges."}
+                : "Update the booking Airfare/Trainfare charges."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid min-w-0 gap-6 overflow-y-auto overflow-x-hidden px-5 py-6 sm:px-8">
             <label className="grid gap-2">
               <span className="text-[12px] font-bold uppercase tracking-[0.02em] text-foreground/55">
-                Air-flight charges (inclusive of applicable taxes)
+                Airfare/Trainfare charges (inclusive of applicable taxes)
               </span>
               <input
                 autoFocus
@@ -1153,7 +1153,7 @@ export default function BookingsPage() {
                     {airFlightFinalPaymentUrl
                       ? `Send this link to ${getGuestPhone(
                           airFlightDialogBooking?.guestDetails[0]
-                        )} on WhatsApp for the air-flight charge payment.`
+                        )} on WhatsApp for the Airfare/Trainfare charges payment.`
                       : "Generate a secure Razorpay payment link and send it by WhatsApp."}
                   </p>
                   <p className="mt-3 break-all rounded-[8px] border border-primary/15 bg-white px-3 py-2 text-[12px] font-semibold leading-relaxed text-foreground/65">
@@ -1191,7 +1191,7 @@ export default function BookingsPage() {
               <div className="rounded-[10px] border border-border bg-muted/15 px-4 py-3 text-[12px] font-semibold leading-[1.55] text-foreground/55">
                 {airfareIncludedInTotal
                   ? "This airfare is already part of the booking total. It will not be added to the total or outstanding balance again."
-                  : "If this booking was already fully paid, saving air-flight charges will create a final payment link here. Otherwise, the charges are added to the existing remaining amount."}
+                  : "If this booking was already fully paid, saving Airfare/Trainfare charges will create a final payment link here. Otherwise, the charges are added to the existing remaining amount."}
               </div>
             )}
           </div>
@@ -2260,7 +2260,7 @@ function BookingActionsMenu({
             >
               <Ticket className="size-4 text-primary" />
 
-              Add Air-flight Charges
+              Add Airfare/Trainfare charges
             </DropdownMenuItem>
           ) : null}
 
