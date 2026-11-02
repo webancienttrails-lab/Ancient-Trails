@@ -9,6 +9,7 @@ import {
   getDepartureSeatsLeft,
 } from "@/lib/tour-departures";
 import Image from "next/image";
+import heritageHeaderBanner from "@/public/home assets/Heritage Banner.webp";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -943,7 +944,7 @@ function HeaderBand() {
   return (
     <section className="relative h-[100px] overflow-hidden bg-secondary lg:h-[120px]">
       <Image
-        src="/home assets/Heritage Banner.webp"
+        src={heritageHeaderBanner}
         alt="Ancient Trails heritage landscape"
         fill
         priority

@@ -1,6 +1,6 @@
 import type { ContactEnquiryPayload } from "./enquiries";
 
-export const contactEnquiryFields = ["name", "email", "phone", "subject", "message"] as const;
+export const contactEnquiryFields = ["name", "gender", "email", "phone", "subject", "message"] as const;
 export type ContactEnquiryField = typeof contactEnquiryFields[number];
 export type ContactEnquiryErrors = Partial<Record<ContactEnquiryField, string>>;
 
@@ -23,6 +23,6 @@ export function validateContactEnquiry(values: Record<ContactEnquiryField, strin
   else if (subject.length > 200) errors.subject = "Subject must be 200 characters or fewer.";
   if (!message) errors.message = "Your Message is required.";
   else if (message.length > 3000) errors.message = "Your Message must be 3000 characters or fewer.";
-  const payload: ContactEnquiryPayload = { name, email, phone, subject, message };
+  const payload: ContactEnquiryPayload = { name, gender: values.gender || "", email, phone, subject, message };
   return { errors, payload };
 }

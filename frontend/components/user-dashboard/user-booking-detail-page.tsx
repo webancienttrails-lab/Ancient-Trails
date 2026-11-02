@@ -2,9 +2,10 @@
 import { BookingCancellationRequestControl } from "@/components/booking-cancellation-request";
 import { PaymentRetryNotice } from "@/components/payment-retry-notice";
 import { paymentFailureMessage } from "@/lib/payment-failure";
-import { BookingPaymentReceipt } from "@/components/booking-payment-receipt";
-import { getBookingPaymentSummary, getBookingDocumentMessage, getBookingPaymentState } from "@/lib/booking-receipt";
+import { getBookingPaymentSummary, getBookingDocumentMessage } from "@/lib/booking-receipt";
+import { getBookingTaxBreakdown } from "@/lib/booking-tax";
 import { fetchSiteLogoUrl } from "@/lib/site-logo";
+import { addContainedPdfImage } from "@/lib/pdf-image";
 import { formatBookingPaymentMethod } from "@/lib/booking-payment";
 
 import { BankTransferBalanceLink } from "@/components/bank-transfer-link";
@@ -132,6 +133,8 @@ type TimelineItem = {
 };
 
 type DisplayTraveller = {
+  isNri?: boolean;
+  tcsExempt?: boolean;
   ageOnDeparture?: number;
   countryCode?: string;
   email?: string;
@@ -154,14 +157,20 @@ const domesticKycDocumentOptions: Array<{
 }> = [
   { label: "Driving License", value: "driving_license" },
   { label: "Voter ID", value: "voter_id" },
+  { label: "PAN Card", value: "pan_card" },
 ];
 
 const internationalKycDocumentOptions: Array<{
   label: string;
   value: KycDocumentType;
 }> = [
-  { label: "Passport", value: "passport" },
   { label: "PAN Card", value: "pan_card" },
+];
+
+const nriKycDocumentOptions: Array<{ label: string; value: KycDocumentType }> = [
+  { label: "PAN Card (required)", value: "pan_card" },
+  { label: "Visa (required)", value: "visa" },
+  { label: "OCI Document (optional)", value: "oci" },
 ];
 
 const dateFormatter = new Intl.DateTimeFormat("en-GB", {
@@ -468,6 +477,11 @@ function getVoucherNights(booking: UserBooking) {
 }
 
 function getVoucherHotelRows(booking: UserBooking) {
+  if (booking.booking.hotelDetails?.length) {
+    return booking.booking.hotelDetails.map((detail) => ({
+      ...detail, nights: `${detail.nights} Night${detail.nights === 1 ? "" : "s"}`,
+    }));
+  }
   const rooms = booking.booking.pricingSnapshot?.accommodation?.rooms || [];
   const nights = getVoucherNights(booking) || "-";
   const destination = getUserBookingLocation(booking);
@@ -504,6 +518,11 @@ function getVoucherHotelRows(booking: UserBooking) {
 }
 
 function getVoucherFlightRows(booking: UserBooking) {
+  if (booking.booking.flightDetails?.length) {
+    return booking.booking.flightDetails.map((detail) => ({
+      ...detail, seats: String(detail.seats), dateTime: getVoucherDateTime(detail.dateTime),
+    }));
+  }
   const tourDetails = getVoucherTourDetails(booking);
   const seats = String(booking.booking.totalGuest || 1);
   const departureDate = formatDate(
@@ -678,7 +697,9 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
         style: "bold",
       });
       if (logoDataUrl) {
-        pdf.addImage(logoDataUrl, "PNG", margin + 12, 48, 100, 48);
+        addContainedPdfImage(pdf, logoDataUrl, {
+          x: margin + 12, y: 48, width: 100, height: 48,
+        });
       } else {
         pdf.setFillColor(...orangeDark);
         pdf.roundedRect(margin + 18, 50, 58, 38, 6, 6, "F");
@@ -759,7 +780,7 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
         color: [255, 255, 255],
         size: 7,
       });
-      text(`Page ${pageNumber} of 3`, pageWidth - margin, pageHeight - 9, {
+      text(`Page ${pageNumber} of ${pdf.getNumberOfPages()}`, pageWidth - margin, pageHeight - 9, {
         align: "right",
         color: [255, 255, 255],
         size: 7,
@@ -807,20 +828,24 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
       });
       y += 22;
       rows.forEach((row) => {
+        const actualHeight = Math.max(rowHeight, ...columns.map((column, index) => {
+          pdf.setFontSize(tableTextSize);
+          return pdf.splitTextToSize(row[index] || "-", column.width - 10).length * 10 + 12;
+        }));
         x = margin + 16;
         columns.forEach((column, index) => {
           pdf.setDrawColor(...lineColor);
-          pdf.rect(x, y, column.width, rowHeight, "S");
+          pdf.rect(x, y, column.width, actualHeight, "S");
           pdf.setFont("helvetica", "normal");
           pdf.setFontSize(tableTextSize);
           const lines = pdf.splitTextToSize(row[index] || "-", column.width - 10);
-          text(lines.slice(0, 2).join("\n"), x + 6, y + 11, {
+          text(lines.join("\n"), x + 6, y + 11, {
             color: [31, 52, 74],
             size: tableTextSize,
           });
           x += column.width;
         });
-        y += rowHeight;
+        y += actualHeight;
       });
       return y;
     };
@@ -888,10 +913,33 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
     });
     y += 176;
 
-    sectionTitle("HOTEL", y, "COMFORTABLE STAYS  -  GREAT LOCATIONS");
-    rounded(margin, y + 42, pageWidth - margin * 2, 124);
-    table(
-      y + 54,
+    const newContentPage = () => { pdf.addPage(); header(); return 142; };
+    const travelSection = (title: string, start: number, columns: Array<{ label: string; width: number }>, rows: string[][], rowHeight: number, minimumHeight: number, strap: string) => {
+      let currentY = start;
+      const remaining = [...rows];
+      while (remaining.length) {
+        if (currentY + 160 > pageHeight - 45) currentY = newContentPage();
+        let height = 22;
+        const chunk: string[][] = [];
+        while (remaining.length) {
+          const row = remaining[0];
+          pdf.setFontSize(tableTextSize);
+          const nextHeight = Math.max(rowHeight, ...columns.map((column, i) => pdf.splitTextToSize(row[i] || "-", column.width - 10).length * 10 + 12));
+          if (currentY + 66 + height + nextHeight > pageHeight - 45) break;
+          chunk.push(remaining.shift()!);
+          height += nextHeight;
+        }
+        if (!chunk.length) { currentY = newContentPage(); continue; }
+        sectionTitle(title, currentY, strap);
+        const panelHeight = Math.max(minimumHeight, height + 24);
+        rounded(margin, currentY + 42, pageWidth - margin * 2, panelHeight);
+        table(currentY + 54, columns, chunk, rowHeight);
+        currentY += panelHeight + 60;
+        if (remaining.length) currentY = newContentPage();
+      }
+      return currentY;
+    };
+    y = travelSection("HOTEL", y,
       [
         { label: "Destination", width: 130 },
         { label: "Hotel Name", width: 220 },
@@ -904,10 +952,10 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
         row.category,
         row.nights,
       ]),
-      25
+      25, 124, "COMFORTABLE STAYS  -  GREAT LOCATIONS"
     );
-    y += 184;
 
+    if (y + 160 > pageHeight - 45) y = newContentPage();
     sectionTitle("PASSENGERS", y, "TRAVELERS ON THIS BOOKING");
     rounded(margin, y + 42, pageWidth - margin * 2, 102);
     table(
@@ -933,10 +981,7 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
     pdf.addPage();
     header();
     y = 142;
-    sectionTitle("FLIGHT", y, "JOURNEYS  -  CONNECTING DESTINATIONS  -  FLY TO EXPLORE");
-    rounded(margin, y + 42, pageWidth - margin * 2, 150);
-    table(
-      y + 54,
+    y = travelSection("FLIGHT", y,
       [
         { label: "From", width: 120 },
         { label: "To", width: 140 },
@@ -951,15 +996,16 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
         row.seats,
         row.dateTime,
       ]),
-      42
+      42, 150, "JOURNEYS  -  CONNECTING DESTINATIONS  -  FLY TO EXPLORE"
     );
-    y += 212;
 
+    if (y + 200 > pageHeight - 45) y = newContentPage();
     sectionTitle("INCLUSION", y, "WHAT'S INCLUDED  -  TRAVEL WITH CONFIDENCE");
     rounded(margin, y + 42, pageWidth - margin * 2, 152);
     bulletList(getVoucherInclusions(booking), margin + 36, y + 66, pageWidth - margin * 2 - 66);
     y += 212;
 
+    if (y + 200 > pageHeight - 45) y = newContentPage();
     sectionTitle("EXCLUSION", y, "THINGS NOT INCLUDED  -  PLAN BETTER");
     rounded(margin, y + 42, pageWidth - margin * 2, 152);
     bulletList(getVoucherExclusions(booking), margin + 36, y + 66, pageWidth - margin * 2 - 66);
@@ -1016,16 +1062,18 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
     const paymentCardGap = 8;
     const paymentCardWidth = (paymentPanelWidth - 48 - paymentCardGap) / 2;
     const paymentCardHeight = 24;
+    const tax = getBookingTaxBreakdown(booking.booking);
     const paymentItems = [
       ["BASIC AMOUNT", formatPdfCurrency(subtotal, currency)],
-      ["NET AMOUNT", formatPdfCurrency(subtotal + gstAmount, currency)],
+      ["PACKAGE TOTAL (EXCLUDING TCS)", formatPdfCurrency(tax.packageTotal, currency)],
       [`TAX AMOUNT (GST ${gstPercentage}%)`, formatPdfCurrency(gstAmount, currency)],
+      ...(tax.applicable ? [[tax.label, formatPdfCurrency(tax.amount, currency)]] : []),
       ...(booking.booking.airfareExcluded || airFlightCharges > 0 ? [[booking.booking.airfareIncludedInTotal ? "Air-Flight Charges (Included in Total)" : "+ Air-Flight Charges (Additional)", booking.booking.airfareAddedAt || airFlightCharges > 0 ? formatPdfCurrency(airFlightCharges, currency) : "Air-Flight Charges: To Be Added"]] : []),
       ["OUTSTANDING BALANCE", formatPdfCurrency(getBalanceAmount(booking), currency)],
-      ["TCS", "-"],
       ["DUE DATE", formatDate(booking.booking.balanceDueDate || booking.booking.createdAt)],
       ["ROUNDOFF", formatPdfCurrency(0, currency)],
       ["TOTAL PAID", formatPdfCurrency(getPaidAmount(booking), currency)],
+      ...(getPaidAmount(booking) > totalAmount ? [["REFUND DUE", formatPdfCurrency(getPaidAmount(booking) - totalAmount, currency)]] : []),
     ];
     const paymentGridRowCount = Math.ceil(paymentItems.length / 2);
     const paymentGridHeight =
@@ -1094,6 +1142,10 @@ async function downloadBookingVoucherPdf(booking: UserBooking) {
     });
     footer(3);
 
+    for (let page = 1; page <= pdf.getNumberOfPages(); page++) {
+      pdf.setPage(page);
+      footer(page);
+    }
     pdf.save(`${reference}-Ancient-Trails-Booking-Voucher.pdf`);
   } catch (error) {
     console.error("Booking voucher PDF download failed", error);
@@ -1165,8 +1217,9 @@ async function downloadBookingInvoicePdf(booking: UserBooking) {
     };
     const logo = await loadPdfImageDataUrl(await fetchSiteLogoUrl());
     if (logo) {
-      const image = pdf.getImageProperties(logo), w = Math.min(145, 45 * image.width / image.height);
-      pdf.addImage(logo, "PNG", margin, y, w, w * image.height / image.width);
+      addContainedPdfImage(pdf, logo, {
+        x: margin, y, width: 145, height: 45,
+      });
     } else text("Ancient Trails", margin, y + 24, 21, true, "left", true);
     text("INVOICE", pageWidth - margin, y + 10, 10, true, "right", true);
     text("Invoice No: " + invoiceNumber, pageWidth - margin, y + 29, 9, true, "right");
@@ -1206,9 +1259,12 @@ async function downloadBookingInvoicePdf(booking: UserBooking) {
     const rows = [
       ["Subtotal (Taxable Value)", formatPdfCurrency(booking.booking.subtotal || 0, currency)],
       ["GST (" + (booking.booking.gstPercentage || 0) + "%)", formatPdfCurrency(booking.booking.gstAmount || 0, currency)],
+      ...(booking.booking.tcsApplicable ? [[getBookingTaxBreakdown(booking.booking).label, formatPdfCurrency(booking.booking.tcsAmount || 0, currency)]] : []),
+      ["Package Total (Excluding TCS)", formatPdfCurrency(getBookingTaxBreakdown(booking.booking).packageTotal, currency)],
       ...(airFlightCharges > 0 ? [[booking.booking.airfareIncludedInTotal ? "Airfare (Included)" : "Additional Airfare", formatPdfCurrency(airFlightCharges, currency)]] : []),
       [booking.booking.airfareExcluded && !booking.booking.airfareAddedAt && !airFlightCharges ? "Total (Excluding Airfare)" : "Total Payable", formatPdfCurrency(totalAmount, currency)],
       ["Amount Paid", formatPdfCurrency(paidAmount, currency)], ["Balance Due", formatPdfCurrency(balanceAmount, currency)],
+      ...(paidAmount > totalAmount ? [["Refund Due", formatPdfCurrency(paidAmount - totalAmount, currency)]] : []),
     ];
     const note = "This invoice covers the confirmed tour package and charges listed here. Please retain it for your records." +
       (booking.booking.airfareExcluded && !booking.booking.airfareAddedAt && !airFlightCharges ? " " + AIRFARE_NOTE : "");
@@ -1394,10 +1450,11 @@ function getBookingTravellers(booking: UserBooking): DisplayTraveller[] {
 }
 
 function isInternationalBooking(booking: UserBooking) {
+  const tourType = booking.tour?.tourType?.trim().toLowerCase();
+  if (tourType === "international") return true;
+  if (tourType === "domestic") return false;
   const countryRegion = booking.destination?.countryRegion.trim().toLowerCase() || "";
-  const leadCountryCode = booking.booking.guestDetails[0]?.countryCode || "";
-
-  return Boolean(countryRegion && countryRegion !== "india") || leadCountryCode !== "+91";
+  return Boolean(countryRegion && countryRegion !== "india");
 }
 
 function matchesBookingId(booking: UserBooking, bookingId: string) {
@@ -1623,11 +1680,6 @@ function Timeline({ booking }: { booking: UserBooking }) {
       title: "Balance Payment",
     },
     {
-      date: getBookingPaymentState(booking.booking).canDownloadReceipt ? "Available now" : "After payment verification",
-      done: getBookingPaymentState(booking.booking).canDownloadReceipt,
-      title: "Payment Receipt",
-    },
-    {
       date: formatDate(departureDate),
       done: false,
       title: "Tour Departure",
@@ -1685,14 +1737,14 @@ function HelpCard({ contact }: { contact: SiteContactSettings }) {
       <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-2">
         <Link
           href={getTelephoneHref(callNumber)}
-          className="inline-flex min-h-11 min-w-0 items-center justify-start gap-2 rounded-[6px] border border-button-outline bg-white px-3 py-2.5 font-sans text-[12px] font-bold leading-snug text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
+          className="content-fit-button inline-flex min-h-11 min-w-0 items-center justify-start gap-2 rounded-[6px] border border-button-outline bg-white px-3 py-2.5 font-sans text-[12px] font-bold leading-snug text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
         >
           <Phone className="size-3.5 shrink-0" strokeWidth={1.8} />
           <span className="min-w-0 break-words">{callDisplay || "Call Us"}</span>
         </Link>
         <Link
           href={getMailtoHref(emailAddress)}
-          className="inline-flex min-h-11 min-w-0 items-center justify-start gap-2 rounded-[6px] border border-button-outline bg-white px-3 py-2.5 font-sans text-[12px] font-bold leading-snug text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
+          className="content-fit-button inline-flex min-h-11 min-w-0 items-center justify-start gap-2 rounded-[6px] border border-button-outline bg-white px-3 py-2.5 font-sans text-[12px] font-bold leading-snug text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
         >
           <Mail className="size-3.5 shrink-0" strokeWidth={1.8} />
           <span className="min-w-0 break-words">{emailAddress}</span>
@@ -1769,6 +1821,11 @@ function TravellerKycCard({
   const travellerName =
     getGuestName(traveller) || `Traveller ${travellerIndex + 1}`;
   const documents = traveller.kycDocuments || [];
+  useEffect(() => {
+    if (!documentOptions.some((option) => option.value === documentType)) {
+      setDocumentType(documentOptions[0]?.value || "pan_card");
+    }
+  }, [documentOptions, documentType]);
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const fileName = event.target.files?.[0]?.name || "";
@@ -1839,7 +1896,7 @@ function TravellerKycCard({
               href={getBookingKycDocumentUrl(document.fileUrl)}
               target="_blank"
               rel="noreferrer"
-              className="flex min-w-0 items-center justify-between gap-3 rounded-[6px] border border-button-outline bg-white px-3 py-2 font-sans text-[11px] font-bold text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
+              className="content-fit-button flex min-w-0 items-center justify-between gap-3 rounded-[6px] border border-button-outline bg-white px-3 py-2 font-sans text-[11px] font-bold text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
             >
               <span className="min-w-0 truncate">
                 {document.documentLabel}
@@ -1859,6 +1916,13 @@ function TravellerKycCard({
       </div>
 
       <form onSubmit={handleUpload} className="mt-3 grid gap-2 sm:grid-cols-[150px_minmax(0,1fr)_auto]">
+        {documentOptions.some((option) => option.value === "visa") ? (
+          <p className="font-sans text-[12px] font-medium text-secondary/68 sm:col-span-3">
+            NRI traveller: PAN Card and Visa are required. OCI Document is optional.
+            {traveller.tcsExempt ? " TCS excluded: NRI buyer exemption verified." : " TCS exemption requires verification of the NRI buyer's eligibility; uploading documents alone does not grant exemption."}
+            {!["pan_card", "visa"].every((type) => documents.some((document) => document.documentType === type)) ? " KYC is incomplete until both required documents are uploaded." : " Both required documents are uploaded."}
+          </p>
+        ) : null}
         <select
           value={documentType}
           onChange={(event) => setDocumentType(event.target.value as KycDocumentType)}
@@ -1936,12 +2000,14 @@ function BookingKycDocuments({
       <DetailShell icon={FileText} title="KYC Documents">
         <div className="grid gap-3">
           <p className="font-sans text-[12px] font-semibold leading-[1.55] text-secondary/62">
-            Upload identity documents for each traveller in this booking.
+            {isInternationalBooking(booking)
+              ? "Upload a PAN card for each traveller in this international tour booking."
+              : "Upload a Voter ID, Driving License or PAN card for each traveller in this domestic tour booking."}
           </p>
           {travellers.map((traveller, index) => (
             <TravellerKycCard
               key={traveller.id || index}
-              documentOptions={documentOptions}
+              documentOptions={isInternationalBooking(booking) && traveller.isNri ? nriKycDocumentOptions : documentOptions}
               isUploading={isUploading}
               onUpload={onUpload}
               traveller={traveller}
@@ -2056,7 +2122,6 @@ function BookingDocuments({ booking }: { booking: UserBooking }) {
     <DetailShell icon={FileText} title="Booking Documents">
       <p className="mb-3 font-sans text-[12px] leading-relaxed text-secondary/65">{getBookingDocumentMessage(booking.booking)}</p>
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="sm:col-span-2"><BookingPaymentReceipt booking={booking.booking} tourName={getUserBookingTitle(booking)} /></div>
         <article className="rounded-[7px] border border-border bg-background p-3">
           <h3 className="font-sans text-[13px] font-bold text-secondary">
             Final Invoice

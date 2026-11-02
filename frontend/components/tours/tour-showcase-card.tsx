@@ -127,7 +127,7 @@ export function TourShowcaseCard({
         ) : null}
       </div>
 
-      <div className="px-4 pb-2 pt-4 sm:px-5">
+      <div className="px-4 pb-4 pt-4 sm:px-5 sm:pb-2">
         <h3 className="font-heading text-[20px] font-bold leading-[1.06] tracking-normal text-secondary sm:text-[20px]">
           <Link prefetch={false}
             href={href}
@@ -174,6 +174,7 @@ export function TourShowcaseCard({
             View Itinerary
           </Link>
           <Button
+            data-tour-book-button
             nativeButton={false}
             render={<Link prefetch={false} href={href} aria-label={`${ctaLabel} ${title}`} />}
             className="h-[34px] min-w-[134px] shrink-0 gap-4 px-4 text-[12px] font-normal sm:min-w-[144px] sm:text-[14px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"

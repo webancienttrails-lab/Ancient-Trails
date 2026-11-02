@@ -19,7 +19,7 @@ const contentSecurityPolicy = [
   "font-src 'self' https://fonts.gstatic.com data:",
   // The API and Firebase project hosts vary between deployments.
   "connect-src 'self' https: wss:" + (process.env.NODE_ENV === "production" ? "" : " http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*"),
-  "frame-src 'self' https://*.razorpay.com https://*.firebaseapp.com https://*.web.app https://accounts.google.com",
+  "frame-src 'self' https://*.razorpay.com https://*.firebaseapp.com https://*.web.app https://accounts.google.com https://maps.google.com https://www.google.com",
   "media-src 'self' https: blob:",
   "worker-src 'self' blob:",
   "form-action 'self' https://*.razorpay.com",

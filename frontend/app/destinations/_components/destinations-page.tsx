@@ -4,6 +4,7 @@ import type { DestinationListData } from "@/lib/travel-page-data";
 import { TravelEmptyState } from "@/components/travel-empty-state";
 
 import Image from "next/image";
+import heritageHeaderBanner from "@/public/home assets/Heritage Banner.webp";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -1002,7 +1003,7 @@ function HeaderBand() {
   return (
     <section className="relative h-[100px] overflow-hidden bg-secondary lg:h-[120px]">
       <Image
-        src="/home assets/Heritage Banner.webp"
+        src={heritageHeaderBanner}
         alt="Ancient Trails heritage landscape"
         fill
         priority

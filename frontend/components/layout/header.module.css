@@ -1,3 +1,17 @@
+.glass {
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background-color: rgba(255, 255, 255, 0.78);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
+  box-shadow: 0 12px 40px rgba(70, 40, 15, 0.12);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass {
+    background-color: rgba(255, 255, 255, 0.96);
+  }
+}
+
 /* Keep the existing menu content inside the shared navigation panel. */
 .megaContent {
   min-width: 1040px;

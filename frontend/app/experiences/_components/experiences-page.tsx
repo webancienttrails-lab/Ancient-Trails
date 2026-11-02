@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import heritageHeaderBanner from "@/public/home assets/Heritage Banner.webp";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -398,7 +399,7 @@ function HeaderBand({
   return (
     <section className="relative overflow-hidden bg-secondary">
       <Image
-        src="/home assets/Heritage Banner.webp"
+        src={heritageHeaderBanner}
         alt="Ancient Trails heritage landscape"
         fill
         priority
@@ -1501,25 +1502,28 @@ function ReviewsGrid({
   businessReviews?: GoogleBusinessReviewsSettings;
   images: string[];
 }) {
+  const [activeReviewTab, setActiveReviewTab] = useState<"google" | "whatsapp">("google");
   const [visibleReviewCount, setVisibleReviewCount] = useState(12);
   const [mobileVisibleReviewCount, setMobileVisibleReviewCount] = useState(2);
   const reviewsPerLoad = 4;
   const mobileReviewsPerLoad = 2;
-  const reviewItems = experiences.filter(experience => experience.writtenReview.trim());
-
-  if (reviewItems.length === 0) {
-    return (
-      <EmptyState
-        title="No reviews yet"
-        message="Published traveller reviews for this tour will appear here."
-      />
-    );
-  }
-
-  const masonryReviews = reviewItems.slice(0, Math.max(visibleReviewCount, mobileVisibleReviewCount)).map(experience => ({
+  const googleReviewItems = experiences.filter(experience =>
+    experience.writtenReview.trim() &&
+    (experience.googleReviewUrl?.trim() || !experience.whatsappReviewImages?.length)
+  );
+  const whatsappReviewItems = experiences.flatMap(experience =>
+    (experience.whatsappReviewImages || []).map((image, index) => ({
+      experience,
+      image: getHomeMediaUrl(image),
+      key: `${experience.id || experience.experienceId}-whatsapp-${index}`,
+    })).filter(item => Boolean(item.image))
+  );
+  const reviewItems = activeReviewTab === "google" ? googleReviewItems : whatsappReviewItems;
+  const masonryReviews = googleReviewItems.slice(0, Math.max(visibleReviewCount, mobileVisibleReviewCount)).map(experience => ({
     experience,
     key: experience.id || experience.experienceId,
   }));
+  const visibleWhatsAppReviews = whatsappReviewItems.slice(0, Math.max(visibleReviewCount, mobileVisibleReviewCount));
   const reviewLayouts = [
     "lg:min-h-[190px]",
     "lg:min-h-[235px]",
@@ -1555,7 +1559,35 @@ function ReviewsGrid({
         Written Reviews
       </h2>
 
-      <div className="mt-7 sm:hidden">
+      <div role="tablist" aria-label="Review source" className="mt-6 flex gap-2 border-b border-[#eee8e2]">
+        {([ ["google", "Google"], ["whatsapp", "WhatsApp"] ] as const).map(([tab, label]) => (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            aria-selected={activeReviewTab === tab}
+            onClick={() => {
+              setActiveReviewTab(tab);
+              setVisibleReviewCount(12);
+              setMobileVisibleReviewCount(2);
+            }}
+            className={`border-b-2 px-4 py-3 font-sans text-sm font-semibold transition-colors ${activeReviewTab === tab ? "border-primary text-primary" : "border-transparent text-secondary/60 hover:text-secondary"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {reviewItems.length === 0 ? (
+        <EmptyState
+          title={activeReviewTab === "google" ? "No Google reviews yet" : "No WhatsApp reviews yet"}
+          message={activeReviewTab === "google"
+            ? "Published Google traveller reviews for this tour will appear here."
+            : "WhatsApp review screenshots uploaded by the team will appear here."}
+        />
+      ) : <>
+
+      {activeReviewTab === "google" ? <div className="mt-7 sm:hidden">
         {masonryReviews.slice(0, mobileVisibleReviewCount).map(({ experience, key }, index) => (
           <ReviewCard
             key={`${key}-mobile`}
@@ -1567,7 +1599,7 @@ function ReviewsGrid({
             lineClampClass={reviewLineClamps[index % reviewLineClamps.length]}
           />
         ))}
-        {mobileVisibleReviewCount < reviewItems.length && <div className="mt-2 flex justify-center">
+        {mobileVisibleReviewCount < googleReviewItems.length && <div className="mt-2 flex justify-center">
           <button
             type="button"
             onClick={() =>
@@ -1575,14 +1607,21 @@ function ReviewsGrid({
                 currentCount + mobileReviewsPerLoad
               )
             }
-            className="inline-flex h-10 min-w-[150px] items-center justify-center rounded-full border border-primary bg-primary px-5 font-sans text-button font-medium text-white transition-colors hover:bg-transparent hover:text-button-outline"
+            className="content-fit-button inline-flex h-10 min-w-[150px] items-center justify-center rounded-full border border-primary bg-primary px-5 font-sans text-button font-medium text-white transition-colors hover:bg-transparent hover:text-button-outline"
           >
             Load more
           </button>
         </div>}
-      </div>
+      </div> : <div className="mt-7 sm:hidden">
+        {visibleWhatsAppReviews.slice(0, mobileVisibleReviewCount).map(({ experience, image, key }) => (
+          <WhatsAppReviewCard key={`${key}-mobile`} image={image} reviewerName={experience.travellerName} />
+        ))}
+        {mobileVisibleReviewCount < whatsappReviewItems.length && <div className="mt-2 flex justify-center">
+          <button type="button" onClick={() => setMobileVisibleReviewCount(count => count + mobileReviewsPerLoad)} className="content-fit-button inline-flex h-10 min-w-[150px] items-center justify-center rounded-full border border-primary bg-primary px-5 font-sans text-button font-medium text-white transition-colors hover:bg-transparent hover:text-button-outline">Load more</button>
+        </div>}
+      </div>}
 
-      <div className="mt-7 hidden gap-6 sm:block sm:columns-2 lg:columns-4">
+      {activeReviewTab === "google" ? <div className="mt-7 hidden gap-6 sm:block sm:columns-2 lg:columns-4">
         {masonryReviews.slice(0, visibleReviewCount).map(({ experience, key }, index) => (
           <ReviewCard
             key={key}
@@ -1594,7 +1633,11 @@ function ReviewsGrid({
             lineClampClass={reviewLineClamps[index % reviewLineClamps.length]}
           />
         ))}
-      </div>
+      </div> : <div className="mt-7 hidden gap-6 sm:block sm:columns-2 lg:columns-4">
+        {visibleWhatsAppReviews.slice(0, visibleReviewCount).map(({ experience, image, key }) => (
+          <WhatsAppReviewCard key={key} image={image} reviewerName={experience.travellerName} />
+        ))}
+      </div>}
       {visibleReviewCount < reviewItems.length && <div className="absolute inset-x-0 bottom-0 hidden h-64 items-center justify-center bg-gradient-to-t from-background via-background/80 to-transparent pb-2 sm:flex">
         <button
           type="button"
@@ -1603,12 +1646,23 @@ function ReviewsGrid({
               currentCount + reviewsPerLoad
             )
           }
-          className="inline-flex h-10 min-w-[150px] items-center justify-center rounded-full border border-primary bg-primary px-5 font-sans text-button font-medium text-white transition-colors hover:bg-transparent hover:text-button-outline"
+          className="content-fit-button inline-flex h-10 min-w-[150px] items-center justify-center rounded-full border border-primary bg-primary px-5 font-sans text-button font-medium text-white transition-colors hover:bg-transparent hover:text-button-outline"
         >
           Load more
         </button>
       </div>}
+      </>}
     </section>
+  );
+}
+
+function WhatsAppReviewCard({ image, reviewerName }: { image: string; reviewerName: string }) {
+  return (
+    <article className="mb-6 break-inside-avoid overflow-hidden rounded-[10px] border border-[#eee8e2] bg-white">
+      <div className="relative aspect-[4/5] w-full bg-white">
+        <Image src={image} alt={`${reviewerName || "Traveller"} WhatsApp review screenshot`} fill unoptimized sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw" className="object-contain" />
+      </div>
+    </article>
   );
 }
 

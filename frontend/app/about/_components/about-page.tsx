@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   type CSSProperties,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -14,12 +15,6 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUpRight,
-  BookOpen,
-  CalendarDays,
-  Leaf,
-  MapPin,
-  SlidersHorizontal,
-  Users,
 } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
@@ -40,40 +35,39 @@ const statValueFormatter = new Intl.NumberFormat("en-IN");
 
 const valueItems = [
   {
-    title: "Authentic Experiences",
+    title: "Mentor Led Trails",
+    titleLines: ["Mentor Led", "Trails"],
     description:
-      "Handpicked journeys that connect you with real culture and local stories.",
-    icon: SlidersHorizontal,
+      "Travel with people who understand history, archaeology and culture.",
+    icon: "/home assets/icons/tour-guide.png",
   },
   {
-    title: "Expertly Curated",
+    title: "All Inclusive Tours",
+    titleLines: ["All Inclusive", "Tours"],
     description:
-      "Designed by heritage experts and local specialists with deep knowledge.",
-    icon: BookOpen,
+      "Tours, where there are no hidden costs and you can enjoy the tour without worrying about expenditure.",
+    icon: "/home assets/icons/add.png",
   },
   {
-    title: "Responsible Travel",
+    title: "Learning with Leisure",
+    titleLines: ["Learning with", "Leisure"],
     description:
-      "We promote sustainable tourism and support local communities we visit.",
-    icon: Leaf,
+      "The pace is thoughtful. The travel stays comfortable and never rushed.",
+    icon: "/home assets/icons/library.png",
   },
   {
-    title: "Trusted by Thousands",
+    title: "Curated Across Interests",
+    titleLines: ["Curated Across", "Interests"],
     description:
-      "Loved by 25,000+ travellers for our quality and commitment.",
-    icon: Users,
+      "Choose from heritage trips, short trails, international journeys and specialized tours.",
+    icon: "/home assets/icons/business-trip.png",
   },
   {
-    title: "Personalised Support",
+    title: "Safe and Smooth Planning",
+    titleLines: ["Safe and Smooth", "Planning"],
     description:
-      "We're with you at every step for a smooth and worry-free experience.",
-    icon: CalendarDays,
-  },
-  {
-    title: "Wide Network, Local Roots",
-    description:
-      "Strong local partnerships across India for truly immersive journeys.",
-    icon: MapPin,
+      "Clear itineraries, easy bookings, guided support that help instill confidence in travellers.",
+    icon: "/home assets/icons/strategic-plan.png",
   },
 ];
 
@@ -296,7 +290,7 @@ function HeroSection() {
             <Button
               nativeButton={false}
               render={<Link href="/tours" />}
-              className="mt-7 h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:min-w-[190px]"
+              className="mt-7 h-11 w-fit min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:gap-6 sm:px-6 sm:text-button lg:w-auto lg:min-w-[190px]"
             >
               Explore Journeys
               <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
@@ -522,14 +516,14 @@ function ValuesSection() {
 
         <div className="mt-16 overflow-hidden max-sm:mt-10 sm:overflow-visible lg:mt-[92px]">
           <div
-            className="flex transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] max-sm:translate-x-[var(--about-value-offset)] sm:grid sm:translate-x-0 sm:grid-cols-2 sm:gap-y-12 lg:grid-cols-6 lg:gap-y-0"
+            className="flex transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] max-sm:translate-x-[var(--about-value-offset)] sm:grid sm:translate-x-0 sm:grid-cols-2 sm:gap-y-12 lg:grid-cols-5 lg:gap-y-0"
             style={
               {
                 "--about-value-offset": `-${activeValueIndex * 100}%`,
               } as CSSProperties
             }
           >
-            {valueItems.map(({ description, icon: Icon, title }, index) => (
+            {valueItems.map(({ description, icon, title, titleLines }, index) => (
               <article
                 key={title}
                 className="relative flex min-w-full flex-col items-center px-5 text-center max-sm:px-2 sm:min-w-0"
@@ -540,11 +534,23 @@ function ValuesSection() {
                   </span>
                 ) : null}
 
-                <span className="grid size-[78px] place-items-center rounded-full border border-[#f5ddca] bg-[#fff7f1] text-brand-text max-sm:size-[64px]">
-                  <Icon className="size-8 max-sm:size-7" strokeWidth={1.8} />
-                </span>
-                <h3 className="mt-7 min-h-[54px] max-w-[235px] font-sans text-description font-bold leading-[1.32] tracking-normal text-secondary max-sm:mt-5 max-sm:min-h-0">
-                  {title}
+                <div className="relative size-[50px]">
+                  <Image
+                    src={icon}
+                    alt=""
+                    fill
+                    sizes="50px"
+                    className={`object-contain ${
+                      icon === "/home assets/icons/add.png" ? "scale-[0.82]" : ""
+                    }`}
+                  />
+                </div>
+                <h3 className="mt-5 min-h-[46px] max-w-[240px] font-sans text-[16px] font-normal leading-[1.35] text-secondary max-sm:mt-5 max-sm:min-h-0">
+                  {titleLines.map((line) => (
+                    <span key={line} className="block">
+                      {line}
+                    </span>
+                  ))}
                 </h3>
                 <p className="mt-5 max-w-[240px] font-sans text-description font-normal italic tracking-normal text-secondary/72 max-sm:mt-3">
                   {description}
@@ -553,7 +559,7 @@ function ValuesSection() {
             ))}
           </div>
 
-          <div className="mt-8 flex justify-center gap-2 sm:hidden">
+          <div className="compact-carousel-pagination mt-4 flex justify-center sm:hidden">
             {valueItems.map((item, index) => (
               <button
                 key={item.title}
@@ -653,7 +659,7 @@ function FounderSection({
                 nativeButton={false}
                 render={<Link href="/experts" />}
                 variant="outline"
-                className="mt-6 h-11 w-full min-w-0 justify-between gap-8 px-7 font-normal max-sm:mt-4 max-sm:h-10 max-sm:gap-4 max-sm:px-5 sm:w-auto lg:min-w-[290px]"
+                className="mt-6 h-11 w-fit min-w-0 justify-between gap-8 px-7 font-normal max-sm:mt-4 max-sm:h-10 max-sm:gap-4 max-sm:px-5 lg:w-auto lg:min-w-[290px]"
               >
                 Read His Story
                 <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />
@@ -679,68 +685,97 @@ function TeamCarouselSection({
   members: AboutTeamMember[];
 }) {
   const memberCount = members.length;
-  const baseSlideIndex = memberCount > 1 ? memberCount * 2 : 0;
-  const [activeIndex, setActiveIndex] = useState(baseSlideIndex);
-  const [slideOffset, setSlideOffset] = useState(0);
-  const [isTransitionEnabled, setIsTransitionEnabled] = useState(true);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const teamCardRefs = useRef<Array<HTMLElement | null>>([]);
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const positionRef = useRef(0);
+  const metricsRef = useRef({ step: 0, cycle: 0, base: 0 });
+  const manualMotion = useRef<{ from: number; to: number; elapsed: number } | null>(null);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const didSwipe = useRef(false);
+  const isTeamCardHovered = useRef(false);
   const loopedMembers = useMemo(
-    () =>
-      memberCount > 1
-        ? Array.from({ length: 7 }, () => members).flat()
-        : members,
+    () => memberCount > 1 ? Array.from({ length: 7 }, () => members).flat() : members,
     [memberCount, members]
   );
 
-  function showPreviousMember() {
-    setActiveIndex((currentIndex) => currentIndex - 1);
+  function writePosition(position: number) {
+    const { cycle, base } = metricsRef.current;
+    const next = cycle > 0 ? base + ((position - base) % cycle + cycle) % cycle : 0;
+    positionRef.current = next;
+    if (trackRef.current) trackRef.current.style.transform = `translate3d(-${next}px, 0, 0)`;
   }
 
-  function showNextMember() {
-    setActiveIndex((currentIndex) => currentIndex + 1);
-  }
-
-  function normalizeSlideIndex(index: number) {
-    if (memberCount <= 1) {
-      return 0;
-    }
-
-    return baseSlideIndex + ((index % memberCount) + memberCount) % memberCount;
-  }
-
-  function jumpToSlide(index: number) {
-    setIsTransitionEnabled(false);
-    setActiveIndex(index);
-
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        setIsTransitionEnabled(true);
-      });
-    });
-  }
-
-  function handleSlideTransitionEnd() {
-    if (memberCount <= 1) {
-      return;
-    }
-
-    const lastBaseSlideIndex = baseSlideIndex + memberCount - 1;
-
-    if (activeIndex < baseSlideIndex || activeIndex > lastBaseSlideIndex) {
-      jumpToSlide(normalizeSlideIndex(activeIndex));
+  function moveMember(direction: number) {
+    const { step } = metricsRef.current;
+    if (memberCount <= 1 || step <= 0) return;
+    const from = positionRef.current;
+    if (prefersReducedMotion) {
+      manualMotion.current = null;
+      writePosition(from + direction * step);
+    } else {
+      manualMotion.current = { from, to: from + direction * step, elapsed: 0 };
     }
   }
+
+  function showPreviousMember() { moveMember(-1); }
+  function showNextMember() { moveMember(1); }
 
   useLayoutEffect(() => {
-    function updateSlideOffset() {
-      setSlideOffset(teamCardRefs.current[activeIndex]?.offsetLeft || 0);
+    function updateMetrics() {
+      const first = teamCardRefs.current[0];
+      const second = teamCardRefs.current[1];
+      const repeatedFirst = teamCardRefs.current[memberCount];
+      const origin = first?.getBoundingClientRect().left || 0;
+      const step = first && second ? second.getBoundingClientRect().left - origin : 0;
+      const previous = metricsRef.current;
+      const progress = previous.step > 0 ? (positionRef.current - previous.base) / previous.step : 0;
+      const cycle = memberCount > 1 && repeatedFirst ? repeatedFirst.getBoundingClientRect().left - origin : 0;
+      metricsRef.current = { step, cycle, base: cycle * 2 };
+      manualMotion.current = null;
+      writePosition(cycle * 2 + progress * step);
     }
+    updateMetrics();
+    window.addEventListener("resize", updateMetrics);
+    return () => window.removeEventListener("resize", updateMetrics);
+  }, [memberCount]);
 
-    updateSlideOffset();
-    window.addEventListener("resize", updateSlideOffset);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setPrefersReducedMotion(media.matches);
+    update();
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  }, []);
 
-    return () => window.removeEventListener("resize", updateSlideOffset);
-  }, [activeIndex, loopedMembers.length]);
+  useEffect(() => {
+    if (memberCount <= 1 || prefersReducedMotion) {
+      manualMotion.current = null;
+      return;
+    }
+    let frame = 0;
+    let previousTime: number | null = null;
+    function animate(time: number) {
+      const elapsed = previousTime === null ? 0 : Math.min(time - previousTime, 64);
+      previousTime = time;
+      if (!document.hidden && !isTeamCardHovered.current) {
+        const motion = manualMotion.current;
+        if (motion) {
+          motion.elapsed += elapsed;
+          const progress = Math.min(motion.elapsed / 680, 1);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          writePosition(motion.from + (motion.to - motion.from) * eased);
+          if (progress === 1) manualMotion.current = null;
+        } else {
+          // A constant 24 px/second keeps the cards gliding without stops between members.
+          writePosition(positionRef.current + elapsed * 24 / 1000);
+        }
+      }
+      frame = window.requestAnimationFrame(animate);
+    }
+    frame = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(frame);
+  }, [memberCount, prefersReducedMotion]);
 
   return (
     <section id="team" className="bg-background py-16 max-sm:py-12 lg:py-20">
@@ -781,17 +816,38 @@ function TeamCarouselSection({
         </div>
       </div>
 
-      <div className="mt-14 w-screen overflow-hidden max-sm:mt-8">
+      <div
+        className="mt-14 w-screen touch-pan-y overflow-hidden max-sm:mt-8"
+        onTouchStart={(event) => {
+          const touch = event.touches[0];
+          touchStart.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+          didSwipe.current = false;
+        }}
+        onTouchEnd={(event) => {
+          const start = touchStart.current;
+          const touch = event.changedTouches[0];
+          touchStart.current = null;
+          if (!start || !touch || memberCount < 2) return;
+          const dx = touch.clientX - start.x;
+          const dy = touch.clientY - start.y;
+          if (Math.abs(dx) < 40 || Math.abs(dx) <= Math.abs(dy)) return;
+          didSwipe.current = true;
+          if (dx < 0) showNextMember();
+          else showPreviousMember();
+        }}
+        onTouchCancel={() => { touchStart.current = null; }}
+        onClickCapture={(event) => {
+          if (!didSwipe.current) return;
+          event.preventDefault();
+          event.stopPropagation();
+          didSwipe.current = false;
+        }}
+      >
         <div className="w-screen overflow-hidden px-5 pb-3 max-sm:px-4 sm:px-8 lg:w-[calc(100vw+12vw-12px)] lg:-translate-x-[calc(12vw-12px)] lg:px-0">
           <div
-            className="flex w-max gap-6 max-sm:gap-4 lg:gap-6"
-            onTransitionEnd={handleSlideTransitionEnd}
-            style={{
-              transform: `translate3d(-${slideOffset}px, 0, 0)`,
-              transition: isTransitionEnabled
-                ? "transform 680ms cubic-bezier(0.22, 1, 0.36, 1)"
-                : "none",
-            }}
+            className="relative flex w-max gap-6 max-sm:gap-4 lg:gap-6"
+            ref={trackRef}
+            style={{ transform: "translate3d(0px, 0, 0)", willChange: "transform" }}
           >
             {loopedMembers.map((member, index) => {
               return (
@@ -799,6 +855,9 @@ function TeamCarouselSection({
                   key={`${index}-${member.id || member.name}`}
                   cardRef={(element) => {
                     teamCardRefs.current[index] = element;
+                  }}
+                  onHoverChange={(isHovered) => {
+                    isTeamCardHovered.current = isHovered;
                   }}
                   member={member}
                 />
@@ -813,17 +872,41 @@ function TeamCarouselSection({
 
 function TeamCarouselCard({
   cardRef,
+  onHoverChange,
   member,
 }: {
   cardRef?: (element: HTMLElement | null) => void;
+  onHoverChange: (isHovered: boolean) => void;
   member: AboutTeamMember;
 }) {
   const image = member.image;
   const role = member.role;
   const bio = member.bio;
+  const [isExpanded, setIsExpanded] = useState(false);
+  const detailsId = useId();
 
   return (
-    <article ref={cardRef} className="group relative h-[330px] w-[260px] shrink-0 overflow-hidden rounded-[8px] bg-transparent shadow-[0_14px_30px_rgba(50,36,22,0.10)] max-sm:h-[310px] max-sm:w-[78vw] max-sm:max-w-[280px] sm:w-[300px] lg:h-[360px] lg:w-[calc(24vw-24px)]">
+    <article
+      ref={cardRef}
+      role="button"
+      tabIndex={0}
+      aria-label={`${member.name}, ${role}. ${isExpanded ? "Hide" : "Show"} biography`}
+      aria-expanded={isExpanded}
+      aria-controls={detailsId}
+      onPointerEnter={(event) => {
+        if (event.pointerType === "mouse") onHoverChange(true);
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType === "mouse") onHoverChange(false);
+      }}
+      onClick={() => setIsExpanded((current) => !current)}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        setIsExpanded((current) => !current);
+      }}
+      className="group relative h-[330px] w-[260px] shrink-0 cursor-pointer overflow-hidden rounded-[8px] bg-transparent shadow-[0_14px_30px_rgba(50,36,22,0.10)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary max-sm:h-[310px] max-sm:w-[78vw] max-sm:max-w-[280px] sm:w-[300px] lg:h-[360px] lg:w-[calc(24vw-24px)]"
+    >
       {image ? (
         <div
           role="img"
@@ -835,7 +918,7 @@ function TeamCarouselCard({
         <ProfilePlaceholder name={member.name} />
       )}
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.02)_22%,rgba(2,18,10,0.74)_100%)]" />
-      <div className="absolute inset-x-0 bottom-0 p-6 text-white transition-opacity duration-300 group-hover:opacity-0">
+      <div className={`absolute inset-x-0 bottom-0 p-6 text-white transition-opacity duration-300 group-hover:opacity-0 ${isExpanded ? "opacity-0" : ""}`}>
         <h3 className="font-heading text-[20px] font-semibold leading-tight tracking-normal sm:text-[24px]">
           {member.name}
         </h3>
@@ -843,14 +926,18 @@ function TeamCarouselCard({
           {role}
         </p>
       </div>
-      <div className="absolute inset-0 flex translate-y-3 flex-col justify-end bg-black/12 p-6 opacity-0 backdrop-blur-sm transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+      <div
+        id={detailsId}
+        data-lenis-prevent
+        className={`absolute inset-0 flex flex-col bg-black/12 p-6 backdrop-blur-sm transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 ${isExpanded ? "translate-y-0 justify-start overflow-y-auto opacity-100" : "translate-y-3 justify-end opacity-0"}`}
+      >
         <p className="font-sans text-eyebrow font-semibold uppercase tracking-normal text-button-outline">
           {role}
         </p>
         <h3 className="mt-3 font-heading text-[20px] font-semibold leading-tight tracking-normal text-white sm:text-[24px]">
           {member.name}
         </h3>
-        <p className="mt-4 line-clamp-10 font-sans text-[14px] leading-[1.5] text-white/82">
+        <p className={`mt-4 font-sans text-[14px] leading-[1.5] text-white/82 ${isExpanded ? "" : "line-clamp-10"}`}>
           {bio}
         </p>
       </div>

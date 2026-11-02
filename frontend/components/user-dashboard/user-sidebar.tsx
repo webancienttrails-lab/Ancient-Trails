@@ -210,7 +210,7 @@ export function UserSidebar({
         <button
           type="button"
           onClick={handleSignOut}
-          className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-[7px] border border-button-outline bg-primary/10 font-sans text-[14px] font-semibold text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white"
+          className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-[7px] border border-button-outline bg-primary/10 px-4 font-sans text-[14px] font-semibold text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white"
         >
           <LogOut className="size-4" strokeWidth={1.9} />
           Log Out

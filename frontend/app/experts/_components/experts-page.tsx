@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import heritageHeaderBanner from "@/public/home assets/Heritage Banner.webp";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -88,7 +89,7 @@ function HeaderBand() {
   return (
     <section className="relative h-[100px] overflow-hidden bg-secondary lg:h-[120px]">
       <Image
-        src="/home assets/Heritage Banner.webp"
+        src={heritageHeaderBanner}
         alt="Ancient Trails heritage landscape"
         fill
         priority
@@ -355,7 +356,7 @@ export function ExpertsPage() {
 
           <Link
             href="/about#team"
-            className="inline-flex h-11 w-full items-center justify-between rounded-full border border-button-outline bg-white px-5 font-sans text-[15px] font-medium text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white sm:w-auto sm:min-w-[180px]"
+            className="content-fit-button inline-flex h-11 w-full items-center justify-between gap-3 rounded-full border border-button-outline bg-white px-5 font-sans text-[15px] font-medium text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white sm:w-auto sm:min-w-[180px]"
           >
             About Us
             <ArrowRight className="size-4" strokeWidth={1.9} />

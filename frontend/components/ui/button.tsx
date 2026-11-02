@@ -65,6 +65,7 @@ function buttonVariants({
 
   return cn(
     buttonVariantStyles({ variant: effectiveVariant, size, className }),
+    !size?.startsWith("icon") && "content-fit-button",
     effectiveVariant === "default" && "text-[17px]"
   )
 }

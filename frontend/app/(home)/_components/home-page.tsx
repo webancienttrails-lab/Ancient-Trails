@@ -19,6 +19,7 @@ import { SpecialisedToursSection } from "./specialised-tours-section";
 import { TopDestinationsSection } from "./top-destinations-section";
 import { UpcomingToursSection } from "./upcoming-tours-section";
 import { WhyChooseUsSection } from "./why-choose-us-section";
+import { EventsSection, type HomeEventCard } from "./events-section";
 
 export function HomePage({
   recentPosts = [],
@@ -27,6 +28,8 @@ export function HomePage({
   homeExperiences,
   topDestinations,
   tourCategories,
+  eventsEnabled,
+  events,
 }: {
   recentPosts?: PublicBlogPreview[];
   upcomingTours?: HomeTourCard[];
@@ -34,6 +37,8 @@ export function HomePage({
   homeExperiences?: HomeExperienceCard[];
   topDestinations?: HomeDestinationCard[];
   tourCategories?: string[];
+  eventsEnabled?: boolean;
+  events?: HomeEventCard[];
 }) {
   return (
     <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-foreground">
@@ -79,6 +84,8 @@ export function HomePage({
 
       <UpcomingToursSection initialTours={upcomingTours} />
 
+      <EventsSection enabled={eventsEnabled ?? false} events={events ?? []} />
+
       <AboutSection />
 
       <TopDestinationsSection
@@ -86,9 +93,9 @@ export function HomePage({
         tourCategories={tourCategories}
       />
 
-      <EgyptExperiencesSection experiences={homeExperiences} />
-
       <WhyChooseUsSection />
+
+      <EgyptExperiencesSection experiences={homeExperiences} />
 
       <CustomisedToursSection destinations={customisedTourDestinations} />
 

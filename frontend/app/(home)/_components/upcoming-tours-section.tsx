@@ -202,10 +202,10 @@ export function UpcomingToursSection({ initialTours }: { initialTours?: HomeTour
                 variant="secondary"
                 nativeButton={false}
                 render={<Link prefetch={false} href="/tour-calendar" />}
-                className="h-10 w-auto min-w-[220px] justify-between gap-4 px-4 text-[12px] sm:w-auto sm:gap-6 sm:px-5 sm:text-button"
+                className="h-10 w-fit min-w-0 justify-between gap-4 px-4 text-[12px] max-lg:h-11 max-lg:px-5 max-lg:text-[17px] max-lg:font-normal sm:gap-6 sm:px-5 sm:text-button sm:max-lg:px-6 lg:w-auto lg:min-w-[220px]"
               >
                 View Tour Calendar
-                <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />
+                <ButtonArrow className="max-lg:brightness-0 max-lg:invert group-hover/button:brightness-0 group-hover/button:invert max-lg:group-hover/button:brightness-100 max-lg:group-hover/button:invert-0" />
               </Button>
             </div>
 
@@ -270,10 +270,10 @@ export function UpcomingToursSection({ initialTours }: { initialTours?: HomeTour
                   variant="secondary"
                   nativeButton={false}
                   render={<Link prefetch={false} href="/tour-calendar" />}
-                  className="h-10 w-full min-w-0 justify-between gap-2 px-3 text-[12px] sm:w-auto sm:gap-6 sm:px-5 sm:text-button lg:min-w-[220px]"
+                  className="h-10 w-fit min-w-0 justify-between gap-2 px-3 text-[12px] max-lg:h-11 max-lg:gap-4 max-lg:px-5 max-lg:text-[17px] max-lg:font-normal sm:gap-6 sm:px-5 sm:text-button sm:max-lg:gap-6 sm:max-lg:px-6 lg:w-auto lg:min-w-[220px]"
                 >
                   View Tour Calendar
-                  <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />
+                  <ButtonArrow className="max-lg:brightness-0 max-lg:invert group-hover/button:brightness-0 group-hover/button:invert max-lg:group-hover/button:brightness-100 max-lg:group-hover/button:invert-0" />
                 </Button>
               </div>
             </div>

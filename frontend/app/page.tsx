@@ -15,6 +15,7 @@ import {
   fallbackTrendingDestinations,
   getHomeCustomisedTourDestinations,
   getHomeExperienceCards,
+  getHomePageContent,
   getHomeTrendingDestinations,
   getHomeUpcomingTours,
   listPublicTours,
@@ -80,6 +81,7 @@ export default async function Home() {
     topDestinations,
     customisedTourDestinations,
     homeExperiences,
+    homeContent,
     upcomingTours,
     siteSettings,
     recentPosts,
@@ -88,6 +90,7 @@ export default async function Home() {
     withFallback(getHomeTrendingDestinations(8), fallbackTrendingDestinations),
     withFallback(getHomeCustomisedTourDestinations(6), fallbackCustomisedTours),
     withFallback<HomeExperienceCard[]>(getHomeExperienceCards(5), []),
+    withFallback(getHomePageContent(), null),
     withFallback(getHomeUpcomingTours(6), []),
     getPublicSiteSettings().catch(() => null),
     getRecentPublishedBlogs(),
@@ -101,6 +104,8 @@ export default async function Home() {
       upcomingTours={upcomingTours}
       customisedTourDestinations={customisedTourDestinations}
       homeExperiences={homeExperiences}
+      eventsEnabled={homeContent?.data.home.eventsEnabled ?? false}
+      events={homeContent?.data.home.events ?? []}
       topDestinations={topDestinations}
       tourCategories={tourCategories}
     />

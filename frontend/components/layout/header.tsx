@@ -78,6 +78,16 @@ const headerLayerStyle: CSSProperties = {
   zIndex: 2147483647,
 };
 
+const headerGlassStyle: CSSProperties = {
+  backgroundColor: "rgba(255, 255, 255, 0.78)",
+  backdropFilter: "blur(24px) saturate(150%)",
+  WebkitBackdropFilter: "blur(24px) saturate(150%)",
+};
+
+function getPageScrollY(container: HTMLElement | null) {
+  return Math.max(0, window.scrollY, document.documentElement.scrollTop, document.body.scrollTop, container?.scrollTop || 0);
+}
+
 const mobileDrawerLayerStyle: CSSProperties = {
   zIndex: 2147483647,
 };
@@ -833,7 +843,7 @@ export function DestinationsMegaMenu({
             />
             <Link prefetch={false}
               href={getDestinationsHref("UNESCO sites")}
-              className="group/button relative mt-[210px] flex h-9 w-[192px] items-center justify-between gap-2 rounded-full border border-button-outline bg-white px-3 font-sans text-[12px] font-semibold text-button-outline shadow-[0_8px_18px_rgba(212,114,32,0.16)] transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-brand-button-dark hover:text-white"
+              className="content-fit-button group/button relative mt-[210px] flex h-9 w-[192px] items-center justify-between gap-2 rounded-full border border-button-outline bg-white px-3 font-sans text-[12px] font-semibold text-button-outline shadow-[0_8px_18px_rgba(212,114,32,0.16)] transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-brand-button-dark hover:text-white"
             >
               <span
                 className={megaTextRevealClass(isOpen, "whitespace-nowrap")}
@@ -995,7 +1005,7 @@ export function ToursMegaMenu({
           />
           <Link prefetch={false}
             href="/tour-calendar"
-            className="group/button relative mt-8 flex h-9 w-full max-w-[170px] items-center justify-between gap-4 rounded-full border border-button-outline bg-white px-5 font-sans text-[13px] font-semibold text-button-outline shadow-[0_8px_18px_rgba(212,114,32,0.16)] transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-brand-button-dark hover:text-white"
+            className="content-fit-button group/button relative mt-8 flex h-9 w-full max-w-[170px] items-center justify-between gap-4 rounded-full border border-button-outline bg-white px-5 font-sans text-[13px] font-semibold text-button-outline shadow-[0_8px_18px_rgba(212,114,32,0.16)] transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-brand-button-dark hover:text-white"
           >
             <span
               className={megaTextRevealClass(isOpen, "whitespace-nowrap")}
@@ -1430,7 +1440,7 @@ function MobileHeaderDrawer({
               <button
                 type="button"
                 onClick={onSignOut}
-                className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-full border border-button-outline bg-white font-sans text-[14px] font-semibold text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white"
+                className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-full border border-button-outline bg-white px-4 font-sans text-[14px] font-semibold text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white"
               >
                 <LogOut className="size-4" strokeWidth={1.9} />
                 Sign Out
@@ -1636,6 +1646,7 @@ export function Header() {
   const [hasScrolled, setHasScrolled] = useState(false);
   const [headerPortalTarget, setHeaderPortalTarget] = useState<HTMLElement | null>(null);
   const lastScrollYRef = useRef(0);
+  const pageScrollContainerRef = useRef<HTMLElement | null>(null);
   const scrollFrameRef = useRef(0);
   const accountMenuCloseTimeoutRef = useRef(0);
   const hasConfiguredMegaMenu = hasMegaMenuSettings(megaMenuContent);
@@ -1750,10 +1761,10 @@ export function Header() {
   }, []);
 
   useEffect(() => {
-    lastScrollYRef.current = window.scrollY;
+    lastScrollYRef.current = getPageScrollY(pageScrollContainerRef.current);
 
     const updateHeaderVisibility = () => {
-      const currentScrollY = Math.max(0, window.scrollY);
+      const currentScrollY = getPageScrollY(pageScrollContainerRef.current);
       const scrollDifference = currentScrollY - lastScrollYRef.current;
 
       setHasScrolled(currentScrollY > 24);
@@ -1763,7 +1774,8 @@ export function Header() {
       } else if (Math.abs(scrollDifference) < 4) {
         return;
       } else if (scrollDifference > 0 && currentScrollY > 80) {
-        setIsHeaderVisible(false);
+        // Keep the glass surface visible while scrolling down through sections.
+        setIsHeaderVisible(true);
         setIsDesktopMenuOpen(false);
         setHoveredItem(null);
         setIsAccountMenuOpen(false);
@@ -1775,7 +1787,16 @@ export function Header() {
       lastScrollYRef.current = currentScrollY;
     };
 
-    const handleScroll = () => {
+    const handleScroll = (event?: Event) => {
+      if (event?.target instanceof HTMLElement) {
+        const target = event.target;
+        const main = document.getElementById("main-content");
+        if (target !== document.body && target !== document.documentElement &&
+          !(main && (target === main || target.contains(main)))) return;
+        pageScrollContainerRef.current = target;
+      } else if (event) {
+        pageScrollContainerRef.current = null;
+      }
       if (scrollFrameRef.current) {
         return;
       }
@@ -1788,17 +1809,20 @@ export function Header() {
 
     handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
+    document.addEventListener("scroll", handleScroll, { passive: true, capture: true });
 
     return () => {
       window.cancelAnimationFrame(scrollFrameRef.current);
       window.removeEventListener("scroll", handleScroll);
+      document.removeEventListener("scroll", handleScroll, true);
     };
   }, []);
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
-      lastScrollYRef.current = window.scrollY;
-      setHasScrolled(window.scrollY > 24);
+      pageScrollContainerRef.current = null;
+      lastScrollYRef.current = getPageScrollY(null);
+      setHasScrolled(lastScrollYRef.current > 24);
       setIsHeaderVisible(true);
       setIsDesktopMenuOpen(false);
       setHoveredItem(null);
@@ -2010,11 +2034,11 @@ export function Header() {
   const headerContent = (
     <header
       ref={headerRef}
-      style={headerLayerStyle}
+      style={{ ...headerLayerStyle, ...(hasGlassBackground ? headerGlassStyle : {}) }}
       inert={!shouldShowHeader}
       className={cn(
         "fixed left-3 right-3 top-2 isolate flex h-[60px] items-center justify-between rounded-[24px] px-2 transition-[transform,opacity,background-color,box-shadow,backdrop-filter] duration-300 sm:left-5 sm:right-5 sm:h-[72px] sm:px-3 lg:left-8 lg:right-8 lg:top-3 lg:h-20 lg:rounded-[28px] lg:px-4 motion-reduce:transition-none",
-        hasGlassBackground ? "border border-white/10 bg-white/15 shadow-[0_12px_40px_rgba(70,40,15,0.12)] backdrop-blur-xl max-lg:bg-white/95" : "border border-transparent bg-transparent",
+        hasGlassBackground ? styles.glass : "border border-transparent bg-transparent",
         shouldShowHeader ? "translate-y-0 opacity-100" : "pointer-events-none -translate-y-[calc(100%+3rem)] opacity-0"
       )}
     >
@@ -2070,7 +2094,6 @@ export function Header() {
             }
           }}
         >
-          <button type="button" aria-label="Close menu" onClick={() => { setIsDesktopMenuOpen(false); setHoveredItem(null); }} className="col-span-full justify-self-end m-2 grid size-8 place-items-center rounded-full text-brand-text hover:bg-primary/10"><X className="size-5" /></button>
           <nav aria-label="Primary navigation" className={cn(styles.navigationRail, "border-r border-primary/15 p-3")}>
             <ul className="space-y-2 font-sans text-[16px] font-medium text-brand-text xl:text-[18px]">
               {navItems.map(item => (

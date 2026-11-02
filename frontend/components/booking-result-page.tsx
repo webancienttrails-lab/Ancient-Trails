@@ -1,6 +1,5 @@
 "use client";
 
-import { BookingPaymentReceipt } from "@/components/booking-payment-receipt";
 import { getBookingPaymentSummary, getBookingDocumentMessage } from "@/lib/booking-receipt";
 import { AirfareDisclosure } from "@/components/airfare-disclosure";
 import { BookingTermExplanation, BookingTermsLink } from "@/components/booking-term-help";
@@ -343,6 +342,8 @@ export function BookingResultPage({
             {isSubmission ? <div><BookingTermExplanation term="offline" /><BookingTermsLink /></div> : null}
             <DetailLine label="Subtotal" value={formatCurrency(booking.subtotal)} />
             <DetailLine label="GST" value={formatCurrency(booking.gstAmount)} />
+            {booking.tcsApplicable ? <DetailLine label={`TCS (${booking.tcsPercentage ?? 2}%)`} value={formatCurrency(booking.tcsAmount)} /> : null}
+            <DetailLine label="Package Total (Excluding TCS)" value={formatCurrency(booking.packageTotal ?? (booking.subtotal || 0) + (booking.gstAmount || 0))} />
             <AirfareDisclosure excluded={booking.airfareExcluded} amount={booking.airFlightCharges} addedAt={booking.airfareAddedAt} includedInTotal={booking.airfareIncludedInTotal} />
             <DetailLine
               label={booking.airfareExcluded && !booking.airfareAddedAt && !booking.airFlightCharges ? "Current Total (Excluding Airfare)" : "Grand Total"}
@@ -354,7 +355,6 @@ export function BookingResultPage({
                 booking.balanceDueDate
               )}`}
             />
-            {!isSubmission ? <div className="mt-3"><BookingPaymentReceipt booking={booking} tourName={tourName} /></div> : null}
           </SectionCard>
         </section>
 
@@ -418,7 +418,7 @@ export function BookingResultPage({
                   },
                   {
                     icon: FileText,
-                    title: "Receipt, Invoice & Voucher",
+                    title: "Invoice & Voucher",
                     text: getBookingDocumentMessage(booking),
                   },
                   {

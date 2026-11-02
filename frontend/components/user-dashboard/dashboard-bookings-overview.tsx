@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import heritageHeaderBanner from "@/public/home assets/Heritage Banner.webp";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -157,7 +158,7 @@ function EmptyUpcomingTours() {
   return (
     <div className="relative mt-4 overflow-hidden rounded-[7px] bg-primary/5 px-4 py-6 sm:mt-5 sm:px-5 sm:py-7">
       <Image
-        src="/home assets/Heritage Banner.webp"
+        src={heritageHeaderBanner}
         alt=""
         fill
         sizes="100vw"

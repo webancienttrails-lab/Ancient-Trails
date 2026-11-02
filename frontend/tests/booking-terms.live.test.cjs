@@ -33,7 +33,7 @@ async function connect(url) {
   };
 }
 
-test("required booking terms are visible and usable beside Pay Now at 375, 768 and 1280 px", { timeout: 120000 }, async t => {
+test("booking preview shows entered details and requires terms before payment at 375, 768 and 1280 px", { timeout: 120000 }, async t => {
   const candidates = [process.env.BROWSER_BIN,
     "C:/Program Files/Google/Chrome/Application/chrome.exe",
     "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
@@ -95,13 +95,14 @@ test("required booking terms are visible and usable beside Pay Now at 375, 768 a
   for (const width of [375, 768, 1280]) {
     await client.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: width < 600 });
     await navigateBookingTour(client, evaluate, waitFor, origin + "/tours/enigmatic-khajuraho");
-    await waitFor("document.body?.innerText.includes('40,000') && Boolean(document.querySelector('[data-booking-terms]'))", "live tour and terms checkbox");
+    await waitFor("document.body?.innerText.includes('40,000') && Boolean(document.querySelector('[data-mobile-booking-launcher]'))", "live tour");
     await evaluate("[...document.querySelectorAll('button')].find(button=>button.textContent.trim()==='Book Now')?.click()");
     await waitFor("Boolean(document.querySelector('input[name=\"tour-accommodation\"]:checked'))", "opened booking panel");
     if (width < 1024) await advanceBookingTo(evaluate, waitFor, 3);
     // Fill the remaining booking details locally using the verified fixture profile.
     for (const [label,value] of [
       ["Lead Traveller address","Fixture address"],
+      ["Lead Traveller pincode","411001"],
       ["Booking emergency contact name","Emergency Fixture"],
       ["Booking emergency contact mobile number","8000000000"],
     ]) {
@@ -113,13 +114,27 @@ test("required booking terms are visible and usable beside Pay Now at 375, 768 a
         input.dispatchEvent(new Event('input',{bubbles:true}));
       })()`);
     }
-    await waitFor("!document.querySelector('[data-booking-terms]').disabled", "required checkbox becomes usable after traveller details are complete");
-    if (width < 1024) await advanceBookingTo(evaluate, waitFor, 4);
+    await waitFor("Boolean(document.querySelector('[data-booking-review-trigger]:not(:disabled)'))", "complete details enable Review Your Booking");
+    assert.equal(await evaluate("Boolean(document.querySelector('[data-booking-review]'))"), false);
+    await evaluate("document.querySelector('[data-booking-review-trigger]').click()");
+    await waitFor("Boolean(document.querySelector('dialog[data-booking-review][open]'))", "Review opens the booking preview");
+    assert.ok(await evaluate("document.querySelector('[data-booking-review]').textContent.includes('Fixture address')"));
+    assert.ok(await evaluate("document.querySelector('[data-booking-review]').textContent.includes('Emergency Fixture')"));
+    await evaluate("[...document.querySelectorAll('[data-booking-review] button')].find(button=>button.textContent.trim()==='Edit Details').click()");
+    await waitFor("!document.querySelector('[data-booking-review]')", "Edit returns to the form");
+    assert.equal(await evaluate("document.querySelector('[aria-label=\"Lead Traveller address\"]').value"), "Fixture address");
+    if (width < 1024) {
+      await advanceBookingTo(evaluate, waitFor, 4);
+      await evaluate("document.querySelector('[data-mobile-booking-bar] button').click()");
+    } else {
+      await evaluate("[...document.querySelectorAll('aside button')].find(button=>button.textContent.trim()==='Pay Now').click()");
+    }
+    await waitFor("Boolean(document.querySelector('dialog[data-booking-review][open]'))", "review can be reopened after editing");
     const terms = await evaluate(`(() => {
       const input=document.querySelector('[data-booking-terms]'),card=input.closest('article'),link=card.querySelector('a');
       return {count:document.querySelectorAll('[data-booking-terms]').length,hidden:!!input.closest('.hidden'),display:getComputedStyle(card).display,
         label:input.closest('label').textContent,href:link.getAttribute('href'),target:link.target,
-        nextButton:card.nextElementSibling.querySelector('button').textContent.trim()};
+        payDisabled:[...document.querySelectorAll('[data-booking-review] button')].find(button=>button.textContent.trim()==='Pay Now').disabled};
     })()`);
     assert.equal(terms.count,1,"A single required checkbox at every width");
     assert.equal(terms.hidden,false,"No hidden responsive ancestor");
@@ -127,9 +142,7 @@ test("required booking terms are visible and usable beside Pay Now at 375, 768 a
     assert.match(terms.label,/read and agreed.*Terms & Conditions/s);
     assert.equal(terms.href,"/terms-and-conditions");
     assert.equal(terms.target,"_blank");
-    assert.equal(terms.nextButton,"Pay Now","Terms sit directly above the payment action");
-    await evaluate("[...document.querySelectorAll('button')].find(button=>button.textContent.trim()==='Pay Now').click()");
-    await waitFor("document.activeElement===document.getElementById('booking-form-errors')", "Pay Now announces the validation summary");
+    assert.equal(terms.payDisabled,true,"Unaccepted terms disable payment in the preview");
     assert.equal(await evaluate("Boolean(document.querySelector('button[aria-label=\"Close payment options\"]'))"),false);
     await pause(800);
     await evaluate("document.querySelector('[data-booking-terms]').scrollIntoView({block:'center',behavior:'instant'})");
@@ -141,10 +154,10 @@ test("required booking terms are visible and usable beside Pay Now at 375, 768 a
     await client.send("Input.dispatchMouseEvent",{type:"mousePressed",button:"left",clickCount:1,...point});
     await client.send("Input.dispatchMouseEvent",{type:"mouseReleased",button:"left",clickCount:1,...point});
     await waitFor("document.querySelector('[data-booking-terms]').checked", "visible checkbox accepts the terms");
-    await evaluate("[...document.querySelectorAll('button')].find(button=>button.textContent.trim()==='Pay Now').click()");
+    await evaluate("[...document.querySelectorAll('[data-booking-review] button')].find(button=>button.textContent.trim()==='Pay Now').click()");
     await waitFor("Boolean(document.querySelector('button[aria-label=\"Close payment options\"]'))", "accepted terms allow payment options");
     assert.deepEqual(await evaluate("window.__blockedTestWrites"),[],"Opening payment options needs no real API write");
     await evaluate("document.querySelector('button[aria-label=\"Close payment options\"]').click()");
-    t.diagnostic(`${width}px: terms visible beside Pay Now, unchecked terms block payment, checked terms allow payment options.`);
+    t.diagnostic(`${width}px: review shows entered details, Edit preserves values, and accepted terms allow payment options.`);
   }
 });

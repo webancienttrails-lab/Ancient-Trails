@@ -42,6 +42,7 @@ export function QuoteDialog({ open, onOpenChange }: {
     const form = event.currentTarget;
     const data = new FormData(form);
     const name = String(data.get("name") || "").trim();
+    const gender = String(data.get("gender") || "").trim();
     const mobile = String(data.get("phone") || "").trim();
     const digits = mobile.replace(/\D/g, "");
     const phone = `${data.get("countryCode")}${digits}`;
@@ -60,7 +61,7 @@ export function QuoteDialog({ open, onOpenChange }: {
     submitting.current = true;
     setPending(true);
     try {
-      await createCallbackEnquiry({ name, phone });
+      await createCallbackEnquiry({ name, gender, phone });
       form.reset();
       setFeedback({ kind: "success", message: "Thank you! Our team will call you to help with your quote." });
     } catch {
@@ -78,14 +79,15 @@ export function QuoteDialog({ open, onOpenChange }: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
       <DialogOverlay className="z-[2147483647] bg-secondary/45 backdrop-blur-sm" />
-      <DialogPrimitive.Popup className="fixed inset-x-0 bottom-0 z-[2147483647] grid max-h-[90dvh] w-full min-w-0 gap-5 overflow-y-auto overscroll-contain rounded-t-3xl border border-primary/15 bg-background p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] font-sans shadow-2xl outline-none transition-transform duration-300 ease-out max-sm:data-starting-style:translate-y-full max-sm:data-ending-style:translate-y-full motion-reduce:transition-none sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-[calc(100%-2rem)] sm:max-w-[440px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl sm:pb-6" data-lenis-prevent>
-        <DialogHeader className="relative pr-10">
+      <DialogPrimitive.Popup className="popup-form-panel fixed left-1/2 top-1/2 z-[2147483647] w-[calc(100%-2rem)] max-w-[440px] -translate-x-1/2 -translate-y-1/2 font-sans shadow-2xl outline-none" data-lenis-prevent>
+        <DialogHeader className="popup-form-header relative pr-10">
           <DialogTitle className="font-heading text-2xl font-bold text-secondary">Want us to call you?</DialogTitle>
           <DialogDescription className="sr-only">Request a travel quote with your full name and mobile number.</DialogDescription>
           <DialogClose aria-label="Close quote form" className="absolute right-0 top-1/2 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-full bg-secondary/10 text-secondary hover:bg-primary/15"><X className="size-4" /></DialogClose>
         </DialogHeader>
-        <form noValidate onSubmit={handleSubmit}>
-          <fieldset disabled={pending} className="grid min-w-0 gap-5 disabled:opacity-65">
+        <form noValidate onSubmit={handleSubmit} className="popup-form-layout">
+          <fieldset disabled={pending} className="popup-form-contents disabled:opacity-65">
+          <div data-lenis-prevent className="popup-form-body space-y-5">
             <div>
               <label htmlFor={`${id}-name`} className="mb-1.5 block text-sm font-medium text-secondary">Full Name <span className="text-brand-text">*</span></label>
               <input id={`${id}-name`} name="name" required maxLength={160} autoComplete="name" placeholder="Enter your full name"
@@ -96,7 +98,7 @@ export function QuoteDialog({ open, onOpenChange }: {
             </div>
             <div>
               <label htmlFor={`${id}-phone`} className="mb-1.5 block text-sm font-medium text-secondary">Mobile No. <span className="text-brand-text">*</span></label>
-              <div className={`flex min-w-0 rounded-lg border bg-white focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15 ${errors.phone ? "border-red-500" : "border-secondary/25"}`}>
+              <div className={`popup-form-control flex min-w-0 rounded-lg border bg-white focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15 ${errors.phone ? "border-red-500" : "border-secondary/25"}`}>
                 <select name="countryCode" defaultValue="+91" autoComplete="tel-country-code" aria-label="Phone country code"
                   onChange={() => setErrors(value => ({ ...value, phone: undefined }))}
                   className="w-24 shrink-0 rounded-l-lg border-r border-secondary/15 bg-transparent px-2 text-sm text-secondary outline-none">
@@ -109,13 +111,13 @@ export function QuoteDialog({ open, onOpenChange }: {
               </div>
               {errors.phone && <p id={`${id}-phone-error`} className="mt-1 text-xs text-red-600">{errors.phone}</p>}
             </div>
-            <button type="submit" className="inline-flex min-h-12 cursor-pointer items-center justify-center gap-3 rounded-lg bg-primary px-4 font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-wait">
-              {pending ? <LoaderCircle className="size-5 animate-spin" /> : <Phone className="size-5" />}
-              {pending ? "Submitting..." : "Submit here"}
-            </button>
-          </fieldset>
-          {feedback && <p role={feedback.kind === "error" ? "alert" : "status"} className={`mt-3 text-sm ${feedback.kind === "error" ? "text-red-700" : "text-green-700"}`}>{feedback.message}</p>}
-        </form>
+            <div>
+              <label htmlFor={`${id}-gender`} className="mb-1.5 block text-sm font-medium text-secondary">Gender (optional)</label>
+              <select id={`${id}-gender`} name="gender" defaultValue="" className={`${inputClass} border-secondary/25`}>
+                <option value="">Select gender (optional)</option>
+                <option>Female</option><option>Male</option><option>Non-binary</option><option>Other</option><option>Prefer not to say</option>
+              </select>
+            </div>
         <div className="border-t border-primary/15 pt-4 text-secondary">
           <h3 className="mb-3 text-lg font-medium text-secondary/65">{heading}</h3>
           <div className="grid gap-3 text-sm font-semibold [&_a]:underline [&_a]:underline-offset-4 [&_a]:transition-colors [&_a]:hover:text-brand-text">
@@ -124,6 +126,16 @@ export function QuoteDialog({ open, onOpenChange }: {
             {contact.officeAddress && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.officeAddress)}`} target="_blank" rel="noopener noreferrer" className="flex items-start gap-3"><Building2 className="mt-0.5 size-4 shrink-0 text-brand-text" /><span><span className="block">Locate our office</span><span className="mt-1 block text-xs font-normal leading-relaxed text-secondary/65">{contact.officeAddress}</span></span></a>}
           </div>
         </div>
+          </div>
+          <div className="popup-form-actions">
+            <button type="submit" className="popup-form-submit inline-flex cursor-pointer items-center justify-center gap-3 disabled:cursor-wait">
+              {pending ? <LoaderCircle className="size-5 animate-spin" /> : <Phone className="size-5" />}
+              {pending ? "Submitting..." : "Submit here"}
+            </button>
+          </div>
+          </fieldset>
+          {feedback && <p role={feedback.kind === "error" ? "alert" : "status"} className={`shrink-0 text-sm ${feedback.kind === "error" ? "text-red-700" : "text-green-700"}`}>{feedback.message}</p>}
+        </form>
       </DialogPrimitive.Popup>
       </DialogPortal>
     </Dialog>

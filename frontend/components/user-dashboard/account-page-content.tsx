@@ -463,7 +463,7 @@ function BookingKycTravellerCard({
               href={getBookingKycDocumentUrl(document.fileUrl)}
               target="_blank"
               rel="noreferrer"
-              className="flex min-w-0 items-center justify-between gap-3 rounded-[6px] border border-button-outline bg-white px-3 py-2 font-sans text-[11px] font-bold text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
+              className="content-fit-button flex min-w-0 items-center justify-between gap-3 rounded-[6px] border border-button-outline bg-white px-3 py-2 font-sans text-[11px] font-bold text-button-outline transition-colors hover:border-button-outline hover:text-button-outline"
             >
               <span className="min-w-0 truncate">
                 {document.documentLabel}

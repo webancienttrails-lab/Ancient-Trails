@@ -509,7 +509,16 @@ export function PlanTripLauncher() {
       maxPanelWidth
     );
     const width = Math.max(panelWidth, 280);
-    const top = buttonRect.top - panelChromeHeight / 2;
+    const viewport = window.visualViewport;
+    const viewportTop = viewport?.offsetTop ?? 0;
+    const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
+    const desiredTop = buttonRect.top - panelChromeHeight / 2;
+    const top = window.innerWidth < 768
+      ? Math.max(
+          viewportTop + panelPadding,
+          Math.min(desiredTop, viewportBottom - (panelRef.current?.offsetHeight ?? panelVisualHeight) - panelPadding)
+        )
+      : desiredTop;
 
     setPanelPosition({
       left,
@@ -605,6 +614,8 @@ export function PlanTripLauncher() {
     };
 
     window.addEventListener("resize", updatePanelPosition);
+    window.visualViewport?.addEventListener("resize", updatePanelPosition);
+    window.visualViewport?.addEventListener("scroll", updatePanelPosition);
     window.addEventListener("scroll", updatePanelPosition, true);
     window.addEventListener("keydown", handleKeyDown);
 
@@ -612,6 +623,8 @@ export function PlanTripLauncher() {
       document.body.style.overflow = previousBodyOverflow;
       document.body.style.overscrollBehavior = previousBodyOverscrollBehavior;
       window.removeEventListener("resize", updatePanelPosition);
+      window.visualViewport?.removeEventListener("resize", updatePanelPosition);
+      window.visualViewport?.removeEventListener("scroll", updatePanelPosition);
       window.removeEventListener("scroll", updatePanelPosition, true);
       window.removeEventListener("keydown", handleKeyDown);
     };
@@ -1225,7 +1238,7 @@ function PlannerEnquiryDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="planner-enquiry-title"
-        className="relative z-10 max-h-[calc(100dvh-2rem)] w-full max-w-[720px] overflow-hidden rounded-[18px] border border-accent/25 bg-white shadow-[0_24px_80px_rgba(50,50,50,0.28)]"
+        className="popup-form-panel relative z-10 w-full max-w-[720px] shadow-[0_24px_80px_rgba(50,50,50,0.28)]"
       >
         <button
           type="button"
@@ -1236,8 +1249,8 @@ function PlannerEnquiryDialog({
           <X className="size-4" strokeWidth={1.8} />
         </button>
 
-        <div className="max-h-[calc(100dvh-2rem)] overflow-y-auto px-5 pb-5 pt-5 sm:px-6 sm:pb-6">
-          <div className="pr-10">
+        <div className="popup-form-layout">
+          <div className="popup-form-header pr-10">
             <h2
               id="planner-enquiry-title"
               className="font-heading text-[28px] font-bold leading-tight text-secondary"
@@ -1251,12 +1264,13 @@ function PlannerEnquiryDialog({
           </div>
 
           {isSubmitted ? (
-            <div className="mt-5 rounded-[12px] border border-primary/20 bg-[#fff7ef] p-4 font-sans text-[14px] font-semibold text-secondary">
+            <div data-lenis-prevent className="popup-form-body mt-5 rounded-[12px] border border-primary/20 bg-[#fff7ef] p-4 font-sans text-[14px] font-semibold text-secondary">
               Thank you. Your enquiry has been captured and our team will get back
               to you shortly.
             </div>
           ) : (
-            <form className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4" onSubmit={handleSubmit}>
+            <form className="popup-form-layout" onSubmit={handleSubmit}>
+              <div data-lenis-prevent className="popup-form-body grid content-start grid-cols-1 gap-4 sm:grid-cols-2">
               <PlannerEnquiryField label="Your Name *" name="name" />
               <PlannerEnquiryField label="Email Address *" name="email" type="email" />
               <PlannerEnquiryField label="Phone Number *" name="phone" type="tel" />
@@ -1280,9 +1294,12 @@ function PlannerEnquiryDialog({
                   className="mt-1.5 w-full resize-none rounded-[10px] border border-accent/20 bg-white px-3 py-2 font-sans text-[13px] font-medium normal-case text-secondary outline-none transition-colors placeholder:text-secondary/38 focus:border-primary focus:ring-3 focus:ring-primary/15"
                 />
               </label>
-              <Button type="submit" className="h-11 w-full sm:col-span-2">
+              </div>
+              <div className="popup-form-actions">
+              <Button type="submit" className="popup-form-submit">
                 Submit Enquiry
               </Button>
+              </div>
             </form>
           )}
         </div>
@@ -1320,6 +1337,66 @@ function PlannerEnquiryField({
   );
 }
 
+// Measure the visible viewport, including the space left above the mobile keyboard.
+function useMobileDropdown(active: boolean) {
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const dropdown = dropdownRef.current;
+    const field = dropdown?.parentElement;
+    if (!active || !dropdown || !field) return;
+
+    const viewport = window.visualViewport;
+    let frame = 0;
+    const update = () => {
+      if (window.innerWidth >= 768) {
+        dropdown.style.maxHeight = "";
+        dropdown.style.top = "";
+        dropdown.style.bottom = "";
+        return;
+      }
+
+      const rect = field.getBoundingClientRect();
+      const viewportTop = viewport?.offsetTop ?? 0;
+      const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
+      const gap = 12;
+      const edge = 12;
+      const below = Math.max(0, viewportBottom - rect.bottom - gap - edge);
+      const above = Math.max(0, rect.top - viewportTop - gap - edge);
+      const openAbove = below < Math.min(dropdown.scrollHeight, 144) && above > below;
+
+      dropdown.style.maxHeight = `${openAbove ? above : below}px`;
+      dropdown.style.top = openAbove ? "auto" : `calc(100% + ${gap}px)`;
+      dropdown.style.bottom = openAbove ? `calc(100% + ${gap}px)` : "auto";
+    };
+    const scheduleUpdate = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(update);
+    };
+
+    update();
+    const observer = new ResizeObserver(scheduleUpdate);
+    observer.observe(field);
+    if (dropdown.firstElementChild) observer.observe(dropdown.firstElementChild);
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("scroll", scheduleUpdate, true);
+    window.addEventListener("transitionend", scheduleUpdate, true);
+    viewport?.addEventListener("resize", scheduleUpdate);
+    viewport?.addEventListener("scroll", scheduleUpdate);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("scroll", scheduleUpdate, true);
+      window.removeEventListener("transitionend", scheduleUpdate, true);
+      viewport?.removeEventListener("resize", scheduleUpdate);
+      viewport?.removeEventListener("scroll", scheduleUpdate);
+    };
+  }, [active]);
+
+  return dropdownRef;
+}
+
 function DestinationField({
   active,
   onFocus,
@@ -1337,6 +1414,8 @@ function DestinationField({
   onSearch: () => void;
   onSuggestionSelect: (suggestion: PlannerSuggestion) => void;
 }) {
+  const dropdownRef = useMobileDropdown(active);
+
   return (
     <div data-plan-trip-field className="relative min-w-0 py-1 text-left md:py-0">
       <label className="sr-only" htmlFor="plan-trip-destination-search">
@@ -1361,9 +1440,9 @@ function DestinationField({
       />
 
       {active ? (
-        <div className="absolute left-0 top-[calc(100%+12px)] z-[80] w-full min-w-[280px] overflow-hidden rounded-[18px] border border-border bg-white shadow-[0_18px_42px_rgba(15,23,42,0.16)] md:w-full">
+        <div ref={dropdownRef} data-lenis-prevent className="absolute left-0 top-[calc(100%+12px)] z-[80] w-full min-w-0 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-contain rounded-[18px] border border-border bg-white shadow-[0_18px_42px_rgba(15,23,42,0.16)] md:min-w-[280px] md:overflow-hidden md:w-full">
           {suggestions.length > 0 ? (
-            <div data-lenis-prevent className="h-[144px] max-h-[calc(100dvh-13rem)] touch-pan-y overflow-y-auto overscroll-contain px-2 pb-8 pt-2 [-webkit-overflow-scrolling:touch] sm:h-[174px]">
+            <div data-lenis-prevent className="px-2 pb-2 pt-2 md:h-[174px] md:max-h-[calc(100dvh-13rem)] md:touch-pan-y md:overflow-y-auto md:overscroll-contain md:pb-8 [-webkit-overflow-scrolling:touch]">
               {suggestions.map((suggestion) => (
                 <button
                   key={suggestion.id}
@@ -1409,6 +1488,8 @@ function MonthField({
   onChange: (value: string) => void;
   onToggle: () => void;
 }) {
+  const dropdownRef = useMobileDropdown(active);
+
   return (
     <div data-plan-trip-field className="relative min-w-0 py-1 md:py-0">
       <PlannerFieldButton
@@ -1419,8 +1500,8 @@ function MonthField({
       />
 
       {active ? (
-        <div className="absolute left-1/2 top-[calc(100%+12px)] z-[80] w-[min(290px,calc(100vw-1rem))] -translate-x-1/2 overflow-hidden rounded-[18px] border border-border bg-white shadow-[0_18px_42px_rgba(15,23,42,0.16)] md:w-full">
-          <div data-lenis-prevent className="h-[144px] max-h-[calc(100dvh-13rem)] touch-pan-y overflow-y-auto overscroll-contain px-2 pb-8 pt-2 [-webkit-overflow-scrolling:touch] sm:h-[174px]">
+        <div ref={dropdownRef} data-lenis-prevent className="absolute left-1/2 top-[calc(100%+12px)] z-[80] w-full -translate-x-1/2 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-contain rounded-[18px] border border-border bg-white shadow-[0_18px_42px_rgba(15,23,42,0.16)] md:overflow-hidden md:w-full">
+          <div data-lenis-prevent className="px-2 pb-2 pt-2 md:h-[174px] md:max-h-[calc(100dvh-13rem)] md:touch-pan-y md:overflow-y-auto md:overscroll-contain md:pb-8 [-webkit-overflow-scrolling:touch]">
             <MonthOptionButton
               active={!value}
               label="Any Month"
@@ -1498,6 +1579,7 @@ function GuestsField({
   onToggle: () => void;
 }) {
   const totalGuests = adultCount + childCount;
+  const dropdownRef = useMobileDropdown(active);
   const travellerLabel =
     childCount > 0
       ? `${totalGuests} ${totalGuests === 1 ? "Guest" : "Guests"}`
@@ -1513,7 +1595,7 @@ function GuestsField({
       />
 
       {active ? (
-        <div className="absolute left-1/2 top-[calc(100%+8px)] z-[80] w-[min(360px,calc(100vw-1.25rem))] -translate-x-1/2 overflow-hidden rounded-[14px] border border-border bg-white shadow-[0_18px_42px_rgba(15,23,42,0.16)] md:left-auto md:right-0 md:top-[calc(100%+12px)] md:w-[min(360px,calc(100vw-2.5rem))] md:translate-x-0">
+        <div ref={dropdownRef} data-lenis-prevent className="absolute left-1/2 top-[calc(100%+8px)] z-[80] w-full -translate-x-1/2 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-contain rounded-[14px] border border-border bg-white shadow-[0_18px_42px_rgba(15,23,42,0.16)] md:overflow-hidden md:left-auto md:right-0 md:top-[calc(100%+12px)] md:w-[min(360px,calc(100vw-2.5rem))] md:translate-x-0">
           <div className="px-3 pb-3 pt-4 sm:px-5 sm:pb-4 sm:pt-6">
             <TravellerStepper
               label="Adults"

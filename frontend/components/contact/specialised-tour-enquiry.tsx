@@ -32,8 +32,8 @@ export function SpecialisedTourEnquiryButton({ category = "", className, childre
       <DialogTrigger render={<Button className={className} />}>{children}</DialogTrigger>
       <DialogPortal>
         <DialogOverlay className="z-[2147483647] bg-secondary/45 backdrop-blur-sm" />
-        <DialogPrimitive.Popup data-lenis-prevent className="fixed inset-x-0 bottom-0 z-[2147483647] grid max-h-[90dvh] w-full min-w-0 gap-5 overflow-y-auto overscroll-contain rounded-t-3xl border border-primary/15 bg-background p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] font-sans shadow-2xl outline-none transition-[opacity,transform,translate] duration-300 ease-out data-starting-style:opacity-0 data-ending-style:opacity-0 max-sm:data-starting-style:translate-y-full max-sm:data-ending-style:translate-y-full motion-reduce:transition-none sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-[calc(100%-2rem)] sm:max-w-[640px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl sm:p-7">
-          <DialogHeader className="relative pr-10">
+        <DialogPrimitive.Popup data-lenis-prevent className="popup-form-panel fixed left-1/2 top-1/2 z-[2147483647] w-[calc(100%-2rem)] max-w-[640px] -translate-x-1/2 -translate-y-1/2 font-sans shadow-2xl outline-none transition-opacity duration-300 data-starting-style:opacity-0 data-ending-style:opacity-0 motion-reduce:transition-none">
+          <DialogHeader className="popup-form-header relative pr-10">
             <DialogTitle className="font-heading text-2xl font-bold text-secondary">Plan Your Specialised Tour</DialogTitle>
             <DialogDescription>Tell us about your group. Fields marked with * are required.</DialogDescription>
             <DialogClose aria-label="Close specialised tour form" className="absolute right-0 top-0 grid size-8 cursor-pointer place-items-center rounded-full bg-secondary/10 text-secondary hover:bg-primary/15"><X className="size-4" /></DialogClose>
@@ -75,7 +75,7 @@ function SpecialisedTourForm({ initialCategory }: { initialCategory: string }) {
     setFeedback(null);
     try {
       await createContactEnquiry({
-        name: read("name"), email: read("email"), phone,
+        name: read("name"), gender: read("gender"), email: read("email"), phone,
         subject: `Specialised tour enquiry: ${category.label}`,
         message: [
           `Specialised Tour For: ${category.label}`,
@@ -95,13 +95,14 @@ function SpecialisedTourForm({ initialCategory }: { initialCategory: string }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} onInput={event => {
+    <form className="popup-form-layout" onSubmit={handleSubmit} onInput={event => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) event.target.setCustomValidity("");
       if (event.target instanceof HTMLSelectElement && event.target.name === "countryCode") {
         (event.currentTarget.elements.namedItem("phone") as HTMLInputElement).setCustomValidity("");
       }
     }}>
-      <fieldset disabled={pending} className="grid min-w-0 gap-4 disabled:opacity-65 sm:grid-cols-2">
+      <fieldset disabled={pending} className="popup-form-contents disabled:opacity-65">
+        <div data-lenis-prevent className="popup-form-body grid content-start gap-4 sm:grid-cols-2">
         <label className={labelClass}>
           <span>Full Name *</span>
           <input className={inputClass} name="name" required maxLength={160} autoComplete="name" placeholder="Enter your full name" />
@@ -109,6 +110,13 @@ function SpecialisedTourForm({ initialCategory }: { initialCategory: string }) {
         <label className={labelClass}>
           <span>Email Address *</span>
           <input className={inputClass} name="email" type="email" required maxLength={254} autoComplete="email" placeholder="Enter your email address" />
+        </label>
+        <label className={labelClass}>
+          <span>Gender (optional)</span>
+          <select className={inputClass} name="gender" defaultValue="">
+            <option value="">Select gender (optional)</option>
+            <option>Female</option><option>Male</option><option>Non-binary</option><option>Other</option><option>Prefer not to say</option>
+          </select>
         </label>
         <div className={labelClass}>
           <label htmlFor={`${id}-phone`}>Contact Number *</label>
@@ -138,10 +146,13 @@ function SpecialisedTourForm({ initialCategory }: { initialCategory: string }) {
           <span>Message / Requirements <span className="font-normal text-secondary/60">(optional)</span></span>
           <textarea className={`${inputClass} h-auto resize-y py-3`} name="requirements" rows={3} maxLength={2500} placeholder="Tell us about your interests, group and any special requirements" />
         </label>
-        <Button type="submit" disabled={pending} className="mt-1 h-auto min-h-11 min-w-0 gap-5 whitespace-normal px-5 py-2 font-normal sm:col-span-2">
+        </div>
+        <div className="popup-form-actions">
+        <Button type="submit" disabled={pending} className="popup-form-submit gap-5">
           {pending ? "Sending..." : "Submit Enquiry"}
           {pending ? <LoaderCircle className="size-5 animate-spin" /> : <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />}
         </Button>
+        </div>
       </fieldset>
       {feedback && <p role={feedback.kind === "error" ? "alert" : "status"} className={`mt-4 text-sm ${feedback.kind === "error" ? "text-red-700" : "text-green-700"}`}>{feedback.message}</p>}
     </form>

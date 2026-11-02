@@ -945,7 +945,7 @@ export function EgyptExperiencesSection({
             variant="outline"
             nativeButton={false}
             render={<Link prefetch={false} href={experiencesHref} />}
-            className="mt-4 h-10 w-full min-w-0 justify-between gap-3 px-5 text-[16px] font-normal lg:hidden"
+            className="mt-4 h-10 w-fit min-w-0 justify-between gap-3 px-5 text-[16px] font-normal lg:hidden"
           >
             View All Traveller Experiences
             <ButtonArrow className="group-hover/button:brightness-0 group-hover/button:invert" />

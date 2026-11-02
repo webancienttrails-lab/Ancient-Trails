@@ -86,7 +86,7 @@ export function SpecialisedToursSection() {
           <Button
             nativeButton={false}
            render={<Link prefetch={false} href="/specialised-tours" />}
-            className="mt-6 h-auto min-h-11 w-full min-w-0 max-w-full justify-between gap-4 whitespace-normal px-5 py-2 text-left text-[15px] font-normal sm:mt-10 sm:w-auto sm:gap-8 sm:px-6 sm:text-button lg:mt-14 lg:h-11 lg:min-w-[250px] lg:whitespace-nowrap lg:py-0"
+            className="mt-6 h-auto min-h-11 w-fit min-w-0 max-w-full justify-between gap-4 whitespace-normal px-5 py-2 text-left text-[15px] font-normal sm:mt-10 sm:gap-8 sm:px-6 sm:text-button lg:mt-14 lg:h-11 lg:w-auto lg:min-w-[250px] lg:whitespace-nowrap lg:py-0"
           >
             View All Specialised Tours
             <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />

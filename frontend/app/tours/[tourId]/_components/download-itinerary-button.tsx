@@ -1,6 +1,7 @@
 "use client";
 
 import { fetchSiteLogoUrl } from "@/lib/site-logo";
+import { addContainedPdfImage } from "@/lib/pdf-image";
 import { createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -773,14 +774,9 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
 
     if (logoImage) {
       try {
-        doc.addImage(
-          logoImage,
-          getPdfImageFormat(logoImage),
-          margin,
-          15,
-          102,
-          31
-        );
+        addContainedPdfImage(doc, logoImage, {
+          x: margin, y: 15, width: 102, height: 31,
+        });
       } catch {
         setBold(13, colors.deep);
         doc.text("ANCIENT TRAILS", margin, 34);
@@ -1008,14 +1004,10 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
 
   if (logoImage) {
     try {
-      doc.addImage(
-        logoImage,
-        getPdfImageFormat(logoImage),
-        pageWidth - margin - 145,
-        29,
-        145,
-        46
-      );
+      addContainedPdfImage(doc, logoImage, {
+        x: pageWidth - margin - 145, y: 29, width: 145, height: 46,
+        align: "right",
+      });
     } catch {
       setBold(16, colors.deep);
       doc.text("ANCIENT TRAILS", pageWidth - margin, 52, { align: "right" });
@@ -1308,7 +1300,6 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
   const getDayMetadata = (day: ItineraryDay): Array<[string, string]> => [
     ...(day.placesVisited?.length ? [["Sightseeing", day.placesVisited.filter(Boolean).join("; ")] as [string, string]] : []),
     ...(day.meals ? [["Meals", day.meals] as [string, string]] : []),
-    ...(day.hotels ? [["Accommodation", day.hotels] as [string, string]] : []),
     ...(day.walkingDifficulty ? [["Walking", day.walkingDifficulty] as [string, string]] : []),
   ];
 
@@ -1514,28 +1505,27 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
       : "Not available";
 
   if (sortedDepartures.length) {
-    sortedDepartures.forEach((departure, index) => {
-      const childRules = departure.childPricingRules || [];
-      const allowsExtraBed = departure.roomPolicy?.allowExtraBed !== false;
-      const allowsChildSharing = departure.roomPolicy?.allowChildBedSharing !== false;
-      const rows = [
-        ["Double / Twin sharing", "Per adult sharing a room", rateLabel(departure.priceAdult)],
-        ["Single occupancy", "Per person in a single room", rateLabel(departure.singleOccupancy)],
-        ["Extra bed", "Per person using an extra bed", rateLabel(departure.priceExtraBed, allowsExtraBed)],
-        ["Child without extra bed", "Per child sharing an existing bed", rateLabel(
-          departure.priceChildWithoutExtraBed,
-          allowsChildSharing && (!childRules.length || childRules.some((rule) => rule.allowWithoutExtraBed))
-        )],
-      ];
-      drawTable(
-        ["Accommodation", "Rate basis", "Price"], rows,
-        [contentWidth * 0.35, contentWidth * 0.40, contentWidth * 0.25],
-        {
-          sectionTitle: index === 0 ? "Accommodation & Pricing" : undefined,
-          title: formatDate(departure.departureDate) + " - " + formatDate(departure.returnDate),
-        }
-      );
-    });
+    const departure = sortedDepartures[0];
+    const childRules = departure.childPricingRules || [];
+    const allowsExtraBed = departure.roomPolicy?.allowExtraBed !== false;
+    const allowsChildSharing = departure.roomPolicy?.allowChildBedSharing !== false;
+    const rows = [
+      ["Double / Twin sharing", "Per adult sharing a room", rateLabel(departure.priceAdult)],
+      ["Single occupancy", "Per person in a single room", rateLabel(departure.singleOccupancy)],
+      ["Extra bed", "Per person using an extra bed", rateLabel(departure.priceExtraBed, allowsExtraBed)],
+      ["Child without extra bed", "Per child sharing an existing bed", rateLabel(
+        departure.priceChildWithoutExtraBed,
+        allowsChildSharing && (!childRules.length || childRules.some((rule) => rule.allowWithoutExtraBed))
+      )],
+    ];
+    drawTable(
+      ["Accommodation", "Rate basis", "Price"], rows,
+      [contentWidth * 0.35, contentWidth * 0.40, contentWidth * 0.25],
+      {
+        sectionTitle: "Accommodation & Pricing",
+        title: formatDate(departure.departureDate) + " - " + formatDate(departure.returnDate),
+      }
+    );
     ensureSpace(40, "Accommodation & Pricing");
     y = drawText(
       "Rates are per person. GST (" + (payload.gstPercentage || 0) + "%) is additional. Child rates are subject to the applicable age and room policies. Final availability and charges are confirmed at booking.",
@@ -1581,9 +1571,6 @@ async function downloadTourItineraryPdf(payload: DownloadItineraryButtonProps) {
     y += 8;
   };
 
-  if (payload.tour.accommodationDetails?.length) {
-    drawBulletSection("Accommodation Details", payload.tour.accommodationDetails, "include");
-  }
   drawBulletSection("Inclusions", getTourInclusions(payload.tour), "include");
   drawBulletSection("Exclusions", getTourExclusions(payload.tour), "exclude");
 

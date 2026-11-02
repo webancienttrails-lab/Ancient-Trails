@@ -52,8 +52,11 @@ export function BookingCancellationRequestControl({ booking, departureDate, disa
       <Link href="/terms-and-conditions#cancellation-policy" className="ml-3 font-sans text-[12px] font-semibold text-brand-text underline">Cancellation policy</Link>
       {open ? (
         <div role="dialog" aria-modal="true" aria-labelledby="cancellation-request-title" className="fixed inset-0 z-[2147483647] flex items-center justify-center overflow-y-auto bg-secondary/50 p-4">
-          <form onSubmit={submit} className="my-auto max-h-[90vh] w-full max-w-xl space-y-4 overflow-y-auto rounded-lg bg-white p-5 text-secondary shadow-xl">
+          <form onSubmit={submit} className="popup-form-panel my-auto w-full max-w-xl shadow-xl">
+            <div className="popup-form-header">
             <h2 id="cancellation-request-title" className="font-heading text-2xl font-bold">Request cancellation</h2>
+            </div>
+            <div data-lenis-prevent className="popup-form-body space-y-4">
             <p className="text-sm">Review the estimate before sending your request. Our team handles cancellation and any refund manually. Submitting this request does not cancel your booking automatically.</p>
             {estimate ? (
               <div className="space-y-2 rounded-lg border border-border p-3 text-sm">
@@ -70,9 +73,10 @@ export function BookingCancellationRequestControl({ booking, departureDate, disa
             {record ? <p role="status" className="text-sm font-semibold">Your cancellation request is recorded and awaiting team review. No refund has been issued automatically.</p> : preview && !preview.canRequest ? <p className="text-sm">This booking is not eligible for an online cancellation request. Please contact our team.</p> : preview ? (
               <label className="block text-sm font-semibold">Reason for cancellation<textarea required minLength={5} maxLength={1000} value={reason} onChange={event => setReason(event.target.value)} className="mt-2 min-h-24 w-full rounded border border-border p-2" /></label>
             ) : null}
-            <div className="flex flex-wrap gap-3">
+            </div>
+            <div className="popup-form-actions">
               <Button type="button" variant="outline" disabled={busy} onClick={() => setOpen(false)}>{record ? "Close" : "Keep my booking"}</Button>
-              {!record && preview?.canRequest ? <Button type="submit" disabled={busy || reason.trim().length < 5}>{busy ? "Sending..." : "Send cancellation request"}</Button> : null}
+              {!record && preview?.canRequest ? <Button type="submit" className="popup-form-submit" disabled={busy || reason.trim().length < 5}>{busy ? "Sending..." : "Send cancellation request"}</Button> : null}
               <Link href="/terms-and-conditions#cancellation-policy" className="self-center text-sm text-brand-text underline">Read cancellation policy</Link>
             </div>
           </form>

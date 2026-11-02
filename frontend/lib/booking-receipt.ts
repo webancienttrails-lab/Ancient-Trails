@@ -33,9 +33,8 @@ export function getBookingPaymentSummary(booking: PaymentRecord): string {
 
 export function getBookingDocumentMessage(booking: PaymentRecord): string {
   const { balance, canDownloadReceipt } = getBookingPaymentState(booking);
-  if (!canDownloadReceipt) return "Your payment receipt will be available after payment is verified. The final invoice and booking voucher are available after final payment.";
-  if (balance > 0) return "Your payment receipt is available now. The final invoice and booking voucher are available after final payment.";
-  return "Your payment receipt, final invoice and booking voucher are available now in My Bookings.";
+  if (!canDownloadReceipt || balance > 0) return "The final invoice and booking voucher are available after final payment.";
+  return "Your final invoice and booking voucher are available now in My Bookings.";
 }
 
 export async function createBookingPaymentReceiptPdf(booking: BookingConfirmation, tourName: string) {

@@ -12,7 +12,7 @@
   min-height: clamp(180px, 17vw, 245px);
   align-items: center;
   gap: 32px;
-  padding: 16px 0 28px 6%;
+  padding: 16px 0 clamp(40px, 4vw, 64px) 6%;
 }
 .introCopy { position: relative; z-index: 1; }
 .eyebrow {
@@ -30,7 +30,7 @@
 .introDescription { max-width: 510px; margin-top: 12px; color: #666; font-family: var(--font-sans); font-size: clamp(12px, 1vw, 15px); line-height: 1.5; }
 .introIllustration { position: absolute; inset: -6px -25px -5px 53%; pointer-events: none; opacity: .65; }
 .introIllustration img { object-fit: contain; object-position: center bottom; }
-.interests { display: grid; gap: 20px; }
+.interests { display: grid; gap: clamp(40px, 4vw, 64px); }
 .interestRow {
   display: grid;
   grid-template-columns: 1.08fr 1fr;
@@ -62,11 +62,8 @@
 }
 .decoration { position: absolute; z-index: 0; right: -20px; bottom: -5px; width: 38%; height: 70%; pointer-events: none; color: #bb936c; opacity: .3; }
 .sketch { object-fit: contain; object-position: right bottom; }
-.contactBanner { position: relative; display: flex; width: calc(100% - 40px); min-height: clamp(160px, 14vw, 210px); align-items: center; justify-content: space-between; gap: 24px; overflow: hidden; isolation: isolate; margin: 24px auto 12px; padding: 24px clamp(24px, 8vw, 140px); border-radius: 14px; }
+.contactBanner { position: relative; display: flex; flex-direction: column; width: 100%; min-height: clamp(160px, 14vw, 210px); align-items: flex-start; justify-content: center; gap: 24px; overflow: hidden; isolation: isolate; margin: clamp(40px, 4vw, 64px) auto 12px; padding: 24px clamp(24px, 8vw, 140px); border: 0; border-radius: 0; }
 .contactImage { z-index: -2; object-fit: cover; object-position: center 65%; }
-.contactBanner::before { position: absolute; z-index: -1; inset: 0; content: ""; background: #fcf0e1; clip-path: polygon(0 0, 43% 0, 45% 7%, 44% 14%, 48% 23%, 46% 30%, 51% 41%, 50% 50%, 54% 62%, 53% 72%, 59% 87%, 65% 100%, 0 100%); }
-.contactIllustration { position: absolute; z-index: -1; bottom: -30px; left: -40px; width: 25%; height: 100%; mix-blend-mode: multiply; opacity: .28; mask-image: linear-gradient(to right, #000, transparent); }
-.contactIllustration img { object-fit: cover; object-position: bottom; }
 .contactCopy { max-width: 440px; }
 .contactCopy h2 { margin-top: 8px; font-family: var(--font-heading); font-size: clamp(28px, 2.7vw, 40px); font-weight: 700; line-height: 1.05; }
 .contactCopy > p:last-child { margin-top: 10px; font-family: var(--font-sans); font-size: clamp(11px, 1vw, 14px); line-height: 1.45; color: #777; }
@@ -79,20 +76,19 @@
   .photo { min-height: 190px; }
 }
 @media (max-width: 699px) {
-  .intro { display: block; min-height: 0; padding: 24px 4px 28px; }
+  .intro { display: block; min-height: 0; padding: 24px 4px 40px; }
   .intro h1 { font-size: clamp(32px, 8vw, 42px); }
   .introDescription { max-width: 460px; font-size: 13px; line-height: 1.55; }
   .introIllustration { display: none; }
   .eyebrow { font-size: 10px; }
-  .interests { gap: 30px; }
+  .interests { gap: 40px; }
   .interestRow, .reverse { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .photo, .reverse .photo { order: 0; min-height: 0; aspect-ratio: 2 / 1; }
   .copy, .reverse .copy { order: 1; padding: 0 5px 5px; }
   .interestHeading { font-size: 30px; }
   .description { max-width: 100%; font-size: 13px; line-height: 1.55; }
   .decoration { right: 0; width: 30%; max-height: 170px; opacity: .2; }
-  .contactBanner { width: calc(100% - 24px); min-height: 290px; align-items: flex-start; flex-direction: column; justify-content: center; gap: 22px; margin-top: 28px; padding: 28px 25px; }
-  .contactBanner::before { background: linear-gradient(90deg, #fcf0e1 0%, #fcf0e1f5 55%, #fcf0e1a6 100%); clip-path: none; }
+  .contactBanner { width: 100%; min-height: 290px; align-items: flex-start; flex-direction: column; justify-content: center; gap: 22px; margin-top: 40px; padding: 28px 25px; }
   .contactCopy h2 { font-size: 31px; }
   .contactCopy > p:last-child { font-size: 12px; }
   .desktopBreak { display: none; }

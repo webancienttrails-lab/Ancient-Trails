@@ -74,7 +74,7 @@ export function BookingProgress() {
               onClick={() => onStageChange(index as BookingStage)}
               className={cn("h-full w-full rounded-[6px] border px-1 py-2 font-sans text-[10px] font-semibold leading-tight disabled:opacity-45", stage === index ? "border-primary bg-primary/5 text-brand-text" : "border-border text-secondary")}
             >
-              <span className="mb-1 block">{index}</span>{label}
+              <span className="sr-only">{index}</span>{label}
             </button>
           </li>
         ))}

@@ -162,17 +162,6 @@ const topDestinations: [TopDestination, ...TopDestination[]] = [
 
 const defaultDestinationId = "HOYSALAS";
 
-const fallbackTourCategories = [
-  "Heritage",
-  "Nature",
-  "Photography",
-  "UNESCO Site",
-  "Architecture",
-  "Culture",
-  "Temples",
-  "Festival Trails",
-];
-
 const destinationCategoryFallbacks = [
   "Heritage",
   "Nature",
@@ -326,40 +315,6 @@ function getUniqueTourCategories(categories: string[]) {
   });
 }
 
-function TourCategorySlider({ categories }: { categories: string[] }) {
-  const displayedCategories = getUniqueTourCategories(categories);
-  const sliderCategories =
-    displayedCategories.length > 0 ? displayedCategories : fallbackTourCategories;
-  const trackCategories = [...sliderCategories, ...sliderCategories];
-
-  return (
-    <div className="mt-10 mb-6 overflow-hidden">
-      <div className="flex w-max items-center gap-5 motion-safe:animate-[tour-category-slide_34s_linear_infinite] motion-reduce:flex-wrap">
-        {trackCategories.map((category, index) => (
-          <span
-            key={`${category}-${index}`}
-            className="inline-flex h-9 min-w-[118px] items-center justify-center rounded-full bg-[#f4f4f4] px-6 font-sans text-[14px] font-medium leading-none text-secondary/62"
-          >
-            {category}
-          </span>
-        ))}
-      </div>
-
-      <style>{`
-        @keyframes tour-category-slide {
-          from {
-            transform: translateX(0);
-          }
-
-          to {
-            transform: translateX(-50%);
-          }
-        }
-      `}</style>
-    </div>
-  );
-}
-
 function MapPushPin({ active }: { active?: boolean }) {
   return (
     <span className="pointer-events-none relative block h-6 w-4 lg:h-8 lg:w-5">
@@ -386,7 +341,6 @@ function MapPushPin({ active }: { active?: boolean }) {
 
 export function TopDestinationsSection({
   destinations = topDestinations,
-  tourCategories = fallbackTourCategories,
 }: {
   destinations?: TopDestination[];
   tourCategories?: string[];
@@ -480,14 +434,12 @@ export function TopDestinationsSection({
           <Button
             nativeButton={false}
             render={<Link prefetch={false} href="/destinations" />}
-            className="h-12 w-fit min-w-0 justify-between gap-4 rounded-full px-5 text-[15px] font-normal sm:w-auto sm:gap-6 sm:px-6 sm:text-button lg:h-11 lg:w-max lg:min-w-[230px] lg:justify-self-end"
+            className="h-12 w-fit min-w-0 justify-between gap-4 rounded-full px-5 text-[15px] font-normal sm:gap-6 sm:px-6 sm:text-button lg:h-11 lg:w-max lg:min-w-[230px] lg:justify-self-end"
           >
             View All Destinations
             <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
           </Button>
         </div>
-
-        <TourCategorySlider categories={tourCategories} />
 
         <div className="mt-6 grid items-start gap-6 lg:grid-cols-[250px_minmax(0,1fr)_300px]">
           <aside className="order-2 pt-0 lg:order-none lg:pt-4">
@@ -725,7 +677,7 @@ export function TopDestinationsSection({
                 <Button
                   nativeButton={false}
                   render={<Link prefetch={false} href={getDestinationHref(activeDestination)} />}
-                  className="mt-auto h-10 w-full justify-between rounded-full px-5 text-[14px] font-normal sm:h-12 sm:text-[17px] lg:h-10 lg:text-[13px]"
+                    className="mt-auto h-10 w-fit justify-between rounded-full px-5 text-[14px] font-normal sm:h-12 sm:text-[17px] lg:h-10 lg:w-full lg:text-[13px]"
                 >
                   Explore {activeDestination.name}
                   <ButtonArrow className="h-3 w-6 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />

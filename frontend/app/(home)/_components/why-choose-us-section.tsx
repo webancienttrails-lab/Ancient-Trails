@@ -14,11 +14,11 @@ const whyChooseUsFeatures = [
     icon: "/home assets/icons/tour-guide.png",
   },
   {
-    title: "Tour Expert on Every Trip",
-    titleLines: ["Tour Expert on Every", "Trip"],
+    title: "All Inclusive Tours",
+    titleLines: ["All Inclusive", "Tours"],
     description:
-      "A well managed itinerary, so you stay fully present in the experience.",
-    icon: "/home assets/icons/route.png",
+      "Tours, where there are no hidden costs and you can enjoy the tour without worrying about expenditure.",
+    icon: "/home assets/icons/add.png",
   },
   {
     title: "Learning with Leisure",
@@ -124,7 +124,11 @@ export function WhyChooseUsSection() {
                     alt=""
                     fill
                     sizes="50px"
-                    className="object-contain"
+                    className={`object-contain ${
+                      feature.icon === "/home assets/icons/add.png"
+                        ? "scale-[0.82]"
+                        : ""
+                    }`}
                   />
                 </div>
 
@@ -144,7 +148,7 @@ export function WhyChooseUsSection() {
             ))}
           </div>
 
-          <div className="mt-8 flex justify-center gap-2 sm:hidden">
+          <div className="compact-carousel-pagination mt-4 flex justify-center sm:hidden">
             {whyChooseUsFeatures.map((feature, index) => (
               <button
                 key={feature.title}

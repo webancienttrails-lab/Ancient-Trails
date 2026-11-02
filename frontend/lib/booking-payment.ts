@@ -13,6 +13,8 @@ export type BookingGuestDetailsPayload = {
   dateOfBirth: string;
   gender: string;
   address: string;
+  pincode?: string;
+  isNri?: boolean;
   panNumber?: string;
 };
 
@@ -30,9 +32,12 @@ export type BookingTravellerPayload = {
   dateOfBirth?: string;
   gender?: string;
   address?: string;
+  pincode?: string;
+  isNri?: boolean;
   panNumber?: string;
   ageOnDeparture?: number;
   kycDocuments?: BookingKycDocument[];
+  nriDocumentTokens?: string[];
 };
 
 export type BookingKycDocument = {
@@ -42,7 +47,9 @@ export type BookingKycDocument = {
     | "driving_license"
     | "voter_id"
     | "passport"
-    | "pan_card";
+    | "pan_card"
+    | "visa"
+    | "oci";
   documentLabel: string;
   fileName: string;
   fileUrl: string;
@@ -76,6 +83,8 @@ export type BookingPayload = {
 };
 
 export type BookingConfirmation = {
+  hotelDetails?: Array<{ destination: string; hotel: string; category: string; nights: number }>;
+  flightDetails?: Array<{ from: string; to: string; airline: string; seats: number; dateTime: string }>;
   paymentMethod?: string;
   paymentMode?: string;
   emergencyContactName?: string;
@@ -94,7 +103,7 @@ export type BookingConfirmation = {
     age: number;
   }>;
   guestDetails: BookingGuestDetailsPayload[];
-  travellers: BookingTravellerPayload[];
+  travellers: Array<BookingTravellerPayload & { tcsExempt?: boolean }>;
   accommodationDetails: BookingPayload["accommodationDetails"];
   pricingSnapshot?: {
     departureDate?: string | null;
@@ -115,6 +124,11 @@ export type BookingConfirmation = {
   subtotal?: number;
   gstPercentage?: number;
   gstAmount?: number;
+  packageTotal?: number;
+  tcsApplicable?: boolean;
+  tcsPercentage?: number;
+  tcsAmount?: number;
+  tcsExemptionVerified?: boolean;
   grandTotal?: number;
   airFlightCharges?: number;
   airfareIncludedInTotal?: boolean;

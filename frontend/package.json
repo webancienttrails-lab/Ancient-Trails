@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:booking-voucher": "node --test tests/booking-voucher-travel-details.test.cjs",
     "test:otp-security": "node --test tests/otp-login-flow.test.cjs",
     "dev": "next dev",
     "build": "next build",

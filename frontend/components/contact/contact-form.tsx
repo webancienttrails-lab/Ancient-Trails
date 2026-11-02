@@ -25,7 +25,7 @@ export function ContactForm() {
     const data = new FormData(form);
     const read = (key: string) => String(data.get(key) || "").trim();
     const { errors: nextErrors, payload } = validateContactEnquiry({
-      name: read("name"), email: read("email"), phone: read("phone"), subject: read("subject"), message: read("message"),
+      name: read("name"), gender: read("gender"), email: read("email"), phone: read("phone"), subject: read("subject"), message: read("message"),
     });
     setErrors(nextErrors);
     setFeedback(null);
@@ -92,6 +92,13 @@ export function ContactForm() {
             </div>
             {errors.phone && <span id="contact-phone-error" role="alert" className="text-xs font-normal text-red-700">{errors.phone}</span>}
           </div>
+          <label className={labelClass}>
+            <span>Gender <span className="font-normal text-secondary/55">(optional)</span></span>
+            <select className={inputClass} name="gender" defaultValue="">
+              <option value="">Select gender (optional)</option>
+              <option>Female</option><option>Male</option><option>Non-binary</option><option>Other</option><option>Prefer not to say</option>
+            </select>
+          </label>
           <label className={labelClass}>
             <span>Subject <span className="text-brand-text">*</span></span>
             <select className={cn(inputClass, "text-secondary/65", errors.subject && "border-red-500 focus:border-red-500")} name="subject" required defaultValue="" aria-invalid={Boolean(errors.subject)} aria-describedby={errors.subject ? "contact-subject-error" : undefined}>

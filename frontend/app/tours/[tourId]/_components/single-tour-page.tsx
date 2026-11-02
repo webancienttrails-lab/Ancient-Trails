@@ -19,7 +19,6 @@ import { BookingTermExplanation, BookingTermsLink } from "@/components/booking-t
 
 import { createInitialBankTransfer, getBankTransferConfig } from "@/lib/bank-transfer";
 import { isAirfareExcluded } from "@/lib/airfare";
-import { TourPriceNote } from "@/components/tours/tour-price-note";
 import { BookingFlowProvider, BookingProgress, BookingErrorSummary, useBookingFlow, useBookingFieldProps, bookingFieldId, type BookingStage, type BookingFieldIssue } from "@/components/tours/booking-flow";
 import { ApiError } from "@/lib/api";
 import Image from "next/image";
@@ -99,6 +98,7 @@ import {
   type BookingPayload,
   type BookingPaymentOrder,
 } from "@/lib/booking-payment";
+import { uploadPrebookingKycDocument } from "@/lib/user-bookings";
 import {
   defaultSiteContactSettings,
   getContactCallDisplay,
@@ -156,7 +156,10 @@ type TravellerCounts = {
 type TravellerCountKey = keyof TravellerCounts;
 
 type TravellerDetailForm = {
+  isNri: boolean;
+  nriDocuments?: Partial<Record<"visa" | "oci", { fileName: string; token?: string; uploading?: boolean; error?: string }>>;
   address: string;
+  pincode: string;
   dateOfBirth: string;
   email: string;
   emergencyContactName: string;
@@ -169,7 +172,7 @@ type TravellerDetailForm = {
   title: string;
 };
 
-type TravellerDetailField = keyof TravellerDetailForm;
+type TravellerDetailField = Exclude<keyof TravellerDetailForm, "isNri" | "nriDocuments">;
 
 type TravellerDetailTab = {
   description: string;
@@ -447,6 +450,8 @@ function getTotalTravellers(counts: TravellerCounts) {
 
 const defaultTravellerDetailForm: TravellerDetailForm = {
   address: "",
+  pincode: "",
+  isNri: false,
   dateOfBirth: "",
   email: "",
   emergencyContactName: "",
@@ -676,15 +681,17 @@ function getBookingErrorMessage(error: unknown) {
   return "Something went wrong. Please try again.";
 }
 
-function isTravellerDetailFormComplete(form: TravellerDetailForm, isLeadTraveller: boolean) {
+function isTravellerDetailFormComplete(form: TravellerDetailForm, isLeadTraveller: boolean, requiresMobile = true) {
   return Boolean(
       form.firstName.trim() &&
       form.lastName.trim() &&
       (isLeadTraveller ? isValidEmail(form.email) : !form.email.trim() || isValidEmail(form.email)) &&
       form.address.trim() &&
+      /^[0-9]{6}$/.test(form.pincode) &&
       extractPhoneCountryCode(form.phoneCountryCode) &&
-      isValidMobileNumber(form.mobileNumber) &&
+      (!requiresMobile && !form.mobileNumber.trim() || (isLeadTraveller ? isValidMobileNumber(form.mobileNumber) : /^[0-9]{10}$/.test(form.mobileNumber))) &&
       form.gender &&
+      (!form.isNri || (form.nriDocuments?.visa?.token && !Object.values(form.nriDocuments || {}).some((document) => document?.uploading))) &&
       isValidStoredBirthDate(form.dateOfBirth)
   );
 }
@@ -723,11 +730,14 @@ function getBookingDetailsIssues(
     if (form.email.trim() && !isValidEmail(form.email)) issues.push(issue(": enter a valid email address.", "email"));
     if (!isValidStoredBirthDate(form.dateOfBirth)) issues.push(issue(": select a valid date of birth.", "date of birth"));
     if (!form.address.trim()) issues.push(issue(": enter the address.", "address"));
+    if (!/^[0-9]{6}$/.test(form.pincode)) issues.push(issue(": enter a 6-digit PIN code.", "pincode"));
     if (!extractPhoneCountryCode(form.phoneCountryCode)) issues.push(issue(": select the phone country code.", "phone country code"));
-    if (tab.id === "adult-1" ? !isValidMobileNumber(form.mobileNumber) : !/^[0-9]{10}$/.test(form.mobileNumber)) {
+    if ((tab.travellerType === "adult" || form.mobileNumber.trim()) && (tab.id === "adult-1" ? !isValidMobileNumber(form.mobileNumber) : !/^[0-9]{10}$/.test(form.mobileNumber))) {
       issues.push(issue(tab.id === "adult-1" ? ": enter a valid mobile number." : ": enter a 10-digit mobile number.", "mobile number"));
     }
     if (!form.gender) issues.push(issue(": select the gender.", "gender"));
+    if (form.isNri && !form.nriDocuments?.visa?.token) issues.push(issue(": upload the required Visa document.", "visa document"));
+    if (form.isNri && Object.values(form.nriDocuments || {}).some((document) => document?.uploading)) issues.push(issue(": wait for the document upload to finish.", "visa document"));
   }
   const lead = { ...defaultTravellerDetailForm, ...(forms["adult-1"] || {}) };
   if (!lead.emergencyContactName.trim()) issues.push({
@@ -966,6 +976,8 @@ function createBookingPayload({
         dateOfBirth: form.dateOfBirth,
         gender: form.gender,
         address,
+        pincode: form.pincode.trim(),
+        isNri: tour.tourType.trim().toLowerCase() === "international" && Boolean(form.isNri),
         ...emergencyContact,
       };
     }),
@@ -984,6 +996,9 @@ function createBookingPayload({
       return {
         id: tab.id,
         type: tab.travellerType === "adult" ? "adult" : "child",
+        nriDocumentTokens: tour.tourType.trim().toLowerCase() === "international" && form.isNri
+          ? Object.values(form.nriDocuments || {}).flatMap((document) => document?.token ? [document.token] : [])
+          : [],
         title: form.title,
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
@@ -993,6 +1008,8 @@ function createBookingPayload({
         dateOfBirth: form.dateOfBirth,
         gender: form.gender,
         address: form.address.trim() || "Not provided",
+        pincode: form.pincode.trim(),
+        isNri: tour.tourType.trim().toLowerCase() === "international" && Boolean(form.isNri),
         ...emergencyContact,
         ageOnDeparture:
           tab.travellerType === "adult"
@@ -1360,6 +1377,7 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
   }, []);
   const [isTourEnquiryOpen, setIsTourEnquiryOpen] = useState(false);
   const [isPaymentChoiceOpen, setIsPaymentChoiceOpen] = useState(false);
+  const [isBookingReviewOpen, setIsBookingReviewOpen] = useState(false);
   const bookingSubmissionRef = useRef(false);
   const paymentRequestRef = useRef<{ payload: string; key: string } | null>(null);
   const [siteContact, setSiteContact] = useState<SiteContactSettings>(
@@ -1494,7 +1512,9 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
   ]);
   const bookingSubtotal = selectedAccommodationOption?.total ?? 0;
   const bookingGstAmount = Math.round((bookingSubtotal * GST_PERCENTAGE) / 100);
-  const bookingGrandTotal = bookingSubtotal + bookingGstAmount;
+  const bookingTcsAmount = detail.tour.tourType.trim().toLowerCase() === "international"
+    ? Math.round((bookingSubtotal + bookingGstAmount) * 2 / 100) : 0;
+  const bookingGrandTotal = bookingSubtotal + bookingGstAmount + bookingTcsAmount;
   const bookingDepositAmount =
     selectedPricedDeparture && selectedAccommodationOption
       ? calculateDeposit({
@@ -1540,6 +1560,25 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
   const hasAcceptedBookingTerms = Boolean(
     bookingCompletionKey && acceptedBookingTermsKey === bookingCompletionKey
   );
+
+  function openBookingReview() {
+    if (!canBookSeat) {
+      handleIncompleteBooking();
+      return;
+    }
+    setIsBookingReviewOpen(true);
+  }
+
+  function closeBookingReview(edit = false) {
+    setIsBookingReviewOpen(false);
+    if (edit) changeBookingStage(3);
+  }
+
+  function proceedFromBookingReview() {
+    if (!canBookSeat || !hasAcceptedBookingTerms || checkoutStatus !== "idle") return;
+    closeBookingReview();
+    setIsPaymentChoiceOpen(true);
+  }
   const allBookingIssues: BookingFieldIssue[] = getBookingDetailsIssues(travellerCounts, completeTravellerDetailForms).map(issue => {
     if (issue.travellerId && /^(child|infant)-/.test(issue.travellerId) && issue.id.endsWith("-date-of-birth")) {
       const tab = createTravellerDetailTabs(travellerCounts).find(tab => tab.id === issue.travellerId);
@@ -1554,6 +1593,10 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
   const visibleBookingIssues = validationAttempt ? Array.from(new Map(allBookingIssues.map(issue => [issue.id, issue])).values()) : [];
 
   function focusBookingIssue(issue: BookingFieldIssue) {
+    if (issue.id === "booking-terms" && canBookSeat) {
+      openBookingReview();
+      return;
+    }
     flushSync(() => {
       setActiveTab("pricing");
       if (window.matchMedia("(max-width: 1023px)").matches) setBookingStage(isLeadAuthenticated ? issue.stage ?? 3 : 0);
@@ -1844,17 +1887,22 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
       handleIncompleteBooking();
       return;
     }
+    if (bookingStage === 3) {
+      changeBookingStage(4);
+      openBookingReview();
+      return;
+    }
     if (bookingStage < 4) {
       changeBookingStage((bookingStage + 1) as BookingStage);
       return;
     }
-    if (!hasAcceptedBookingTerms || !canBookSeat) {
+    if (!canBookSeat) {
       toast.warning("Complete your booking", bookingReminder);
       if (!canBookSeat) changeBookingStage(isLeadAuthenticated ? 3 : 0);
       handleIncompleteBooking();
       return;
     }
-    setIsPaymentChoiceOpen(true);
+    openBookingReview();
   }
 
   function openBookingFlow() {
@@ -2010,13 +2058,34 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
 
   return (
     <BookingFlowProvider errors={visibleBookingIssues} validationAttempt={validationAttempt} onIssueFocus={focusBookingIssue} stage={bookingStage} onStageChange={changeBookingStage} onAuthReadyChange={setIsLeadAuthenticated} onExit={() => { setIsBookingFlowOpen(false); window.requestAnimationFrame(() => window.scrollTo({top: 0, behavior: "smooth"})); }}>
-    <main id="main-content" tabIndex={-1} className="min-h-screen bg-background text-secondary">
+    <main id="main-content" tabIndex={-1} className="relative min-h-screen bg-background text-secondary">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+        {["top-[2%]", "top-[19%]", "top-[36%]", "top-[53%]", "top-[70%]", "top-[87%]"].map((position, index) => (
+          <div
+            key={position}
+            className={cn(
+              "absolute hidden h-[clamp(270px,22vw,390px)] w-[clamp(230px,17vw,330px)] overflow-hidden",
+              position,
+              index % 2 === 0 ? "-right-14 lg:block" : "-left-12 md:block"
+            )}
+          >
+            <Image
+              src={index % 2 === 0 ? "/illustration/Hampi illustration.webp" : "/illustration/Khajuraho illustration.webp"}
+              alt=""
+              fill
+              sizes="(min-width: 768px) 17vw, 0px"
+              className="object-cover opacity-[0.22] grayscale contrast-[1.2] brightness-[1.08] mix-blend-multiply"
+            />
+            <div className="absolute inset-0 bg-[linear-gradient(90deg,#ffffff_0%,rgba(255,255,255,0)_20%,rgba(255,255,255,0)_75%,#ffffff_100%),linear-gradient(180deg,#ffffff_0%,rgba(255,255,255,0)_14%,rgba(255,255,255,0)_76%,#ffffff_100%)]" />
+          </div>
+        ))}
+      </div>
       <Header />
       <PaymentProceedingOverlay checkoutStatus={checkoutStatus} />
       <PaymentRetryNotice message={paymentRetryMessage} busy={isCheckingRetry || checkoutStatus !== "idle"} onRetry={() => void retryFailedPayment()} onDismiss={() => setPaymentRetryMessage(null)} />
 
-      <section className="home-wide-frame mx-auto grid w-full gap-5 px-4 pb-7 pt-7 sm:px-5 sm:pt-12 lg:grid-cols-[minmax(0,1fr)_360px] lg:px-0">
-        <div className="min-w-0">
+      <section className="home-wide-frame relative mx-auto w-full px-4 pb-7 pt-7 sm:px-5 sm:pt-6 lg:px-0">
+        <div className="min-w-0 lg:mr-[380px]">
           <Breadcrumbs tourName={detail.tour.tourName} />
 
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -2031,6 +2100,10 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
             ) : null}
           </div>
 
+        </div>
+
+        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-w-0">
           <div className={isBookingFlowOpen ? "max-lg:hidden" : undefined}>
           <TourGallery
             images={galleryImages}
@@ -2090,13 +2163,15 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
             setTravellerCounts={handleTravellerCountsChange}
             onTravellerDetailsCompleteChange={setAreTravellerDetailsComplete}
             onTravellerDetailsChange={handleTravellerDetailsChange}
+            canReview={canBookSeat}
+            onReview={openBookingReview}
             tour={detail.tour}
             travellerCounts={travellerCounts}
           />
           <div className={isBookingFlowOpen ? "max-lg:hidden" : undefined}><TourAdditionalDetails tour={detail.tour} /></div>
         </div>
 
-        <aside className={cn("space-y-2.5 lg:self-start", !isBookingFlowOpen && "lg:sticky lg:top-[90px]", isBookingFlowOpen && bookingStage !== 4 && "max-lg:hidden")}>
+        <aside className={cn("space-y-2.5 lg:self-start", !isBookingFlowOpen && "lg:sticky lg:top-[100px]", isBookingFlowOpen && bookingStage !== 4 && "max-lg:hidden")}>
           <div className="hidden lg:block">
             <PriceCard
               accommodationOptions={accommodationOptions}
@@ -2135,6 +2210,7 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
               depositAmount={bookingDepositAmount}
               grandTotal={bookingGrandTotal}
               gstAmount={bookingGstAmount}
+              tcsAmount={bookingTcsAmount}
               gstPercentage={GST_PERCENTAGE}
               paymentFeedback={paymentFeedback}
               paymentOption={selectedPaymentOption}
@@ -2145,41 +2221,63 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
               travellerCounts={travellerCounts}
             />
           ) : null}
-          {bestDeparture ? <BookingTermsCard
-            accepted={hasAcceptedBookingTerms}
-            canBook={canBookSeat}
-            onAcceptedChange={(accepted) =>
-              setAcceptedBookingTermsKey(accepted ? bookingCompletionKey : "")
-            }
-          /> : null}
           <SidebarTourActions
             hasBookableDeparture={Boolean(bestDeparture)}
             bookingReminder={bookingReminder}
             onIncomplete={handleIncompleteBooking}
             showAirfareNotice={isAirfareExcluded(detail.tour)}
-            canPay={hasAcceptedBookingTerms && canBookSeat}
+            canPay={canBookSeat}
             checkoutStatus={checkoutStatus}
             isBookingFlowOpen={isBookingFlowOpen}
-            onBook={() => setIsPaymentChoiceOpen(true)}
+            onBook={openBookingReview}
             hasOfflineRequest={Boolean(offlineRequestKey && offlineRequestKey === bookingCompletionKey)}
             onBookNow={openBookingFlow}
           />
           <div className={isBookingFlowOpen ? "max-lg:hidden" : undefined}><HelpCard contact={siteContact} /></div>
         </aside>
+        </div>
       </section>
 
       <MobileBookingBar
-        suspended={isPaymentChoiceOpen || checkoutStatus !== "idle"}
+        suspended={isBookingReviewOpen || isPaymentChoiceOpen || checkoutStatus !== "idle"}
         isBookingFlowOpen={isBookingFlowOpen}
         bookingStage={bookingStage}
         total={bookingGrandTotal}
         isBusy={checkoutStatus !== "idle" || Boolean(offlineRequestKey && offlineRequestKey === bookingCompletionKey)}
         onContinue={continueMobileBooking}
         isAuthenticated={isLeadAuthenticated}
-        airfareExtra={isAirfareExcluded(detail.tour)}
         onBookNow={openBookingFlow}
         price={price}
       />
+      {isBookingReviewOpen ? (
+        <BookingReviewModal
+          travellerCounts={travellerCounts}
+          travellerForms={completeTravellerDetailForms}
+          accepted={hasAcceptedBookingTerms}
+          canBook={canBookSeat}
+          onAcceptedChange={(accepted) => setAcceptedBookingTermsKey(accepted ? bookingCompletionKey : "")}
+          onEdit={() => closeBookingReview(true)}
+          onClose={() => closeBookingReview()}
+          onPay={proceedFromBookingReview}
+        >
+          <BookingSummary
+            balanceAmount={bookingBalanceAmount}
+            balanceDueDate={bookingBalanceDueDate}
+            depositAmount={bookingDepositAmount}
+            grandTotal={bookingGrandTotal}
+            gstAmount={bookingGstAmount}
+            tcsAmount={bookingTcsAmount}
+            gstPercentage={GST_PERCENTAGE}
+            paymentFeedback={paymentFeedback}
+            paymentOption={selectedPaymentOption}
+            selectedAccommodationOption={selectedAccommodationOption}
+            selectedDeparture={selectedDeparture}
+            subtotal={bookingSubtotal}
+            tour={detail.tour}
+            travellerCounts={travellerCounts}
+          />
+        </BookingReviewModal>
+      ) : null}
       {isPaymentChoiceOpen ? (
         <PaymentChoiceModal
           advanceAmount={bookingDepositAmount}
@@ -2342,12 +2440,26 @@ function TourGallery({
   tourType: string;
 }) {
   const thumbnails = images;
+  const thumbnailsRef = useRef<HTMLDivElement>(null);
+  const galleryTouchStart = useRef<{ x: number; y: number } | null>(null);
   const categoryLabels = splitTourCategoryLabels(tour);
   const bannerCategoryLabels =
     categoryLabels.length > 0 ? categoryLabels : [tourType || "Heritage Walk"];
 
   useEffect(() => {
-    if (images.length < 2) {
+    const strip = thumbnailsRef.current;
+    const activeThumbnail = strip?.children[selectedImageIndex] as HTMLElement | undefined;
+    if (!strip || !activeThumbnail) return;
+    const stripRect = strip.getBoundingClientRect();
+    const thumbnailRect = activeThumbnail.getBoundingClientRect();
+    strip.scrollTo({
+      left: strip.scrollLeft + thumbnailRect.left - stripRect.left - (strip.clientWidth - thumbnailRect.width) / 2,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+  }, [images.length, selectedImage, selectedImageIndex]);
+
+  useEffect(() => {
+    if (images.length < 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       return;
     }
 
@@ -2370,8 +2482,24 @@ function TourGallery({
   }
 
   return (
-    <section className="mt-5">
-      <div className="relative aspect-[4/3] overflow-hidden rounded-[8px] bg-border sm:aspect-[1.95/1]">
+    <section>
+      <div
+        className="relative aspect-[4/3] touch-pan-y overflow-hidden rounded-[8px] bg-border sm:aspect-[1.95/1]"
+        onTouchStart={(event) => {
+          const touch = event.touches[0];
+          galleryTouchStart.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+        }}
+        onTouchEnd={(event) => {
+          const start = galleryTouchStart.current;
+          const touch = event.changedTouches[0];
+          galleryTouchStart.current = null;
+          if (!start || !touch) return;
+          const dx = touch.clientX - start.x;
+          const dy = touch.clientY - start.y;
+          if (Math.abs(dx) >= 40 && Math.abs(dx) > Math.abs(dy)) moveImage(dx < 0 ? 1 : -1);
+        }}
+        onTouchCancel={() => { galleryTouchStart.current = null; }}
+      >
         {selectedImage ? (
           <Image
             key={selectedImage}
@@ -2380,7 +2508,7 @@ function TourGallery({
             fill
             priority
             sizes="(min-width: 1024px) 860px, 100vw"
-            className="animate-[gallery-slide_900ms_cubic-bezier(0.22,1,0.36,1)] object-cover"
+            className="animate-[gallery-slide_900ms_cubic-bezier(0.22,1,0.36,1)] object-cover motion-reduce:animate-none"
           />
         ) : (
           <div className="grid size-full place-items-center font-sans text-sm font-semibold text-secondary/55">
@@ -2398,24 +2526,36 @@ function TourGallery({
             </span>
           ))}
         </div>
+        {images.length > 1 ? (
+          <>
+            <button
+              type="button"
+              aria-label="Previous photo"
+              onClick={() => moveImage(-1)}
+              className="absolute left-3 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white"
+            >
+              <ChevronLeft className="size-5" />
+            </button>
+            <button
+              type="button"
+              aria-label="Next photo"
+              onClick={() => moveImage(1)}
+              className="absolute right-3 top-1/2 z-20 grid size-11 -translate-y-1/2 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white"
+            >
+              <ChevronRight className="size-5" />
+            </button>
+          </>
+        ) : null}
       </div>
 
       {thumbnails.length > 0 ? (
-        <div className="mt-3 grid grid-cols-[32px_minmax(0,1fr)_32px] items-center gap-1.5 sm:grid-cols-[38px_minmax(0,1fr)_38px] sm:gap-2">
-        <button
-          type="button"
-          aria-label="Previous photo"
-          onClick={() => moveImage(-1)}
-          className="grid size-8 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white sm:size-9"
-        >
-          <ChevronLeft className="size-4" />
-        </button>
-        <div className="flex min-w-0 gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-2">
+        <div ref={thumbnailsRef} data-lenis-prevent className="mt-3 flex min-w-0 gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-2">
           {thumbnails.map((image, index) => (
             <button
               key={`${image}-${index}`}
               type="button"
               aria-label={`View tour photo ${index + 1}`}
+              aria-pressed={index === selectedImageIndex}
               onClick={() => onSelectImage(index)}
               className={cn(
                 "relative h-[52px] w-[92px] shrink-0 overflow-hidden rounded-[8px] border bg-border transition-all min-[420px]:h-[60px] min-[420px]:w-[112px] sm:h-[74px] sm:w-[150px]",
@@ -2434,21 +2574,14 @@ function TourGallery({
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          aria-label="Next photo"
-          onClick={() => moveImage(1)}
-          className="grid size-8 place-items-center rounded-full border border-button-outline bg-white text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white sm:size-9"
-        >
-          <ChevronRight className="size-4" />
-        </button>
-        </div>
       ) : null}
     </section>
   );
 }
 
 function TourTabs({
+  canReview,
+  onReview,
   activeTab,
   departures,
   expert,
@@ -2468,6 +2601,8 @@ function TourTabs({
   tour,
   travellerCounts,
 }: {
+  canReview: boolean;
+  onReview: () => void;
   activeTab: TourTab;
   departures: PublicTourDeparture[];
   expert: PublicExpert;
@@ -2505,7 +2640,8 @@ function TourTabs({
             tab: (typeof tabs)[number];
             element: HTMLElement;
           } => Boolean(item.element)
-        );
+        )
+        .sort((left, right) => left.element.getBoundingClientRect().top - right.element.getBoundingClientRect().top);
 
       if (observedSections.length === 0) {
         return;
@@ -2616,6 +2752,15 @@ function TourTabs({
         </section>
 
         <section
+          id="tour-expert"
+          aria-labelledby="tour-section-link-expert"
+          tabIndex={-1}
+          className={cn(isBookingFlowOpen && "max-lg:hidden", "scroll-mt-[168px] rounded-[8px] border border-border bg-card sm:scroll-mt-[64px] p-4 sm:p-5", !getYoutubeEmbedUrl(tour.video) && "max-lg:border-0 max-lg:p-0")}
+        >
+          <ExpertPanel expert={expert} tour={tour} />
+        </section>
+
+        <section
           id="inclusions"
           aria-labelledby="tour-section-link-inclusions"
           tabIndex={-1}
@@ -2642,19 +2787,13 @@ function TourTabs({
             setTravellerCounts={setTravellerCounts}
             onTravellerDetailsCompleteChange={onTravellerDetailsCompleteChange}
             onTravellerDetailsChange={onTravellerDetailsChange}
+            canReview={canReview}
+            onReview={onReview}
             tour={tour}
             travellerCounts={travellerCounts}
           />
         </section>
 
-        <section
-          id="tour-expert"
-          aria-labelledby="tour-section-link-expert"
-          tabIndex={-1}
-          className={cn(isBookingFlowOpen && "max-lg:hidden", "scroll-mt-[168px] rounded-[8px] border border-border bg-card sm:scroll-mt-[64px] p-4 sm:p-5", !getYoutubeEmbedUrl(tour.video) && "max-lg:border-0 max-lg:p-0")}
-        >
-          <ExpertPanel expert={expert} tour={tour} />
-        </section>
       </div>
     </section>
   );
@@ -2808,16 +2947,26 @@ function PolicyPanel({
   title: string;
   type: "payment" | "cancellation" | "needToKnow";
 }) {
+  const collapsible = type === "payment" || type === "cancellation";
+  const Container = collapsible ? "details" : "section";
+  const Heading = collapsible ? "summary" : "div";
+
   return (
-    <section className="rounded-[8px] border border-border bg-card p-5 sm:p-6">
-      <div className="flex items-center gap-3 border-b border-border pb-4">
+    <Container className="group/policy rounded-[8px] border border-border bg-card p-5 sm:p-6">
+      <Heading className={cn(
+        "flex items-center gap-3",
+        collapsible
+          ? "cursor-pointer list-none focus-visible:outline-2 focus-visible:outline-primary group-open/policy:border-b group-open/policy:border-border group-open/policy:pb-4 [&::-webkit-details-marker]:hidden"
+          : "border-b border-border pb-4"
+      )}>
         <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-brand-text">
           <Icon className="size-5" strokeWidth={1.8} />
         </span>
         <h2 className="font-heading text-[18px] font-Semibold  tracking-[0.04em] text-secondary sm:text-[20px]">
           {title}
         </h2>
-      </div>
+        {collapsible ? <ChevronDown aria-hidden="true" className="ml-auto size-5 shrink-0 text-brand-text transition-transform group-open/policy:rotate-180" /> : null}
+      </Heading>
       {type === "payment" ? (
         <PaymentPolicyContent />
       ) : type === "cancellation" ? (
@@ -2825,7 +2974,7 @@ function PolicyPanel({
       ) : (
         <NeedToKnowContent groups={items as TourNeedToKnowGroup[]} />
       )}
-    </section>
+    </Container>
   );
 }
 
@@ -3056,15 +3205,41 @@ function ExpandableItinerarySummary({ text }: { text: string }) {
 }
 
 function InclusionsPanel({ tour }: { tour: PublicTour }) {
+  const [activeTab, setActiveTab] = useState<"inclusions" | "exclusions">("inclusions");
   const inclusions = getTourInclusions(tour);
   const exclusions = getTourExclusions(tour);
 
   return (
     <div>
       <SectionTitle title="Inclusions / Exclusions" />
-      <div className="mt-4 grid gap-5 md:grid-cols-2">
-        <ListBlock icon={Check} items={inclusions} title="Inclusions" />
-        <ListBlock icon={X} items={exclusions} title="Exclusions" />
+      <div role="tablist" aria-label="Inclusions and exclusions" onKeyDown={handleTabKeyDown} className="mt-4 flex gap-5 border-b border-border">
+        {(["inclusions", "exclusions"] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            id={`tour-${tab}-tab`}
+            aria-controls={`tour-${tab}-panel`}
+            aria-selected={activeTab === tab}
+            tabIndex={activeTab === tab ? 0 : -1}
+            onClick={() => setActiveTab(tab)}
+            className={cn(
+              "flex min-w-0 items-center gap-2 border-b-2 px-1 py-3 font-sans text-[14px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+              activeTab === tab
+                ? "border-primary text-brand-text"
+                : "border-transparent text-secondary/65 hover:text-secondary"
+            )}
+          >
+            <InclusionStatusIcon included={tab === "inclusions"} />
+            {tab === "inclusions" ? "Inclusions" : "Exclusions"}
+          </button>
+        ))}
+      </div>
+      <div id="tour-inclusions-panel" role="tabpanel" aria-labelledby="tour-inclusions-tab" tabIndex={0} hidden={activeTab !== "inclusions"}>
+        <ListBlock items={inclusions} />
+      </div>
+      <div id="tour-exclusions-panel" role="tabpanel" aria-labelledby="tour-exclusions-tab" tabIndex={0} hidden={activeTab !== "exclusions"}>
+        <ListBlock items={exclusions} />
       </div>
     </div>
   );
@@ -3337,6 +3512,8 @@ function DateOfBirthPicker({
 }
 
 function PricingPanel({
+  canReview,
+  onReview,
   departures,
   isBookingFlowOpen,
   onOpenBookingFlow,
@@ -3350,6 +3527,8 @@ function PricingPanel({
   tour,
   travellerCounts,
 }: {
+  canReview: boolean;
+  onReview: () => void;
   departures: PublicTourDeparture[];
   isBookingFlowOpen: boolean;
   onOpenBookingFlow: () => void;
@@ -3364,7 +3543,7 @@ function PricingPanel({
   travellerCounts: TravellerCounts;
 }) {
   const toast = useToast();
-  const { onAuthReadyChange } = useBookingFlow();
+  const { onAuthReadyChange, stage } = useBookingFlow();
   const fieldProps = useBookingFieldProps();
   const selectedDeparture = getSelectedDeparture(departures, selectedDepartureId);
   const pricedDeparture = selectedDeparture
@@ -3380,6 +3559,20 @@ function PricingPanel({
         getDepartureIdentifier(departure) === resolvedSelectedDepartureId
     )
   );
+  const departureStripRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const strip = departureStripRef.current;
+    if (!strip || !isBookingFlowOpen || stage !== 1 || window.innerWidth >= 1024) return;
+    const card = strip.querySelectorAll<HTMLElement>("[data-booking-departure]")[selectedDepartureIndex];
+    if (!card) return;
+    const stripRect = strip.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    strip.scrollTo({
+      left: strip.scrollLeft + cardRect.left - stripRect.left - (strip.clientWidth - cardRect.width) / 2,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+  }, [isBookingFlowOpen, selectedDepartureIndex, stage]);
   const maxTravellers =
     selectedDeparture && getDepartureSeatsLeft(selectedDeparture) > 0
       ? getDepartureSeatsLeft(selectedDeparture)
@@ -3468,8 +3661,7 @@ function PricingPanel({
           ...(travellerDetailForms[tab.id] || {}),
         };
         return (
-          isTravellerDetailFormComplete(travellerDetails, tab.id === "adult-1") &&
-          (tab.id === "adult-1" || /^[0-9]{10}$/.test(travellerDetails.mobileNumber))
+          isTravellerDetailFormComplete(travellerDetails, tab.id === "adult-1", tab.travellerType === "adult")
         );
       }),
     [travellerDetailForms, travellerDetailTabs]
@@ -3641,6 +3833,28 @@ function PricingPanel({
       departures.length;
 
     setSelectedDepartureId(getDepartureIdentifier(departures[nextIndex]));
+  }
+
+  async function handleNriDocumentUpload(documentType: "visa" | "oci", file: File) {
+    const travellerId = activeTravellerDetailTab.id;
+    const updateDocument = (document: NonNullable<TravellerDetailForm["nriDocuments"]>["visa"]) => {
+      setTravellerDetailForms((current) => {
+        const form = current[travellerId];
+        if (!form?.isNri) return current;
+        return { ...current, [travellerId]: { ...form, nriDocuments: { ...form.nriDocuments, [documentType]: document } } };
+      });
+    };
+    if (!file.size || file.size > 10 * 1024 * 1024 || !["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      updateDocument({ fileName: file.name, error: "Choose a PDF, JPG, PNG or WebP file up to 10 MB." });
+      return;
+    }
+    updateDocument({ fileName: file.name, uploading: true });
+    try {
+      const response = await uploadPrebookingKycDocument({ travellerId, documentType, file });
+      updateDocument({ fileName: response.data.fileName, token: response.data.token });
+    } catch (error) {
+      updateDocument({ fileName: file.name, error: error instanceof Error ? error.message : "Upload failed. Please try again." });
+    }
   }
 
   function updateActiveTravellerDetail(
@@ -3914,7 +4128,64 @@ function PricingPanel({
     }
   }
 
-  if (!selectedDeparture || !isBookingFlowOpen) {
+  const departureCards = (
+    <div ref={departureStripRef} data-booking-departures className="mb-5 grid auto-rows-fr gap-3 max-lg:flex max-lg:snap-x max-lg:snap-mandatory max-lg:overflow-x-auto max-lg:overscroll-x-contain max-lg:pb-2 md:grid-cols-3">
+      {departures.map((departure) => {
+        const departureId = getDepartureIdentifier(departure);
+        const isSelected = departureId === resolvedSelectedDepartureId;
+        const fillProgress = getDepartureFillProgress(departure);
+        const filledSeats = getDepartureFilledSeats(departure);
+        const totalSeats = getDepartureTotalSeats(departure);
+
+        return (
+          <button
+            key={departureId}
+            data-booking-departure
+            type="button"
+            onClick={() => setSelectedDepartureId(departureId)}
+            className={cn(
+              "group/departure relative flex h-full w-full flex-col overflow-hidden rounded-[12px] border-2 bg-[#fffdf9] p-2 text-left font-sans transition-all max-lg:w-[calc(50%-6px)] max-lg:shrink-0 max-lg:snap-start sm:p-3",
+              isSelected
+                ? "border-[#2faa5d]"
+                : "border-[#f3d5c3]"
+            )}
+          >
+            <span className="grid gap-3">
+              <span className="rounded-[10px] border border-[#f3d5c3] bg-[#fff7f1] px-3 py-3 max-lg:px-2">
+                <strong className="mt-2 block text-[16px] font-bold leading-none text-secondary max-lg:whitespace-nowrap max-lg:text-[13px]">
+                  {formatDate(departure.departureDate)}
+                </strong>
+              </span>
+            </span>
+
+            <span className="mt-4 block border-t border-[#ecd8ca] pt-4">
+              <span className="mb-3 flex items-center justify-between gap-3 text-[14px] font-semibold leading-none text-secondary/68">
+                <span>Seats</span>
+                <span className="font-bold text-brand-text">
+                  {filledSeats}/{totalSeats}
+                </span>
+              </span>
+              <span className="block h-3 overflow-hidden rounded-full bg-[#e2e8eb]">
+                <span
+                  className={cn(
+                    "block h-full rounded-full transition-[width] duration-300",
+                    getSeatProgressColorClass(fillProgress)
+                  )}
+                  style={{ width: `${fillProgress}%` }}
+                />
+              </span>
+            </span>
+
+            <span className="sr-only">
+              {isSelected ? "Selected departure" : "Select departure"}
+            </span>
+          </button>
+        );
+          })}
+        </div>
+  );
+
+  if (!selectedDeparture) {
     return (
       <BookingStep step="1" title={selectedDeparture ? "Reserve Your Seat" : "Coming Soon"}>
         <div className="rounded-[8px] border border-primary/15 bg-[#fff8f1] p-4 font-sans">
@@ -3932,6 +4203,22 @@ function PricingPanel({
             <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
           </Button>
         </div>
+      </BookingStep>
+    );
+  }
+
+  if (!isBookingFlowOpen) {
+    return (
+      <BookingStep step="1" title="Departure Dates">
+        {departureCards}
+        <Button
+          type="button"
+          onClick={onOpenBookingFlow}
+          className="w-full justify-between gap-4 px-5 font-normal sm:w-auto sm:min-w-[190px]"
+        >
+          Book Now
+          <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
+        </Button>
       </BookingStep>
     );
   }
@@ -4009,60 +4296,7 @@ function PricingPanel({
         step="1"
         title="Date and Travellers"
       >
-        <div className="grid auto-rows-fr gap-3 md:grid-cols-3">
-          {departures.map((departure) => {
-            const departureId = getDepartureIdentifier(departure);
-            const isSelected = departureId === resolvedSelectedDepartureId;
-            const fillProgress = getDepartureFillProgress(departure);
-            const filledSeats = getDepartureFilledSeats(departure);
-            const totalSeats = getDepartureTotalSeats(departure);
-
-            return (
-              <button
-                key={departureId}
-                data-booking-departure
-                type="button"
-                onClick={() => setSelectedDepartureId(departureId)}
-                className={cn(
-                  "group/departure relative flex h-full w-full flex-col overflow-hidden rounded-[12px] border-2 bg-[#fffdf9] p-2 text-left font-sans transition-all sm:p-3",
-                  isSelected
-                    ? "border-[#2faa5d]"
-                    : "border-[#f3d5c3]"
-                )}
-              >
-                <span className="grid gap-3">
-                  <span className="rounded-[10px] border border-[#f3d5c3] bg-[#fff7f1] px-3 py-3">
-                    <strong className="mt-2 block text-[16px] font-bold leading-none text-secondary">
-                      {formatDate(departure.departureDate)}
-                    </strong>
-                  </span>
-                </span>
-
-                <span className="mt-4 block border-t border-[#ecd8ca] pt-4">
-                  <span className="mb-3 flex items-center justify-between gap-3 text-[14px] font-semibold leading-none text-secondary/68">
-                    <span>Seats</span>
-                    <span className="font-bold text-brand-text">
-                      {filledSeats}/{totalSeats}
-                    </span>
-                  </span>
-                  <span className="block h-3 overflow-hidden rounded-full bg-[#e2e8eb]">
-                    <span
-                      className={cn(
-                        "block h-full rounded-full transition-[width] duration-300",
-                        getSeatProgressColorClass(fillProgress)
-                      )}
-                      style={{ width: `${fillProgress}%` }}
-                    />
-                  </span>
-                </span>
-
-                <span className="sr-only">
-                  {isSelected ? "Selected departure" : "Select departure"}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        {departureCards}
 
         <div className="grid gap-3 sm:grid-cols-3">
           <TravellerCounter
@@ -4153,7 +4387,7 @@ function PricingPanel({
           <Info className="mt-0.5 size-3.5 shrink-0 text-accent" />
           <span>
             <strong className="font-medium text-secondary">Please Note :</strong> Traveller
-            details should match information on passport.
+            details must match the information on the provided ID
           </span>
         </div>
 
@@ -4305,6 +4539,61 @@ function PricingPanel({
               />
             </div>
 
+            {tour.tourType.trim().toLowerCase() === "international" ? (
+              <div className="rounded-[6px] border border-border bg-background p-3">
+                <label className="flex items-start gap-2 font-sans text-[14px] font-medium text-secondary">
+                  <input
+                    type="checkbox"
+                    aria-label={`${activeTravellerDetailTab.label} NRI status`}
+                    checked={Boolean(activeTravellerDetails.isNri)}
+                    disabled={!canEditTravellerDetailFields || Object.values(activeTravellerDetails.nriDocuments || {}).some((document) => document?.uploading)}
+                    className="mt-0.5 size-4 shrink-0 accent-primary"
+                    onChange={(event) => {
+                      const isNri = event.target.checked;
+                      setTravellerDetailForms((current) => ({
+                        ...current,
+                        [activeTravellerDetailTab.id]: { ...defaultTravellerDetailForm, ...current[activeTravellerDetailTab.id], isNri, ...(!isNri ? { nriDocuments: undefined } : {}) },
+                      }));
+                    }}
+                  />
+                  I am a Non-Resident Indian (NRI)
+                </label>
+                {activeTravellerDetails.isNri ? (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    {(["visa", "oci"] as const).map((documentType) => {
+                      const document = activeTravellerDetails.nriDocuments?.[documentType];
+                      const label = documentType === "visa" ? "Visa (required)" : "OCI (optional)";
+                      return (
+                        <div key={`${activeTravellerDetailTab.id}-${documentType}`} className="min-w-0">
+                          <label className="block font-sans text-[12px] font-medium text-secondary">
+                            {label}
+                            <input
+                              type="file"
+                              aria-label={`${activeTravellerDetailTab.label} ${documentType} document`}
+                              {...fieldProps(bookingFieldId(activeTravellerDetailTab.id, `${documentType} document`))}
+                              accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                              disabled={!canEditTravellerDetailFields || document?.uploading}
+                              required={documentType === "visa" && !document?.token}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (file) void handleNriDocumentUpload(documentType, file);
+                                event.target.value = "";
+                              }}
+                              className="mt-1 block w-full rounded-[6px] border border-border bg-background p-2 font-sans text-[12px] file:mr-2 file:rounded file:border-0 file:bg-primary/10 file:px-2 file:py-1 file:text-secondary disabled:cursor-not-allowed"
+                            />
+                          </label>
+                          <p aria-live="polite" className={cn("mt-1 break-words font-sans text-[12px]", document?.error ? "text-red-600" : "text-secondary/68")}>
+                            {document?.error || (document?.uploading ? `Uploading ${document.fileName}...` : document?.token ? `${document.fileName} — uploaded` : "PDF, JPG, PNG or WebP, up to 10 MB")}
+                          </p>
+                          {document?.token ? <button type="button" disabled={!canEditTravellerDetailFields} className="mt-1 font-sans text-[12px] text-primary" onClick={() => setTravellerDetailForms((current) => ({ ...current, [activeTravellerDetailTab.id]: { ...current[activeTravellerDetailTab.id], nriDocuments: { ...current[activeTravellerDetailTab.id]?.nriDocuments, [documentType]: undefined } } }))}>Remove {documentType === "visa" ? "Visa" : "OCI"}</button> : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             <textarea
               aria-label={`${activeTravellerDetailTab.label} address`}
                 {...fieldProps(bookingFieldId(activeTravellerDetailTab.id, "address"))}
@@ -4323,8 +4612,8 @@ function PricingPanel({
               className={cn(
                 "grid gap-3",
                 activeTravellerDetailTab.id === "adult-1"
-                  ? "md:grid-cols-3"
-                  : "md:grid-cols-[0.9fr_1fr_1.2fr]"
+                  ? "md:grid-cols-2"
+                  : "md:grid-cols-[0.9fr_1fr]"
               )}
             >
               {activeTravellerDetailTab.id !== "adult-1" ? (
@@ -4348,7 +4637,7 @@ function PricingPanel({
                   <input
                     aria-label={`${activeTravellerDetailTab.label} mobile number`}
                 {...fieldProps(bookingFieldId(activeTravellerDetailTab.id, "mobile number"))}
-                required={true}
+                required={activeTravellerDetailTab.travellerType === "adult"}
                 autoComplete={`section-${activeTravellerDetailTab.id} tel-national`}
                     inputMode="numeric"
                     maxLength={10}
@@ -4361,11 +4650,25 @@ function PricingPanel({
                         event.target.value
                       )
                     }
-                    placeholder="Mobile Number *"
+                    placeholder={activeTravellerDetailTab.travellerType === "adult" ? "Mobile Number *" : "Mobile Number (optional)"}
                     type="tel"
                   />
                 </>
               ) : null}
+              <input
+                aria-label={`${activeTravellerDetailTab.label} pincode`}
+                {...fieldProps(bookingFieldId(activeTravellerDetailTab.id, "pincode"))}
+                required
+                autoComplete={`section-${activeTravellerDetailTab.id} postal-code`}
+                inputMode="numeric"
+                maxLength={6}
+                pattern="[0-9]{6}"
+                className="h-11 w-full rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary outline-none transition-colors placeholder:text-secondary/40 focus:border-primary focus:ring-3 focus:ring-primary/15 disabled:cursor-not-allowed"
+                value={activeTravellerDetails.pincode}
+                onChange={(event) => updateActiveTravellerDetail("pincode", event.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="PIN Code *"
+                type="text"
+              />
               <div className="flex h-11 items-center gap-4 rounded-[6px] border border-border bg-background px-3 font-sans text-[14px] font-medium text-secondary">
                 <span className="font-medium">Gender *</span>
                 <label className="inline-flex items-center gap-1.5">
@@ -4468,6 +4771,9 @@ function PricingPanel({
             Complete each traveller&apos;s details before payment.
           </p>
         ) : null}
+        <Button data-booking-review-trigger type="button" disabled={!canReview} onClick={onReview} className="mt-4 font-normal">
+          Review Your Booking
+        </Button>
       </BookingStep>
       <div className="lg:hidden">
         <BookingStep mobileStage={4} step="4" title="Review and Pay">
@@ -4661,7 +4967,7 @@ function LeadTravellerVerificationPanel({
       ) : null}
 
       {message ? (
-        <p className="mt-2 text-[12px] font-medium text-brand-text">{message}</p>
+        <p className="mt-2 text-[12px] font-medium text-green-600">{message}</p>
       ) : null}
       {errorMessage ? (
         <p role="alert" className="mt-2 text-[12px] font-semibold text-destructive">
@@ -4767,7 +5073,9 @@ function AccommodationOptionCard({
          
         </span>
         <span className="mt-1 block text-[14px] font-medium text-secondary/64">
-          {option.description}
+          {option.description?.split(/(Room\s+\d+)/g).map((part, index) =>
+            /^Room\s+\d+$/.test(part) ? <strong key={index} className="font-bold">{part}</strong> : part
+          )}
         </span>
         {option.rooms.some(room => room.roomType === "twin" || room.roomType === "triple_twin") ? <BookingTermExplanation term="twin-sharing" /> : null}
         <span className="mt-2 flex flex-wrap gap-2">
@@ -4802,6 +5110,7 @@ function BookingSummary({
   depositAmount,
   grandTotal,
   gstAmount,
+  tcsAmount = 0,
   gstPercentage,
   paymentFeedback,
   paymentOption,
@@ -4816,6 +5125,7 @@ function BookingSummary({
   depositAmount: number;
   grandTotal: number;
   gstAmount: number;
+  tcsAmount?: number;
   gstPercentage: number;
   paymentFeedback: string;
   paymentOption: BookingPaymentOption;
@@ -4849,9 +5159,11 @@ function BookingSummary({
           label={`GST (${gstPercentage}%)`}
           value={formatCurrency(gstAmount)}
         />
+        {tour.tourType.trim().toLowerCase() === "international" ? <SummaryLine label="TCS (2%)" value={formatCurrency(tcsAmount)} /> : null}
+        <SummaryLine label="Package Total (Excluding TCS)" value={formatCurrency(subtotal + gstAmount)} />
         <SummaryLine
           strong
-          label={isAirfareExcluded(tour) ? "Current Total (Excluding Airfare)" : "Total"}
+          label={isAirfareExcluded(tour) ? "Grand Total (Excluding Airfare)" : "Grand Total"}
           value={formatCurrency(grandTotal)}
         />
         {!isFullPayment ? (
@@ -5089,7 +5401,7 @@ function DailyItinerary({
                   ) : null}
                 </div>
 
-                <div className="mt-5 grid gap-4 border-t border-border pt-4 sm:grid-cols-2 sm:gap-0 lg:grid-cols-3">
+                <div className="mt-5 grid gap-4 border-t border-border pt-4 sm:grid-cols-2 sm:gap-0">
                   {day.meals ? (
                     <DayMetaFact
                       iconSrc="/Tour-assets/meal.png"
@@ -5103,14 +5415,6 @@ function DailyItinerary({
                       iconSrc="/Tour-assets/footprint.png"
                       label="Walking Distance"
                       value={walkingDetails.distance}
-                      className="lg:border-r lg:border-border"
-                    />
-                  ) : null}
-                  {day.hotels ? (
-                    <DayMetaFact
-                      iconSrc="/Tour-assets/hotel (1).png"
-                      label="Hotel"
-                      value={day.hotels}
                     />
                   ) : null}
                 </div>
@@ -5138,7 +5442,6 @@ function DailyItinerary({
                 <p>{day.summary}</p>
                 <ul>{places.map(place => <li key={place}>{place}</li>)}</ul>
                 {day.meals ? <p>Meals: {day.meals}</p> : null}
-                {day.hotels ? <p>Hotel: {day.hotels}</p> : null}
                 {day.walkingDifficulty ? <p>Walking: {day.walkingDifficulty}</p> : null}
               </div>
               </>
@@ -5225,29 +5528,24 @@ function DayMetaFact({
   );
 }
 
-function ListBlock({
-  icon: Icon,
-  items,
-  title,
-}: {
-  icon: LucideIcon;
-  items: string[];
-  title: string;
-}) {
+function InclusionStatusIcon({ included }: { included: boolean }) {
+  const Icon = included ? Check : X;
   return (
-    <article>
-      <h3 className="font-heading text-[20px] font-bold text-secondary">
-        {title}
-      </h3>
-      <ul className="mt-3 space-y-2.5 font-sans text-[15px] font-semibold leading-[1.55] text-secondary/78">
-        {items.map((item) => (
-          <li key={item} className="flex items-start gap-3">
-            <Icon className="mt-0.5 size-4 shrink-0 text-brand-text" strokeWidth={2.1} />
-            <span>{item}</span>
-          </li>
-        ))}
-      </ul>
-    </article>
+    <span aria-hidden="true" className={cn("grid size-5 shrink-0 place-items-center rounded-full text-white", included ? "bg-[#2faa5d]" : "bg-red-600")}>
+      <Icon className="size-3.5" strokeWidth={3} />
+    </span>
+  );
+}
+
+function ListBlock({ items }: { items: string[] }) {
+  return (
+    <ol className="mt-4 list-decimal space-y-2.5 pl-5 font-sans text-[14px] font-normal leading-[1.55] text-secondary">
+      {items.map((item) => (
+        <li key={item} className="break-words py-1.5 pl-1">
+          <span className="min-w-0 break-words">{item}</span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -5304,8 +5602,6 @@ function PriceCard({
                 per person on twin sharing
               </span>
             </strong>
-            <TourPriceNote gstPercentage={gstPercentage} airfareExtra={isAirfareExcluded(tour)} />
-            <BookingTermExplanation term="twin-sharing" />
             <BookingTermsLink />
             </> : <strong className="mt-1 block text-[27px] font-bold leading-none text-secondary">Coming Soon</strong>}
           </div>
@@ -5346,7 +5642,6 @@ function MobileBookingBar({
   isBusy,
   isAuthenticated,
   price,
-  airfareExtra,
 }: {
   onBookNow: () => void;
   suspended: boolean;
@@ -5357,12 +5652,10 @@ function MobileBookingBar({
   isBusy: boolean;
   isAuthenticated: boolean;
   price: number;
-  airfareExtra: boolean;
 }) {
   const barRef = useRef<HTMLDivElement>(null);
   const [barHeight, setBarHeight] = useState(0);
-  const [bookingInView, setBookingInView] = useState(false);
-  const hidden = suspended || (!isBookingFlowOpen && bookingInView);
+  const hidden = suspended;
 
   useLayoutEffect(() => {
     const bar = barRef.current;
@@ -5374,34 +5667,27 @@ function MobileBookingBar({
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    const section = document.getElementById("departure-pricing");
-    if (!section) return;
-    const observer = new IntersectionObserver(([entry]) => setBookingInView(entry.isIntersecting), {
-      rootMargin: "-64px 0px -" + barHeight + "px 0px", threshold: 0,
-    });
-    observer.observe(section);
-    return () => observer.disconnect();
-  }, [barHeight]);
-
   useLayoutEffect(() => {
     // Reserve space after the shared footer, including while a payment overlay is open.
     const body = document.body;
     const previousPadding = body.style.paddingBottom;
     const basePadding = parseFloat(window.getComputedStyle(body).paddingBottom) || 0;
-    const reserved = isBookingFlowOpen || !bookingInView ? barHeight : 0;
-    body.style.paddingBottom = (basePadding + reserved) + "px";
+    body.style.paddingBottom = (basePadding + barHeight) + "px";
     return () => { body.style.paddingBottom = previousPadding; };
-  }, [barHeight, bookingInView, isBookingFlowOpen]);
+  }, [barHeight]);
 
   const dockProps = { ref: barRef, "aria-hidden": hidden, inert: hidden, style: { visibility: hidden ? "hidden" as const : "visible" as const } };
   if (isBookingFlowOpen) return (
     <div {...dockProps} data-mobile-booking-bar className="fixed inset-x-0 bottom-0 z-[2147483646] border-t border-border bg-white px-4 pb-[max(0.9rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-6px_18px_rgba(67,43,27,0.12)] lg:hidden">
       <div className="mx-auto flex max-w-[700px] items-center justify-between gap-3 font-sans">
         <div className="min-w-0">
-          <span className="block text-[11px] font-medium text-secondary/65">Selected total, including {GST_PERCENTAGE}% GST</span>
-          <strong data-booking-total className="block whitespace-nowrap text-[22px] font-bold leading-tight text-secondary">{total > 0 ? formatCurrency(total) : "Choose your room"}</strong>
-          {airfareExtra ? <span className="block text-[11px] text-secondary/65">Airfare extra</span> : null}
+          <strong
+            data-booking-total
+            aria-label={total > 0 ? `Selected total ${formatCurrency(total)}, including ${GST_PERCENTAGE}% GST` : `Starting price ${formatCurrency(price)} per adult`}
+            className="block whitespace-nowrap text-[clamp(18px,5vw,22px)] font-bold leading-tight tabular-nums text-secondary"
+          >
+            {formatCurrency(total > 0 ? total : price)}
+          </strong>
         </div>
         <Button type="button" onClick={onContinue} disabled={hidden || isBusy || (bookingStage === 0 && !isAuthenticated)} className="h-11 shrink-0 rounded-full px-5 font-normal">
           {isBusy ? "Please wait..." : bookingStage === 4 ? "Pay Now" : "Continue"}
@@ -5422,8 +5708,6 @@ function MobileBookingBar({
             <span className="mt-0.5 block text-[12px] font-semibold leading-tight text-secondary/72">
               per person on twin sharing
             </span>
-            <TourPriceNote gstPercentage={GST_PERCENTAGE} airfareExtra={airfareExtra} />
-            <BookingTermExplanation term="twin-sharing" className="max-w-[250px] text-[11px] leading-snug" />
             </> : <strong className="block text-[20px] font-bold leading-none text-secondary">Coming Soon</strong>}
           </div>
           <Button
@@ -5516,6 +5800,7 @@ function EnquiryModal({
     try {
       await createTourEnquiry({
         city: String(formData.get("city") || ""),
+        gender: String(formData.get("gender") || ""),
         email: String(formData.get("email") || ""),
         guests: formatTravellerSummary(guestCounts),
         message: String(formData.get("message") || ""),
@@ -5559,9 +5844,9 @@ function EnquiryModal({
 
       <form
         onSubmit={handleSubmit}
-        className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-[860px] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-[10px] border border-primary/20 bg-card "
+        className="popup-form-panel relative w-full max-w-[860px]"
       >
-        <div className="flex items-start justify-between gap-3 border-b border-border bg-[#fff8f1] px-4 py-2">
+        <div className="popup-form-header flex items-start justify-between gap-3">
           <div>
             <h2 id="tour-enquiry-title" className="font-heading text-[24px] font-bold leading-tight text-secondary">
               Enquire Now
@@ -5580,7 +5865,7 @@ function EnquiryModal({
           </button>
         </div>
 
-        <div className="px-4 py-3 [&_[data-slot=button]]:text-[13px]">
+        <div data-lenis-prevent className="popup-form-body [&_[data-slot=button]]:text-[13px]">
           <p className="max-w-[780px] font-sans text-[13px] font-medium leading-[1.4] text-secondary/78">
             Do you have any questions before you book? Complete the form below
             and our tour team will get back to you shortly.
@@ -5595,6 +5880,12 @@ function EnquiryModal({
             </EnquiryField>
             <EnquiryField label="Phone Number *">
               <input required name="phone" type="tel" placeholder="Phone Number" />
+            </EnquiryField>
+            <EnquiryField label="Gender">
+              <select name="gender" defaultValue="">
+                <option value="">Select gender (optional)</option>
+                <option>Female</option><option>Male</option><option>Non-binary</option><option>Other</option><option>Prefer not to say</option>
+              </select>
             </EnquiryField>
             <EnquiryField label="Current City">
               <input name="city" type="text" placeholder="Current City" />
@@ -5651,10 +5942,12 @@ function EnquiryModal({
             </p>
           ) : null}
 
+        </div>
+        <div className="popup-form-actions">
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="mt-3 h-9 min-w-[160px] justify-between gap-3 px-4 font-normal"
+            className="popup-form-submit justify-between gap-3"
           >
             {isSubmitting ? "Sending..." : "Send Enquiry"}
             <ButtonArrow className="h-2.5 w-5 brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
@@ -5724,9 +6017,9 @@ function TourHighlightCard({
   });
 
   return (
-    <article className="@container rounded-[12px] border border-border bg-card p-3 shadow-[0_10px_24px_rgba(67,43,27,0.06)]">
-      <h2 className="flex items-center gap-3 font-heading text-[23px] font-bold text-secondary @min-[600px]:text-[34px]">
-        <Landmark className="size-6 shrink-0 text-brand-text @min-[600px]:size-8" strokeWidth={1.8} />
+    <article className="@container rounded-[12px] border border-border bg-card p-2.5 shadow-[0_10px_24px_rgba(67,43,27,0.06)]">
+      <h2 className="flex items-center gap-2 font-heading text-[21px] font-bold text-secondary @min-[600px]:text-[28px]">
+        <Landmark className="size-5 shrink-0 text-brand-text @min-[600px]:size-6" strokeWidth={1.8} />
         Tour Highlight
       </h2>
 
@@ -5741,18 +6034,18 @@ function TourHighlightCard({
           label="Departure Dates"
           value={
             departureDates.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <TourDepartureDateCard departure={departureDates[0]} />
                 {departureDates.length > 1 ? (
                   <details className="group/dates">
                     <summary className="inline-flex max-w-full cursor-pointer list-none items-center gap-2 rounded-full border border-border/60 bg-secondary/[0.03] px-3 py-1.5 text-[11px] font-medium [&::-webkit-details-marker]:hidden @min-[600px]:gap-3 @min-[600px]:px-4 @min-[600px]:text-[14px]">
                       <CalendarDays className="size-3.5 shrink-0 @min-[600px]:size-4" strokeWidth={1.8} />
-                       All Departures
+                      All Departures
                       <ChevronDown className="size-4 shrink-0 transition-transform group-open/dates:rotate-180" />
                     </summary>
-                    <div className="mt-2 grid grid-cols-1 gap-1.5 @min-[440px]:grid-cols-2 @min-[600px]:grid-cols-3">
+                    <div className="mt-2 grid grid-cols-1 gap-1.5 @min-[440px]:grid-cols-2">
                       {departureDates.slice(1).map((item) => (
-                        <TourDepartureDateCard key={item.id} departure={item} />
+                        <TourDepartureDateCard key={getDepartureIdentifier(item)} departure={item} />
                       ))}
                     </div>
                   </details>
@@ -5782,15 +6075,10 @@ function TourHighlightCard({
 
 function TourDepartureDateCard({ departure }: { departure: PublicTourDeparture }) {
   return (
-    <div className="flex items-start gap-2 rounded-[10px] border border-primary/10 bg-[#fff8f1] px-2.5 py-1.5">
-      <div className="min-w-0">
-        <div className="whitespace-nowrap text-[12px] font-semibold leading-snug @min-[600px]:text-[15px]">
-          {formatDate(departure.departureDate)}
-        </div>
-        <div className="mt-0.5 text-[12px] font-medium text-secondary/58 @min-[600px]:text-[14px]">
-          {new Date(departure.departureDate!).toLocaleDateString("en-GB", { weekday: "short" })}
-        </div>
-      </div>
+    <div className="rounded-[8px] border border-primary/20 bg-[#ffeddc] px-2 py-1.5">
+      <span className="whitespace-nowrap text-[12px] font-semibold leading-snug @min-[600px]:text-[14px]">
+        {formatDate(departure.departureDate)}/ {new Date(departure.departureDate!).toLocaleDateString("en-GB", { weekday: "short" })}
+      </span>
     </div>
   );
 }
@@ -5805,14 +6093,14 @@ function SidebarSummaryItem({
   value: ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)] items-start gap-2 py-2.5 @min-[600px]:grid-cols-[minmax(0,1fr)_minmax(0,2.3fr)] @min-[600px]:gap-4 @min-[600px]:py-3">
+    <div className="grid grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)] items-start gap-2 py-2 @min-[600px]:grid-cols-[minmax(0,1fr)_minmax(0,2.3fr)] @min-[600px]:gap-3 @min-[600px]:py-2.5">
       <span className="flex min-w-0 items-start gap-2 @min-[600px]:gap-5">
-        <Icon className="size-5 shrink-0 text-brand-text @min-[600px]:size-7" strokeWidth={1.8} />
-        <span className="min-w-0 text-[13px] font-medium leading-snug text-secondary/58 @min-[600px]:text-[19px]">
+        <Icon className="size-4 shrink-0 text-brand-text @min-[600px]:size-5" strokeWidth={1.8} />
+        <span className="min-w-0 text-[12px] font-medium leading-snug text-secondary/58 @min-[600px]:text-[16px]">
           {label}
         </span>
       </span>
-      <div className="min-w-0 border-l border-border/65 pl-3 text-[14px] font-semibold leading-snug break-words text-secondary @min-[600px]:pl-5 @min-[600px]:text-[20px]">
+      <div className="min-w-0 border-l border-border/65 pl-2.5 text-[13px] font-semibold leading-snug break-words text-secondary @min-[600px]:pl-4 @min-[600px]:text-[17px]">
         {value}
       </div>
     </div>
@@ -5830,13 +6118,13 @@ function BookingTermsCard({
 }) {
   const fieldProps = useBookingFieldProps();
   return (
-    <article className="rounded-[8px] border border-border bg-card p-3 shadow-[0_10px_24px_rgba(67,43,27,0.05)]">
+    <div>
       <h2 className="font-heading text-[17px] font-bold text-secondary">
         Terms & Conditions
       </h2>
       <label
         className={cn(
-          "mt-3 flex items-start gap-2 font-sans text-[14px] font-medium leading-[1.45]",
+          "mt-1.5 flex items-start gap-2 font-sans text-[14px] font-medium leading-[1.45]",
           canBook ? "text-secondary" : "text-secondary/58"
         )}
       >
@@ -5867,11 +6155,12 @@ function BookingTermsCard({
           Complete the booking details to accept terms and continue payment.
         </p>
       ) : null}
-    </article>
+    </div>
   );
 }
 
 function SidebarTourActions({
+  children,
   bookingReminder,
   hasBookableDeparture,
   onIncomplete,
@@ -5883,6 +6172,7 @@ function SidebarTourActions({
   onBookNow,
   hasOfflineRequest,
 }: {
+  children?: ReactNode;
   bookingReminder: string;
   hasBookableDeparture: boolean;
   onIncomplete: () => void;
@@ -5916,18 +6206,8 @@ function SidebarTourActions({
   }
 
   return (
+    <>
     <article className="rounded-[8px] border border-border bg-card p-3 shadow-[0_10px_24px_rgba(67,43,27,0.05)]">
-      {showAirfareNotice ? (
-        <div className="mb-3 rounded-[6px] border border-blue-200 bg-blue-50 px-3 py-2.5 font-sans">
-          <p className="flex items-center gap-2 text-[12px] font-bold leading-[1.4] text-secondary">
-            <Info aria-hidden="true" className="size-3.5 shrink-0 text-blue-600" />
-            Air-Flight Charges (Additional)
-          </p>
-          <p className="mt-1.5 text-[12px] font-medium leading-[1.5] text-secondary/70">
-            Air-Flight Charges: To Be Added in the booking summary, invoice, booking voucher, and confirmation email.
-          </p>
-        </div>
-      ) : null}
       <div className="grid grid-cols-1 gap-2">
         <Button
           type="button"
@@ -5943,8 +6223,123 @@ function SidebarTourActions({
           </span>
         </Button>
       </div>
+      {children}
     </article>
+    {showAirfareNotice ? (
+      <article className="rounded-[8px] border border-border bg-card p-3 shadow-[0_10px_24px_rgba(67,43,27,0.05)]">
+        <div className="rounded-[6px] border border-blue-200 bg-blue-50 px-3 py-2.5 font-sans">
+          <p className="flex items-center gap-2 text-[12px] font-bold leading-[1.4] text-secondary">
+            <Info aria-hidden="true" className="size-3.5 shrink-0 text-blue-600" />
+            Air-Flight Charges (Additional)
+          </p>
+          <p className="mt-1.5 text-[12px] font-medium leading-[1.5] text-secondary/70">
+            Air-Flight Charges: To Be Added in the booking summary, invoice, booking voucher, and confirmation email.
+          </p>
+        </div>
+      </article>
+    ) : null}
+    </>
   );
+}
+
+function BookingReviewModal({
+  children,
+  travellerCounts,
+  travellerForms,
+  accepted,
+  canBook,
+  onAcceptedChange,
+  onEdit,
+  onClose,
+  onPay,
+}: {
+  children: ReactNode;
+  travellerCounts: TravellerCounts;
+  travellerForms: Record<string, TravellerDetailForm>;
+  accepted: boolean;
+  canBook: boolean;
+  onAcceptedChange: (accepted: boolean) => void;
+  onEdit: () => void;
+  onClose: () => void;
+  onPay: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    dialog?.showModal();
+    dialog?.querySelector<HTMLElement>("h2")?.focus();
+    document.body.style.overflow = "hidden";
+    return () => {
+      dialog?.close();
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    };
+  }, []);
+
+  const fields: Array<[TravellerDetailField, string]> = [
+    ["title", "Title"], ["firstName", "First name"], ["lastName", "Last name"],
+    ["gender", "Gender"], ["dateOfBirth", "Date of birth"],
+    ["email", "Email"], ["phoneCountryCode", "Country code"], ["mobileNumber", "Mobile number"],
+    ["address", "Address"], ["pincode", "PIN code"], ["emergencyContactName", "Emergency contact name"],
+    ["emergencyContactMobileNumber", "Emergency contact mobile number"],
+  ];
+
+  const modal = (
+    <dialog
+      ref={dialogRef}
+      data-booking-review
+      aria-labelledby="booking-review-title"
+      onCancel={(event) => { event.preventDefault(); onClose(); }}
+      className="fixed inset-0 m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-[720px] overflow-hidden rounded-[10px] border border-primary/20 bg-card p-0 text-secondary shadow-[0_24px_80px_rgba(35,24,16,0.28)] backdrop:bg-secondary/45 backdrop:backdrop-blur-[3px]"
+    >
+      <div className="flex max-h-[calc(100dvh-2rem)] flex-col">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border bg-[#fff8f1] px-5 py-4">
+          <div>
+            <h2 id="booking-review-title" tabIndex={-1} className="font-heading text-[24px] font-bold outline-none">Review Your Booking</h2>
+            <p className="mt-1 font-sans text-[13px] text-secondary/68">Check your details before continuing to payment.</p>
+          </div>
+          <button type="button" aria-label="Close booking preview" onClick={onClose} className="grid size-8 shrink-0 place-items-center rounded-full border border-button-outline bg-white text-button-outline">
+            <X className="size-4" />
+          </button>
+        </div>
+        <div data-lenis-prevent className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+          {createTravellerDetailTabs(travellerCounts).map((tab) => (
+            <article key={tab.id} className="rounded-[8px] border border-border p-3">
+              <h3 className="mb-3 font-heading text-[18px] font-bold">{tab.heading} ({tab.travellerType})</h3>
+              <dl className="space-y-2 font-sans text-[13px]">
+                {travellerForms[tab.id]?.isNri ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3"><dt className="text-secondary/68">Non-Resident Indian (NRI)</dt><dd className="font-medium">Yes</dd></div>
+                    <div className="grid grid-cols-2 gap-3"><dt className="text-secondary/68">Visa</dt><dd className="break-words font-medium">{travellerForms[tab.id]?.nriDocuments?.visa?.fileName || "Required"}</dd></div>
+                    <div className="grid grid-cols-2 gap-3"><dt className="text-secondary/68">OCI (optional)</dt><dd className="break-words font-medium">{travellerForms[tab.id]?.nriDocuments?.oci?.token ? travellerForms[tab.id]?.nriDocuments?.oci?.fileName : "Not provided"}</dd></div>
+                  </>
+                ) : null}
+                {fields.map(([field, label]) => (
+                  <div key={field} className="grid grid-cols-2 gap-3">
+                    <dt className="text-secondary/68">{label}</dt>
+                    <dd className="whitespace-pre-wrap break-words font-medium">{travellerForms[tab.id]?.[field] || "Not provided"}</dd>
+                  </div>
+                ))}
+              </dl>
+            </article>
+          ))}
+          {children}
+        </div>
+        <div className="shrink-0 space-y-2 border-t border-border bg-card px-5 py-2">
+          <article className="rounded-[8px] border border-border px-3 py-2">
+            <BookingTermsCard accepted={accepted} canBook={canBook} onAcceptedChange={onAcceptedChange} />
+          </article>
+          <div className="flex justify-between gap-3">
+            <Button type="button" variant="outline" onClick={onEdit}>Edit Details</Button>
+            <Button type="button" disabled={!canBook || !accepted} onClick={onPay}>Pay Now</Button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+  );
+  return typeof document === "undefined" ? null : createPortal(modal, document.body);
 }
 
 function PaymentChoiceModal({
@@ -5969,6 +6364,7 @@ function PaymentChoiceModal({
   onPayOffline: () => void;
 }) {
   const [step, setStep] = useState<"method" | "online" | "bank" | "offline">("method");
+  const [previewPaymentOption, setPreviewPaymentOption] = useState<BookingPaymentOption>("full");
 
   const offlineConfirmedRef = useRef(false);
   const [offlineConfirmed, setOfflineConfirmed] = useState(false);
@@ -6044,14 +6440,25 @@ function PaymentChoiceModal({
               Generate bank details for this booking. Seats are confirmed only after verified payment and availability checks.
             </p>
           ) : null}
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div
+            className="grid gap-3 sm:grid-cols-2"
+            onMouseLeave={() => setPreviewPaymentOption("full")}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) setPreviewPaymentOption("full");
+            }}
+          >
           <button
             type="button"
             disabled={isBusy}
             onClick={() => step === "bank" ? onPayBankTransfer?.("full") : onPayFull()}
-            className="group/payment relative rounded-[8px] border-2 border-button-outline bg-white p-4 text-left text-button-outline shadow-[0_0_0_3px_rgba(47,170,93,0.14)] transition-colors hover:bg-[#f8fff9] disabled:pointer-events-none disabled:opacity-60"
+            onMouseEnter={() => setPreviewPaymentOption("full")}
+            onFocus={() => setPreviewPaymentOption("full")}
+            className={cn(
+              "group/payment relative rounded-[8px] border-2 border-[var(--color-button-outline)] bg-white p-4 text-left text-button-outline transition-shadow active:bg-white disabled:pointer-events-none disabled:opacity-60",
+              previewPaymentOption === "full" && "border-[#2faa5d] shadow-[0_0_0_3px_rgba(47,170,93,0.14)]"
+            )}
           >
-            <span className="absolute right-2.5 top-2.5 grid size-6 place-items-center rounded-full bg-[#2faa5d] text-white shadow-[0_6px_14px_rgba(47,170,93,0.28)]">
+            <span aria-hidden="true" className={cn("absolute right-2.5 top-2.5 grid size-6 place-items-center rounded-full bg-[#2faa5d] text-white shadow-[0_6px_14px_rgba(47,170,93,0.28)] transition-opacity", previewPaymentOption !== "full" && "opacity-0")}>
               <Check className="size-3.5" strokeWidth={2.4} />
             </span>
             <span className="font-sans text-[13px] font-semibold uppercase leading-none text-brand-text">
@@ -6069,8 +6476,16 @@ function PaymentChoiceModal({
             type="button"
             disabled={isBusy}
             onClick={() => step === "bank" ? onPayBankTransfer?.("advance") : onPayAdvance()}
-            className="group/payment rounded-[8px] border border-button-outline bg-white p-4 text-left text-button-outline transition-colors hover:border-button-outline hover:bg-white hover:shadow-[0_0_0_3px_rgba(212,114,32,0.12)] disabled:pointer-events-none disabled:opacity-60"
+            onMouseEnter={() => setPreviewPaymentOption("advance")}
+            onFocus={() => setPreviewPaymentOption("advance")}
+            className={cn(
+              "group/payment relative rounded-[8px] border-2 border-[var(--color-button-outline)] bg-white p-4 text-left text-button-outline transition-shadow active:bg-white disabled:pointer-events-none disabled:opacity-60",
+              previewPaymentOption === "advance" && "border-[#2faa5d] shadow-[0_0_0_3px_rgba(47,170,93,0.14)]"
+            )}
           >
+            <span aria-hidden="true" className={cn("absolute right-2.5 top-2.5 grid size-6 place-items-center rounded-full bg-[#2faa5d] text-white shadow-[0_6px_14px_rgba(47,170,93,0.28)] transition-opacity", previewPaymentOption !== "advance" && "opacity-0")}>
+              <Check className="size-3.5" strokeWidth={2.4} />
+            </span>
             <span className="font-sans text-[13px] font-semibold uppercase leading-none text-brand-text">
               Pay Advance
             </span>

@@ -1,4 +1,5 @@
 import Image from "next/image";
+import heritageHeaderBanner from "@/public/home assets/Heritage Banner.webp";
 import {
   Bike, Camera, Globe2, Palette, PersonStanding,
   UsersRound, type LucideIcon,
@@ -9,7 +10,7 @@ import { ButtonArrow } from "@/components/ui/button";
 import { SpecialisedTourEnquiryButton } from "@/components/contact/specialised-tour-enquiry";
 import styles from "./specialised-tour-page.module.css";
 
-const actionButtonClassName = "h-auto min-h-11 w-full min-w-0 justify-between gap-4 whitespace-normal px-5 py-2 text-left font-normal sm:w-auto sm:gap-8 sm:px-6 lg:h-11 lg:whitespace-nowrap lg:py-0";
+const actionButtonClassName = "h-auto min-h-11 w-fit min-w-0 justify-between gap-4 whitespace-normal px-5 py-2 text-left font-normal sm:gap-8 sm:px-6 lg:h-11 lg:whitespace-nowrap lg:py-0";
 const buttonArrowClassName = "brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0";
 
 type SpecialisedInterest = {
@@ -95,7 +96,17 @@ function InterestRow({ interest, index }: { interest: SpecialisedInterest; index
 export function SpecialisedTourPage() {
   return (
     <main id="main-content" tabIndex={-1} className={styles.page}>
-      <div className="home-wide-frame mx-auto w-full px-5 sm:px-0"><Header /></div>
+      <section className="relative h-[100px] overflow-hidden lg:h-[120px]">
+        <Image
+          src={heritageHeaderBanner}
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-center"
+        />
+        <div className="home-wide-frame relative z-10 mx-auto w-full px-5 sm:px-0"><Header /></div>
+      </section>
       <div className="home-wide-frame mx-auto w-full px-5 sm:px-8 [@media(min-width:1300px)]:px-12">
         <section className={styles.intro} aria-labelledby="specialised-tours-heading">
           <div className={styles.introCopy}>
@@ -111,9 +122,8 @@ export function SpecialisedTourPage() {
           {interests.map((interest, index) => <InterestRow key={interest.id} interest={interest} index={index} />)}
         </section>
       </div>
-      <section className={`home-wide-frame ${styles.contactBanner}`} aria-labelledby="plan-specialised-tour">
-        <Image src="/home assets/Briddeshwara temple_banner.webp" alt="" fill sizes="95vw" className={styles.contactImage} />
-        <div className={styles.contactIllustration} aria-hidden="true"><Image src="/illustration/Hampi illustration.png" alt="" fill sizes="240px" /></div>
+      <section className={styles.contactBanner} aria-labelledby="plan-specialised-tour">
+        <Image src="/home assets/Briddeshwara temple_banner.webp" alt="" fill sizes="100vw" className={styles.contactImage} />
         <div className={styles.contactCopy}>
           <p className={styles.eyebrow}><span aria-hidden="true" /> Ready to Explore?</p>
           <h2 id="plan-specialised-tour">Let’s Plan Your<br />Specialised Tour</h2>

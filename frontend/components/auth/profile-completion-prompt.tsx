@@ -212,10 +212,10 @@ export function ProfileCompletionPrompt() {
   return (
     <div className="fixed inset-0 z-[2147483647] flex items-start justify-center overflow-y-auto bg-secondary/50 px-4 py-6 backdrop-blur-sm sm:items-center">
       <form
-        className="my-auto w-full max-w-[460px] rounded-[10px] border border-white/80 bg-white p-5 text-secondary shadow-[0_28px_80px_rgba(0,0,0,0.22)] sm:p-6"
+        className="popup-form-panel my-auto w-full max-w-[460px] shadow-[0_28px_80px_rgba(0,0,0,0.22)]"
         onSubmit={handleSubmit}
       >
-        <div className="flex items-start justify-between gap-4">
+        <div className="popup-form-header flex items-start justify-between gap-4">
           <div>
             <h2 className="font-heading text-[24px] font-bold leading-none">
               Complete Your Profile
@@ -234,6 +234,7 @@ export function ProfileCompletionPrompt() {
           </button>
         </div>
 
+        <div data-lenis-prevent className="popup-form-body">
         {errorMessage ? (
           <div className="mt-5 rounded-[7px] border border-[#f1c4bb] bg-[#fff4f1] px-4 py-3 font-sans text-[12px] font-semibold leading-[1.45] text-[#b33620]">
             {errorMessage}
@@ -243,7 +244,7 @@ export function ProfileCompletionPrompt() {
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <label className="block">
             <span className="font-sans text-[13px] font-bold">First Name</span>
-            <span className="mt-2 flex h-12 items-center gap-3 rounded-[7px] border border-border bg-white px-4 text-secondary/48 transition-colors focus-within:border-primary">
+            <span className="popup-form-control mt-2 flex h-12 items-center gap-3 rounded-[7px] border border-border bg-white px-4 text-secondary/48 transition-colors focus-within:border-primary">
               <UserRound className="size-4" strokeWidth={1.8} />
               <input
                 type="text"
@@ -259,7 +260,7 @@ export function ProfileCompletionPrompt() {
 
           <label className="block">
             <span className="font-sans text-[13px] font-bold">Last Name</span>
-            <span className="mt-2 flex h-12 items-center gap-3 rounded-[7px] border border-border bg-white px-4 text-secondary/48 transition-colors focus-within:border-primary">
+            <span className="popup-form-control mt-2 flex h-12 items-center gap-3 rounded-[7px] border border-border bg-white px-4 text-secondary/48 transition-colors focus-within:border-primary">
               <UserRound className="size-4" strokeWidth={1.8} />
               <input
                 type="text"
@@ -276,7 +277,7 @@ export function ProfileCompletionPrompt() {
           {needsEmail ? (
             <label className="block sm:col-span-2">
               <span className="font-sans text-[13px] font-bold">Email</span>
-              <span className="mt-2 flex h-12 items-center gap-3 rounded-[7px] border border-border bg-white px-4 text-secondary/48 transition-colors focus-within:border-primary">
+              <span className="popup-form-control mt-2 flex h-12 items-center gap-3 rounded-[7px] border border-border bg-white px-4 text-secondary/48 transition-colors focus-within:border-primary">
                 <Mail className="size-4" strokeWidth={1.8} />
                 <input
                   type="email"
@@ -294,7 +295,7 @@ export function ProfileCompletionPrompt() {
           {needsMobileNumber ? (
             <label className="block sm:col-span-2">
               <span className="font-sans text-[13px] font-bold">Phone Number</span>
-              <span className="mt-2 grid h-12 grid-cols-[88px_minmax(0,1fr)] items-center rounded-[7px] border border-border bg-white text-secondary/48 transition-colors focus-within:border-primary">
+              <span className="popup-form-control mt-2 grid h-12 grid-cols-[88px_minmax(0,1fr)] items-center rounded-[7px] border border-border bg-white text-secondary/48 transition-colors focus-within:border-primary">
                 <span className="flex h-full items-center gap-2 border-r border-border px-3">
                   <Phone className="size-4" strokeWidth={1.8} />
                   <input
@@ -326,11 +327,12 @@ export function ProfileCompletionPrompt() {
           ) : null}
         </div>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-[1fr_auto]">
+        </div>
+        <div className="popup-form-actions">
           <Button
             type="submit"
             disabled={isSaving}
-            className="h-11 justify-center px-6 text-[14px] font-normal"
+            className="popup-form-submit justify-center text-[14px]"
           >
             {isSaving ? "Saving..." : "Save Profile"}
             {isSaving ? (

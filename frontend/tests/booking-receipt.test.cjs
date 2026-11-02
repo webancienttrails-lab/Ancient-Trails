@@ -22,7 +22,7 @@ const advance = { id: 'booking-fixture', bookingReference: 'AT-D0001', amountPai
 
 test('advance confirmation states the actual payment, balance and due date', () => {
   assert.equal(receipts.getBookingPaymentSummary(advance), 'Booking confirmed with an advance of \u20b920,000. Balance \u20b922,000 due 30 Oct 2026.');
-  assert.match(receipts.getBookingDocumentMessage(advance), /receipt is available now.*invoice and booking voucher.*after final payment/);
+  assert.match(receipts.getBookingDocumentMessage(advance), /invoice and booking voucher.*after final payment/);
   assert.equal(receipts.getBookingPaymentState(advance).canDownloadReceipt, true);
 });
 
@@ -31,6 +31,14 @@ test('full payment does not claim an advance or an outstanding balance', () => {
   assert.match(receipts.getBookingPaymentSummary(full), /received in full/);
   assert.doesNotMatch(receipts.getBookingPaymentSummary(full), /advance|due/);
   assert.match(receipts.getBookingDocumentMessage(full), /invoice and booking voucher are available now/);
+});
+
+test('booking document messages only describe invoices and vouchers for every payment state', () => {
+  for (const booking of [advance, { ...advance, amountPaid: 42000, balanceAmount: 0 }, { ...advance, amountPaid: 0, paymentStatus: 'pending' }]) {
+    const message = receipts.getBookingDocumentMessage(booking);
+    assert.doesNotMatch(message, /receipt/i);
+    assert.match(message, /invoice and booking voucher/);
+  }
 });
 
 test('missing balance and due dates do not invent a deadline or claim full settlement', () => {

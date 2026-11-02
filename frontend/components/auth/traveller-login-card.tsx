@@ -630,10 +630,10 @@ export function TravellerLoginCard() {
       {isProfilePopupOpen ? (
         <dialog ref={profileDialogRef} aria-labelledby="traveller-profile-title" className="fixed inset-0 m-0 h-[100dvh] max-h-none w-screen max-w-none border-0 text-secondary z-[10000] flex items-start justify-center overflow-y-auto bg-secondary/50 px-4 py-6 backdrop-blur-sm sm:items-center">
           <form
-            className="my-auto w-full max-w-[430px] rounded-[10px] border border-white/80 bg-white p-5 shadow-[0_28px_80px_rgba(0,0,0,0.22)] sm:p-6"
+            className="popup-form-panel my-auto w-full max-w-[430px] shadow-[0_28px_80px_rgba(0,0,0,0.22)]"
             onSubmit={handleCompleteProfile}
           >
-            <div className="text-center">
+            <div className="popup-form-header text-center">
               <h3 id="traveller-profile-title" className="font-heading text-[24px] font-bold leading-none text-secondary">
                 Complete Your Profile
               </h3>
@@ -644,6 +644,7 @@ export function TravellerLoginCard() {
               </p>
             </div>
 
+            <div data-lenis-prevent className="popup-form-body">
             {profileErrorMessage ? (
               <div className="mt-5 rounded-[7px] border border-[#f1c4bb] bg-[#fff4f1] px-4 py-3 font-sans text-[12px] font-semibold leading-[1.45] text-[#b33620]">
                 {profileErrorMessage}
@@ -655,7 +656,7 @@ export function TravellerLoginCard() {
                 <span className="font-sans text-[13px] font-bold text-secondary">
                   First Name
                 </span>
-                <span className="mt-2 flex h-12 items-center gap-3 rounded-[7px] border border-border bg-white px-4 text-secondary/48 transition-colors focus-within:border-primary">
+                <span className="popup-form-control mt-2 flex h-12 items-center gap-3 rounded-[7px] border border-border bg-white px-4 text-secondary/48 transition-colors focus-within:border-primary">
                   <UserRound className="size-4" strokeWidth={1.8} />
                   <input
                     type="text"
@@ -673,7 +674,7 @@ export function TravellerLoginCard() {
                 <span className="font-sans text-[13px] font-bold text-secondary">
                   Last Name
                 </span>
-                <span className="mt-2 flex h-12 items-center gap-3 rounded-[7px] border border-border bg-white px-4 text-secondary/48 transition-colors focus-within:border-primary">
+                <span className="popup-form-control mt-2 flex h-12 items-center gap-3 rounded-[7px] border border-border bg-white px-4 text-secondary/48 transition-colors focus-within:border-primary">
                   <UserRound className="size-4" strokeWidth={1.8} />
                   <input
                     type="text"
@@ -692,7 +693,7 @@ export function TravellerLoginCard() {
                   <span className="font-sans text-[13px] font-bold text-secondary">
                     Phone Number
                   </span>
-                  <span className="mt-2 flex h-12 items-center gap-4 rounded-[7px] border border-border bg-white px-4 text-secondary/48 transition-colors focus-within:border-primary">
+                  <span className="popup-form-control mt-2 flex h-12 items-center gap-4 rounded-[7px] border border-border bg-white px-4 text-secondary/48 transition-colors focus-within:border-primary">
                     <Phone className="size-4" strokeWidth={1.8} />
                     <span className="border-r border-border pr-3 font-sans text-[13px] font-semibold text-secondary">
                       +91
@@ -717,7 +718,7 @@ export function TravellerLoginCard() {
                   <span className="font-sans text-[13px] font-bold text-secondary">
                     Email
                   </span>
-                  <span className="mt-2 flex h-12 items-center gap-3 rounded-[7px] border border-border bg-white px-4 text-secondary/48 transition-colors focus-within:border-primary">
+                  <span className="popup-form-control mt-2 flex h-12 items-center gap-3 rounded-[7px] border border-border bg-white px-4 text-secondary/48 transition-colors focus-within:border-primary">
                     <Mail className="size-4" strokeWidth={1.8} />
                     <input
                       type="email"
@@ -733,10 +734,12 @@ export function TravellerLoginCard() {
               )}
             </div>
 
+            </div>
+            <div className="popup-form-actions">
             <Button
               type="submit"
               disabled={isCompletingProfile}
-              className="mt-6 h-11 w-full min-w-0 justify-between gap-4 px-5 text-[15px] font-normal sm:px-6 sm:text-button"
+              className="popup-form-submit justify-between gap-4 text-[15px] sm:text-button"
             >
               Complete Profile
               {isCompletingProfile ? (
@@ -750,11 +753,12 @@ export function TravellerLoginCard() {
               type="button"
               variant="outline"
               onClick={handleBackToMobile}
-              className="mt-4 h-11 w-full justify-center gap-2 px-5 text-[14px] font-normal"
+              className="h-11 w-fit justify-center gap-2 px-5 text-[14px] font-normal"
             >
               <ArrowLeft className="size-4" strokeWidth={2} />
               {profileMode === "google" ? "Back to login" : "Use a different number"}
             </Button>
+            </div>
           </form>
         </dialog>
       ) : null}

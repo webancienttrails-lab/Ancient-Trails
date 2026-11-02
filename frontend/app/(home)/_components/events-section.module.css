@@ -1,0 +1,130 @@
+.section {
+  padding: clamp(24px, 3.1vw, 60px) 0 clamp(20px, 2.1vw, 40px);
+  background: #fff;
+}
+
+.frame {
+  position: relative;
+  width: 75.2%;
+  max-width: 1440px;
+  margin-inline: auto;
+}
+
+.viewport {
+  overflow: hidden;
+  border-radius: clamp(16px, 1.7vw, 32px);
+  box-shadow: 0 9px 15px -8px rgb(187 102 35 / 35%);
+}
+
+.track {
+  display: flex;
+  touch-action: pan-y pinch-zoom;
+}
+
+.slide {
+  flex: 0 0 100%;
+  min-width: 0;
+  aspect-ratio: 1440 / 500;
+}
+
+.link {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.arrow {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: clamp(44px, 4.2vw, 80px);
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid #ed780e;
+  border-radius: 50%;
+  background: #fbf6f0;
+  color: #ed780e;
+  box-shadow: 0 7px 12px -6px rgb(213 111 26 / 35%);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: background 160ms, color 160ms;
+}
+
+.arrow svg {
+  width: 52%;
+  height: 52%;
+  stroke-width: 4;
+}
+
+.previous {
+  right: calc(100% + clamp(12px, 1.3vw, 26px));
+}
+
+.next {
+  left: calc(100% + clamp(12px, 1.3vw, 26px));
+}
+
+.arrow:hover {
+  background: #ed780e;
+  color: #fff;
+}
+
+.dots {
+  display: flex;
+  justify-content: center;
+  margin-top: clamp(16px, 1.5vw, 28px);
+}
+
+.dot {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.dot::before {
+  content: "";
+  width: clamp(12px, 1vw, 19px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #f5d6bd;
+}
+
+.dot[aria-current="true"]::before {
+  background: #ed780e;
+}
+
+.arrow:focus-visible,
+.dot:focus-visible,
+.link:focus-visible {
+  outline: 2px solid #ed780e;
+  outline-offset: 4px;
+}
+
+.link:focus-visible {
+  outline-offset: -6px;
+}
+
+@media (max-width: 640px) {
+  .frame { width: calc(100% - 100px); }
+  .slide { aspect-ratio: 1.9; }
+  .arrow { width: 36px; }
+  .previous { right: calc(100% + 7px); }
+  .next { left: calc(100% + 7px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrow { transition: none; }
+}

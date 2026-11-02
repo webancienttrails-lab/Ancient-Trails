@@ -258,7 +258,7 @@ export function SiteFooter({ recentPosts = [] }: { recentPosts?: PublicBlogPrevi
               </span>
               <span className="hidden h-px w-20 bg-primary/45 sm:block" />
             </p>
-            <p>Powered by ADVOLVE</p>
+            <p>Powered by <a href="https://advolveadvertising.com/" target="_blank" rel="noopener noreferrer">ADVOLVE</a></p>
           </div>
         </section>
       </div>

@@ -8,6 +8,7 @@ import type {
 export type UserBookingTripStatus = "Upcoming" | "Completed" | "Cancelled";
 
 export type UserBookingTour = {
+  tourType?: string;
   tourId: string;
   tourName: string;
   durationDn: string;
@@ -135,6 +136,21 @@ export function getBookingKycDocumentUrl(source = "") {
   }
 
   return trimmedSource;
+}
+
+export async function uploadPrebookingKycDocument(payload: {
+  travellerId: string;
+  documentType: "visa" | "oci";
+  file: File;
+}) {
+  const formData = new FormData();
+  formData.append("travellerId", payload.travellerId);
+  formData.append("documentType", payload.documentType);
+  formData.append("document", payload.file);
+  return readUploadResponse<{ token: string; fileName: string }>(await sessionFetch(
+    `${apiBaseUrl}/api/bookings/kyc/upload`,
+    { method: "POST", headers: getTravellerHeaders(), body: formData, credentials: "include" }
+  ));
 }
 
 export async function uploadTravellerBookingKycDocument(payload: {

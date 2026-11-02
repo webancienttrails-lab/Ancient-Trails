@@ -1,8 +1,11 @@
 "use client";
 import type { DestinationPageData } from "@/lib/travel-page-data";
+import { DestinationReferencePage } from "./destination-reference-page";
+import { DestinationPhotoGallery } from "./destination-photo-gallery";
 
 import { getNextBookableDeparture } from "@/lib/tour-departures";
 import Image from "next/image";
+import heritageHeaderBanner from "@/public/home assets/Heritage Banner.webp";
 import Link from "next/link";
 import { type MouseEvent, useEffect, useMemo, useState } from "react";
 import {
@@ -777,45 +780,16 @@ export function SingleDestinationPage({
   }
 
   return (
-    <main id="main-content" tabIndex={-1} className="min-h-screen overflow-x-hidden bg-background text-secondary">
-      <TopBackdrop />
+    <main id="main-content" tabIndex={-1} className="relative min-h-screen overflow-x-hidden bg-background text-secondary">
+      <div className="absolute inset-x-0 top-0"><Header /></div>
 
-      <div className="home-wide-frame mx-auto mt-8 w-[calc(100%-2.5rem)] pb-16">
-        <DestinationOverview
-          destination={destination}
-          images={images}
-          tours={relatedTours}
-        />
+      <DestinationReferencePage
+        destination={destination}
+        images={images}
+        onImageOpen={(image, title) => openLightbox([image], title, 0, images)}
+      />
 
-        <ExploreAndPlan
-          hasExperiences={relatedTours.length > 0 || experiences.length > 0}
-          destination={destination}
-          galleryImages={destinationGalleryImages}
-          images={images}
-          onGalleryOpen={(index) =>
-            openLightbox(
-              destinationGalleryImages,
-              `${destination.destinationName} gallery`,
-              index
-            )
-          }
-        />
-
-        <TravellerExperienceSection
-          destination={destination}
-          experiences={experiences}
-          experienceGalleryImages={experienceGalleryImages}
-          images={images}
-          onExperienceGalleryOpen={(galleryImages, title, activeIndex) =>
-            openLightbox(
-              galleryImages,
-              title,
-              activeIndex,
-              getDisplayFallbackImages(images)
-            )
-          }
-        />
-
+      <div className="home-wide-frame mx-auto w-[calc(100%-2.5rem)] pb-16">
         <ToursSection
           departures={departures}
           destination={destination}
@@ -825,6 +799,12 @@ export function SingleDestinationPage({
           tours={relatedTours}
           wishlistedTourIds={wishlistedTourIds}
         />
+
+        {destinationGalleryImages.length ? <DestinationPhotoGallery
+          destinationName={destination.destinationName}
+          images={destinationGalleryImages}
+          onImageOpen={index => openLightbox(destinationGalleryImages, `${destination.destinationName} gallery`, index)}
+        /> : null}
 
         {lightbox ? (
           <GalleryLightbox
@@ -867,7 +847,7 @@ function TopBackdrop() {
   return (
     <section className="relative h-[100px] overflow-hidden bg-secondary lg:h-[120px]">
       <Image
-        src="/home assets/Heritage Banner.webp"
+        src={heritageHeaderBanner}
         alt="Ancient Trails heritage landscape"
         fill
         priority
@@ -1127,7 +1107,7 @@ function GalleryLightbox({
       aria-label={`${title} gallery`}
       aria-modal="true"
       role="dialog"
-      className="fixed inset-0 bg-black/82 text-white"
+      className="fixed inset-0 bg-white text-secondary"
       style={{ zIndex: 2147483647 }}
     >
       <button
@@ -1139,10 +1119,10 @@ function GalleryLightbox({
 
       <div className="relative z-10 flex h-full flex-col">
         <div className="flex h-[70px] items-center justify-between px-5 md:px-8">
-          <p className="font-sans text-[18px] font-semibold tracking-wide text-white/92">
+          <p className="font-sans text-[18px] font-semibold tracking-wide text-secondary/92">
             {boundedIndex + 1} / {galleryImages.length}
           </p>
-          <div className="flex items-center gap-5 text-white/88">
+          <div className="flex items-center gap-5 text-secondary/88">
             <button
               type="button"
               aria-label="Fullscreen gallery"
@@ -1186,7 +1166,7 @@ function GalleryLightbox({
           </button>
 
           <div
-            className="relative h-[calc(100vh-9rem)] w-full max-w-[1120px]"
+            className="relative h-[calc(100vh-9rem)] w-full max-w-[1120px] bg-white"
             style={activeImageStyle}
           >
             <Image
@@ -1210,7 +1190,7 @@ function GalleryLightbox({
           </button>
         </div>
 
-        <p className="absolute bottom-6 left-1/2 z-20 w-[min(90vw,520px)] -translate-x-1/2 truncate text-center font-sans text-[18px] font-bold text-white/92">
+        <p className="absolute bottom-6 left-1/2 z-20 w-[min(90vw,520px)] -translate-x-1/2 truncate text-center font-sans text-[18px] font-bold text-secondary/92">
           {title} {boundedIndex + 1}
         </p>
       </div>

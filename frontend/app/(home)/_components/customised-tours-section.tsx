@@ -297,7 +297,7 @@ export function CustomisedToursSection({
         <Button
           nativeButton={false}
           render={<Link prefetch={false} href="/destinations" />}
-          className="mt-9 h-12 w-full min-w-0 justify-between rounded-full px-6 text-[17px] font-normal lg:hidden"
+          className="mt-9 h-12 w-fit min-w-0 justify-between rounded-full px-6 text-[17px] font-normal lg:hidden"
         >
           Customise Your Tour
           <ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />

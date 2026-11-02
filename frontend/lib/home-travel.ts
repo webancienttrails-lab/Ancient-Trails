@@ -119,6 +119,7 @@ export type PublicExpert = {
 };
 
 export type PublicDestination = {
+  pageContent?: import("./destination-page-content").DestinationPageContent;
   id: string;
   destinationId: string;
   destinationName: string;
@@ -165,6 +166,7 @@ export type PublicExperience = {
   travellerReviewCount?: number;
   title?: string;
   writtenReview: string;
+  whatsappReviewImages?: string[];
   googleReviewUrl?: string;
   googleReviewPublishedAt?: string | null;
   googleReviewTimeDescription?: string;
@@ -216,6 +218,8 @@ export type HomePageContent = {
   trendingDestinations: HomeTrendingDestinationSetting[];
   customisedTourDestinations: HomeCustomisedTourDestinationSetting[];
   homeExperiences: HomeExperienceSetting[];
+  eventsEnabled: boolean;
+  events: Array<{ id: string; title: string; image: string; href: string; sortOrder: number }>;
   createdAt: string;
   updatedAt: string;
 };

@@ -1,6 +1,6 @@
 import { apiRequest } from "@/lib/api";
 
-export async function createCallbackEnquiry(payload: { name: string; phone: string }) {
+export async function createCallbackEnquiry(payload: { name: string; gender?: string; phone: string }) {
   return apiRequest<{ enquiry: { id: string } }>("/api/enquiries/callback", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -9,6 +9,7 @@ export async function createCallbackEnquiry(payload: { name: string; phone: stri
 
 export type ContactEnquiryPayload = {
   name: string;
+  gender?: string;
   email: string;
   phone: string;
   subject: string;
@@ -24,6 +25,7 @@ export async function createContactEnquiry(payload: ContactEnquiryPayload) {
 
 export type TourEnquiryPayload = {
   city: string;
+  gender?: string;
   email: string;
   guests: string;
   message: string;

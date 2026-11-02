@@ -465,7 +465,7 @@ function MobileDashboardDrawer({
           <button
             type="button"
             onClick={onSignOut}
-            className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-[7px] border border-primary/30 bg-primary/10 font-sans text-[14px] font-semibold text-brand-text transition-colors hover:bg-brand-button-dark hover:text-white"
+            className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-[7px] border border-primary/30 bg-primary/10 px-4 font-sans text-[14px] font-semibold text-brand-text transition-colors hover:bg-brand-button-dark hover:text-white"
           >
             <LogOut className="size-4" strokeWidth={1.9} />
             Log Out

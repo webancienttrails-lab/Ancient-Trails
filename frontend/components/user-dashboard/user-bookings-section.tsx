@@ -5,12 +5,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowRight,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
   Clock3,
-  Upload,
   MapPin,
   UsersRound,
   type LucideIcon,
@@ -290,17 +288,17 @@ function BookingCard({ booking }: { booking: UserBooking }) {
         <div className="mt-1 grid gap-2">
           <Link
             href={kycHref}
-            className="inline-flex h-10 w-full items-center justify-center gap-3 rounded-[7px] border border-button-outline bg-white px-4 font-sans text-[13px] font-semibold text-button-outline transition-colors hover:bg-brand-button-dark hover:text-white"
+            className={buttonVariants({ variant: "secondary", className: "h-11 gap-4 px-5 font-sans text-[17px] font-normal" })}
           >
-            <Upload className="size-4" strokeWidth={1.8} />
             Upload KYC
+            <ButtonArrow />
           </Link>
           <Link
             href={getUserBookingDetailHref(booking)}
-            className="inline-flex h-10 w-full items-center justify-center gap-4 rounded-[7px] bg-[linear-gradient(180deg,#c84e11_0%,#a83a05_100%)] px-5 font-sans text-[14px] font-semibold text-white shadow-[0_8px_18px_rgba(168,58,5,0.22)] transition-transform hover:-translate-y-0.5"
+            className={buttonVariants({ variant: "secondary", className: "h-11 gap-4 px-5 font-sans text-[17px] font-normal" })}
           >
             View Details
-            <ArrowRight className="size-4" strokeWidth={1.8} />
+            <ButtonArrow />
           </Link>
         </div>
       </div>

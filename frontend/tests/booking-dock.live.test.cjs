@@ -33,7 +33,7 @@ async function connect(url) {
   };
 }
 
-test("phone booking launcher scrolls without losing its anchor and never covers footer or payment", { timeout: 120000 }, async t => {
+test("phone booking launcher stays visible, scrolls without losing its anchor and never covers footer or payment", { timeout: 120000 }, async t => {
   const candidates = [process.env.BROWSER_BIN,
     "C:/Program Files/Google/Chrome/Application/chrome.exe",
     "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
@@ -106,8 +106,8 @@ test("phone booking launcher scrolls without losing its anchor and never covers 
     await waitFor("document.body?.innerText.includes('40,000') && Boolean(document.querySelector('[data-mobile-booking-launcher]'))","launcher");
     await waitFor(`Math.abs(${padding}-document.querySelector('[data-mobile-booking-launcher]').getBoundingClientRect().height)<1.1`,"measured bottom spacing");
     await evaluate("document.getElementById('departure-pricing').scrollIntoView({block:'center',behavior:'instant'})");
-    await waitFor("getComputedStyle(document.querySelector('[data-mobile-booking-launcher]')).visibility==='hidden'","launcher hides when the booking block is visible");
-    assert.equal(await evaluate("document.querySelector('[data-mobile-booking-launcher] button').disabled"),true);
+    await waitFor("getComputedStyle(document.querySelector('[data-mobile-booking-launcher]')).visibility==='visible'","launcher stays visible beside the booking block");
+    assert.equal(await evaluate("document.querySelector('[data-mobile-booking-launcher] button').disabled"),false);
     await evaluate("window.scrollTo({top:document.documentElement.scrollHeight,behavior:'instant'})");
     await waitFor("getComputedStyle(document.querySelector('[data-mobile-booking-launcher]')).visibility==='visible'","launcher returns away from the block");
     await evaluate("window.scrollTo({top:document.documentElement.scrollHeight,behavior:'instant'})");
