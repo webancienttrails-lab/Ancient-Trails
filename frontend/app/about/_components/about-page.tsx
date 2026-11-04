@@ -429,7 +429,7 @@ function MissionVisionSection() {
         <div className="grid items-stretch gap-7 lg:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] lg:gap-12">
           <StoryPanel
             title="Our Mission"
-            description="To inspire meaningful journeys that promote cultural understanding, preserve heritage and empower local communities."
+            description="To create meaningful journeys into India’s heritage, connecting travellers with its history, art, architecture, traditions, and living cultures through authentic and responsible travel experiences."
           />
           <span className="relative hidden w-px bg-[#eadbcb] lg:block">
             <span className="absolute left-1/2 top-1/2 grid size-5 -translate-x-1/2 -translate-y-1/2 rotate-45 place-items-center border border-primary/40 bg-background">
@@ -438,7 +438,7 @@ function MissionVisionSection() {
           </span>
           <StoryPanel
             title="Our Vision"
-            description="To be India's most trusted heritage travel brand, connecting the past with the present for generations to come."
+            description="To inspire a deeper appreciation of India’s diverse and enduring civilization by making heritage accessible, immersive, and meaningful to travelers from around the world."
           />
         </div>
       </div>
