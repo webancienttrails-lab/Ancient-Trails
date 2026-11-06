@@ -2121,6 +2121,9 @@ function BookingDocuments({ booking }: { booking: UserBooking }) {
   return (
     <DetailShell icon={FileText} title="Booking Documents">
       <p className="mb-3 font-sans text-[12px] leading-relaxed text-secondary/65">{getBookingDocumentMessage(booking.booking)}</p>
+      <Link href={`/me/bookings/${encodeURIComponent(booking.booking.id)}/receipts`} className="mb-4 inline-flex items-center gap-2 rounded-[7px] border border-border px-4 py-3 text-sm font-semibold text-brand-text">
+        <ReceiptText className="size-4" />View Payment Receipts
+      </Link>
       <div className="grid gap-3 sm:grid-cols-2">
         <article className="rounded-[7px] border border-border bg-background p-3">
           <h3 className="font-sans text-[13px] font-bold text-secondary">

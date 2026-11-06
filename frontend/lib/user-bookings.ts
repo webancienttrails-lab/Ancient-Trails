@@ -46,6 +46,18 @@ export type UserBooking = {
   tour: UserBookingTour | null;
 };
 
+export type UserPaymentReceipt = {
+  id: string; transactionId: string; amount: number; paidAt: string | null;
+  method: string; currency: string; description: string; receiptNumber: string;
+  totalPaid: number; balanceAfterPayment: number; bookingTotal: number;
+};
+
+export function listTravellerPaymentReceipts(bookingId: string) {
+  return apiRequest<{ receipts: UserPaymentReceipt[] }>(`/api/bookings/${encodeURIComponent(bookingId)}/receipts`, {
+    cache: "no-store", headers: getTravellerHeaders(),
+  });
+}
+
 function getTravellerHeaders(): HeadersInit {
   const session = getTravellerSession();
 

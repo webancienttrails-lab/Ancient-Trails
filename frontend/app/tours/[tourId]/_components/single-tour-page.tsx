@@ -104,6 +104,7 @@ import {
   getContactCallDisplay,
   getContactEmailDisplay,
   getPublicSiteSettings,
+  defaultSiteTaxSettings,
   type SiteContactSettings,
 } from "@/lib/site-settings";
 import {
@@ -1383,6 +1384,10 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
   const [siteContact, setSiteContact] = useState<SiteContactSettings>(
     defaultSiteContactSettings
   );
+  const [taxes, setTaxes] = useState(defaultSiteTaxSettings);
+  const [taxSettingsLoaded, setTaxSettingsLoaded] = useState(false);
+  const [taxSettingsError, setTaxSettingsError] = useState("");
+  const gstPercentage = Math.round((taxes.sgstPercentage + taxes.cgstPercentage) * 100) / 100;
   const paymentOrderRef = useRef<BookingPaymentOrder | null>(null);
   const pendingPaymentCancellationRef = useRef<Promise<void> | null>(null);
 
@@ -1397,10 +1402,13 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
 
         if (isMounted) {
           setSiteContact(response.data.settings.contact);
+          setTaxes(response.data.settings.taxes || defaultSiteTaxSettings);
+          setTaxSettingsLoaded(true);
         }
       } catch {
         if (isMounted) {
           setSiteContact(defaultSiteContactSettings);
+          setTaxSettingsError("Tax settings could not be loaded. Refresh the page before booking.");
         }
       }
     }
@@ -1511,9 +1519,9 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
     travellerCounts.adults,
   ]);
   const bookingSubtotal = selectedAccommodationOption?.total ?? 0;
-  const bookingGstAmount = Math.round((bookingSubtotal * GST_PERCENTAGE) / 100);
+  const bookingGstAmount = Math.round((bookingSubtotal * gstPercentage) / 100);
   const bookingTcsAmount = detail.tour.tourType.trim().toLowerCase() === "international"
-    ? Math.round((bookingSubtotal + bookingGstAmount) * 2 / 100) : 0;
+    ? Math.round((bookingSubtotal + bookingGstAmount) * taxes.tcsPercentage / 100) : 0;
   const bookingGrandTotal = bookingSubtotal + bookingGstAmount + bookingTcsAmount;
   const bookingDepositAmount =
     selectedPricedDeparture && selectedAccommodationOption
@@ -1540,6 +1548,7 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
   const isAccommodationSelected = Boolean(resolvedSelectedAccommodationOptionId);
   const canBookSeat = Boolean(
     !isLoading &&
+      taxSettingsLoaded &&
       selectedDepartureKey &&
       isAccommodationSelected &&
       areTravellerDetailsComplete &&
@@ -2124,7 +2133,7 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
                     departures={detail.departures}
                     destinations={detail.destinations}
                     expert={detail.expert}
-                    gstPercentage={GST_PERCENTAGE}
+                    gstPercentage={gstPercentage}
                     itineraryDays={itineraryDays}
                     tour={detail.tour}
                   />
@@ -2183,7 +2192,7 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
               destinations={detail.destinations}
               expert={detail.expert}
               gstAmount={bookingGstAmount}
-              gstPercentage={GST_PERCENTAGE}
+              gstPercentage={gstPercentage}
               itineraryDays={itineraryDays}
               paymentOption={selectedPaymentOption}
               price={price}
@@ -2211,7 +2220,8 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
               grandTotal={bookingGrandTotal}
               gstAmount={bookingGstAmount}
               tcsAmount={bookingTcsAmount}
-              gstPercentage={GST_PERCENTAGE}
+              tcsPercentage={taxes.tcsPercentage}
+              gstPercentage={gstPercentage}
               paymentFeedback={paymentFeedback}
               paymentOption={selectedPaymentOption}
               selectedAccommodationOption={selectedAccommodationOption}
@@ -2233,12 +2243,14 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
             hasOfflineRequest={Boolean(offlineRequestKey && offlineRequestKey === bookingCompletionKey)}
             onBookNow={openBookingFlow}
           />
+          {taxSettingsError ? <p role="alert" className="text-sm text-destructive">{taxSettingsError}</p> : null}
           <div className={isBookingFlowOpen ? "max-lg:hidden" : undefined}><HelpCard contact={siteContact} /></div>
         </aside>
         </div>
       </section>
 
       <MobileBookingBar
+        gstPercentage={gstPercentage}
         suspended={isBookingReviewOpen || isPaymentChoiceOpen || checkoutStatus !== "idle"}
         isBookingFlowOpen={isBookingFlowOpen}
         bookingStage={bookingStage}
@@ -2267,7 +2279,8 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
             grandTotal={bookingGrandTotal}
             gstAmount={bookingGstAmount}
             tcsAmount={bookingTcsAmount}
-            gstPercentage={GST_PERCENTAGE}
+            tcsPercentage={taxes.tcsPercentage}
+            gstPercentage={gstPercentage}
             paymentFeedback={paymentFeedback}
             paymentOption={selectedPaymentOption}
             selectedAccommodationOption={selectedAccommodationOption}
@@ -3245,7 +3258,6 @@ function InclusionsPanel({ tour }: { tour: PublicTour }) {
   );
 }
 
-const GST_PERCENTAGE = 5;
 
 function toPricedDeparture(departure: PublicTourDeparture): PricedDeparture {
   return {
@@ -5111,6 +5123,7 @@ function BookingSummary({
   grandTotal,
   gstAmount,
   tcsAmount = 0,
+  tcsPercentage = 2,
   gstPercentage,
   paymentFeedback,
   paymentOption,
@@ -5126,6 +5139,7 @@ function BookingSummary({
   grandTotal: number;
   gstAmount: number;
   tcsAmount?: number;
+  tcsPercentage?: number;
   gstPercentage: number;
   paymentFeedback: string;
   paymentOption: BookingPaymentOption;
@@ -5159,7 +5173,7 @@ function BookingSummary({
           label={`GST (${gstPercentage}%)`}
           value={formatCurrency(gstAmount)}
         />
-        {tour.tourType.trim().toLowerCase() === "international" ? <SummaryLine label="TCS (2%)" value={formatCurrency(tcsAmount)} /> : null}
+        {tour.tourType.trim().toLowerCase() === "international" ? <SummaryLine label={`TCS (${tcsPercentage}%)`} value={formatCurrency(tcsAmount)} /> : null}
         <SummaryLine label="Package Total (Excluding TCS)" value={formatCurrency(subtotal + gstAmount)} />
         <SummaryLine
           strong
@@ -5633,6 +5647,7 @@ function PriceCard({
 }
 
 function MobileBookingBar({
+  gstPercentage,
   onBookNow,
   suspended,
   isBookingFlowOpen,
@@ -5643,6 +5658,7 @@ function MobileBookingBar({
   isAuthenticated,
   price,
 }: {
+  gstPercentage: number;
   onBookNow: () => void;
   suspended: boolean;
   isBookingFlowOpen: boolean;
@@ -5683,7 +5699,7 @@ function MobileBookingBar({
         <div className="min-w-0">
           <strong
             data-booking-total
-            aria-label={total > 0 ? `Selected total ${formatCurrency(total)}, including ${GST_PERCENTAGE}% GST` : `Starting price ${formatCurrency(price)} per adult`}
+            aria-label={total > 0 ? `Selected total ${formatCurrency(total)}, including ${gstPercentage}% GST` : `Starting price ${formatCurrency(price)} per adult`}
             className="block whitespace-nowrap text-[clamp(18px,5vw,22px)] font-bold leading-tight tabular-nums text-secondary"
           >
             {formatCurrency(total > 0 ? total : price)}

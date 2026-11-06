@@ -32,4 +32,9 @@ test('summary places TCS directly after GST and shows distinct package, grand, a
   }
   rows = elements(context.BookingSummary({ ...props, tour: { ...props.tour, tourType: 'Domestic' }, tcsAmount: 0 })).filter(node => node.type === 'summary-line');
   assert.equal(rows.some(row => row.props.label.startsWith('TCS')), false);
+
+  rows = elements(context.BookingSummary({ ...props, gstPercentage: 9, gstAmount: 9000,
+    tcsPercentage: 4, tcsAmount: 4360 })).filter(node => node.type === 'summary-line');
+  assert.equal(rows.find(row => row.props.label === 'GST (9%)')?.props.value, '9000');
+  assert.equal(rows.find(row => row.props.label === 'TCS (4%)')?.props.value, '4360');
 });

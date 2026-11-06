@@ -300,6 +300,12 @@ function BookingCard({ booking }: { booking: UserBooking }) {
             View Details
             <ButtonArrow />
           </Link>
+          <Link
+            href={`${getUserBookingDetailHref(booking)}/receipts`}
+            className="min-w-0 py-2 text-center font-sans text-[14px] font-medium text-brand-text underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            Payment Receipts
+          </Link>
         </div>
       </div>
     </article>

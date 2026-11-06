@@ -12,6 +12,7 @@ export type SiteContactSettings = {
 export type SiteSocialLinks = { facebook: string; instagram: string; linkedin: string; youtube: string; };
 
 export type SiteSettings = {
+  taxes?: SiteTaxSettings;
   quoteAssistanceTitle?: string;
   logo?: string;
   googleBusinessReviewsUrl?: string;
@@ -23,6 +24,9 @@ export type SiteSettings = {
   createdAt: string | null;
   updatedAt: string | null;
 };
+
+export type SiteTaxSettings = { sgstPercentage: number; cgstPercentage: number; tcsPercentage: number };
+export const defaultSiteTaxSettings: SiteTaxSettings = { sgstPercentage: 2.5, cgstPercentage: 2.5, tcsPercentage: 2 };
 
 export const defaultSiteContactSettings: SiteContactSettings = {
   emailId: "Holidays@ancient.com",
@@ -62,4 +66,13 @@ export async function getPublicSiteSettings() {
   return apiRequest<{ settings: SiteSettings }>("/api/site-settings", {
     cache: "no-store",
   });
+}
+
+let taxSettingsRequest: Promise<SiteTaxSettings> | undefined;
+export function getPublicTaxSettings() {
+  if (!taxSettingsRequest) {
+    taxSettingsRequest = getPublicSiteSettings().then(response => response.data.settings.taxes || defaultSiteTaxSettings)
+      .finally(() => { taxSettingsRequest = undefined; });
+  }
+  return taxSettingsRequest;
 }
