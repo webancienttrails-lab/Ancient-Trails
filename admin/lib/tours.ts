@@ -245,6 +245,40 @@ async function readUploadResponse<TData>(
   return body as ApiResponse<TData>;
 }
 
+export type AdminTourScope = "master" | "customise";
+
+export function withTourScope(href: string, scope: AdminTourScope) {
+  if (scope !== "customise") return href;
+  const url = new URL(href, "http://admin.local");
+  url.searchParams.set("scope", "customise");
+  return `${url.pathname}${url.search}`;
+}
+
+export function createAdminTourApi(scope: AdminTourScope) {
+  if (scope === "master") return {
+    listAdminTours, createAdminTour, updateAdminTour, deleteAdminTour,
+    listAdminTourDepartures, createAdminTourDeparture, updateAdminTourDeparture, deleteAdminTourDeparture,
+    listAdminTourItineraries, createAdminTourItinerary, updateAdminTourItinerary,
+  };
+  const base = "/api/admin/tours/customise";
+  const request = <T,>(path: string, method = "GET", payload?: unknown) => apiRequest<T>(`${base}${path}`, {
+    method, headers: getAdminHeaders(), ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
+  });
+  return {
+    listAdminTours: () => request<{ tours: AdminTour[]; tourFormatOptions: string[]; tourTypeOptions: string[] }>(""),
+    createAdminTour: (payload: TourPayload) => request<{ tour: AdminTour }>("", "POST", payload),
+    updateAdminTour: (id: string, payload: TourPayload) => request<{ tour: AdminTour }>(`/${id}`, "PATCH", payload),
+    deleteAdminTour: (id: string) => request<{ tour: AdminTour }>(`/${id}`, "DELETE"),
+    listAdminTourDepartures: () => request<{ departures: AdminTourDeparture[] }>("/departures"),
+    createAdminTourDeparture: (payload: TourDeparturePayload) => request<{ departure: AdminTourDeparture }>("/departures", "POST", payload),
+    updateAdminTourDeparture: (id: string, payload: TourDeparturePayload) => request<{ departure: AdminTourDeparture }>(`/departures/${id}`, "PATCH", payload),
+    deleteAdminTourDeparture: (id: string) => request<{ departure: AdminTourDeparture }>(`/departures/${id}`, "DELETE"),
+    listAdminTourItineraries: () => request<{ itineraries: AdminTourItinerary[] }>("/itineraries"),
+    createAdminTourItinerary: (payload: TourItineraryPayload) => request<{ itinerary: AdminTourItinerary }>("/itineraries", "POST", payload),
+    updateAdminTourItinerary: (id: string, payload: TourItineraryPayload) => request<{ itinerary: AdminTourItinerary }>(`/itineraries/${id}`, "PATCH", payload),
+  };
+}
+
 export async function listAdminTours() {
   return apiRequest<{
     tours: AdminTour[];

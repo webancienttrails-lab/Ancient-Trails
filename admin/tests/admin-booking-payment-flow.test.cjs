@@ -18,6 +18,8 @@ function setup(options = {}) {
   const calls = [], routes = [], booking = { id: "new-booking", paymentStatus: "pending" };
   const form = { paymentMethod: "cash", adultCount: "1", childCount: "0", departureId: "DEP", selectedAccommodationOptionId: "room", amountPaid: "0", paymentOption: "advance" };
   const context = {
+    tourScope: options.tourScope || "master",
+    sourceEnquiryCategory: options.sourceEnquiryCategory,
     mode: "add", selectedBooking: options.selectedBooking || null, checkoutPaymentOption: null, bookingId: undefined, bookingForm: form, leadVerified: options.verified !== false,
     leadVerification: { token: "otp-proof" }, paymentInProgress: { current: false }, savedPaymentBooking: { current: null },
     bookingFormRef: { current: { reportValidity: () => options.valid !== false, dataset: { adminUnsaved: "true" } } },
@@ -105,4 +107,16 @@ test("existing unpaid bookings use the selected Full option without creating ano
   const f = setup({ selectedBooking: booking }); await f.pay("full"); await f.open();
   assert.equal(f.calls.find(call => call[0] === "savedCheckout")[2], "full");
   assert.equal(f.calls.filter(call => call[0] === "create").length, 0);
+});
+
+test("customise conversion preserves its tour catalogue when starting payment", async () => {
+  const f = setup({ tourScope: "customise" });
+  await f.select("bank_transfer");
+  assert.equal(f.calls.find(call => call[0] === "create")[1].tourScope, "customise");
+});
+
+test("group enquiry conversion preserves its category when starting payment", async () => {
+  const f = setup({ sourceEnquiryCategory: "group" });
+  await f.select("bank_transfer");
+  assert.equal(f.calls.find(call => call[0] === "create")[1].sourceEnquiryCategory, "group");
 });

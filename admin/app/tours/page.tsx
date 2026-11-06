@@ -14,6 +14,7 @@ import {
   BookOpen,
   CalendarDays,
   ChevronDown,
+  Download,
   Eye,
   MoreHorizontal,
   Pencil,
@@ -63,19 +64,10 @@ import {
 } from "@/lib/destinations";
 import { listAdminExperts, type AdminExpert } from "@/lib/experts";
 import {
-  createAdminTour,
-  createAdminTourDeparture,
-  createAdminTourItinerary,
-  deleteAdminTour,
-  deleteAdminTourDeparture,
   getTourMediaUrl,
-  listAdminTourDepartures,
-  listAdminTourItineraries,
-  listAdminTours,
-  updateAdminTour,
-  updateAdminTourDeparture,
-  updateAdminTourItinerary,
   uploadTourMedia,
+  createAdminTourApi,
+  withTourScope,
   type AdminTour,
   type AdminTourDeparture,
   type AdminTourItinerary,
@@ -649,9 +641,14 @@ function createTourMetrics(
 export default function ToursPage() {
   return (
     <Suspense fallback={null}>
-      <ToursPageContent />
+      <ToursPageScope />
     </Suspense>
   );
+}
+
+function ToursPageScope() {
+  const searchParams = useSearchParams();
+  return <ToursPageContent key={searchParams.get("scope") === "customise" ? "customise" : "master"} />;
 }
 
 function normalizeTourEditorType(
@@ -723,9 +720,17 @@ function getTourRouteState(
 }
 
 function ToursPageContent() {
-  const router = useRouter();
+  const navigationRouter = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const tourScope = searchParams.get("scope") === "customise" ? "customise" : "master";
+  const isCustomise = tourScope === "customise";
+  const router = useMemo(() => ({ ...navigationRouter, push: (href: string) => navigationRouter.push(withTourScope(href, tourScope)) }), [navigationRouter, tourScope]);
+  const {
+    listAdminTours, createAdminTour, updateAdminTour, deleteAdminTour,
+    listAdminTourDepartures, createAdminTourDeparture, updateAdminTourDeparture, deleteAdminTourDeparture,
+    listAdminTourItineraries, createAdminTourItinerary, updateAdminTourItinerary,
+  } = useMemo(() => createAdminTourApi(tourScope), [tourScope]);
   const toast = useToast();
   const searchParamString =
     searchParams.toString();
@@ -739,7 +744,7 @@ function ToursPageContent() {
       ),
     [pathname, searchParamString]
   );
-  const [activeTab, setActiveTab] = useState<TourTab>("master");
+  const [activeTab, setActiveTab] = useState<TourTab>(searchParams.get("tab") === "departures" ? "departures" : "master");
   const [searchQuery, setSearchQuery] = useState("");
   const [tours, setTours] = useState<AdminTour[]>([]);
   const [tourTypeOptions, setTourTypeOptions] = useState<string[]>(
@@ -920,7 +925,7 @@ function ToursPageContent() {
     return () => {
       isMounted = false;
     };
-  }, [routeState, toast]);
+  }, [routeState, toast, tourScope, listAdminTours, listAdminTourDepartures, listAdminTourItineraries]);
 
   const tourMetrics = useMemo(
     () => createTourMetrics(tours, departures),
@@ -1005,6 +1010,20 @@ function ToursPageContent() {
     isUploadingTourBannerImage ||
     isUploadingTourGalleryImages ||
     isUploadingTourVideo;
+
+  async function downloadCustomiseItinerary(tour: AdminTour) {
+    const itinerary = itineraryByTourId.get(tour.tourId);
+    if (!itinerary) {
+      toast.error("No itinerary saved", "Add and save an itinerary for this customised tour first.");
+      return;
+    }
+    try {
+      const { downloadTourItineraryPdf } = await import("@/lib/tour-itinerary-pdf");
+      downloadTourItineraryPdf(tour, itinerary);
+    } catch (error) {
+      toast.error("Unable to download itinerary", getErrorMessage(error));
+    }
+  }
 
   function updateTourForm<K extends keyof TourFormState>(
     field: K,
@@ -1696,14 +1715,17 @@ function ToursPageContent() {
             </p>
           </div>
 
-          <Button
+          {isCustomise ? <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={openAddTourSheet} className="h-10 rounded-sm px-4 text-xs font-bold"><Plus className="size-4" />Add Tour</Button>
+            <Button type="button" onClick={openAddDepartureSheet} className="h-10 rounded-sm px-4 text-xs font-bold"><Plus className="size-4" />Add Departure</Button>
+          </div> : <Button
             type="button"
             onClick={handleAddButtonClick}
             className="h-10 rounded-sm px-4 text-xs font-bold"
           >
             <Plus className="size-4" data-icon="inline-start" />
             {addButtonLabel}
-          </Button>
+          </Button>}
         </section>
 
         <section
@@ -1718,13 +1740,20 @@ function ToursPageContent() {
         <section className="overflow-hidden rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
           <TourTabs
             activeTab={activeTab}
+            isCustomise={isCustomise}
+            onCustomise={() => navigationRouter.push("/tours?scope=customise")}
             onTabChange={(tab) => {
+              if (isCustomise) navigationRouter.push(`/tours?tab=${tab}`);
               setActiveTab(tab);
               setSearchQuery("");
               setSelectedTourIds([]);
               setSelectedDepartureIds([]);
             }}
           />
+          {isCustomise ? <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3">
+            <TabButton active={activeTab === "master"} icon={Route} label="Tours" onClick={() => { setActiveTab("master"); setSearchQuery(""); }} />
+            <TabButton active={activeTab === "departures"} icon={Ticket} label="Departures" onClick={() => { setActiveTab("departures"); setSearchQuery(""); }} />
+          </div> : null}
           <TourFilters
             activeTab={activeTab}
             searchQuery={searchQuery}
@@ -1740,6 +1769,7 @@ function ToursPageContent() {
               onDelete={handleDeleteTour}
               onEdit={openEditTourSheet}
               onItinerary={openTourItinerarySheet}
+              onDownloadItinerary={isCustomise ? downloadCustomiseItinerary : undefined}
               onView={openViewTourSheet}
               totalCount={tours.length}
               tours={filteredTours}
@@ -1929,25 +1959,30 @@ function TourMetricCard({ metric }: { metric: TourMetric }) {
 
 function TourTabs({
   activeTab,
+  isCustomise,
+  onCustomise,
   onTabChange,
 }: {
   activeTab: TourTab;
+  isCustomise: boolean;
+  onCustomise: () => void;
   onTabChange: (tab: TourTab) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-2 border-b border-border p-4">
       <TabButton
-        active={activeTab === "master"}
+        active={!isCustomise && activeTab === "master"}
         icon={Route}
         label="Tour Master"
         onClick={() => onTabChange("master")}
       />
       <TabButton
-        active={activeTab === "departures"}
+        active={!isCustomise && activeTab === "departures"}
         icon={Ticket}
         label="Tour Departure"
         onClick={() => onTabChange("departures")}
       />
+      <TabButton active={isCustomise} icon={Route} label="Customise Tour" onClick={onCustomise} />
     </div>
   );
 }
@@ -2020,6 +2055,7 @@ function TourMasterTable({
   onDelete,
   onEdit,
   onItinerary,
+  onDownloadItinerary,
   onView,
   totalCount,
   tours,
@@ -2033,6 +2069,7 @@ function TourMasterTable({
   onDelete: (tour: AdminTour) => void;
   onEdit: (tour: AdminTour) => void;
   onItinerary: (tour: AdminTour) => void;
+  onDownloadItinerary?: (tour: AdminTour) => void;
   onView: (tour: AdminTour) => void;
   totalCount: number;
   tours: AdminTour[];
@@ -2145,6 +2182,7 @@ function TourMasterTable({
                         onDelete={() => onDelete(tour)}
                         onEdit={() => onEdit(tour)}
                         onItinerary={() => onItinerary(tour)}
+                        onDownloadItinerary={onDownloadItinerary ? () => onDownloadItinerary(tour) : undefined}
                         onView={() => onView(tour)}
                       />
                     </td>
@@ -2372,6 +2410,7 @@ function TourActionsMenu({
   onDelete,
   onEdit,
   onItinerary,
+  onDownloadItinerary,
   onView,
 }: {
   itemName: string;
@@ -2379,6 +2418,7 @@ function TourActionsMenu({
   onDelete: () => void;
   onEdit: () => void;
   onItinerary?: () => void;
+  onDownloadItinerary?: () => void;
   onView: () => void;
 }) {
   return (
@@ -2398,7 +2438,7 @@ function TourActionsMenu({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="w-36 rounded-sm border border-border bg-white p-1 shadow-lg shadow-stone-200/70"
+          className={cn(onDownloadItinerary ? "w-48" : "w-36", "rounded-sm border border-border bg-white p-1 shadow-lg shadow-stone-200/70")}
         >
           <DropdownMenuItem
             onClick={onView}
@@ -2414,6 +2454,7 @@ function TourActionsMenu({
             <Pencil className="size-4 text-primary" />
             Edit
           </DropdownMenuItem>
+          {onDownloadItinerary ? <DropdownMenuItem onClick={onDownloadItinerary} className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"><Download className="size-4 text-foreground/60" />Download Itinerary</DropdownMenuItem> : null}
           {onItinerary ? (
             <DropdownMenuItem
               onClick={onItinerary}

@@ -2,7 +2,7 @@
 
 import { SiteLogo } from "@/components/site-logo";
 import { announceSiteLogo, publishSiteLogo } from "@/lib/site-logo";
-import type { ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
   Bell,
@@ -25,6 +25,8 @@ import {
   uploadAdminSiteLogo,
   resetAdminSiteLogo,
   updateAdminSiteSettings,
+  updateAdminTaxSettings,
+  type SiteTaxSettings,
   type SiteContactSettings,
   type SiteSocialLinks,
 } from "@/lib/site-settings";
@@ -60,6 +62,8 @@ export default function SettingsPage() {
     defaultContactSettings
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [isTaxSaving, setIsTaxSaving] = useState(false);
+  const [taxes, setTaxes] = useState({ sgstPercentage: "2.5", cgstPercentage: "2.5", tcsPercentage: "2" });
   const [isLogoSaving, setIsLogoSaving] = useState(false);
   const logoInput = useRef<HTMLInputElement>(null);
   const [socialLinks, setSocialLinks] = useState<SiteSocialLinks>({ facebook: "", instagram: "", linkedin: "", youtube: "" });
@@ -77,6 +81,10 @@ export default function SettingsPage() {
 
         if (isMounted) {
           setContactSettings(response.data.settings.contact);
+          if (response.data.settings.taxes) {
+            const savedTaxes = response.data.settings.taxes;
+            setTaxes({ sgstPercentage: String(savedTaxes.sgstPercentage), cgstPercentage: String(savedTaxes.cgstPercentage), tcsPercentage: String(savedTaxes.tcsPercentage) });
+          }
           setQuoteAssistanceTitle(response.data.settings.quoteAssistanceTitle || "Looking for assistance?");
           setSocialLinks(response.data.settings.socialLinks);
       setGoogleBusinessReviewsUrl(response.data.settings.googleBusinessReviewsUrl || "");
@@ -113,6 +121,27 @@ export default function SettingsPage() {
       toast.success("Logo saved", file ? "Your new logo is now used across the website and admin dashboard." : "The default logo has been restored.");
     } catch (error) { toast.error("Logo not saved", error instanceof Error ? error.message : "Please try again."); }
     finally { setIsLogoSaving(false); }
+  }
+
+  async function saveTaxes(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!settingsLoaded || isTaxSaving) return;
+    const values: SiteTaxSettings = {
+      sgstPercentage: Number(taxes.sgstPercentage), cgstPercentage: Number(taxes.cgstPercentage), tcsPercentage: Number(taxes.tcsPercentage),
+    };
+    if (Object.values(taxes).some(value => !value.trim()) || Object.values(values).some(value => !Number.isFinite(value) || value < 0 || value > 100 || Math.abs(value * 100 - Math.round(value * 100)) > 0.000001) || values.sgstPercentage + values.cgstPercentage > 100) {
+      toast.error("Invalid tax rates", "Enter percentages from 0 to 100 with up to two decimal places. Combined SGST and CGST must not exceed 100%.");
+      return;
+    }
+    setIsTaxSaving(true);
+    try {
+      const response = await updateAdminTaxSettings(values);
+      const saved = response.data.settings.taxes!;
+      setTaxes({ sgstPercentage: String(saved.sgstPercentage), cgstPercentage: String(saved.cgstPercentage), tcsPercentage: String(saved.tcsPercentage) });
+      toast.success("Tax settings saved", "New bookings will use the updated tax rates.");
+    } catch (error) {
+      toast.error("Taxes not saved", error instanceof Error ? error.message : "Unable to save tax settings.");
+    } finally { setIsTaxSaving(false); }
   }
 
   function updateContactField(
@@ -341,6 +370,25 @@ export default function SettingsPage() {
             </Button>
           </SettingsPanel>
         </section>
+        <SettingsPanel title="Tax Settings" description="Manage tax percentages for new bookings. GST is the sum of SGST and CGST. Existing booking totals keep their saved rates.">
+          <form onSubmit={saveTaxes} className="mt-4">
+            <fieldset disabled={!settingsLoaded || isTaxSaving} className="grid gap-4 sm:grid-cols-3">
+              {([
+                ["sgstPercentage", "SGST (%)"], ["cgstPercentage", "CGST (%)"], ["tcsPercentage", "TCS (%)"],
+              ] as const).map(([field, label]) => (
+                <label key={field} className="grid gap-1.5 text-xs font-semibold">
+                  {label}
+                  <input type="number" required min="0" max="100" step="0.01" value={taxes[field]} onChange={event => setTaxes(current => ({ ...current, [field]: event.target.value }))} className={inputClassName} />
+                </label>
+              ))}
+            </fieldset>
+            <p className="mt-3 text-xs text-foreground/60">Total GST: {Math.round((Number(taxes.sgstPercentage || 0) + Number(taxes.cgstPercentage || 0)) * 100) / 100}%. TCS applies to eligible international bookings.</p>
+            <Button type="submit" disabled={isTaxSaving || !settingsLoaded} className="mt-4 h-9 rounded-sm px-3 text-xs font-bold">
+              <Save className="size-3.5" data-icon="inline-start" />
+              {isTaxSaving ? "Saving" : "Save Tax Settings"}
+            </Button>
+          </form>
+        </SettingsPanel>
       </div>
     </AdminDashboardShell>
   );

@@ -1,27 +1,34 @@
 "use client";
 import { SiteLogo } from "@/components/site-logo";
+import { BookingInvoiceEditorContext, BookingInvoiceText as InvoiceText } from "@/components/booking-invoice-field";
+import { useToast } from "@/components/ui/toast";
 import { formatBookingPaymentMethod } from "@/lib/bookings";
 
 import { AirfareDisclosure } from "@/components/airfare-disclosure";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Download,
+  Pencil,
+  Save,
+  X,
 } from "lucide-react";
 
 import { AdminDashboardShell } from "@/components/admin-dashboard/admin-dashboard-shell";
 import { Button } from "@/components/ui/button";
 import {
   listAdminBookings,
+  updateAdminBookingInvoice,
+  listAdminBookingReceipts,
+  type AdminBookingReceipt,
   type AdminBooking,
   type BookingAccommodationOption,
   type BookingGuestDetails,
 } from "@/lib/bookings";
 import { listAdminDestinations, type AdminDestination } from "@/lib/destinations";
 import {
-  listAdminTourDepartures,
-  listAdminTours,
+  createAdminTourApi,
   type AdminTour,
   type AdminTourDeparture,
 } from "@/lib/tours";
@@ -96,6 +103,11 @@ const invoiceExportStyles = `
     background-color: #ffffff !important;
   }
 
+  /* html2canvas 1.x cannot parse Tailwind's OKLCH slate background. */
+  .admin-invoice-sheet .bg-slate-100 {
+    background-color: #f1f5f9 !important;
+  }
+
   .admin-invoice-sheet [class*="bg-primary/5"] {
     background-color: #fdf5ed !important;
   }
@@ -119,12 +131,13 @@ function toMoney(value: number | null | undefined): number {
   return Math.max(0, Math.round(Number(value)));
 }
 
-function formatCurrency(value: number, currency = "INR"): string {
+function formatCurrency(value: number, currency = "INR", preserveCents = false): string {
   const formatted = new Intl.NumberFormat("en-IN", {
     currency,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: preserveCents ? 2 : 0,
     style: "currency",
-  }).format(toMoney(value));
+  }).format(preserveCents && Number.isFinite(value) ? Math.max(0, value) : toMoney(value));
 
   return formatted.replace(/^₹/, "₹ ");
 }
@@ -408,26 +421,28 @@ function InvoiceSection({ children, className, title }: {
   children: React.ReactNode; className?: string; title: string;
 }) {
   return <section className={cn("rounded-[8px] border border-border bg-white p-4", className)}>
-    <h2 className="mb-3 text-[11px] font-bold uppercase tracking-wide text-slate-900">{title}</h2>
+    <h2 className="mb-3 text-[11px] font-bold uppercase tracking-wide text-slate-900"><InvoiceText field={`heading.${title.replace(/[^a-zA-Z0-9]/g, "_")}`}>{title}</InvoiceText></h2>
     {children}
   </section>;
 }
 
 function InvoiceField({ label, value }: { label: string; value: React.ReactNode }) {
+  const field = label.replace(/[^a-zA-Z0-9]/g, "_");
   return <div className="flex items-start justify-between gap-4 border-b border-dashed border-border py-2 last:border-0">
-    <span className="shrink-0 text-slate-500">{label}</span>
-    <span className="min-w-0 text-right font-semibold text-slate-900">{value}</span>
+    <span className="min-w-0 text-slate-500"><InvoiceText field={`label.${field}`}>{label}</InvoiceText></span>
+    <span className="min-w-0 text-right font-semibold text-slate-900">{typeof value === "string" || typeof value === "number" ? <InvoiceText field={`value.${field}`}>{value}</InvoiceText> : value}</span>
   </div>;
 }
 
-function InvoiceSheet({ booking, departure, destinationLabel, invoiceRef, tour, contact }: {
+function InvoiceSheet({ booking, departure, destinationLabel, invoiceRef, tour, contact, receipt }: {
   booking: AdminBooking; departure?: AdminTourDeparture; destinationLabel: string;
   invoiceRef?: React.Ref<HTMLElement>; tour?: AdminTour; contact?: SiteContactSettings;
+  receipt?: AdminBookingReceipt;
 }) {
   const primaryGuest = booking.guestDetails[0];
   const rooms = booking.pricingSnapshot?.accommodation?.rooms || [];
-  const lineItems = createLineItems(booking);
-  const currency = booking.paymentCurrency || "INR";
+  const lineItems = receipt ? [{ description: receipt.description, quantity: 1, rate: receipt.amount, amount: receipt.amount }] : createLineItems(booking);
+  const currency = receipt?.currency || booking.paymentCurrency || "INR";
   const subtotal = toMoney(booking.subtotal);
   const gstPercentage = Number.isFinite(booking.gstPercentage) ? Number(booking.gstPercentage) : 0;
   const gstAmount = toMoney(booking.gstAmount);
@@ -442,33 +457,33 @@ function InvoiceSheet({ booking, departure, destinationLabel, invoiceRef, tour, 
     <style>{invoiceLayoutStyles}</style>
     <header className="flex items-start justify-between gap-6 border-b border-border pb-3">
       <div className="min-w-0">
-        <SiteLogo data-pdf-logo alt="Ancient Trails" width={200} height={70} priority className="h-auto w-[170px] object-contain" />
-        <p className="mt-2 text-[10px]">A quest for Indian heritage</p>
+        <SiteLogo data-pdf-logo alt="Ancient Trails" width={240} height={110} priority className="h-auto w-[240px] object-contain" />
       </div>
       <div className="min-w-[220px] text-right">
-        <span className="inline-block rounded-full bg-primary/10 px-3 py-1 text-[10px] font-bold uppercase text-primary">Invoice</span>
+        <span className="inline-block text-[20px] font-bold uppercase text-primary"><InvoiceText field="documentTitle">{receipt ? "Payment Receipt" : "Invoice"}</InvoiceText></span>
         <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-[10px]">
-          <dt className="text-slate-500">Invoice No</dt><dd className="font-bold text-slate-900">{getInvoiceNumber(booking)}</dd>
-          <dt className="text-slate-500">Invoice Date</dt><dd className="font-semibold">{formatDate(booking.paymentCapturedAt || booking.createdAt)}</dd>
-          <dt className="text-slate-500">Booking ID</dt><dd className="font-semibold">{booking.bookingReference || booking.id}</dd>
+          <dt className="text-slate-500"><InvoiceText field="label.invoiceNumber">{receipt ? "Receipt No" : "Invoice No"}</InvoiceText></dt><dd className="font-bold text-slate-900"><InvoiceText field="invoiceNumber">{receipt ? receipt.receiptNumber : getInvoiceNumber(booking)}</InvoiceText></dd>
+          <dt className="text-slate-500"><InvoiceText field="label.invoiceDate">{receipt ? "Payment Date" : "Invoice Date"}</InvoiceText></dt><dd className="font-semibold"><InvoiceText field="invoiceDate">{receipt ? receipt.paidAt ? formatDate(receipt.paidAt) : "Not recorded" : formatDate(booking.paymentCapturedAt || booking.createdAt)}</InvoiceText></dd>
+          <dt className="text-slate-500"><InvoiceText field="label.bookingReference">Booking ID</InvoiceText></dt><dd className="font-semibold"><InvoiceText field="bookingReference">{booking.bookingReference || booking.id}</InvoiceText></dd>
         </dl>
       </div>
     </header>
     <div className="mt-3 grid grid-cols-2 gap-3">
       <InvoiceSection title="Ancient Trails">
         <div className="space-y-1 break-words">
-          {contact?.officeAddress ? <p className="whitespace-pre-line">{contact.officeAddress}</p> : null}
-          {contact?.emailId ? <p>Email: {contact.emailId}</p> : null}
-          {phone ? <p>Phone: {phone}</p> : null}
-          {contact?.whatsapp ? <p>WhatsApp: {contact.whatsapp}</p> : null}
+          <p className="whitespace-pre-line"><InvoiceText field="company.address">{contact?.officeAddress || ""}</InvoiceText></p>
+          <p><InvoiceText field="company.email">{contact?.emailId ? `Email: ${contact.emailId}` : ""}</InvoiceText></p>
+          <p><InvoiceText field="company.phone">{phone ? `Phone: ${phone}` : ""}</InvoiceText></p>
+          <p><InvoiceText field="company.whatsapp">{contact?.whatsapp ? `WhatsApp: ${contact.whatsapp}` : ""}</InvoiceText></p>
+          <p><InvoiceText field="company.gstin">GSTIN: 27ABPFA1944D1ZI</InvoiceText></p>
         </div>
       </InvoiceSection>
       <InvoiceSection title="Bill To">
-        <p className="font-bold text-slate-950">{getGuestName(primaryGuest)}</p>
+        <p className="font-bold text-slate-950"><InvoiceText field="customer.name">{getGuestName(primaryGuest)}</InvoiceText></p>
         <div className="mt-1 space-y-1 break-words">
-          <p>Email: {primaryGuest?.email || "-"}</p>
-          <p>Phone: {primaryGuest ? primaryGuest.countryCode + " " + primaryGuest.mobileNumber : "-"}</p>
-          <p className="whitespace-pre-line">{primaryGuest?.address || "-"}</p>
+          <p><InvoiceText field="customer.email">{`Email: ${primaryGuest?.email || "-"}`}</InvoiceText></p>
+          <p><InvoiceText field="customer.phone">{`Phone: ${primaryGuest ? primaryGuest.countryCode + " " + primaryGuest.mobileNumber : "-"}`}</InvoiceText></p>
+          <p className="whitespace-pre-line"><InvoiceText field="customer.address">{primaryGuest?.address || "-"}</InvoiceText></p>
         </div>
       </InvoiceSection>
     </div>
@@ -478,52 +493,59 @@ function InvoiceSheet({ booking, departure, destinationLabel, invoiceRef, tour, 
         <div><InvoiceField label="Destination" value={destinationLabel} /><InvoiceField label="Guests" value={getTravellerLabel(booking)} /><InvoiceField label="Duration" value={tour?.durationDn || "-"} /></div>
       </div>
       <div className="mt-1 border-t border-dashed border-border pt-2">
-        <p className="font-semibold text-slate-900">Accommodation: {summarizeAccommodation(booking)}</p>
-        {rooms.map((room, index) => <p key={room.id || index}>{room.title || "Room " + (index + 1)} - {room.bedSummary || "Accommodation"}</p>)}
+        <p className="font-semibold text-slate-900"><InvoiceText field="accommodation">{`Accommodation: ${summarizeAccommodation(booking)}`}</InvoiceText></p>
+        {rooms.map((room, index) => <p key={room.id || index}><InvoiceText field={`room.${index}`}>{`${room.title || "Room " + (index + 1)} - ${room.bedSummary || "Accommodation"}`}</InvoiceText></p>)}
       </div>
     </InvoiceSection>
     <div className="mt-3 overflow-hidden rounded-[8px] border border-border">
       <table className="admin-invoice-items-table w-full border-collapse text-[11px]">
         <thead className="bg-slate-100 text-slate-700"><tr>
-          <th className="text-left font-medium">Description</th><th className="text-center font-medium">Qty</th><th className="text-right font-medium">Rate ({currency})</th><th className="text-right font-medium">Amount ({currency})</th>
+          <th className="text-left font-medium"><InvoiceText field="items.descriptionLabel">Description</InvoiceText></th><th className="text-center font-medium"><InvoiceText field="items.quantityLabel">Qty</InvoiceText></th><th className="text-right font-medium"><InvoiceText field="items.rateLabel">{`Rate (${currency})`}</InvoiceText></th><th className="text-right font-medium"><InvoiceText field="items.amountLabel">{`Amount (${currency})`}</InvoiceText></th>
         </tr></thead>
         <tbody>{lineItems.map((item, index) => <tr key={index} className="border-t border-border">
-          <td className="font-semibold text-slate-900">{item.description}</td><td className="text-center">{item.quantity}</td>
-          <td className="whitespace-nowrap text-right">{formatCurrency(item.rate, currency)}</td><td className="whitespace-nowrap text-right font-semibold">{formatCurrency(item.amount, currency)}</td>
+          <td className="font-semibold text-slate-900"><InvoiceText field={`item.${index}.description`}>{item.description}</InvoiceText></td><td className="text-center"><InvoiceText field={`item.${index}.quantity`}>{item.quantity}</InvoiceText></td>
+          <td className="whitespace-nowrap text-right"><InvoiceText field={`item.${index}.rate`}>{formatCurrency(item.rate, currency, Boolean(receipt))}</InvoiceText></td><td className="whitespace-nowrap text-right font-semibold"><InvoiceText field={`item.${index}.amount`}>{formatCurrency(item.amount, currency, Boolean(receipt))}</InvoiceText></td>
         </tr>)}</tbody>
       </table>
     </div>
     <div className="mt-3 grid grid-cols-[0.85fr_1.15fr] items-start gap-3">
       <div className="rounded-[8px] border border-dashed border-primary/30 bg-primary/5 p-4 text-[10px] leading-relaxed">
-        <p className="font-semibold text-primary">Note</p>
-        <p className="mt-1">This invoice covers the confirmed tour package and charges listed here. Please retain it for your records.</p>
-        <AirfareDisclosure excluded={booking.airfareExcluded} amount={airFlightCharges} addedAt={booking.airfareAddedAt} includedInTotal={booking.airfareIncludedInTotal} />
+        <p className="font-semibold text-primary"><InvoiceText field="note.heading">Note</InvoiceText></p>
+        <p className="mt-1"><InvoiceText field="note.text">{receipt ? "This receipt acknowledges this successful payment only. It is not a tax invoice. Booking totals reflect the current package; retain each receipt for your records." : "This invoice covers the confirmed tour package and charges listed here. Please retain it for your records."}</InvoiceText></p>
+        {!receipt ? <AirfareDisclosure excluded={booking.airfareExcluded} amount={airFlightCharges} addedAt={booking.airfareAddedAt} includedInTotal={booking.airfareIncludedInTotal} renderText={(field, value) => <InvoiceText field={`airfare.${field}`}>{value}</InvoiceText>} /> : null}
       </div>
       <InvoiceSection title="Totals">
+        {receipt ? <>
+          <InvoiceField label="Payment Received" value={formatCurrency(receipt.amount, receipt.currency, true)} />
+          <InvoiceField label="Booking Total" value={formatCurrency(receipt.bookingTotal, receipt.currency, true)} />
+          <InvoiceField label="Total Received Through This Receipt" value={formatCurrency(receipt.totalPaid, receipt.currency, true)} />
+          <InvoiceField label="Balance Against Current Total" value={formatCurrency(receipt.balanceAfterPayment, receipt.currency, true)} />
+        </> : <>
         <InvoiceField label="Subtotal (Taxable Value)" value={formatCurrency(subtotal, currency)} />
         <InvoiceField label={"GST (" + gstPercentage + "%)"} value={formatCurrency(gstAmount, currency)} />
         {booking.tcsApplicable ? <InvoiceField label={`TCS (${booking.tcsPercentage ?? 2}%)`} value={formatCurrency(booking.tcsAmount || 0, currency)} /> : null}
         <InvoiceField label="Package Total (Excluding TCS)" value={formatCurrency(booking.packageTotal ?? subtotal + gstAmount, currency)} />
         {airFlightCharges > 0 ? <InvoiceField label={booking.airfareIncludedInTotal ? "Airfare (Included)" : "Additional Airfare"} value={formatCurrency(airFlightCharges, currency)} /> : null}
-        <div className="flex justify-between gap-4 border-t border-border pt-3"><span className="font-bold">{booking.airfareExcluded && !booking.airfareAddedAt && !airFlightCharges ? "Total (Excluding Airfare)" : "Total Payable"}</span><strong className="text-[18px] text-primary">{formatCurrency(grandTotal, currency)}</strong></div>
+        <div className="flex justify-between gap-4 border-t border-border pt-3"><span className="font-bold"><InvoiceText field="label.grandTotal">{booking.airfareExcluded && !booking.airfareAddedAt && !airFlightCharges ? "Total (Excluding Airfare)" : "Total Payable"}</InvoiceText></span><strong className="min-w-0 text-[18px] text-primary"><InvoiceText field="grandTotal">{formatCurrency(grandTotal, currency)}</InvoiceText></strong></div>
         <InvoiceField label="Amount Paid" value={formatCurrency(amountPaid, currency)} />
         <InvoiceField label="Balance Due" value={formatCurrency(balanceDue, currency)} />
         {amountPaid > grandTotal ? <InvoiceField label="Refund Due" value={formatCurrency(amountPaid - grandTotal, currency)} /> : null}
+        </>}
       </InvoiceSection>
     </div>
     <div className="mt-3 grid grid-cols-2 gap-3">
       <InvoiceSection title="Payment Details">
-        <p>Mode: <strong>{getPaymentMethodLabel(booking).replace(/^Paid via /, "")}</strong></p>
-        <p className="break-all">Transaction ID: {booking.paymentId || booking.paymentOrderId || "-"}</p>
-        <p>Payment Date: {formatDateTime(booking.paymentCapturedAt || booking.updatedAt)}</p>
-        <p>Payment Status: <strong className="text-emerald-800">FULLY PAID</strong></p>
+        <p><InvoiceText field="label.paymentMode">Mode:</InvoiceText> <strong><InvoiceText field="payment.mode">{receipt?.method || getPaymentMethodLabel(booking).replace(/^Paid via /, "")}</InvoiceText></strong></p>
+        <p className="break-all"><InvoiceText field="payment.transaction">{`Transaction ID: ${receipt ? receipt.transactionId || "Recorded by Ancient Trails" : booking.paymentId || booking.paymentOrderId || "-"}`}</InvoiceText></p>
+        <p><InvoiceText field="payment.date">{`Payment Date: ${receipt ? receipt.paidAt ? formatDateTime(receipt.paidAt) : "Not recorded" : formatDateTime(booking.paymentCapturedAt || booking.updatedAt)}`}</InvoiceText></p>
+        <p><InvoiceText field="label.paymentStatus">Payment Status:</InvoiceText> <strong className="text-emerald-800"><InvoiceText field="payment.status">{receipt ? "PAYMENT RECEIVED" : "FULLY PAID"}</InvoiceText></strong></p>
       </InvoiceSection>
       <section className="flex min-h-[110px] flex-col justify-between rounded-[8px] border border-border p-4 text-right">
-        <p className="font-semibold text-slate-900">For Ancient Trails</p>
-        <p className="mt-10 border-t border-border pt-2">Authorized Signatory</p>
+        <p className="font-semibold text-slate-900"><InvoiceText field="signatory.company">For Ancient Trails</InvoiceText></p>
+        <p className="mt-10 border-t border-border pt-2"><InvoiceText field="signatory.name">Authorized Signatory</InvoiceText></p>
       </section>
     </div>
-    <p className="mt-4 text-center text-[10px] text-slate-500">Thank you for travelling with Ancient Trails.</p>
+    <p className="mt-4 text-center text-[10px] text-slate-500"><InvoiceText field="footer">Thank you for travelling with Ancient Trails.</InvoiceText></p>
   </article>;
 }
 
@@ -552,6 +574,8 @@ function ErrorPanel({
 
 function BookingInvoiceContent() {
   const router = useRouter();
+  const receiptsMode = usePathname().startsWith("/bookings/receipts");
+  const toast = useToast();
   const searchParams = useSearchParams();
   const bookingId = searchParams.get("bookingId") || "";
   const invoiceRef = useRef<HTMLElement | null>(null);
@@ -563,28 +587,40 @@ function BookingInvoiceContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [invoiceDraft, setInvoiceDraft] = useState<Record<string, string>>({});
+  const [receipts, setReceipts] = useState<AdminBookingReceipt[]>([]);
+  const [selectedReceiptId, setSelectedReceiptId] = useState("");
+  const selectedReceipt = receipts.find((item) => item.id === selectedReceiptId) || receipts[0];
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadInvoiceData() {
       setIsLoading(true);
+      setLoadError("");
 
       try {
-        const [bookingsResponse, toursResponse, departuresResponse, destinationsResponse, settingsResponse] =
+        const [bookingsResponse, destinationsResponse, settingsResponse, receiptsResponse] =
           await Promise.all([
             listAdminBookings(),
-            listAdminTours(),
-            listAdminTourDepartures(),
             listAdminDestinations(),
             getAdminSiteSettings().catch(() => null),
+            receiptsMode && bookingId ? listAdminBookingReceipts(bookingId) : Promise.resolve(null),
           ]);
+        const savedBooking = bookingsResponse.data.bookings.find((item) => item.id === bookingId);
+        const tourApi = createAdminTourApi(savedBooking?.tourScope || "master");
+        const [toursResponse, departuresResponse] = await Promise.all([
+          tourApi.listAdminTours(), tourApi.listAdminTourDepartures(),
+        ]);
 
         if (!isMounted) {
           return;
         }
 
         setContact(settingsResponse?.data.settings.contact);
+        setReceipts(receiptsResponse?.data.receipts || []);
         setBookings(bookingsResponse.data.bookings);
         setTours(toursResponse.data.tours);
         setDepartures(departuresResponse.data.departures);
@@ -609,7 +645,7 @@ function BookingInvoiceContent() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [bookingId, receiptsMode]);
 
   const booking = useMemo(
     () => bookings.find((item) => item.id === bookingId) || null,
@@ -640,15 +676,32 @@ function BookingInvoiceContent() {
     router.push("/bookings");
   }
 
+  async function saveInvoice() {
+    if (!booking || isSaving) return;
+    setIsSaving(true);
+    try {
+      const response = await updateAdminBookingInvoice(booking.id, invoiceDraft);
+      setBookings((current) => current.map((item) => item.id === booking.id ? { ...item, invoiceOverrides: response.data.invoiceOverrides } : item));
+      setIsEditing(false);
+      toast.success("Invoice saved", "Your changes will appear in the downloaded invoice.");
+    } catch (error) {
+      toast.error("Invoice not saved", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function downloadInvoice() {
-    if (!booking || !invoiceRef.current || isDownloading) {
+    if (!booking || !invoiceRef.current || isDownloading || isEditing || isSaving) {
       return;
     }
 
+    const receipt = receiptsMode ? selectedReceipt : undefined;
+    if (receiptsMode && !receipt) return;
     setIsDownloading(true);
 
     const invoiceElement = invoiceRef.current;
-    const invoiceNumber = getInvoiceNumber(booking);
+    const invoiceNumber = (receipt?.receiptNumber || booking.invoiceOverrides?.invoiceNumber || getInvoiceNumber(booking)).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 100);
     const previousScrollY = window.scrollY;
 
     try {
@@ -674,7 +727,7 @@ function BookingInvoiceContent() {
           const clonedLogo = clonedDocument.querySelector<HTMLImageElement>("img[data-pdf-logo]");
           if (clonedLogo && logo?.naturalWidth && logo.naturalHeight) {
             // Canvas export cannot rely on object-fit to preserve the logo's shape.
-            const scale = Math.min(170 / logo.naturalWidth, 70 / logo.naturalHeight);
+            const scale = Math.min(240 / logo.naturalWidth, 110 / logo.naturalHeight);
             clonedLogo.style.width = `${logo.naturalWidth * scale}px`;
             clonedLogo.style.height = `${logo.naturalHeight * scale}px`;
           }
@@ -687,6 +740,7 @@ function BookingInvoiceContent() {
 
       const imageData = canvas.toDataURL("image/png", 1);
       const pdf = new jsPDF({
+        compress: true,
         format: "a4",
         orientation: "portrait",
         unit: "mm",
@@ -700,8 +754,8 @@ function BookingInvoiceContent() {
         imageHeight > A4_HEIGHT_MM ? A4_HEIGHT_MM : imageHeight;
       const pdfImageX = (A4_WIDTH_MM - pdfImageWidth) / 2;
 
-      pdf.addImage(imageData, "PNG", pdfImageX, 0, pdfImageWidth, pdfImageHeight);
-      pdf.save(`${invoiceNumber}-Ancient-Trails-Invoice.pdf`);
+      pdf.addImage(imageData, "PNG", pdfImageX, 0, pdfImageWidth, pdfImageHeight, undefined, "FAST");
+      pdf.save(`${invoiceNumber}-Ancient-Trails-${receipt ? "Payment-Receipt" : "Invoice"}.pdf`);
     } catch (error) {
       console.error("Invoice PDF download failed", error);
       window.alert("Invoice PDF could not be downloaded. Please try again.");
@@ -720,22 +774,29 @@ function BookingInvoiceContent() {
             type="button"
             variant="outline"
             onClick={goBack}
+            disabled={isSaving}
             className="h-10 rounded-sm border-border bg-white px-3 text-xs font-bold"
           >
             <ArrowLeft className="size-4" />
             Back to Bookings
           </Button>
 
-          {booking && isFullyPaidBooking(booking) ? (
+          {booking && (receiptsMode ? selectedReceipt : isFullyPaidBooking(booking)) ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {!receiptsMode ? isEditing ? <>
+                <Button type="button" variant="outline" disabled={isSaving} onClick={() => { setIsEditing(false); setInvoiceDraft({}); }} className="h-10 rounded-sm px-4 text-xs font-bold"><X className="size-4" />Cancel</Button>
+                <Button type="button" disabled={isSaving} onClick={saveInvoice} className="h-10 rounded-sm px-4 text-xs font-bold"><Save className="size-4" />{isSaving ? "Saving..." : "Save Invoice"}</Button>
+              </> : <Button type="button" variant="outline" disabled={isDownloading} onClick={() => { setInvoiceDraft({ ...booking.invoiceOverrides }); setIsEditing(true); }} className="h-10 rounded-sm px-4 text-xs font-bold"><Pencil className="size-4" />Edit Invoice</Button> : null}
             <Button
               type="button"
-              onClick={downloadInvoice}
-              disabled={isDownloading}
+              onClick={() => downloadInvoice()}
+              disabled={isDownloading || isEditing || isSaving}
               className="h-10 rounded-sm px-4 text-xs font-bold"
             >
               <Download className="size-4" />
-              {isDownloading ? "Downloading..." : "Download Invoice"}
+              {isDownloading ? "Downloading..." : receiptsMode ? "Download Receipt" : "Download Invoice"}
             </Button>
+            </div>
           ) : null}
         </div>
 
@@ -756,14 +817,35 @@ function BookingInvoiceContent() {
           <ErrorPanel message="Booking not found." onBack={goBack} />
         ) : null}
 
-        {!isLoading && !loadError && booking && !isFullyPaidBooking(booking) ? (
+        {!isLoading && !loadError && booking && !receiptsMode && !isFullyPaidBooking(booking) ? (
           <ErrorPanel
             message="Invoice is available only after the booking is fully paid."
             onBack={goBack}
           />
         ) : null}
 
-        {!isLoading && !loadError && booking && isFullyPaidBooking(booking) ? (
+        {!isLoading && !loadError && booking && receiptsMode ? (
+          <section className="admin-invoice-screen-actions overflow-hidden rounded-sm border border-border bg-white p-5">
+            <h1 className="text-lg font-bold">Payment Receipts</h1>
+            <p className="mt-1 mb-4 text-sm text-foreground/60">Select a successful payment to view or download its receipt.</p>
+            {receipts.length ? <div className="overflow-x-auto"><table className="w-full text-left text-sm">
+              <thead><tr className="border-b border-border text-foreground/60"><th className="p-2">Receipt</th><th className="p-2">Payment Date</th><th className="p-2">Payment</th><th className="p-2">Amount Received</th><th className="p-2">Action</th></tr></thead>
+              <tbody>{receipts.map((item) => <tr key={item.id} className={cn("border-b border-border last:border-0", selectedReceipt?.id === item.id && "bg-primary/5")}>
+                <td className="p-2 font-semibold">{item.receiptNumber}</td><td className="p-2">{item.paidAt ? formatDateTime(item.paidAt) : "Not recorded"}</td><td className="p-2">{item.description}<span className="block text-xs text-foreground/60">{item.method}</span></td><td className="p-2 font-semibold">{formatCurrency(item.amount, item.currency, true)}</td>
+                <td className="p-2"><Button type="button" variant="outline" disabled={isDownloading} onClick={() => setSelectedReceiptId(item.id)} className="h-8 px-3 text-xs">{selectedReceipt?.id === item.id ? "Viewing" : "View Receipt"}</Button></td>
+              </tr>)}</tbody>
+            </table></div> : <p className="text-sm text-foreground/60">No successful payments have been recorded for this booking yet.</p>}
+          </section>
+        ) : null}
+
+        {!isLoading && !loadError && booking && (receiptsMode ? selectedReceipt : isFullyPaidBooking(booking)) ? (
+          <BookingInvoiceEditorContext.Provider value={{
+            values: receiptsMode ? Object.fromEntries(Object.entries(booking.invoiceOverrides || {}).filter(([key]) => key.startsWith("company.") || key.startsWith("heading.Ancient"))) : isEditing ? invoiceDraft : booking.invoiceOverrides || {},
+            editing: isEditing,
+            disabled: isSaving,
+            onChange: (field, value) => setInvoiceDraft((current) => ({ ...current, [field]: value })),
+          }}>
+          {isEditing ? <p className="admin-invoice-screen-actions rounded-sm border border-border bg-white px-4 py-3 text-sm text-foreground/70">Edit the invoice fields below, then save. Invoice amounts are edited individually; booking and payment records stay unchanged.</p> : null}
           <InvoiceSheet
             booking={booking}
             departure={departure}
@@ -771,7 +853,9 @@ function BookingInvoiceContent() {
             contact={contact}
             invoiceRef={invoiceRef}
             tour={tour}
+            receipt={receiptsMode ? selectedReceipt : undefined}
           />
+          </BookingInvoiceEditorContext.Provider>
         ) : null}
       </div>
     </AdminDashboardShell>

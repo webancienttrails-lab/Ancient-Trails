@@ -2,6 +2,8 @@
 
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Tabs } from "@base-ui/react/tabs";
+import { useRouter } from "next/navigation";
 import {
   Bell,
   CheckCircle2,
@@ -13,7 +15,9 @@ import {
   Mail,
   MessageCircle,
   MoreHorizontal,
+  Minus,
   Pencil,
+  Phone,
   Plus,
   Save,
   Search,
@@ -51,15 +55,22 @@ import { shouldOpenTableRow } from "@/lib/table-row-click";
 import { cn } from "@/lib/utils";
 import {
   createAdminEnquiry,
+  createCustomiseEnquiryPayload,
   listAdminEnquiries,
   updateAdminEnquiry,
   updateAdminEnquiryStatus,
   addAdminEnquiryReply,
   setAdminEnquiryBlacklist,
+  getEnquiryCategory,
+  getEnquiryTourName,
+  getCustomiseEnquiryTourName,
+  getEnquiryDisplayDetails,
+  type EnquiryCategory,
   type EnquiryPayload,
 } from "@/lib/enquiries";
 import { listAdminTours, type AdminTour } from "@/lib/tours";
 import * as XLSX from "xlsx";
+import { GroupEnquiryForm } from "./group-enquiry-form";
 
 type EnquiryMetric = {
   label: string;
@@ -105,6 +116,11 @@ const sourceOptions = [
 ];
 const dateRangeOptions = ["All Time", "Today", "This Week", "This Month"];
 const blacklistOptions = ["All Enquiries", "Active", "Blacklisted"];
+const enquiryTabs: Array<{ value: EnquiryCategory; label: string }> = [
+  { value: "group", label: "Group Enquiry" },
+  { value: "customise", label: "Customise" },
+  { value: "normal", label: "Normal Enquiry" },
+];
 
 function createEnquiriesCsv(enquiries: EnquiryRecord[]) {
   const header = [
@@ -161,6 +177,7 @@ function toEnquiryRecord(enquiry: import("@/lib/enquiries").AdminEnquiry): Enqui
 export default function EnquiriesPage() {
   const toast = useToast();
   const [enquiries, setEnquiries] = useState<EnquiryRecord[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<EnquiryCategory>("group");
   const [isLoading, setIsLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [viewingEnquiry, setViewingEnquiry] = useState<EnquiryRecord | null>(null);
@@ -174,6 +191,7 @@ export default function EnquiriesPage() {
   const [tours, setTours] = useState<AdminTour[]>([]);
   const [replyingEnquiry, setReplyingEnquiry] = useState<EnquiryRecord | null>(null);
   const [replyText, setReplyText] = useState("");
+  const [isSavingReply, setIsSavingReply] = useState(false);
   const importInput = useRef<HTMLInputElement>(null);
 
   async function loadEnquiries() {
@@ -196,12 +214,21 @@ export default function EnquiriesPage() {
       .finally(() => setIsLoading(false));
   }, [toast]);
 
-  useEffect(() => { void listAdminTours().then((result) => setTours(result.data.tours)).catch(() => {}); }, []);
+  useEffect(() => {
+    void listAdminTours().then((result) => setTours(result.data.tours)).catch((error: unknown) => {
+      toast.error("Unable to load tours", error instanceof Error ? error.message : "Please try again.");
+    });
+  }, [toast]);
+
+  const categoryEnquiries = useMemo(
+    () => enquiries.filter((enquiry) => getEnquiryCategory(enquiry) === selectedCategory),
+    [enquiries, selectedCategory],
+  );
 
   const filteredEnquiries = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
-    return enquiries.filter((enquiry) => {
+    return categoryEnquiries.filter((enquiry) => {
       const matchesSearch = query
         ? [
             enquiry.id,
@@ -239,14 +266,14 @@ export default function EnquiriesPage() {
 
       return matchesSearch && matchesStatus && matchesSource && matchesBlacklist && matchesDateRange;
     });
-  }, [enquiries, searchQuery, selectedStatus, selectedSource, selectedDateRange, selectedBlacklist]);
+  }, [categoryEnquiries, searchQuery, selectedStatus, selectedSource, selectedDateRange, selectedBlacklist]);
 
   const enquiryMetrics: EnquiryMetric[] = [
-    ["Total Enquiries", enquiries.length, MessageCircle, "bg-primary/10 text-primary"],
-    ["New Enquiries", enquiries.filter((item) => item.status === "New").length, Mail, "bg-emerald-100 text-emerald-700"],
-    ["In Progress", enquiries.filter((item) => item.status === "In Progress").length, Clock3, "bg-amber-100 text-amber-700"],
-    ["Replied", enquiries.filter((item) => item.status === "Replied").length, CheckCircle2, "bg-violet-100 text-violet-700"],
-    ["Closed", enquiries.filter((item) => item.status === "Closed").length, XCircle, "bg-red-100 text-red-700"],
+    ["Total Enquiries", categoryEnquiries.length, MessageCircle, "bg-primary/10 text-primary"],
+    ["New Enquiries", categoryEnquiries.filter((item) => item.status === "New").length, Mail, "bg-emerald-100 text-emerald-700"],
+    ["In Progress", categoryEnquiries.filter((item) => item.status === "In Progress").length, Clock3, "bg-amber-100 text-amber-700"],
+    ["Replied", categoryEnquiries.filter((item) => item.status === "Replied").length, CheckCircle2, "bg-violet-100 text-violet-700"],
+    ["Closed", categoryEnquiries.filter((item) => item.status === "Closed").length, XCircle, "bg-red-100 text-red-700"],
   ].map(([label, value, icon, tone]) => ({
     label: String(label),
     value: String(value),
@@ -280,13 +307,13 @@ export default function EnquiriesPage() {
     setIsFormOpen(true);
   }
 
-  async function saveEnquiry(event: FormEvent<HTMLFormElement>) {
+  async function saveEnquiry(event: FormEvent<HTMLFormElement>, payload: EnquiryPayload = form) {
     event.preventDefault();
     try {
       if (editingEnquiry) {
-        await updateAdminEnquiry(editingEnquiry.id, form);
+        await updateAdminEnquiry(editingEnquiry.id, payload);
       } else {
-        await createAdminEnquiry(form);
+        await createAdminEnquiry(payload);
       }
       setIsFormOpen(false);
       await loadEnquiries();
@@ -353,17 +380,31 @@ export default function EnquiriesPage() {
     } catch (error) { toast.error("Unable to import enquiries", error instanceof Error ? error.message : "Choose a valid Excel file."); }
   }
 
-  async function sendReply() {
-    if (!replyingEnquiry || !replyText.trim()) return;
+  async function sendReply(channel: "whatsapp" | "phone" = "whatsapp") {
+    if (!replyingEnquiry || !replyText.trim() || isSavingReply) return;
+    const message = channel === "phone" ? `Phone Call:\n${replyText.trim()}` : replyText.trim();
+    if (message.length > 3000) {
+      toast.error("Notes are too long", "Please shorten your notes before saving.");
+      return;
+    }
+    setIsSavingReply(true);
     try {
-      const response = await addAdminEnquiryReply(replyingEnquiry.id, replyText.trim());
+      const response = await addAdminEnquiryReply(replyingEnquiry.id, message);
       const updated = toEnquiryRecord(response.data.enquiry);
       setEnquiries(current => current.map(item => item.id === updated.id ? updated : item));
-      const phone = replyingEnquiry.phone.replace(/\D/g, "");
-      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(replyText.trim())}`, "_blank", "noopener,noreferrer");
+      setViewingEnquiry(current => current?.id === updated.id ? updated : current);
+      if (channel === "whatsapp") {
+        const phone = replyingEnquiry.phone.replace(/\D/g, "");
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(replyText.trim())}`, "_blank", "noopener,noreferrer");
+      }
       setReplyingEnquiry(null); setReplyText("");
-      toast.success("Reply prepared", "The reply is saved in history. Send it in the WhatsApp window to deliver it.");
-    } catch (error) { toast.error("Unable to prepare reply", error instanceof Error ? error.message : "Please try again."); }
+      if (channel === "phone") {
+        toast.success("Phone call notes saved", "The conversation notes are saved in reply history.");
+      } else {
+        toast.success("Reply prepared", "The reply is saved in history. Send it in the WhatsApp window to deliver it.");
+      }
+    } catch (error) { toast.error(channel === "phone" ? "Unable to save call notes" : "Unable to prepare reply", error instanceof Error ? error.message : "Please try again."); }
+    finally { setIsSavingReply(false); }
   }
 
   return (
@@ -371,57 +412,84 @@ export default function EnquiriesPage() {
       <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-5">
         <EnquiriesHeader onAdd={openAddForm} />
 
-        <div className="flex flex-wrap justify-end gap-3">
-          <Button
-            type="button"
-            onClick={openAddForm}
-            className="h-11 rounded-sm px-4 text-xs font-bold"
-          >
-            <Plus className="size-4" data-icon="inline-start" />
-            Add Enquiries
-          </Button>
+        <Tabs.Root value={selectedCategory} onValueChange={(value) => setSelectedCategory(value as EnquiryCategory)} className="flex flex-col gap-5">
+          <Tabs.List aria-label="Enquiry categories" className="flex gap-1 overflow-x-auto border-b border-border">
+            {enquiryTabs.map((tab) => (
+              <Tabs.Tab key={tab.value} value={tab.value} className="shrink-0 cursor-pointer border-b-2 border-transparent px-4 py-3 text-sm font-bold text-foreground/60 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary data-active:border-primary data-active:text-primary">
+                {tab.label}
+              </Tabs.Tab>
+            ))}
+          </Tabs.List>
+          <Tabs.Panel value={selectedCategory} className="flex flex-col gap-5">
+            <div className="flex flex-wrap justify-end gap-3">
+              <Button
+                type="button"
+                onClick={openAddForm}
+                className="h-11 rounded-sm px-4 text-xs font-bold"
+              >
+                <Plus className="size-4" data-icon="inline-start" />
+                Add Enquiries
+              </Button>
 
-          <Button
-            type="button"
-            onClick={exportEnquiries}
-            className="h-11 rounded-sm px-4 text-xs font-bold"
-          >
-            <span>Export Enquiries</span>
-          </Button>
-          <Button type="button" onClick={() => importInput.current?.click()} className="h-11 rounded-sm px-4 text-xs font-bold">
-            <Upload className="size-4" data-icon="inline-start" />Import Enquiries
-          </Button>
-          <input ref={importInput} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void importEnquiries(file); event.currentTarget.value = ""; }} />
-        </div>
+              <Button
+                type="button"
+                onClick={exportEnquiries}
+                className="h-11 rounded-sm px-4 text-xs font-bold"
+              >
+                <span>Export Enquiries</span>
+              </Button>
+              <Button type="button" onClick={() => importInput.current?.click()} className="h-11 rounded-sm px-4 text-xs font-bold">
+                <Upload className="size-4" data-icon="inline-start" />Import Enquiries
+              </Button>
+              <input ref={importInput} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void importEnquiries(file); event.currentTarget.value = ""; }} />
+            </div>
 
-        <section
-          data-admin-metric-grid
-          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"
-        >
-          {enquiryMetrics.map((metric) => (
-            <EnquiryMetricCard key={metric.label} metric={metric} />
-          ))}
-        </section>
+            <section
+              data-admin-metric-grid
+              className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"
+            >
+              {enquiryMetrics.map((metric) => (
+                <EnquiryMetricCard key={metric.label} metric={metric} />
+              ))}
+            </section>
 
-        <section className="overflow-hidden rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
-          <EnquiriesToolbar
-            searchQuery={searchQuery}
-            selectedDateRange={selectedDateRange}
-            selectedSource={selectedSource}
-            selectedStatus={selectedStatus}
-            selectedBlacklist={selectedBlacklist}
-            onDateRangeChange={setSelectedDateRange}
-            onSearchQueryChange={setSearchQuery}
-            onSourceChange={setSelectedSource}
-            onStatusChange={setSelectedStatus}
-            onBlacklistChange={setSelectedBlacklist}
-          />
-          <EnquiriesTable enquiries={filteredEnquiries} isLoading={isLoading} onEdit={openEditForm} onView={setViewingEnquiry} onReply={enquiry => { setReplyingEnquiry(enquiry); setReplyText(""); }} onBlacklist={changeBlacklist} onStatusChange={changeEnquiryStatus} />
-        </section>
+            <section className="overflow-hidden rounded-sm border border-border bg-white shadow-sm shadow-stone-200/40">
+              <EnquiriesToolbar
+                searchQuery={searchQuery}
+                selectedDateRange={selectedDateRange}
+                selectedSource={selectedSource}
+                selectedStatus={selectedStatus}
+                selectedBlacklist={selectedBlacklist}
+                onDateRangeChange={setSelectedDateRange}
+                onSearchQueryChange={setSearchQuery}
+                onSourceChange={setSelectedSource}
+                onStatusChange={setSelectedStatus}
+                onBlacklistChange={setSelectedBlacklist}
+              />
+              <EnquiriesTable enquiries={filteredEnquiries} showTourName={selectedCategory === "group"} showWhichTour={selectedCategory === "customise"} isLoading={isLoading} onEdit={openEditForm} onView={setViewingEnquiry} onReply={enquiry => { setReplyingEnquiry(enquiry); setReplyText(""); }} onBlacklist={changeBlacklist} onStatusChange={changeEnquiryStatus} />
+            </section>
+          </Tabs.Panel>
+        </Tabs.Root>
       </div>
       <EnquiryView enquiry={viewingEnquiry} onClose={() => setViewingEnquiry(null)} />
-      {replyingEnquiry ? <Dialog open onOpenChange={open => { if (!open) setReplyingEnquiry(null); }}><DialogContent className="rounded-sm bg-white sm:max-w-xl"><DialogHeader><DialogTitle>Reply to {replyingEnquiry.name}</DialogTitle><DialogDescription>WhatsApp: {replyingEnquiry.phone}</DialogDescription></DialogHeader><textarea autoFocus value={replyText} onChange={event => setReplyText(event.target.value)} className="min-h-32 rounded-sm border border-border p-3 text-sm" placeholder="Write your reply..."/><Button type="button" disabled={!replyText.trim()} onClick={() => void sendReply()}><Send className="size-4" data-icon="inline-start"/>Open WhatsApp &amp; Save Reply</Button></DialogContent></Dialog> : null}
-      {isFormOpen ? <EnquiryForm editing={Boolean(editingEnquiry)} form={form} tours={tours} onChange={setForm} onClose={() => setIsFormOpen(false)} onSubmit={saveEnquiry} /> : null}
+      {replyingEnquiry ? (
+        <Dialog open onOpenChange={open => { if (!open && !isSavingReply) setReplyingEnquiry(null); }}>
+          <DialogContent showCloseButton={!isSavingReply} className="rounded-sm bg-white sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Reply to {replyingEnquiry.name}</DialogTitle>
+              <DialogDescription>WhatsApp / Phone: {replyingEnquiry.phone}</DialogDescription>
+            </DialogHeader>
+            <textarea autoFocus value={replyText} disabled={isSavingReply} maxLength={3000} onChange={event => setReplyText(event.target.value)} className="min-h-32 rounded-sm border border-border p-3 text-sm" placeholder="Write your reply or phone conversation notes..." />
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button type="button" disabled={!replyText.trim() || isSavingReply} onClick={() => void sendReply()}><Send className="size-4" data-icon="inline-start" />Open WhatsApp &amp; Save Reply</Button>
+              <Button type="button" variant="outline" disabled={!replyText.trim() || isSavingReply} onClick={() => void sendReply("phone")}><Phone className="size-4" data-icon="inline-start" />Phone Call &amp; Save Notes</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+      {isFormOpen ? selectedCategory === "group" && !editingEnquiry ? (
+        <GroupEnquiryForm tours={tours} onClose={() => setIsFormOpen(false)} onSubmit={saveEnquiry} />
+      ) : <EnquiryForm editing={Boolean(editingEnquiry)} customise={selectedCategory === "customise" && !editingEnquiry} form={form} tours={tours} onChange={setForm} onClose={() => setIsFormOpen(false)} onSubmit={saveEnquiry} /> : null}
     </AdminDashboardShell>
   );
 }
@@ -608,6 +676,8 @@ function FilterSelect({
 
 function EnquiriesTable({
   enquiries,
+  showTourName,
+  showWhichTour = false,
   isLoading,
   onEdit,
   onView,
@@ -616,6 +686,8 @@ function EnquiriesTable({
   onStatusChange,
 }: {
   enquiries: EnquiryRecord[];
+  showTourName: boolean;
+  showWhichTour?: boolean;
   isLoading: boolean;
   onEdit: (enquiry: EnquiryRecord) => void;
   onView: (enquiry: EnquiryRecord) => void;
@@ -623,11 +695,13 @@ function EnquiriesTable({
   onBlacklist: (enquiry: EnquiryRecord) => Promise<void>;
   onStatusChange: (enquiry: EnquiryRecord, status: EnquiryRecord["status"]) => Promise<void>;
 }) {
+  const tourColumnLabel = showWhichTour ? "Which Tour" : showTourName ? "Tour Name" : "Subject";
   return (
     <>
       <div className="max-w-full overflow-hidden">
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <colgroup>
+            {showWhichTour ? [11, 26, 27, 16, 14, 6].map((width, index) => <col key={index} style={{ width: `${width}%` }} />) : <>
             <col className="w-[11%]" />
             <col className="w-[22%]" />
             <col className="w-[23%]" />
@@ -635,14 +709,15 @@ function EnquiriesTable({
             <col className="w-[13%]" />
             <col className="w-[12%]" />
             <col className="w-[6%]" />
+            </>}
           </colgroup>
           <thead className="bg-muted/35 text-[11px] uppercase text-foreground/55">
             <tr>
-              <th className="px-4 py-3 font-bold">Enquiry ID</th>
+              <th className="px-4 py-3 font-bold">{showWhichTour ? "ID" : "Enquiry ID"}</th>
               <th className="px-4 py-3 font-bold">Name &amp; Contact</th>
-              <th className="px-4 py-3 font-bold">Subject</th>
+              <th className="px-4 py-3 font-bold">{tourColumnLabel}</th>
               <th className="px-4 py-3 font-bold">Source</th>
-              <th className="px-4 py-3 font-bold">Status</th>
+              {!showWhichTour ? <th className="px-4 py-3 font-bold">Status</th> : null}
               <th className="px-4 py-3 font-bold">Date &amp; Time</th>
               <th className="px-4 py-3 text-right font-bold">Actions</th>
             </tr>
@@ -650,7 +725,7 @@ function EnquiriesTable({
           <tbody>
             {isLoading ? (
               <tr>
-                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={7}>
+                <td className="px-5 py-8 text-center text-xs text-foreground/55" colSpan={showWhichTour ? 6 : 7}>
                   Loading enquiries...
                 </td>
               </tr>
@@ -666,7 +741,7 @@ function EnquiriesTable({
                   className="cursor-pointer border-t border-border transition-colors hover:bg-muted/25"
                 >
                   <td
-                    data-label="Enquiry ID"
+                    data-label={showWhichTour ? "ID" : "Enquiry ID"}
                     className="px-4 py-4 text-xs font-semibold text-foreground/70"
                   >
                     {enquiry.enquiryReference}
@@ -698,9 +773,9 @@ function EnquiriesTable({
                       </div>
                     </div>
                   </td>
-                  <td data-label="Subject" className="px-4 py-4">
+                  <td data-label={tourColumnLabel} className="px-4 py-4">
                     <p className="truncate text-xs font-bold text-foreground">
-                      {enquiry.subject}
+                      {showWhichTour ? getCustomiseEnquiryTourName(enquiry) : showTourName ? getEnquiryTourName(enquiry) : enquiry.subject}
                     </p>
                     {enquiry.isBlacklisted ? <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700"><ShieldBan className="size-3"/>Blacklisted</span> : null}
                   </td>
@@ -714,7 +789,7 @@ function EnquiriesTable({
                       {enquiry.source}
                     </span>
                   </td>
-                  <td data-label="Status" className="px-4 py-4">
+                  {!showWhichTour ? <td data-label="Status" className="px-4 py-4">
                     <span
                       className={cn(
                         "inline-flex rounded-full px-3 py-1 text-[11px] font-bold",
@@ -723,7 +798,7 @@ function EnquiriesTable({
                     >
                       {enquiry.status}
                     </span>
-                  </td>
+                  </td> : null}
                   <td
                     data-label="Date & Time"
                     className="px-4 py-4 text-xs text-foreground/70"
@@ -744,7 +819,7 @@ function EnquiriesTable({
               <tr>
                 <td
                   className="px-5 py-8 text-center text-xs text-foreground/55"
-                  colSpan={7}
+                  colSpan={showWhichTour ? 6 : 7}
                 >
                   No enquiries found.
                 </td>
@@ -788,6 +863,7 @@ function EnquiryActions({
   onBlacklist: (enquiry: EnquiryRecord) => Promise<void>;
   onStatusChange: (enquiry: EnquiryRecord, status: EnquiryRecord["status"]) => Promise<void>;
 }) {
+  const router = useRouter();
   const [isUpdating, setIsUpdating] = useState(false);
 
   async function changeStatus(status: EnquiryRecord["status"]) {
@@ -846,16 +922,12 @@ function EnquiryActions({
             {enquiry.isBlacklisted ? "Remove from Blacklist" : "Blacklist"}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          {(["In Progress", "Replied", "Closed"] as const).map((status) => (
-            <DropdownMenuItem
-              key={status}
-              disabled={isUpdating || enquiry.status === status}
-              onClick={() => void changeStatus(status)}
-              className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold"
-            >
-              {status}
-            </DropdownMenuItem>
-          ))}
+          <DropdownMenuItem onClick={() => router.push(`/bookings/add?enquiryId=${encodeURIComponent(enquiry.id)}${getEnquiryCategory(enquiry) === "customise" ? "&scope=customise" : ""}`)} className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold">
+            Convert to Booking
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={isUpdating || enquiry.status === "Closed"} onClick={() => void changeStatus("Closed")} className="cursor-pointer rounded-sm px-2 py-2 text-xs font-semibold">
+            Closed
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -869,6 +941,8 @@ function EnquiryView({
   enquiry: EnquiryRecord | null;
   onClose: () => void;
 }) {
+  const details = enquiry ? getEnquiryDisplayDetails(enquiry) : null;
+  const isGroupEnquiry = enquiry ? getEnquiryCategory(enquiry) === "group" : false;
   return (
     <Dialog open={Boolean(enquiry)} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent showCloseButton={false} className="flex max-h-[85dvh] flex-col overflow-hidden rounded-sm border border-border bg-white p-5 sm:max-w-2xl">
@@ -887,7 +961,14 @@ function EnquiryView({
                 ["Gender", enquiry.gender],
                 ["Email", enquiry.email],
                 ["Phone", enquiry.phone],
-                ["Tour", enquiry.tourName || ""],
+                ["Tour", details?.tourName || ""],
+                ...(isGroupEnquiry ? [
+                  ["Tour ID", details?.tourId || ""],
+                  ["Current City", details?.city || ""],
+                  ["Total No. of Guests", details?.guests || ""],
+                  ["Date Of Travel", details?.travelDate || ""],
+                ] : []),
+                ...(getEnquiryCategory(enquiry) === "customise" && details?.guests ? [["Total No. of Guests", details.guests]] : []),
                 ["Source", enquiry.source],
                 ["Social Media Referral", enquiry.socialMediaReferral],
                 ["Status", enquiry.status],
@@ -907,7 +988,7 @@ function EnquiryView({
             </div>
             <div>
               <h3 className="text-[11px] font-bold uppercase text-foreground/55">Message</h3>
-              <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed break-words text-foreground/70">{enquiry.message || "-"}</p>
+              <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed break-words text-foreground/70">{details?.message || "-"}</p>
             </div>
             <div className="border-t border-border pt-4">
               <h3 className="text-[11px] font-bold uppercase text-foreground/55">Reply History</h3>
@@ -922,6 +1003,7 @@ function EnquiryView({
 
 function EnquiryForm({
   editing,
+  customise = false,
   form,
   tours,
   onChange,
@@ -929,33 +1011,35 @@ function EnquiryForm({
   onSubmit,
 }: {
   editing: boolean;
+  customise?: boolean;
   form: EnquiryPayload;
   tours: AdminTour[];
   onChange: (form: EnquiryPayload) => void;
   onClose: () => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>, payload?: EnquiryPayload) => void;
 }) {
+  const [guestCounts, setGuestCounts] = useState({ adults: 1, children: 0, infants: 0 });
   const update = (field: keyof EnquiryPayload, value: string) => {
     onChange({ ...form, [field]: value } as EnquiryPayload);
   };
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/35 p-4">
-      <form onSubmit={onSubmit} className="grid w-full max-w-2xl gap-4 rounded-sm border border-border bg-white p-5 shadow-xl">
-        <div className="flex items-center justify-between border-b border-border pb-3">
+      <form onSubmit={(event) => onSubmit(event, customise ? createCustomiseEnquiryPayload(form, guestCounts) : form)} className="flex h-[90dvh] max-h-[90dvh] w-full max-w-lg flex-col gap-4 overflow-hidden rounded-sm border border-border bg-white p-5 shadow-xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-border pb-3">
           <h2 className="text-lg font-bold">{editing ? "Edit Enquiry" : "Add Enquiry"}</h2>
           <button type="button" onClick={onClose} className="text-sm font-semibold text-foreground/55 hover:text-foreground">Close</button>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="grid gap-1.5 text-xs font-semibold sm:col-span-2">Available Tour
+        <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto pr-2 sm:grid-cols-2">
+          {!customise ? <label className="grid gap-1.5 text-xs font-semibold sm:col-span-2">Available Tour
             <select value={form.tourId || ""} onChange={event => { const tour = tours.find(item => item.id === event.target.value); onChange({ ...form, tourId: tour?.id || "", tourName: tour?.tourName || "", subject: tour ? `Tour enquiry - ${tour.tourName}` : form.subject }); }} className="h-10 rounded-sm border border-border px-3">
               <option value="">Select a tour (optional)</option>{tours.map(tour => <option key={tour.id} value={tour.id}>{tour.tourName}</option>)}
             </select>
-          </label>
+          </label> : null}
           {(["name", "email", "phone", "subject"] as const).map((field) => (
             <label key={field} className="grid gap-1.5 text-xs font-semibold capitalize">
-              {field}
-              <input required value={form[field]} onChange={(event) => update(field, event.target.value)} className="h-10 rounded-sm border border-border px-3 outline-none focus:border-primary" />
+              {customise && field === "subject" ? "Which Tour" : field}
+              <input required maxLength={customise && field === "subject" ? 160 : undefined} value={form[field]} onChange={(event) => update(field, event.target.value)} className="h-10 rounded-sm border border-border px-3 outline-none focus:border-primary" />
             </label>
           ))}
           <label className="grid gap-1.5 text-xs font-semibold">
@@ -971,12 +1055,32 @@ function EnquiryForm({
               {sourceOptions.slice(1).map((source) => <option key={source}>{source}</option>)}
             </select>
           </label>
-          <label className="grid gap-1.5 text-xs font-semibold">
+          {!customise ? <label className="grid gap-1.5 text-xs font-semibold">
             Status
             <select value={form.status} onChange={(event) => update("status", event.target.value)} className="h-10 rounded-sm border border-border px-3">
               {statusOptions.slice(1).map((status) => <option key={status}>{status}</option>)}
             </select>
-          </label>
+          </label> : null}
+          {customise ? <fieldset className="min-w-0 sm:col-span-2">
+            <legend className="mb-1.5 text-xs font-semibold">Total No. of Guests *</legend>
+            <div className="flex flex-wrap gap-2 pb-1">
+              {([
+                { key: "adults", label: "Adult", age: "Above 12 years", minimum: 1 },
+                { key: "children", label: "Child", age: "Above 6 to 12 years", minimum: 0 },
+                { key: "infants", label: "Infant", age: "Below 6 years", minimum: 0 },
+              ] as const).map(({ key, label, age, minimum }) => (
+                <div key={key} className="grid min-w-0 flex-[1_1_130px] content-start gap-1.5">
+                  <span className="text-xs font-semibold">{label}</span>
+                  <span className="flex h-10 min-w-0 items-center justify-between gap-2 rounded-[14px] border border-[#ead8cb] bg-white px-2.5 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/10">
+                    <button type="button" aria-label={`Decrease ${label} count`} disabled={guestCounts[key] <= minimum} onClick={() => setGuestCounts((current) => ({ ...current, [key]: Math.max(minimum, current[key] - 1) }))} className="grid size-7 cursor-pointer place-items-center rounded-full border border-[#ed721e] text-[#ed721e] disabled:cursor-default disabled:opacity-40"><Minus className="size-4" /></button>
+                    <output aria-label={`${label} count`} className="min-w-4 text-center text-sm" aria-live="polite">{guestCounts[key]}</output>
+                    <button type="button" aria-label={`Increase ${label} count`} onClick={() => setGuestCounts((current) => ({ ...current, [key]: current[key] + 1 }))} className="grid size-7 cursor-pointer place-items-center rounded-full border border-[#ed721e] text-[#ed721e]"><Plus className="size-4" /></button>
+                  </span>
+                  <span className="whitespace-normal break-words text-xs font-normal text-[#929292]">{age}</span>
+                </div>
+              ))}
+            </div>
+          </fieldset> : null}
           <label className="grid gap-1.5 text-xs font-semibold sm:col-span-2">
             Social Media Referral
             <input
@@ -989,10 +1093,10 @@ function EnquiryForm({
           </label>
           <label className="grid gap-1.5 text-xs font-semibold sm:col-span-2">
             Message
-            <textarea value={form.message} onChange={(event) => update("message", event.target.value)} className="min-h-24 rounded-sm border border-border px-3 py-2 outline-none focus:border-primary" />
+            <textarea maxLength={customise ? 2700 : undefined} value={form.message} onChange={(event) => update("message", event.target.value)} className="min-h-24 rounded-sm border border-border px-3 py-2 outline-none focus:border-primary" />
           </label>
         </div>
-        <div className="flex justify-end gap-2 border-t border-border pt-3">
+        <div className="flex shrink-0 justify-end gap-2 border-t border-border pt-3">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
           <Button type="submit"><Save className="size-4" data-icon="inline-start" />Save Enquiry</Button>
         </div>

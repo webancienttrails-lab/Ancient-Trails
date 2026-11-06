@@ -116,6 +116,9 @@ export type BookingHotelDetail = { destination: string; hotel: string; category:
 export type BookingFlightDetail = { from: string; to: string; airline: string; seats: number; dateTime: string };
 
 export type AdminBooking = {
+  invoiceOverrides?: Record<string, string>;
+  sourceEnquiryCategory?: "normal" | "group" | "customise";
+  tourScope?: "master" | "customise";
   hotelDetails?: BookingHotelDetail[];
   flightDetails?: BookingFlightDetail[];
   cancellation?: (BookingCancellationPayload & { cancelledAt: string }) | null;
@@ -227,7 +230,31 @@ export type BookingPaymentLinkPayload = {
   purpose: BookingPaymentLinkPurpose;
 };
 
+export type AdminBookingReceipt = {
+  id: string; transactionId: string; amount: number; paidAt: string | null;
+  method: string; currency: string; description: string; receiptNumber: string;
+  totalPaid: number; balanceAfterPayment: number; bookingTotal: number;
+};
+
+export function listAdminBookingReceipts(id: string) {
+  return apiRequest<{ receipts: AdminBookingReceipt[] }>(`/api/admin/bookings/${encodeURIComponent(id)}/receipts`, { headers: getAdminHeaders() });
+}
+
+export async function shareAdminBookingReceipt(id: string, receiptId: string, pdf: Blob) {
+  if (pdf.size > 10 * 1024 * 1024) {
+    throw new Error("The receipt PDF exceeds the 10 MB sharing limit. Please reduce unusually long receipt details and try again.");
+  }
+  const form = new FormData();
+  form.append("receipt", pdf, "Payment-Receipt.pdf");
+  return readUploadResponse<{ whatsappUrl: string; recipient: string; expiresAt: string }>(await sessionFetch(
+    `${apiBaseUrl}/api/admin/bookings/${encodeURIComponent(id)}/receipts/${encodeURIComponent(receiptId)}/share`,
+    { method: "POST", headers: getAdminHeaders(), body: form, }
+  ));
+}
+
 export type BookingPayload = {
+  sourceEnquiryCategory?: "normal" | "group" | "customise";
+  tourScope?: "master" | "customise";
   paymentMode?: "online" | "offline" | "bank_transfer";
   leadVerificationToken?: string;
   emergencyContactName?: string;
@@ -255,6 +282,7 @@ export type BookingPayload = {
 };
 
 export type BookingAccommodationOptionsPayload = {
+  tourScope?: "master" | "customise";
   bookingId?: string;
   departureId: string;
   adultCount: number;
@@ -318,6 +346,12 @@ export function getBookingKycDocumentUrl(source = "") {
 export async function listAdminBookings() {
   return apiRequest<{ bookings: AdminBooking[] }>("/api/admin/bookings", {
     headers: getAdminHeaders(),
+  });
+}
+
+export function updateAdminBookingInvoice(id: string, invoiceOverrides: Record<string, string>) {
+  return apiRequest<{ invoiceOverrides: Record<string, string> }>(`/api/admin/bookings/${encodeURIComponent(id)}/invoice`, {
+    method: "PATCH", headers: getAdminHeaders(), body: JSON.stringify({ invoiceOverrides }),
   });
 }
 

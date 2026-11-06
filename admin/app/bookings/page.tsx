@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Tabs } from "@base-ui/react/tabs";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -83,6 +84,22 @@ type BookingMetric = {
   tone: string;
   descriptionTone: string;
 };
+
+type BookingCategory = "normal" | "group" | "customise" | "cancelled";
+
+const bookingTabs: Array<{ value: BookingCategory; label: string }> = [
+  { value: "normal", label: "Bookings" },
+  { value: "group", label: "Group Booking" },
+  { value: "customise", label: "Customised Booking" },
+  { value: "cancelled", label: "Cancelled Booking" },
+];
+
+function getBookingCategory(booking: AdminBooking): BookingCategory {
+  if (booking.bookingStatus === "cancelled") return "cancelled";
+  if (booking.tourScope === "customise") return "customise";
+  if (booking.sourceEnquiryCategory === "group") return "group";
+  return "normal";
+}
 
 /* =========================================================
    HELPERS
@@ -516,6 +533,7 @@ export default function BookingsPage() {
 
   const [searchQuery, setSearchQuery] =
     useState("");
+  const [selectedCategory, setSelectedCategory] = useState<BookingCategory>("normal");
 
   const [
     isLoadingBookings,
@@ -607,6 +625,11 @@ export default function BookingsPage() {
      SEARCH
   ======================================================= */
 
+  const categoryBookings = useMemo(
+    () => bookings.filter((booking) => getBookingCategory(booking) === selectedCategory),
+    [bookings, selectedCategory]
+  );
+
   const filteredBookings =
     useMemo(() => {
       const query = searchQuery
@@ -614,10 +637,10 @@ export default function BookingsPage() {
         .toLowerCase();
 
       if (!query) {
-        return bookings;
+        return categoryBookings;
       }
 
-      return bookings.filter(
+      return categoryBookings.filter(
         (booking) => {
           const guestSearchValues =
             booking.guestDetails.flatMap(
@@ -644,7 +667,7 @@ export default function BookingsPage() {
             .includes(query);
         }
       );
-    }, [bookings, searchQuery]);
+    }, [categoryBookings, searchQuery]);
 
   /* =======================================================
      METRICS
@@ -653,8 +676,8 @@ export default function BookingsPage() {
   const bookingMetrics =
     useMemo(
       () =>
-        createBookingMetrics(bookings),
-      [bookings]
+        createBookingMetrics(categoryBookings),
+      [categoryBookings]
     );
 
   /* =======================================================
@@ -679,7 +702,7 @@ export default function BookingsPage() {
   ======================================================= */
 
   function openAddBookingPage() {
-    router.push("/bookings/add");
+    router.push(`/bookings/add?category=${selectedCategory}`);
   }
 
   function openViewBookingPage(
@@ -1240,6 +1263,7 @@ export default function BookingsPage() {
         {/* =============================================== */}
 
         <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+          {selectedCategory !== "cancelled" ? (
           <Button
             type="button"
             onClick={openAddBookingPage}
@@ -1250,14 +1274,31 @@ export default function BookingsPage() {
               data-icon="inline-start"
             />
 
-            Add New Booking
+            {selectedCategory === "group" ? "Add Group Booking" : selectedCategory === "customise" ? "Add Customised Booking" : "Add New Booking"}
           </Button>
+          ) : null}
         </section>
 
         {/* =============================================== */}
         {/* STATISTICS */}
         {/* =============================================== */}
 
+        <Tabs.Root
+          value={selectedCategory}
+          onValueChange={(value) => {
+            setSelectedCategory(value as BookingCategory);
+            setSelectedBookingIds([]);
+          }}
+          className="flex flex-col gap-5"
+        >
+          <Tabs.List aria-label="Booking categories" className="flex gap-1 overflow-x-auto border-b border-border">
+            {bookingTabs.map((tab) => (
+              <Tabs.Tab key={tab.value} value={tab.value} className="shrink-0 cursor-pointer border-b-2 border-transparent px-4 py-3 text-sm font-bold text-foreground/60 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary data-active:border-primary data-active:text-primary">
+                {tab.label}
+              </Tabs.Tab>
+            ))}
+          </Tabs.List>
+          <Tabs.Panel value={selectedCategory} className="flex flex-col gap-5">
         <section
           data-admin-metric-grid
           className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
@@ -1340,13 +1381,15 @@ export default function BookingsPage() {
             onReviewCancellationRequest={setCancellationRequestBooking}
             onFeedback={openFeedbackDialog}
             totalCount={
-              bookings.length
+              categoryBookings.length
             }
             tourNameById={
               tourNameById
             }
           />
         </section>
+          </Tabs.Panel>
+        </Tabs.Root>
       </div>
     </AdminDashboardShell>
     </>
@@ -2213,6 +2256,14 @@ function BookingActionsMenu({
             {booking.flightDetails?.length ? "Edit flight details" : "Add flight details"}
           </DropdownMenuItem>
           {/* View */}
+
+          <DropdownMenuItem
+            render={<a href={"/bookings/receipts?bookingId=" + encodeURIComponent(booking.id)} />}
+            className="cursor-pointer rounded-sm px-2.5 py-2 text-xs font-semibold"
+          >
+            <FileText className="size-4 text-primary" />
+            View Payment Receipts
+          </DropdownMenuItem>
 
           <DropdownMenuItem
             onClick={() =>

@@ -78,13 +78,15 @@ import {
 } from "@/lib/bookings";
 
 import {
-  listAdminTourDepartures,
-  listAdminTours,
+  createAdminTourApi,
   type AdminTourDeparture,
   type AdminTour,
 } from "@/lib/tours";
 
 import { cn } from "@/lib/utils";
+import { getAdminEnquiry, getEnquiryCategory, listAdminEnquiries, type AdminEnquiry } from "@/lib/enquiries";
+import { getEnquiryBookingPrefill } from "@/lib/enquiry-booking";
+import { getBookingAddContext } from "@/lib/booking-add-context";
 
 /* =========================================================
    TYPES
@@ -1474,6 +1476,11 @@ function BookingInnerPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const enquiryId = searchParams.get("enquiryId") || "";
+  const requestedCategory = searchParams.get("category") || (searchParams.get("scope") === "customise" ? "customise" : "normal");
+  const [groupEnquiries, setGroupEnquiries] = useState<AdminEnquiry[]>([]);
+  const [sourceEnquiryCategory, setSourceEnquiryCategory] = useState<BookingPayload["sourceEnquiryCategory"]>();
+  const [tourScope, setTourScope] = useState<"master" | "customise">("master");
   const toast = useToast();
 
   const slug = useMemo(() => {
@@ -1755,13 +1762,24 @@ function BookingInnerPageContent() {
         if (
           mode === "add"
         ) {
+          const enquiry = enquiryId ? (await getAdminEnquiry(enquiryId)).data.enquiry : null;
+          const context = getBookingAddContext(requestedCategory, enquiry ? getEnquiryCategory(enquiry) : undefined);
+          if (requestedCategory === "group" && !enquiry) {
+            const response = await listAdminEnquiries();
+            if (!isMounted) return;
+            setGroupEnquiries(response.data.enquiries.filter((item) => getEnquiryCategory(item) === "group" && !item.isBlacklisted));
+            setSourceEnquiryCategory(undefined);
+            return;
+          }
+          const scope = context.tourScope;
+          const tourApi = createAdminTourApi(scope);
           const [
             toursResponse,
             departuresResponse,
           ] =
             await Promise.all([
-              listAdminTours(),
-              listAdminTourDepartures(),
+              tourApi.listAdminTours(),
+              tourApi.listAdminTourDepartures(),
             ]);
 
           if (!isMounted) {
@@ -1780,14 +1798,24 @@ function BookingInnerPageContent() {
           );
 
           setSelectedBooking(null);
+          setTourScope(scope);
+          setSourceEnquiryCategory(enquiry ? getEnquiryCategory(enquiry) : undefined);
           setPaymentLinkRequests([]);
 
-          setBookingForm(
-            createEmptyBookingForm(
-              loadedTours[0]
-                ?.tourId || ""
-            )
-          );
+          const initialForm = createEmptyBookingForm(enquiryId ? "" : loadedTours[0]?.tourId || "");
+          if (enquiry) {
+            const prefill = getEnquiryBookingPrefill(enquiry, loadedTours, departuresResponse.data.departures);
+            setSourceEnquiryCategory(prefill.sourceEnquiryCategory);
+            initialForm.tourId = prefill.tourId;
+            initialForm.departureId = prefill.departureId;
+            initialForm.adultCount = String(prefill.adultCount);
+            initialForm.childCount = String(prefill.childCount);
+            initialForm.totalGuest = String(prefill.adultCount + prefill.childCount);
+            initialForm.guestDetails = resizeGuestDetails([], prefill.adultCount + prefill.childCount);
+            initialForm.guestDetails[0] = { ...initialForm.guestDetails[0], ...prefill.lead };
+            initialForm.childDetails = resizeChildDetails([], prefill.childCount);
+          }
+          setBookingForm(initialForm);
 
           return;
         }
@@ -1796,15 +1824,18 @@ function BookingInnerPageContent() {
           VIEW / EDIT
         */
 
+        const bookingsResponse = await listAdminBookings();
+        const savedBooking = bookingsResponse.data.bookings.find((item) => item.id === bookingId);
+        setSourceEnquiryCategory(savedBooking?.sourceEnquiryCategory);
+        const scope = savedBooking?.tourScope || "master";
+        const tourApi = createAdminTourApi(scope);
         const [
-          bookingsResponse,
           toursResponse,
           departuresResponse,
         ] =
           await Promise.all([
-            listAdminBookings(),
-            listAdminTours(),
-            listAdminTourDepartures(),
+            tourApi.listAdminTours(),
+            tourApi.listAdminTourDepartures(),
           ]);
 
         if (!isMounted) {
@@ -1842,6 +1873,7 @@ function BookingInnerPageContent() {
             booking
           )
         );
+        setTourScope(scope);
 
         setSelectedBooking(
           booking
@@ -1894,6 +1926,8 @@ function BookingInnerPageContent() {
     };
   }, [
     bookingId,
+    enquiryId,
+    requestedCategory,
     mode,
     toast,
   ]);
@@ -1940,6 +1974,7 @@ function BookingInnerPageContent() {
         const response =
           await listAdminBookingAccommodationOptions(
             {
+              tourScope,
               departureId:
                 bookingForm.departureId,
               adultCount,
@@ -2026,6 +2061,7 @@ function BookingInnerPageContent() {
     };
   }, [
     bookingForm.adultCount,
+    tourScope,
     bookingForm.childCount,
     bookingForm.childDetails,
     bookingForm.departureId,
@@ -2651,6 +2687,8 @@ function BookingInnerPageContent() {
         createBookingPayload(
           form
         );
+      payload.tourScope = tourScope;
+      if (sourceEnquiryCategory) payload.sourceEnquiryCategory = sourceEnquiryCategory;
 
       /*
         EDIT
@@ -2724,14 +2762,14 @@ function BookingInnerPageContent() {
 
   const cardTitle =
     mode === "add"
-      ? "Add Booking"
+      ? getBookingAddContext(requestedCategory, sourceEnquiryCategory).title
       : mode === "edit"
         ? "Edit Booking"
         : "Booking Details";
 
   const cardDescription =
     mode === "add"
-      ? "Create a new tour booking."
+      ? tourScope === "customise" ? "Create a booking for a customised tour." : sourceEnquiryCategory === "group" ? "Create a booking from the selected Group Enquiry." : "Create a new tour booking."
       : mode === "edit"
         ? "Update booking guest and accommodation details."
         : "Review complete booking information.";
@@ -2847,8 +2885,27 @@ function BookingInnerPageContent() {
         {/* BOOKING FORM */}
         {/* ================================================= */}
 
+        {!isLoading && !loadError && mode === "add" && requestedCategory === "group" && !enquiryId ? (
+          <section className="rounded-sm border border-border bg-white p-6 shadow-sm shadow-stone-200/40">
+            <h2 className="text-lg font-bold text-foreground">Add Group Booking</h2>
+            <p className="mt-1 mb-5 text-xs text-foreground/55">Select a Group Enquiry to prefill its tour, travellers and lead contact.</p>
+            {groupEnquiries.length ? (
+              <FormField label="Group Enquiry" required>
+                <select className={inputClassName} value="" onChange={(event) => {
+                  if (event.target.value) router.push(`/bookings/add?category=group&enquiryId=${encodeURIComponent(event.target.value)}`);
+                }}>
+                  <option value="" disabled>Select Group Enquiry</option>
+                  {groupEnquiries.map((enquiry) => (
+                    <option key={enquiry.id} value={enquiry.id}>{enquiry.enquiryReference} — {enquiry.name} — {enquiry.tourName || enquiry.subject}</option>
+                  ))}
+                </select>
+              </FormField>
+            ) : <p className="text-sm text-foreground/60">No Group Enquiries are available. Add a Group Enquiry in Enquiries first.</p>}
+          </section>
+        ) : null}
+
         {!isLoading &&
-        !loadError ? (
+        !loadError && !(mode === "add" && requestedCategory === "group" && !enquiryId) ? (
           <form
             ref={bookingFormRef}
             onSubmit={
@@ -2898,7 +2955,7 @@ function BookingInnerPageContent() {
               </FormSectionTitle>
 
               <FormField
-                label="Tour ID"
+                label={tourScope === "customise" ? "Customise Tour ID" : "Tour ID"}
                 required
               >
                 <Select

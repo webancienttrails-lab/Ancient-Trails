@@ -183,6 +183,11 @@
   }
 }
 
+/* Include native buttons and button components rendered inside popup portals. */
+:is(button, [role="button"], [data-slot="button"], input[type="button"], input[type="submit"], input[type="reset"]):not(:disabled, [aria-disabled="true"], [data-disabled]:not([data-disabled="false"]), [data-readonly]:not([data-readonly="false"])) {
+  cursor: pointer !important;
+}
+
 .admin-dashboard-main > div > header {
   display: none !important;
 }

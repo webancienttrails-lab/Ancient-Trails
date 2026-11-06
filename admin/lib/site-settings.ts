@@ -13,6 +13,7 @@ export type SiteContactSettings = {
 export type SiteSocialLinks = { facebook: string; instagram: string; linkedin: string; youtube: string; };
 
 export type SiteSettings = {
+  taxes?: SiteTaxSettings;
   quoteAssistanceTitle?: string;
   logo?: string;
   googleBusinessReviewsUrl?: string;
@@ -24,6 +25,14 @@ export type SiteSettings = {
   createdAt: string | null;
   updatedAt: string | null;
 };
+
+export type SiteTaxSettings = { sgstPercentage: number; cgstPercentage: number; tcsPercentage: number };
+
+export function updateAdminTaxSettings(taxes: SiteTaxSettings) {
+  return apiRequest<{ settings: SiteSettings }>("/api/admin/site-settings/taxes", {
+    method: "PATCH", headers: getAdminHeaders(), body: JSON.stringify(taxes),
+  });
+}
 
 export type SiteSettingsPayload = {
   quoteAssistanceTitle?: string;
