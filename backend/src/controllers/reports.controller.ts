@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { splitBookingGst } from "../services/booking/booking-tax-settings";
 import { Booking } from "../models/booking.model";
 import { Enquiry } from "../models/enquiry.model";
 import { Tour } from "../models/tour.model";
@@ -27,7 +28,7 @@ export async function getAdminReport(request: Request, response: Response): Prom
 
 export async function getAdminReportInvoices(_request: Request, response: Response): Promise<void> {
   const [bookings, tours] = await Promise.all([
-    Booking.find({ archivedAt: null }).select("bookingReference tourId createdAt paymentCapturedAt paymentStatus totalGuest guestDetails subtotal gstAmount tcsAmount airFlightCharges grandTotal packageTotal").sort({ createdAt: -1 }).lean(),
+    Booking.find({ archivedAt: null }).select("bookingReference tourId createdAt paymentCapturedAt paymentStatus totalGuest guestDetails subtotal gstPercentage gstAmount tcsAmount airFlightCharges grandTotal packageTotal pricingSnapshot").sort({ createdAt: -1 }).lean(),
     Tour.find({}).select("tourId tourName").lean(),
   ]);
   const tourNames = new Map(tours.map(tour => [tour.tourId, tour.tourName]));
@@ -46,8 +47,7 @@ export async function getAdminReportInvoices(_request: Request, response: Respon
         tourId: booking.tourId,
         tourName: tourNames.get(booking.tourId) || booking.tourId,
         beforeTax: booking.subtotal || 0,
-        cgst: Math.round((booking.gstAmount || 0) / 2),
-        sgst: (booking.gstAmount || 0) - Math.round((booking.gstAmount || 0) / 2),
+        ...splitBookingGst(booking),
         tcs: booking.tcsAmount || 0,
         withTax: (booking.subtotal || 0) + (booking.gstAmount || 0) + (booking.tcsAmount || 0),
         fare: booking.airFlightCharges || 0,

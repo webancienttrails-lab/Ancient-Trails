@@ -17,8 +17,8 @@ export function ensureSmartCollectIndexes() {
 }
 
 export type CollectionHooks = {
-  reserveSeats: (id: string, count: number, session: ClientSession) => Promise<unknown>;
-  restoreSeats: (id: string, count: number, session: ClientSession) => Promise<unknown>;
+  reserveSeats: (id: string, count: number, session: ClientSession, tourScope?: "master" | "customise") => Promise<unknown>;
+  restoreSeats: (id: string, count: number, session: ClientSession, tourScope?: "master" | "customise") => Promise<unknown>;
   recordCollection: (booking: BookingDocument, paymentId: string, amount: number) => boolean;
   notifyConfirmation: (booking: BookingDocument) => void;
 };
@@ -184,12 +184,12 @@ export async function processBankPayment(accountId: string, paymentId: string, g
         const activeHold = held >= booking.totalGuest && Boolean(booking.holdExpiresAt && booking.holdExpiresAt > new Date());
         if (!activeHold) {
           if (held > 0) {
-            await hooks.restoreSeats(departureId, held, session);
+            await hooks.restoreSeats(departureId, held, session, booking.tourScope);
             booking.heldSeatCount = 0;
             booking.holdExpiresAt = null;
             await booking.save({ session });
           }
-          const reserved = await hooks.reserveSeats(departureId, booking.totalGuest, session);
+          const reserved = await hooks.reserveSeats(departureId, booking.totalGuest, session, booking.tourScope);
           if (!reserved) { credit = 0; review = payment.amount; reason = "Seats unavailable; payment requires admin review"; }
         }
       }

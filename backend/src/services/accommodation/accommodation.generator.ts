@@ -931,16 +931,18 @@ export function generateOccupancyOptions({
   adults,
   children,
   selectedDeparture,
+  allowLargeGroups = false,
 }: {
   adults: number;
   children: ChildInput[];
   selectedDeparture: PricedDeparture;
+  allowLargeGroups?: boolean;
 }): AccommodationOption[] {
   if (adults < 1) {
     throw new Error("At least one adult is required.");
   }
 
-  if (adults + children.length > 25) {
+  if (!allowLargeGroups && adults + children.length > 25) {
     throw new Error("A maximum of 25 travellers can be booked at once.");
   }
 

@@ -155,3 +155,7 @@ for (const paymentOption of ['advance', 'full']) {
     });
   }
 }
+
+// Existing booking fixtures keep their original tax rates.
+const taxSettings = require("../dist/services/booking/booking-tax-settings");
+test.beforeEach(t => { t.mock.method(taxSettings, "getBookingTaxSettings", async () => ({ ...taxSettings.defaultBookingTaxSettings })); });

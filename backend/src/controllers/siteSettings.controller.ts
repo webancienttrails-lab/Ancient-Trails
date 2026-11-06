@@ -1,4 +1,5 @@
 import { saveSiteLogo } from "../services/site-logo-upload";
+import { resolveBookingTaxSettings } from "../services/booking/booking-tax-settings";
 import type { Request, Response } from "express";
 import { z } from "zod";
 
@@ -80,6 +81,7 @@ function getContactSettings(settings?: SiteSettingsDocument | null): ISiteContac
 
 function formatSiteSettings(settings?: SiteSettingsDocument | null) {
   return {
+    taxes: resolveBookingTaxSettings(settings?.taxes),
     quoteAssistanceTitle: settings?.quoteAssistanceTitle || "Looking for assistance?",
     logo: settings?.logo || "",
     googleBusinessReviewsUrl: settings?.googleBusinessReviewsUrl || "",
@@ -173,6 +175,26 @@ export async function uploadSiteLogo(request: Request, response: Response): Prom
   const logo = await saveSiteLogo(request.file);
   const settings = await SiteSettings.findOneAndUpdate({ key: siteSettingsKey }, { $set: { logo }, $setOnInsert: { key: siteSettingsKey, contact: defaultContactSettings } }, { returnDocument: "after", upsert: true, setDefaultsOnInsert: true });
   response.status(200).json({ success: true, message: "Site logo updated successfully", data: { settings: formatSiteSettings(settings) } });
+}
+
+const taxPercentageSchema = z.number().min(0).max(100).multipleOf(0.01);
+const taxSettingsPayloadSchema = z.object({
+  sgstPercentage: taxPercentageSchema,
+  cgstPercentage: taxPercentageSchema,
+  tcsPercentage: taxPercentageSchema,
+}).strict().refine(taxes => taxes.sgstPercentage + taxes.cgstPercentage <= 100, {
+  message: "Combined SGST and CGST must not exceed 100%",
+});
+
+export async function updateTaxSettings(request: Request, response: Response): Promise<void> {
+  const parsed = taxSettingsPayloadSchema.safeParse(request.body);
+  if (!parsed.success) throw new HttpError(400, "Enter valid tax percentages from 0 to 100 with up to two decimal places", parsed.error.issues);
+  const settings = await SiteSettings.findOneAndUpdate(
+    { key: siteSettingsKey },
+    { $set: { taxes: parsed.data }, $setOnInsert: { key: siteSettingsKey, contact: defaultContactSettings } },
+    { returnDocument: "after", setDefaultsOnInsert: true, runValidators: true, upsert: true }
+  );
+  response.status(200).json({ success: true, message: "Tax settings saved successfully", data: { settings: formatSiteSettings(settings) } });
 }
 export async function resetSiteLogo(_request: Request, response: Response): Promise<void> {
   const settings = await SiteSettings.findOneAndUpdate({ key: siteSettingsKey }, { $set: { logo: "" }, $setOnInsert: { key: siteSettingsKey, contact: defaultContactSettings } }, { returnDocument: "after", upsert: true, setDefaultsOnInsert: true });

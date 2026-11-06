@@ -1,9 +1,12 @@
+import { bookingTourModel, bookingDepartureModel, type BookingTourScope } from "../services/booking/booking-tour-scope";
+import { getBookingTaxSettings, getSavedBookingTaxSettings } from "../services/booking/booking-tax-settings";
 import { normalizeMobileNumber } from "../utils/mobileNumber";
 import { calculateDeposit } from "../services/booking/booking.deposit";
 import { adjustBookingTcs } from "../services/booking/booking.pricing";
 import { resolvePrebookingKycUploads, signPrebookingKycUpload } from "../services/booking/booking.prebooking-kyc";
 import { getBookingKycDocumentTypes, getTravellerKycDocumentTypes, hasRequiredBookingKycDocuments, isTravellerTcsExempt } from "../services/booking/booking.kyc";
 import { bookingTravelDetailsSchema } from "../services/booking/booking.travel-details";
+import { offlineReceiptHistory } from "../services/booking/booking.receipts";
 import { PUBLIC_BOOKING_GST_PERCENTAGE } from "../config/booking-pricing";
 import { withPaymentOrderLock } from "../services/booking/booking.order-lock";
 import { queueBookingNotifications, stageNotificationEvent } from "../services/notifications/notification-events.service";
@@ -51,9 +54,8 @@ import {
   type DestinationDocument,
 } from "../models/destination.model";
 import { Expert, type ExpertDocument } from "../models/expert.model";
-import { Tour, type TourDocument } from "../models/tour.model";
+import { type TourDocument } from "../models/tour.model";
 import {
-  TourDeparture,
   type TourDepartureDocument,
 } from "../models/tourDeparture.model";
 import {
@@ -231,13 +233,14 @@ const accommodationDetailsPayloadSchema = z.object({
 });
 
 const adminAccommodationOptionsPayloadSchema = z.object({
+  tourScope: z.enum(["master", "customise"]).default("master"),
   bookingId: z.string().optional(),
   departureId: requiredCodeField("Departure ID", 40),
-  adultCount: nonNegativeIntegerField("Adult count", 25).min(
+  adultCount: z.coerce.number().int().min(
     1,
     "At least one adult is required"
   ),
-  childDetails: z.array(childDetailsPayloadSchema).max(25).default([]),
+  childDetails: z.array(childDetailsPayloadSchema).default([]),
   gstPercentage: z.coerce.number().min(0).max(100).default(0),
 });
 
@@ -267,6 +270,7 @@ const bookingPayloadSchema = z
     emergencyContactName: z.string().trim().max(120).optional(),
     emergencyContactMobileNumber: optionalMobileNumberField.optional(),
     tourId: requiredCodeField("Tour ID", 40),
+    tourScope: z.enum(["master", "customise"]).default("master"),
     departureId: requiredCodeField("Departure ID", 40).optional(),
     selectedAccommodationOptionId: z.string().trim().max(200).optional(),
     paymentOption: z.enum(["advance", "full"]).default("advance"),
@@ -391,6 +395,25 @@ const bookingPayloadSchema = z
       });
     }
   });
+
+// Admin bookings can include large groups; public request limits remain unchanged.
+const adminGuestCountSchema = z.coerce.number().int().min(0);
+const adminBookingPayloadSchema = bookingPayloadSchema.safeExtend({
+  sourceEnquiryCategory: z.enum(["normal", "group", "customise"]).optional(),
+  totalGuest: adminGuestCountSchema.min(1),
+  adultCount: adminGuestCountSchema,
+  childCount: adminGuestCountSchema,
+  childDetails: z.array(childDetailsPayloadSchema).default([]),
+  guestDetails: z.array(guestDetailsPayloadSchema).default([]),
+  travellers: z.array(travellerPayloadSchema).default([]),
+  accommodationDetails: z.object({
+    singleOccupancyOneRoom: adminGuestCountSchema,
+    singleOccupancyTwoRooms: adminGuestCountSchema,
+    doubleOccupancy: adminGuestCountSchema,
+    twinOccupancy: adminGuestCountSchema,
+    tripleOccupancy: adminGuestCountSchema,
+  }).default({ singleOccupancyOneRoom: 0, singleOccupancyTwoRooms: 0, doubleOccupancy: 0, twinOccupancy: 0, tripleOccupancy: 0 }),
+});
 
 const airFlightChargesPayloadSchema = z.object({
   airfareIncludedInTotal: z.boolean().optional(),
@@ -704,6 +727,7 @@ export async function updateBookingTravelDetails(request: Request, response: Res
 export function formatBooking(booking: BookingDocument, tour?: { inclusions?: string[]; exclusions?: string[] } | null) {
   return {
     id: booking._id.toString(),
+    invoiceOverrides: booking.invoiceOverrides || {},
     hotelDetails: booking.hotelDetails || [],
     flightDetails: booking.flightDetails || [],
     cancellation: booking.cancellation || null,
@@ -714,6 +738,8 @@ export function formatBooking(booking: BookingDocument, tour?: { inclusions?: st
       booking.bookingStatus ||
       (booking.paymentStatus === "paid" ? "confirmed" : "payment_pending"),
     tourId: booking.tourId,
+    tourScope: booking.tourScope || "master",
+    sourceEnquiryCategory: booking.sourceEnquiryCategory,
     departureId: booking.departureId || "",
     selectedAccommodationOptionId: booking.selectedAccommodationOptionId || "",
     paymentOption: booking.paymentOption || "advance",
@@ -801,8 +827,8 @@ export function formatBooking(booking: BookingDocument, tour?: { inclusions?: st
   };
 }
 
-async function assertTourExists(tourId: string): Promise<void> {
-  const tourExists = await Tour.exists({ tourId });
+async function assertTourExists(tourId: string, scope?: BookingTourScope): Promise<void> {
+  const tourExists = await bookingTourModel(scope).exists({ tourId });
 
   if (!tourExists) {
     throw new HttpError(400, `Tour ID ${tourId} does not exist`);
@@ -880,7 +906,8 @@ function toBookingTravellers(
 
 async function createSnapshotPayload(
   payload: z.infer<typeof bookingPayloadSchema>,
-  existingBooking?: BookingDocument
+  existingBooking?: BookingDocument,
+  allowLargeGroups = false
 ) {
   if (
     !payload.departureId ||
@@ -890,7 +917,7 @@ async function createSnapshotPayload(
     return null;
   }
 
-  const departure = await TourDeparture.findOne({
+  const departure = await bookingDepartureModel(payload.tourScope).findOne({
     departureId: payload.departureId,
   });
 
@@ -902,17 +929,19 @@ async function createSnapshotPayload(
 
   if (
     existingBooking &&
+    (existingBooking.tourScope || "master") === payload.tourScope &&
     getBookingDepartureId(existingBooking) === payload.departureId
   ) {
     pricedDeparture.seatsAvailable += getBookingReservedSeatCount(existingBooking);
   }
 
-  const tour = await Tour.findOne({ tourId: departure.tourId });
+  const tour = await bookingTourModel(payload.tourScope).findOne({ tourId: departure.tourId });
   const departureValidation = validateDepartureForBooking(
     pricedDeparture,
     payload.totalGuest,
     new Date(),
-    tour?.durationDn
+    tour?.durationDn,
+    allowLargeGroups
   );
 
   if (!departureValidation.isValid) {
@@ -920,6 +949,7 @@ async function createSnapshotPayload(
   }
 
   const options = generateOccupancyOptions({
+    allowLargeGroups,
     adults: payload.adultCount,
     children: payload.travellers
       .filter((traveller) => traveller.type === "child")
@@ -939,6 +969,7 @@ async function createSnapshotPayload(
   }
 
   const pricingSnapshot = createPricingSnapshot({
+    taxRates: existingBooking ? getSavedBookingTaxSettings(existingBooking) : await getBookingTaxSettings(),
     accommodationOption: selectedAccommodationOption,
     departure: pricedDeparture,
     gstPercentage: payload.gstPercentage,
@@ -991,9 +1022,10 @@ function createScheduledDepartureReservationFilter(
 export async function reserveDepartureSeats(
   departureId: string | undefined,
   totalGuest: number,
-  session?: mongoose.ClientSession
+  session?: mongoose.ClientSession,
+  tourScope?: BookingTourScope
 ) {
-  const updatedDeparture = await TourDeparture.findOneAndUpdate(
+  const updatedDeparture = await bookingDepartureModel(tourScope).findOneAndUpdate(
     createScheduledDepartureReservationFilter(departureId, totalGuest),
     {
       $inc: {
@@ -1026,7 +1058,8 @@ export async function reserveDepartureSeats(
 export async function restoreDepartureSeats(
   departureId: string | undefined,
   seatCount: number,
-  session?: mongoose.ClientSession
+  session?: mongoose.ClientSession,
+  tourScope?: BookingTourScope
 ) {
   const seatsToRestore = Math.max(0, Math.trunc(seatCount || 0));
 
@@ -1034,7 +1067,7 @@ export async function restoreDepartureSeats(
     return;
   }
 
-  const departure = await TourDeparture.findOne({ departureId }).session(
+  const departure = await bookingDepartureModel(tourScope).findOne({ departureId }).session(
     session || null
   );
 
@@ -1063,7 +1096,7 @@ async function createBookingDraft(
   savedAirfareEligibility?: boolean,
   existingBooking?: BookingDocument
 ): Promise<BookingDraft> {
-  const tour = await Tour.findOne({ tourId: payload.tourId });
+  const tour = await bookingTourModel(payload.tourScope).findOne({ tourId: payload.tourId });
   const airfareExcluded = savedAirfareEligibility ?? isAirfareExcluded(tour);
   if (payload.airFlightCharges > 0 && !airfareExcluded) {
     throw new HttpError(400, "Additional airfare is only allowed when flights are excluded from the tour price");
@@ -1126,7 +1159,7 @@ function mergeTravellerKycDocuments(
 }
 
 async function getRequiredBookingKycTypes(booking: BookingDocument) {
-  const tour = await Tour.findOne({ tourId: booking.tourId });
+  const tour = await bookingTourModel(booking.tourScope).findOne({ tourId: booking.tourId });
   const destination = tour?.destinationId
     ? await Destination.findOne({ destinationId: tour.destinationId })
     : null;
@@ -1155,7 +1188,7 @@ async function sendKycCompletionAlertIfNeeded(booking: BookingDocument) {
 
   try {
     const [tour] = await Promise.all([
-      Tour.findOne({ tourId: booking.tourId }),
+      bookingTourModel(booking.tourScope).findOne({ tourId: booking.tourId }),
     ]);
     const leadGuest = booking.guestDetails[0];
     const result = await sendBookingKycCompletedAlertEmail({
@@ -1375,14 +1408,16 @@ async function createReservedBookingForPayment({
           await restoreDepartureSeats(
             bookingToHold.departureId,
             bookingToHold.heldSeatCount || 0,
-            databaseSession
+            databaseSession,
+            bookingToHold.tourScope
           );
         }
 
         const updatedDeparture = await reserveDepartureSeats(
           bookingDraft.departureId,
           bookingDraft.totalGuest,
-          databaseSession
+          databaseSession,
+          bookingDraft.tourScope
         );
 
         if (!updatedDeparture) {
@@ -1486,7 +1521,8 @@ async function releasePaymentSessionReservation(
         await restoreDepartureSeats(
           departureId,
           booking.heldSeatCount || 0,
-          databaseSession
+          databaseSession,
+          booking.tourScope
         );
         booking.heldSeatCount = 0;
         booking.holdExpiresAt = null;
@@ -1539,7 +1575,8 @@ async function releaseExpiredHoldForBooking(
   await restoreDepartureSeats(
     departureId,
     booking.heldSeatCount || 0,
-    databaseSession
+    databaseSession,
+    booking.tourScope
   );
 
   await BookingPaymentSession.updateMany(
@@ -1595,7 +1632,8 @@ async function expireRecoveryForBooking(
     await restoreDepartureSeats(
       departureId,
       heldSeatCount,
-      databaseSession
+      databaseSession,
+      activeHoldBooking?.tourScope
     );
   }
 
@@ -1733,6 +1771,7 @@ function createPendingBookingKey(payload: BookingPayload) {
     .createHash("sha256")
     .update(
       [
+        ...(payload.tourScope === "customise" ? ["customise"] : []),
         payload.tourId,
         payload.departureId || "",
         payload.selectedAccommodationOptionId || "",
@@ -2552,14 +2591,16 @@ async function createPaidBookingFromPaymentSession({
             await restoreDepartureSeats(
               departureId,
               booking.heldSeatCount || 0,
-              databaseSession
+              databaseSession,
+              booking.tourScope
             );
           }
 
           const updatedDeparture = await reserveDepartureSeats(
             departureId,
             booking.totalGuest,
-            databaseSession
+            databaseSession,
+            booking.tourScope
           );
 
           if (!updatedDeparture) {
@@ -2907,9 +2948,9 @@ async function sendRecoveryEmailForBooking(booking: BookingDocument) {
   }
 
   const [tour, departure] = await Promise.all([
-    Tour.findOne({ tourId: booking.tourId }),
+    bookingTourModel(booking.tourScope).findOne({ tourId: booking.tourId }),
     booking.departureId
-      ? TourDeparture.findOne({ departureId: booking.departureId })
+      ? bookingDepartureModel(booking.tourScope).findOne({ departureId: booking.departureId })
       : Promise.resolve(null),
   ]);
   const amounts = getBookingEmailAmounts(booking);
@@ -2992,7 +3033,7 @@ async function sendRecoveryWhatsappIfNeeded(booking: BookingDocument) {
 
     const leadGuest = claimedBooking.guestDetails[0];
     const recipientNumber = normalizeWhatsappRecipientNumber(leadGuest);
-    const tour = await Tour.findOne({ tourId: claimedBooking.tourId });
+    const tour = await bookingTourModel(claimedBooking.tourScope).findOne({ tourId: claimedBooking.tourId });
     const result = await sendBookingRecoveryWhatsapp({
       crqId: `booking_recovery_${claimedBooking._id.toString()}`,
       recipientNumber,
@@ -3231,9 +3272,9 @@ async function sendBookingConfirmationEmailIfNeeded(
     }
 
     const [tour, departure] = await Promise.all([
-      Tour.findOne({ tourId: claimedBooking.tourId }),
+      bookingTourModel(claimedBooking.tourScope).findOne({ tourId: claimedBooking.tourId }),
       claimedBooking.departureId
-        ? TourDeparture.findOne({ departureId: claimedBooking.departureId })
+        ? bookingDepartureModel(claimedBooking.tourScope).findOne({ departureId: claimedBooking.departureId })
         : Promise.resolve(null),
     ]);
     const destinationId = departure?.destinationId || tour?.destinationId || "";
@@ -3397,9 +3438,9 @@ async function sendBookingConfirmationWhatsappIfNeeded(
     }
 
     const [tour, departure] = await Promise.all([
-      Tour.findOne({ tourId: claimedBooking.tourId }),
+      bookingTourModel(claimedBooking.tourScope).findOne({ tourId: claimedBooking.tourId }),
       claimedBooking.departureId
-        ? TourDeparture.findOne({ departureId: claimedBooking.departureId })
+        ? bookingDepartureModel(claimedBooking.tourScope).findOne({ departureId: claimedBooking.departureId })
         : Promise.resolve(null),
     ]);
     const leadGuest = claimedBooking.guestDetails[0];
@@ -3562,6 +3603,7 @@ function formatPublicExpert(expert: ExpertDocument | null) {
 export async function createOfflineBooking(request: Request, response: Response): Promise<void> {
   const payload = parseRequestBody(bookingPayloadSchema, {
     ...request.body,
+    tourScope: "master",
     gstPercentage: PUBLIC_BOOKING_GST_PERCENTAGE,
     amountPaid: 0,
     airFlightCharges: 0,
@@ -3571,7 +3613,7 @@ export async function createOfflineBooking(request: Request, response: Response)
   if (!payload.departureId || !payload.selectedAccommodationOptionId) {
     throw new HttpError(400, "Select a departure and accommodation before requesting offline payment");
   }
-  await assertTourExists(payload.tourId);
+  await assertTourExists(payload.tourId, payload.tourScope);
   const pendingBookingKey = 'offline:' + crypto.createHash('sha256').update(createPendingBookingKey(payload) + JSON.stringify(payload.guestDetails) + JSON.stringify(payload.travellers)).digest('hex');
   let booking = await Booking.findOne({ pendingBookingKey });
   if (!booking) {
@@ -3629,10 +3671,10 @@ export async function createBookingPaymentOrder(
   response: Response
 ): Promise<void> {
   const payload = parseRequestBody(bookingPayloadSchema, {
-    ...request.body, gstPercentage: PUBLIC_BOOKING_GST_PERCENTAGE,
+    ...request.body, tourScope: "master", gstPercentage: PUBLIC_BOOKING_GST_PERCENTAGE,
   });
   if (payload.airFlightCharges !== 0 || payload.airfareIncludedInTotal) throw new HttpError(400, "Only an administrator can add actual airfare");
-  const tour = await Tour.findOne({ tourId: payload.tourId });
+  const tour = await bookingTourModel(payload.tourScope).findOne({ tourId: payload.tourId });
 
   if (!tour) {
     throw new HttpError(400, `Tour ID ${payload.tourId} does not exist`);
@@ -3786,7 +3828,7 @@ async function createBookingBalancePaymentOrderInternal(
     const receipt = createReceipt();
     const { keyId } = getRazorpayCredentials();
     const razorpay = createRazorpayClient();
-    const tour = await Tour.findOne({ tourId: booking.tourId });
+    const tour = await bookingTourModel(booking.tourScope).findOne({ tourId: booking.tourId });
 
     const existingSession = await BookingBalancePaymentSession.findOne({
       bookingId: booking._id, status: "pending", amount,
@@ -4149,9 +4191,9 @@ async function getBookingResult(
       throw new HttpError(404, offlineSubmission ? "Booking request not found" : "Booking confirmation not found");
     }
 
-    const tour = await Tour.findOne({ tourId: booking.tourId });
+    const tour = await bookingTourModel(booking.tourScope).findOne({ tourId: booking.tourId });
     const departure = booking.departureId
-      ? await TourDeparture.findOne({ departureId: booking.departureId })
+      ? await bookingDepartureModel(booking.tourScope).findOne({ departureId: booking.departureId })
       : null;
     const expert = tour?.expertId
       ? await Expert.findOne({ expertId: tour.expertId })
@@ -4188,9 +4230,9 @@ export async function getBookingRecovery(
 
     const freshBooking = (await Booking.findById(booking._id)) || booking;
     const [tour, departure] = await Promise.all([
-      Tour.findOne({ tourId: freshBooking.tourId }),
+      bookingTourModel(freshBooking.tourScope).findOne({ tourId: freshBooking.tourId }),
       freshBooking.departureId
-        ? TourDeparture.findOne({ departureId: freshBooking.departureId })
+        ? bookingDepartureModel(freshBooking.tourScope).findOne({ departureId: freshBooking.departureId })
         : Promise.resolve(null),
     ]);
 
@@ -4251,9 +4293,9 @@ export async function createBookingRecoveryPaymentOrder(
     }
 
     const [tour, departure] = await Promise.all([
-      Tour.findOne({ tourId: freshBooking.tourId }),
+      bookingTourModel(freshBooking.tourScope).findOne({ tourId: freshBooking.tourId }),
       freshBooking.departureId
-        ? TourDeparture.findOne({ departureId: freshBooking.departureId })
+        ? bookingDepartureModel(freshBooking.tourScope).findOne({ departureId: freshBooking.departureId })
         : Promise.resolve(null),
     ]);
     const recoveryState = formatBookingRecoveryPayload({
@@ -4577,7 +4619,7 @@ export async function prepareBookingPaymentLink(
     obligationKey,
     status: { $in: ["created", "sent"] },
   }).sort({ createdAt: -1 });
-  const tour = await Tour.findOne({ tourId: booking.tourId });
+  const tour = await bookingTourModel(booking.tourScope).findOne({ tourId: booking.tourId });
   let paymentLinkRequest = existingActiveRequest;
 
   if (
@@ -4787,7 +4829,7 @@ export async function resendAdminBookingPaymentLinkWhatsapp(
       throw new HttpError(400, "Only active payment links can be resent");
     }
 
-    const tour = await Tour.findOne({ tourId: booking.tourId });
+    const tour = await bookingTourModel(booking.tourScope).findOne({ tourId: booking.tourId });
     const sentPaymentLinkRequest = await sendWhatsappForPaymentLinkRequest({
       booking,
       paymentLinkRequest,
@@ -4970,7 +5012,7 @@ export async function cancelPendingBooking(
           : Math.max(0, booking.heldSeatCount || 0);
 
         if (reservedSeatCount > 0) {
-          const departure = await restoreDepartureSeats(departureId, reservedSeatCount, session);
+          const departure = await restoreDepartureSeats(departureId, reservedSeatCount, session, booking.tourScope);
           if (!departure) throw new HttpError(409, "Booking departure was not found; seats could not be released");
           releasedSeatCount = reservedSeatCount;
         }
@@ -5024,7 +5066,7 @@ export async function cancelPendingBooking(
     queueBookingNotifications(savedBooking.id);
     const departureId = getBookingDepartureId(savedBooking);
     const departure = departureId
-      ? await TourDeparture.findOne({ departureId }).select("seatsAvailable").lean()
+      ? await bookingDepartureModel(savedBooking.tourScope).findOne({ departureId }).select("seatsAvailable").lean()
       : null;
 
     response.status(200).json({
@@ -5515,22 +5557,24 @@ export async function listTravellerBookings(
         .filter((departureId): departureId is string => Boolean(departureId))
     )
   );
-  const [tours, departures] = await Promise.all([
-    Tour.find({ tourId: { $in: tourIds } }).exec(),
-    TourDeparture.find({ departureId: { $in: departureIds } }).exec(),
-  ]);
-  const toursById = new Map(tours.map((tour) => [tour.tourId, tour]));
-  const departuresById = new Map(
-    departures.map((departure) => [departure.departureId, departure])
-  );
+  const scopes = [...new Set(bookings.map(booking => booking.tourScope || "master"))];
+  const catalogues = await Promise.all(scopes.map(async (scope) => {
+    const [tours, departures] = await Promise.all([
+      bookingTourModel(scope).find({ tourId: { $in: tourIds } }).exec(),
+      bookingDepartureModel(scope).find({ departureId: { $in: departureIds } }).exec(),
+    ]);
+    return { scope, tours, departures };
+  }));
+  const toursById = new Map(catalogues.flatMap(({ scope, tours }) => tours.map(tour => [scope + ":" + tour.tourId, tour] as const)));
+  const departuresById = new Map(catalogues.flatMap(({ scope, departures }) => departures.map(departure => [scope + ":" + departure.departureId, departure] as const)));
   const destinationIds: string[] = Array.from(
     new Set(
       bookings
         .map((booking) => {
           const departure = booking.departureId
-            ? departuresById.get(booking.departureId)
+            ? departuresById.get((booking.tourScope || "master") + ":" + booking.departureId)
             : null;
-          const tour = toursById.get(booking.tourId);
+          const tour = toursById.get((booking.tourScope || "master") + ":" + booking.tourId);
 
           return departure?.destinationId || tour?.destinationId || "";
         })
@@ -5551,9 +5595,9 @@ export async function listTravellerBookings(
     message: "Traveller bookings fetched successfully",
     data: {
       bookings: bookings.map((booking) => {
-        const tour = toursById.get(booking.tourId) || null;
+        const tour = toursById.get((booking.tourScope || "master") + ":" + booking.tourId) || null;
         const departure = booking.departureId
-          ? departuresById.get(booking.departureId) || null
+          ? departuresById.get((booking.tourScope || "master") + ":" + booking.departureId) || null
           : null;
         const destinationId =
           departure?.destinationId || tour?.destinationId || "";
@@ -5622,9 +5666,13 @@ export async function listBookings(
     bookings = [...bookings, ...additionalBookings].sort((first, second) => second.createdAt.getTime() - first.createdAt.getTime());
   }
 
-  const airfareTours = await Tour.find({ tourId: { $in: [...new Set(bookings.map(booking => booking.tourId))] } })
-    .select("tourId inclusions exclusions");
-  const airfareToursById = new Map(airfareTours.map(tour => [tour.tourId, tour]));
+  const airfareScopes = [...new Set(bookings.map(booking => booking.tourScope || "master"))];
+  const airfareCatalogues = await Promise.all(airfareScopes.map(async (scope) => {
+    const tours = await bookingTourModel(scope).find({ tourId: { $in: bookings.filter(booking => (booking.tourScope || "master") === scope).map(booking => booking.tourId) } })
+      .select("tourId inclusions exclusions");
+    return tours.map(tour => [scope + ":" + tour.tourId, tour] as const);
+  }));
+  const airfareToursById = new Map(airfareCatalogues.flat());
   const bankTransferBookingIds = process.env.RAZORPAY_KEY_ID && bookings.length
     ? await SmartCollectAccount.distinct("bookingId", {
         bookingId: { $in: bookings.map(booking => booking._id) },
@@ -5645,7 +5693,7 @@ export async function listBookings(
     message: "Bookings fetched successfully",
     data: {
       bookings: bookings.map(booking => ({
-        ...formatBooking(booking, airfareToursById.get(booking.tourId)),
+        ...formatBooking(booking, airfareToursById.get((booking.tourScope || "master") + ":" + booking.tourId)),
         cancellationRequest: cancellationByBookingId.has(String(booking._id)) ? {
           ...cancellationByBookingId.get(String(booking._id)),
           id: String(cancellationByBookingId.get(String(booking._id))!._id),
@@ -5665,7 +5713,7 @@ export async function listBookingAccommodationOptions(
     adminAccommodationOptionsPayloadSchema,
     request.body
   );
-  const departure = await TourDeparture.findOne({
+  const departure = await bookingDepartureModel(payload.tourScope).findOne({
     departureId: payload.departureId,
   });
 
@@ -5674,15 +5722,17 @@ export async function listBookingAccommodationOptions(
   }
 
   const pricedDeparture = toPricedDeparture(departure);
-  const quoteTour = await Tour.findOne({ tourId: departure.tourId });
+  const quoteTour = await bookingTourModel(payload.tourScope).findOne({ tourId: departure.tourId });
   const quoteBooking = payload.bookingId && mongoose.isValidObjectId(payload.bookingId)
     ? await Booking.findById(payload.bookingId) : null;
+  const taxRates = quoteBooking ? getSavedBookingTaxSettings(quoteBooking) : await getBookingTaxSettings();
   const totalTravellers = payload.adultCount + payload.childDetails.length;
   const departureValidation = validateDepartureForBooking(
     pricedDeparture,
     totalTravellers,
     new Date(),
-    (await Tour.findOne({ tourId: departure.tourId }))?.durationDn
+    (await bookingTourModel(payload.tourScope).findOne({ tourId: departure.tourId }))?.durationDn,
+    true
   );
 
   if (!departureValidation.isValid) {
@@ -5690,6 +5740,7 @@ export async function listBookingAccommodationOptions(
   }
 
   const options = generateOccupancyOptions({
+    allowLargeGroups: true,
     adults: payload.adultCount,
     children: payload.childDetails.map((child, index) => ({
       id: `child-${index + 1}`,
@@ -5698,6 +5749,7 @@ export async function listBookingAccommodationOptions(
     selectedDeparture: pricedDeparture,
   }).map((option) => {
     const snapshot = createPricingSnapshot({
+      taxRates,
       accommodationOption: option,
       departure: pricedDeparture,
       gstPercentage: payload.gstPercentage,
@@ -5743,7 +5795,7 @@ export async function createBooking(
   request: Request,
   response: Response
 ): Promise<void> {
-  const payload = parseRequestBody(bookingPayloadSchema, request.body);
+  const payload = parseRequestBody(adminBookingPayloadSchema, request.body);
 
   assertAdminLeadVerification(request, payload.guestDetails[0], payload.leadVerificationToken);
   delete payload.leadVerificationToken;
@@ -5754,9 +5806,9 @@ export async function createBooking(
   if (paymentMode !== "offline" && (payload.amountPaid || 0) > 0) {
     throw new HttpError(400, "Online and bank-transfer payments must be verified by the payment provider");
   }
-  await assertTourExists(payload.tourId);
+  await assertTourExists(payload.tourId, payload.tourScope);
 
-  const snapshotPayload = await createSnapshotPayload(payload);
+  const snapshotPayload = await createSnapshotPayload(payload, undefined, true);
   let booking!: BookingDocument;
 
   if (snapshotPayload && (payload.amountPaid || 0) > 0) {
@@ -5767,7 +5819,8 @@ export async function createBooking(
         const updatedDeparture = await reserveDepartureSeats(
           payload.departureId,
           payload.totalGuest,
-          session
+          session,
+          payload.tourScope
         );
 
         if (!updatedDeparture) {
@@ -5784,6 +5837,7 @@ export async function createBooking(
           [
             {
               ...bookingDraft,
+              offlinePaymentHistory: offlineReceiptHistory(undefined, bookingDraft.amountPaid || 0, payload.paymentMethod || "Offline", paymentMode),
               bookingStatus: "confirmed",
               paymentCapturedAt: new Date(),
               paymentCurrency: PAYMENT_CURRENCY,
@@ -5811,6 +5865,7 @@ export async function createBooking(
       balanceAmount: Math.max(0, (snapshotPayload?.pricingSnapshot.grandTotal || 0) + (payload.airfareIncludedInTotal ? 0 : payload.airFlightCharges) - amountPaid),
       paymentMode,
       confirmationToken: amountPaid > 0 ? createConfirmationToken() : undefined,
+      offlinePaymentHistory: offlineReceiptHistory(undefined, amountPaid, payload.paymentMethod || "Offline", paymentMode),
       ...(paymentMode === "online" ? { recoveryToken: createRecoveryToken(), recoveryExpiresAt: new Date(Date.now() + RECOVERY_EXPIRY_HOURS * 3600000), recoveryEmailStatus: "pending", whatsappRecoveryStatus: "pending" } : {}),
       amountPaid,
       paymentCapturedAt: amountPaid > 0 ? new Date() : null,
@@ -5844,21 +5899,25 @@ async function updateBookingInternal(
   request: Request,
   response: Response
 ): Promise<void> {
-  const payload = parseRequestBody(bookingPayloadSchema, request.body);
+  const payload = parseRequestBody(adminBookingPayloadSchema, request.body);
 
   try {
     await assertNoSmartCollectIdentifier(String(request.params.id));
-    await assertTourExists(payload.tourId);
+    await assertTourExists(payload.tourId, payload.tourScope);
     const existingBooking = await Booking.findById(request.params.id);
 
     if (!existingBooking) {
       throw new HttpError(404, "Booking not found");
     }
 
+    if (payload.tourScope !== (existingBooking.tourScope || "master")) {
+      throw new HttpError(400, "The tour catalogue of an existing booking cannot be changed");
+    }
+
     if ((existingBooking.airFlightCharges || 0) !== payload.airFlightCharges) {
       throw new HttpError(400, "Use the airfare editor to update charges and preserve the audit history");
     }
-    const snapshotPayload = await createSnapshotPayload(payload, existingBooking);
+    const snapshotPayload = await createSnapshotPayload(payload, existingBooking, true);
     if (existingBooking.paymentMode === "offline" && existingBooking.paymentStatus !== "paid" && (payload.amountPaid || 0) > 0 &&
         !["cash", "cheque"].includes(payload.paymentMethod || "")) {
       throw new HttpError(400, "Choose cash or cheque to record an offline payment");
@@ -5892,6 +5951,7 @@ async function updateBookingInternal(
       (updatePayload.balanceAmount || 0) > 0;
     const bookingUpdate = {
       ...updatePayload,
+      offlinePaymentHistory: offlineReceiptHistory(existingBooking, updatePayload.amountPaid || 0, payload.paymentMethod || "Offline", existingBooking.paymentMode || "offline"),
       paymentLifecyclePending: Boolean(existingBooking.paymentLifecyclePending || isPaid && ((updatePayload.amountPaid || 0) >= (updatePayload.grandTotal || 0) || updatePayload.airfareExcluded && !updatePayload.airfareIncludedInTotal && (updatePayload.airFlightCharges || 0) > 0 && (updatePayload.amountPaid || 0) >= (updatePayload.grandTotal || 0) - (updatePayload.airFlightCharges || 0))),
       bookingStatus: isPaid ? "confirmed" : "payment_pending",
       confirmationToken: isPaid ? existingBooking.confirmationToken || createConfirmationToken() : existingBooking.confirmationToken,
@@ -5924,7 +5984,8 @@ async function updateBookingInternal(
           await restoreDepartureSeats(
             previousDepartureId,
             previousReservedSeats,
-            session
+            session,
+            existingBooking.tourScope
           );
         }
 
@@ -5932,7 +5993,8 @@ async function updateBookingInternal(
           const updatedDeparture = await reserveDepartureSeats(
             nextDepartureId,
             nextReservedSeats,
-            session
+            session,
+            payload.tourScope
           );
 
           if (!updatedDeparture) {
@@ -6002,7 +6064,7 @@ async function updateBookingAirFlightChargesInternal(
     if (!isConfirmedBooking && !isPendingOfflineBooking) {
       throw new HttpError(400, "Airfare can only be updated on a confirmed booking or a pending offline booking");
     }
-    const tour = await Tour.findOne({ tourId: booking.tourId });
+    const tour = await bookingTourModel(booking.tourScope).findOne({ tourId: booking.tourId });
     if (!(booking.airfareExcluded ?? isAirfareExcluded(tour))) {
       throw new HttpError(400, "This package does not explicitly exclude flights");
     }
@@ -6107,7 +6169,8 @@ export async function deleteBooking(
         await restoreDepartureSeats(
           departureId,
           getBookingReservedSeatCount(booking),
-          session
+          session,
+          booking.tourScope
         );
       }
 
@@ -6208,13 +6271,14 @@ export async function verifyBookingTcsExemption(request: Request, response: Resp
       throw new HttpError(409, "Complete or cancel the pending payment before changing TCS");
     }
     const packageTotal = booking.packageTotal ?? (booking.subtotal || 0) + (booking.gstAmount || 0);
+    const savedTaxes = getSavedBookingTaxSettings(booking);
     const adjusted = adjustBookingTcs({ packageTotal, grandTotal: booking.grandTotal || packageTotal,
-      tcsAmount: booking.tcsAmount || 0, amountPaid: booking.amountPaid || 0, verified });
+      tcsAmount: booking.tcsAmount || 0, amountPaid: booking.amountPaid || 0, verified, tcsPercentage: savedTaxes.tcsPercentage });
     const tcsAmount = adjusted.tcsAmount;
     booking.grandTotal = adjusted.grandTotal;
     booking.packageTotal = packageTotal;
     booking.tcsAmount = tcsAmount;
-    booking.tcsPercentage = verified ? 0 : 2;
+    booking.tcsPercentage = verified ? 0 : savedTaxes.tcsPercentage;
     booking.tcsExemptionVerified = verified;
     booking.tcsExemptionVerifiedBy = verifyAuthToken(getBearerToken(request)).userId;
     booking.tcsExemptionVerifiedAt = verified ? new Date() : null;
@@ -6236,7 +6300,7 @@ export async function verifyBookingTcsExemption(request: Request, response: Resp
       await booking.save();
       queueBookingConfirmationNotifications(booking);
     }
-    response.json({ success: true, message: verified ? "NRI buyer exemption verified; TCS is 0%" : "Exemption revoked; TCS is 2%", data: { booking: formatBooking(booking) } });
+    response.json({ success: true, message: verified ? "NRI buyer exemption verified; TCS is 0%" : `Exemption revoked; TCS is ${booking.tcsPercentage}%`, data: { booking: formatBooking(booking) } });
   });
 }
 
@@ -6285,12 +6349,12 @@ export async function assertNoSmartCollectIdentifier(bookingId: string) {
 
 export async function createSmartCollectBookingDraft(body: unknown, scope: string) {
   const payload = parseRequestBody(bookingPayloadSchema, {
-    ...(body as Record<string, unknown>), amountPaid: 0, airFlightCharges: 0,
+    ...(body as Record<string, unknown>), tourScope: "master", amountPaid: 0, airFlightCharges: 0,
     gstPercentage: PUBLIC_BOOKING_GST_PERCENTAGE,
     airfareIncludedInTotal: false, paymentMethod: undefined,
   });
   if (!payload.departureId || !payload.selectedAccommodationOptionId) throw new HttpError(400, "Select a departure and accommodation");
-  await assertTourExists(payload.tourId);
+  await assertTourExists(payload.tourId, payload.tourScope);
   const pendingBookingKey = "bank:" + crypto.createHash("sha256")
     .update(scope + ":" + createPendingBookingKey(payload) + JSON.stringify(payload.guestDetails) + JSON.stringify(payload.travellers)).digest("hex");
   let booking = await Booking.findOne({ pendingBookingKey }).select("+bankTransferToken");

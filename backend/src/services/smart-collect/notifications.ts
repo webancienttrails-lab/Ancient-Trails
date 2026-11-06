@@ -1,5 +1,5 @@
+import { bookingTourModel } from "../booking/booking-tour-scope";
 import { Booking } from "../../models/booking.model";
-import { Tour } from "../../models/tour.model";
 import { SmartCollectAccount, SmartCollectTransfer } from "../../models/smartCollect.model";
 import { sendBankTransferEmail } from "../booking-confirmation-email.service";
 import { sendBookingPaymentLinkWhatsapp } from "../msg91-whatsapp.service";
@@ -10,7 +10,7 @@ export async function notifyBankInstructions(accountId: string) {
   const booking = await Booking.findById(account.bookingId).select("+bankTransferToken");
   if (!booking?.bankTransferToken) return;
   const guest = booking.guestDetails[0];
-  const tour = await Tour.findOne({ tourId: booking.tourId });
+  const tour = await bookingTourModel(booking.tourScope).findOne({ tourId: booking.tourId });
   const url = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "") +
     "/bank-transfer/" + booking._id;
   const name = [guest?.firstName, guest?.lastName].filter(Boolean).join(" ") || "Traveller";

@@ -1,7 +1,7 @@
+import { bookingTourModel } from "../booking/booking-tour-scope";
 import { randomUUID } from "node:crypto";
 import { Booking, type BookingDocument } from "../../models/booking.model";
 import { User, UserStatus } from "../../models/user.model";
-import { Tour } from "../../models/tour.model";
 import { BookingBalancePaymentSession } from "../../models/bookingBalancePaymentSession.model";
 import { BookingPaymentSession } from "../../models/bookingPaymentSession.model";
 import { SmartCollectTransfer } from "../../models/smartCollect.model";
@@ -92,7 +92,7 @@ export async function materializeNotificationEvent(event: INotificationEvent) {
   }
   const booking = await Booking.findById(event.payload.bookingId);
   if (!booking) return;
-  const ref = booking.bookingReference || booking.id, tour = await Tour.findOne({ tourId: booking.tourId }), name = tour?.tourName || booking.tourId;
+  const ref = booking.bookingReference || booking.id, tour = await bookingTourModel(booking.tourScope).findOne({ tourId: booking.tourId }), name = tour?.tourName || booking.tourId;
   switch (event.kind) {
     case "cancellation_requested":
       await notifyBooking(event, booking, "Cancellation request", ref + " for " + name + ": " + String(event.payload.reason || "Customer requested cancellation")

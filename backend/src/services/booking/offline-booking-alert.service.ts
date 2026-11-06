@@ -1,6 +1,6 @@
+import { bookingTourModel } from "./booking-tour-scope";
 import { queueBookingNotifications } from "../notifications/notification-events.service";
 import { Booking } from "../../models/booking.model";
-import { Tour } from "../../models/tour.model";
 import { sendBookingAlertEmail } from "../booking-confirmation-email.service";
 import { sendOfflineBookingAdminWhatsapp } from "../msg91-whatsapp.service";
 
@@ -17,7 +17,7 @@ export async function notifyOfflineBookingAdmins(bookingId: string) {
     }, { $set: { [status]: "sending", [attempted]: new Date() } }, { returnDocument: "after" });
     if (!booking) return;
     try {
-      const tour = await Tour.findOne({ tourId: booking.tourId });
+      const tour = await bookingTourModel(booking.tourScope).findOne({ tourId: booking.tourId });
       const lead = booking.guestDetails[0];
       const travellerName = [lead?.title, lead?.firstName, lead?.lastName].filter(Boolean).join(" ") || "Traveller";
       const travellerPhone = [lead?.countryCode, lead?.mobileNumber].filter(Boolean).join(" ");

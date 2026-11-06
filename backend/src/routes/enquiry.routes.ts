@@ -8,6 +8,7 @@ import {
   addEnquiryReply,
   setEnquiryBlacklist,
   listEnquiries,
+  getEnquiry,
   updateEnquiry,
   updateEnquiryStatus,
 } from "../controllers/enquiry.controller";
@@ -22,6 +23,7 @@ publicEnquiryRoutes.post("/callback", createPublicCallbackEnquiry);
 
 router.use(requireAdmin);
 router.get("/", listEnquiries);
+router.get("/:id", getEnquiry);
 router.post("/", createEnquiry);
 router.patch("/:id", updateEnquiry);
 router.patch("/:id/status", updateEnquiryStatus);

@@ -62,7 +62,8 @@ export function validateDepartureForBooking(
   departure: PricedDeparture,
   requestedTravellers: number,
   today = new Date(),
-  durationDn = ""
+  durationDn = "",
+  allowLargeGroups = false
 ): DepartureValidationResult {
   const errors: string[] = [];
   const bookingDeadline = toDate(departure.bookingDeadline);
@@ -71,7 +72,7 @@ export function validateDepartureForBooking(
     errors.push("At least one traveller is required.");
   }
 
-  if (requestedTravellers > 25) {
+  if (!allowLargeGroups && requestedTravellers > 25) {
     errors.push("A maximum of 25 travellers can be booked at once.");
   }
 

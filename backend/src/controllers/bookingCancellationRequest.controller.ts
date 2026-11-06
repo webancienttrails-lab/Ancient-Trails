@@ -1,3 +1,4 @@
+import { bookingTourModel, bookingDepartureModel } from "../services/booking/booking-tour-scope";
 import crypto from "node:crypto";
 import mongoose, { type HydratedDocument } from "mongoose";
 import type { Request, Response } from "express";
@@ -5,8 +6,6 @@ import type { Refunds } from "razorpay/dist/types/refunds";
 import { z } from "zod";
 import { formatBooking, getAuthenticatedTravellerBookingById } from "./booking.controller";
 import { BookingCancellationRequest, type IBookingCancellationRequest } from "../models/bookingCancellationRequest.model";
-import { Tour } from "../models/tour.model";
-import { TourDeparture } from "../models/tourDeparture.model";
 import { Booking } from "../models/booking.model";
 import { BookingPaymentSession } from "../models/bookingPaymentSession.model";
 import { BookingPaymentLinkRequest } from "../models/bookingPaymentLinkRequest.model";
@@ -19,8 +18,8 @@ async function preview(request: Request) {
   const booking = await getAuthenticatedTravellerBookingById(request);
   const existingRequest = await BookingCancellationRequest.findOne({ bookingId: booking._id });
   const [tour, departure] = await Promise.all([
-    Tour.findOne({ tourId: booking.tourId }),
-    booking.departureId ? TourDeparture.findOne({ departureId: booking.departureId }) : Promise.resolve(null),
+    bookingTourModel(booking.tourScope).findOne({ tourId: booking.tourId }),
+    booking.departureId ? bookingDepartureModel(booking.tourScope).findOne({ departureId: booking.departureId }) : Promise.resolve(null),
   ]);
   const date = departure?.departureDate || booking.pricingSnapshot?.departureDate;
   const estimate = date ? cancellationEstimate(booking, new Date(date), tour?.cancellationPolicy || []) : null;
@@ -177,7 +176,7 @@ export async function startCancellationRefund(request: Request, response: Respon
         const seatsToRelease = current.paymentStatus === "paid" ? Math.max(0, current.totalGuest || 0) : Math.max(0, current.heldSeatCount || 0);
         const departureId = current.departureId || current.pricingSnapshot?.departureId || "";
         if (seatsToRelease > 0) {
-          const departure = await restoreDepartureSeats(departureId, seatsToRelease, session);
+          const departure = await restoreDepartureSeats(departureId, seatsToRelease, session, current.tourScope);
           if (!departure) throw new HttpError(409, "Booking departure was not found; refund was initiated but seats could not be released");
         }
         current.bookingStatus = "cancelled";

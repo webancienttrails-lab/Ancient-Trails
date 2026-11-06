@@ -1,4 +1,15 @@
 import { queueTourUpdate } from "../services/notifications/notification-events.service";
+import { CustomiseTour, CustomiseTourDeparture, CustomiseTourItinerary } from "../models/customiseTour.model";
+
+function isCustomiseTourRequest(request: Request) {
+  return request.baseUrl?.endsWith("/customise") || false;
+}
+
+function getScopedTourModels(request: Request) {
+  return isCustomiseTourRequest(request)
+    ? { Tour: CustomiseTour, TourDeparture: CustomiseTourDeparture, TourItinerary: CustomiseTourItinerary }
+    : { Tour, TourDeparture, TourItinerary };
+}
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
@@ -748,8 +759,8 @@ async function assertDestinationsExist(destinationIds: string[]): Promise<void> 
   }
 }
 
-async function getLinkedTour(tourId: string): Promise<TourDocument> {
-  const tour = await Tour.findOne({ tourId });
+async function getLinkedTour(tourId: string, tourModel = Tour): Promise<TourDocument> {
+  const tour = await tourModel.findOne({ tourId });
 
   if (!tour) {
     throw new HttpError(400, `Tour ID ${tourId} does not exist`);
@@ -759,10 +770,11 @@ async function getLinkedTour(tourId: string): Promise<TourDocument> {
 }
 
 async function createLinkedDeparturePayload(
-  payload: TourDeparturePayloadInput
+  payload: TourDeparturePayloadInput,
+  tourModel = Tour
 ): Promise<TourDeparturePayloadInput & { destinationId: string }> {
   const { tourId, destinationId } = payload;
-  const tour = await getLinkedTour(tourId);
+  const tour = await getLinkedTour(tourId, tourModel);
   const issues = validateDepartureOffer(payload, tour.durationDn);
   if (issues.length) throw new HttpError(400, issues[0].message, issues);
   const linkedDestinationIds = getTourDestinationIds(tour);
@@ -801,6 +813,7 @@ export async function listTours(
   request: Request,
   response: Response
 ): Promise<void> {
+  const { Tour } = getScopedTourModels(request);
   const search =
     typeof request.query.search === "string" ? request.query.search.trim() : "";
   const destinationId =
@@ -853,6 +866,7 @@ export async function createTour(
   request: Request,
   response: Response
 ): Promise<void> {
+  const { Tour } = getScopedTourModels(request);
   const payload = parseRequestBody(tourPayloadSchema, request.body);
 
   try {
@@ -880,6 +894,7 @@ export async function updateTour(
   request: Request,
   response: Response
 ): Promise<void> {
+  const { Tour, TourDeparture, TourItinerary } = getScopedTourModels(request);
   const payload = parseRequestBody(tourPayloadSchema, request.body);
 
   try {
@@ -900,7 +915,7 @@ export async function updateTour(
       throw new HttpError(404, "Tour not found");
     }
 
-    queueTourUpdate("tour", existingTour, tour);
+    if (!isCustomiseTourRequest(request)) queueTourUpdate("tour", existingTour, tour);
     const existingDestinationIds = getTourDestinationIds(existingTour);
     const nextDestinationIds = getTourDestinationIds(tour);
 
@@ -917,14 +932,14 @@ export async function updateTour(
             },
           }
         ),
-        Booking.updateMany(
+        ...(isCustomiseTourRequest(request) ? [] : [Booking.updateMany(
           { tourId: existingTour.tourId },
           {
             $set: {
               tourId: tour.tourId,
             },
           }
-        ),
+        )]),
         TourItinerary.updateMany(
           { tourId: existingTour.tourId },
           {
@@ -971,6 +986,7 @@ export async function deleteTour(
   request: Request,
   response: Response
 ): Promise<void> {
+  const { Tour } = getScopedTourModels(request);
   try {
     const tour = await Tour.findByIdAndDelete(request.params.id);
 
@@ -1035,6 +1051,7 @@ export async function listTourItineraries(
   request: Request,
   response: Response
 ): Promise<void> {
+  const { TourItinerary } = getScopedTourModels(request);
   const search =
     typeof request.query.search === "string" ? request.query.search.trim() : "";
   const tourId =
@@ -1077,10 +1094,11 @@ export async function createTourItinerary(
   request: Request,
   response: Response
 ): Promise<void> {
+  const { Tour, TourItinerary } = getScopedTourModels(request);
   const payload = parseRequestBody(tourItineraryPayloadSchema, request.body);
 
   try {
-    await getLinkedTour(payload.tourId);
+    await getLinkedTour(payload.tourId, Tour);
 
     const itinerary = await TourItinerary.create(payload);
 
@@ -1104,10 +1122,11 @@ export async function updateTourItinerary(
   request: Request,
   response: Response
 ): Promise<void> {
+  const { Tour, TourItinerary } = getScopedTourModels(request);
   const payload = parseRequestBody(tourItineraryPayloadSchema, request.body);
 
   try {
-    await getLinkedTour(payload.tourId);
+    await getLinkedTour(payload.tourId, Tour);
 
     const beforeNotificationUpdate = await TourItinerary.findById(request.params.id);
     const itinerary = await TourItinerary.findByIdAndUpdate(
@@ -1123,7 +1142,7 @@ export async function updateTourItinerary(
       throw new HttpError(404, "Tour itinerary not found");
     }
 
-    if (beforeNotificationUpdate) queueTourUpdate("itinerary", beforeNotificationUpdate, itinerary);
+    if (beforeNotificationUpdate && !isCustomiseTourRequest(request)) queueTourUpdate("itinerary", beforeNotificationUpdate, itinerary);
     response.status(200).json({
       success: true,
       message: "Tour itinerary updated successfully",
@@ -1148,6 +1167,7 @@ export async function deleteTourItinerary(
   request: Request,
   response: Response
 ): Promise<void> {
+  const { TourItinerary } = getScopedTourModels(request);
   try {
     const itinerary = await TourItinerary.findByIdAndDelete(request.params.id);
 
@@ -1175,6 +1195,7 @@ export async function listTourDepartures(
   request: Request,
   response: Response
 ): Promise<void> {
+  const { Tour, TourDeparture } = getScopedTourModels(request);
   const search =
     typeof request.query.search === "string" ? request.query.search.trim() : "";
   const tourId =
@@ -1208,7 +1229,7 @@ export async function listTourDepartures(
   const departures = await TourDeparture.find(filters)
     .sort({ departureDate: 1, createdAt: -1 })
     .limit(300);
-  const seatCountsByDepartureId = await getSeatCountsByDepartureId(
+  const seatCountsByDepartureId = isCustomiseTourRequest(request) ? new Map() : await getSeatCountsByDepartureId(
     departures.map((departure) => departure.departureId)
   );
   const linkedTours = await Tour.find({ tourId: { $in: departures.map(departure => departure.tourId) } })
@@ -1234,10 +1255,11 @@ export async function createTourDeparture(
   request: Request,
   response: Response
 ): Promise<void> {
+  const { Tour, TourDeparture } = getScopedTourModels(request);
   const payload = parseRequestBody(tourDeparturePayloadSchema, request.body);
 
   try {
-    const linkedPayload = await createLinkedDeparturePayload(payload);
+    const linkedPayload = await createLinkedDeparturePayload(payload, Tour);
 
     const departure = await TourDeparture.create(linkedPayload);
 
@@ -1261,10 +1283,11 @@ export async function updateTourDeparture(
   request: Request,
   response: Response
 ): Promise<void> {
+  const { Tour, TourDeparture } = getScopedTourModels(request);
   const payload = parseRequestBody(tourDeparturePayloadSchema, request.body);
 
   try {
-    const linkedPayload = await createLinkedDeparturePayload(payload);
+    const linkedPayload = await createLinkedDeparturePayload(payload, Tour);
 
     const beforeNotificationUpdate = await TourDeparture.findById(request.params.id);
     const departure = await TourDeparture.findByIdAndUpdate(
@@ -1280,7 +1303,7 @@ export async function updateTourDeparture(
       throw new HttpError(404, "Tour departure not found");
     }
 
-    if (beforeNotificationUpdate) queueTourUpdate("departure", beforeNotificationUpdate, departure);
+    if (beforeNotificationUpdate && !isCustomiseTourRequest(request)) queueTourUpdate("departure", beforeNotificationUpdate, departure);
     response.status(200).json({
       success: true,
       message: "Tour departure updated successfully",
@@ -1305,6 +1328,7 @@ export async function deleteTourDeparture(
   request: Request,
   response: Response
 ): Promise<void> {
+  const { TourDeparture } = getScopedTourModels(request);
   try {
     const departure = await TourDeparture.findByIdAndDelete(request.params.id);
 

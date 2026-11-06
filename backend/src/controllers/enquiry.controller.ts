@@ -124,6 +124,13 @@ export async function listEnquiries(
   });
 }
 
+export async function getEnquiry(request: Request, response: Response): Promise<void> {
+  if (!/^[a-f\d]{24}$/i.test(String(request.params.id))) throw new HttpError(400, "Invalid enquiry ID");
+  const enquiry = await Enquiry.findById(request.params.id);
+  if (!enquiry) throw new HttpError(404, "Enquiry not found");
+  response.json({ success: true, message: "Enquiry fetched successfully", data: { enquiry: formatEnquiry(enquiry) } });
+}
+
 export async function createEnquiry(
   request: Request,
   response: Response

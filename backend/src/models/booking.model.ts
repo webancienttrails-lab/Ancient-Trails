@@ -8,6 +8,7 @@ import {
 
 import type { PricingSnapshot } from "../services/booking/booking.snapshot";
 import { Tour } from "./tour.model";
+import { CustomiseTour } from "./customiseTour.model";
 import { allocateBookingReference } from "../services/booking/booking-reference.service";
 
 export interface IBookingGuestDetails {
@@ -114,6 +115,10 @@ export interface IBooking {
     | "confirmed"
     | "expired"
     | "cancelled";
+  tourScope?: "master" | "customise";
+  sourceEnquiryCategory?: "normal" | "group" | "customise";
+  invoiceOverrides?: Record<string, string>;
+  offlinePaymentHistory?: Array<{ id: string; amount: number; method: string; paidAt: Date | null }>;
   tourId: string;
   departureId?: string;
   selectedAccommodationOptionId?: string;
@@ -470,23 +475,18 @@ const accommodationDetailsSchema = new Schema<IBookingAccommodationDetails>(
   {
     singleOccupancyOneRoom: {
       ...nonNegativeNumber,
-      max: 100,
     },
     singleOccupancyTwoRooms: {
       ...nonNegativeNumber,
-      max: 100,
     },
     doubleOccupancy: {
       ...nonNegativeNumber,
-      max: 100,
     },
     twinOccupancy: {
       ...nonNegativeNumber,
-      max: 100,
     },
     tripleOccupancy: {
       ...nonNegativeNumber,
-      max: 100,
     },
   },
   {
@@ -514,6 +514,10 @@ const bookingSchema = new Schema<IBooking>(
       ...trimmedString,
       maxlength: 20,
     },
+    tourScope: { type: String, enum: ["master", "customise"], default: "master" },
+    sourceEnquiryCategory: { type: String, enum: ["normal", "group", "customise"] },
+    invoiceOverrides: { type: Schema.Types.Mixed, default: undefined },
+    offlinePaymentHistory: { type: [{ _id: false, id: { type: String, required: true }, amount: { type: Number, required: true, min: 0 }, method: String, paidAt: { type: Date, default: null } }], default: undefined },
     tourId: {
       ...requiredTrimmedString,
       uppercase: true,
@@ -557,17 +561,14 @@ const bookingSchema = new Schema<IBooking>(
     totalGuest: {
       ...nonNegativeNumber,
       min: 1,
-      max: 1000,
       required: true,
     },
     adultCount: {
       ...nonNegativeNumber,
-      max: 1000,
       required: true,
     },
     childCount: {
       ...nonNegativeNumber,
-      max: 1000,
       required: true,
     },
     childDetails: {
@@ -886,7 +887,7 @@ bookingSchema.pre("save", function queuePaymentLifecycleDelivery() {
 bookingSchema.pre("save", async function assignBookingReference() {
   if (!this.isNew || this.bookingReference?.trim()) return;
   const session = this.$session() || undefined;
-  const tour = await Tour.findOne({ tourId: this.tourId }).select("tourType").session(session || null);
+  const tour = await (this.tourScope === "customise" ? CustomiseTour : Tour).findOne({ tourId: this.tourId }).select("tourType").session(session || null);
   if (!tour) throw new Error("Tour not found while generating booking ID");
   this.bookingReference = await allocateBookingReference(tour.tourType, session);
 });

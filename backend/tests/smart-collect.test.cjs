@@ -384,3 +384,7 @@ for (const mode of ["NEFT", "IMPS", "RTGS"]) {
     assert.equal(f.counts().confirmations, 1);
   });
 }
+
+// Existing booking fixtures keep their original tax rates.
+const taxSettings = require("../dist/services/booking/booking-tax-settings");
+test.beforeEach(t => { t.mock.method(taxSettings, "getBookingTaxSettings", async () => ({ ...taxSettings.defaultBookingTaxSettings })); });

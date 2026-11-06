@@ -22,6 +22,22 @@ const router = Router();
 
 router.use(requireAdmin);
 
+// The same handlers resolve only the customised collections on this router.
+const customiseRouter = Router();
+customiseRouter.get("/departures", listTourDepartures);
+customiseRouter.post("/departures", createTourDeparture);
+customiseRouter.patch("/departures/:id", updateTourDeparture);
+customiseRouter.delete("/departures/:id", deleteTourDeparture);
+customiseRouter.get("/itineraries", listTourItineraries);
+customiseRouter.post("/itineraries", createTourItinerary);
+customiseRouter.patch("/itineraries/:id", updateTourItinerary);
+customiseRouter.delete("/itineraries/:id", deleteTourItinerary);
+customiseRouter.get("/", listTours);
+customiseRouter.post("/", createTour);
+customiseRouter.patch("/:id", updateTour);
+customiseRouter.delete("/:id", deleteTour);
+router.use("/customise", customiseRouter);
+
 router.get("/departures", listTourDepartures);
 router.post("/departures", createTourDeparture);
 router.patch("/departures/:id", updateTourDeparture);

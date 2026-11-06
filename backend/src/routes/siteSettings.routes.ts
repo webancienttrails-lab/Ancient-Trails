@@ -6,6 +6,7 @@ import {
   uploadSiteLogo,
   resetSiteLogo,
   updateSiteSettings,
+  updateTaxSettings,
 } from "../controllers/siteSettings.controller";
 import { requireAdmin } from "../middleware/adminAuth";
 
@@ -17,6 +18,7 @@ publicSiteSettingsRoutes.get("/", getSiteSettings);
 adminSiteSettingsRoutes.use(requireAdmin);
 adminSiteSettingsRoutes.get("/", getSiteSettings);
 adminSiteSettingsRoutes.put("/", updateSiteSettings);
+adminSiteSettingsRoutes.patch("/taxes", updateTaxSettings);
 
 adminSiteSettingsRoutes.post("/logo", parseSiteLogoUpload, uploadSiteLogo);
 adminSiteSettingsRoutes.delete("/logo", resetSiteLogo);

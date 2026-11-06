@@ -2,6 +2,8 @@ import { getCancellationRequestPreview, requestBookingCancellation } from "../co
 import { startCancellationRefund } from "../controllers/bookingCancellationRequest.controller";
 import { requestAdminBookingLeadOtp, verifyAdminBookingLeadOtp } from "../controllers/bookingLead.controller";
 import { Router } from "express";
+import { listBookingReceipts, listTravellerPaymentReceipts, shareBookingReceipt, downloadSharedBookingReceipt, receiptPdfUpload } from "../controllers/bookingReceipts.controller";
+import { updateBookingInvoice } from "../controllers/bookingInvoice.controller";
 import { verifyBookingTcsExemption } from "../controllers/booking.controller";
 import { authorizePrebookingKycUpload, uploadPrebookingKycDocument } from "../controllers/booking.controller";
 import {
@@ -48,6 +50,7 @@ import {
 import { requireAdmin } from "../middleware/adminAuth";
 
 export const publicBookingRoutes = Router();
+publicBookingRoutes.get("/payment-receipts/:token.pdf", downloadSharedBookingReceipt);
 publicBookingRoutes.post("/kyc/upload", authorizePrebookingKycUpload, bookingKycUpload.single("document"), uploadPrebookingKycDocument);
 
 publicBookingRoutes.get("/bank-transfer/config", bankTransferConfig);
@@ -61,6 +64,7 @@ publicBookingRoutes.post("/payment/verify", verifyBookingPayment);
 publicBookingRoutes.post("/payment/webhook", verifyRazorpayWebhook);
 publicBookingRoutes.get("/payment/orders/:orderId/status", getBookingPaymentOrderStatus);
 publicBookingRoutes.get("/me", listTravellerBookings);
+publicBookingRoutes.get("/:id/receipts", listTravellerPaymentReceipts);
 publicBookingRoutes.get("/:id/cancel-request", getCancellationRequestPreview);
 publicBookingRoutes.post("/:id/cancel-request", requestBookingCancellation);
 publicBookingRoutes.post(
@@ -78,6 +82,9 @@ publicBookingRoutes.post("/:id/recovery/payment/order", createBookingRecoveryPay
 const router = Router();
 
 router.use(requireAdmin);
+router.get("/:id/receipts", listBookingReceipts);
+router.post("/:id/receipts/:receiptId/share", receiptPdfUpload.single("receipt"), shareBookingReceipt);
+router.patch("/:id/invoice", updateBookingInvoice);
 router.patch("/:id/tcs-exemption", verifyBookingTcsExemption);
 
 router.post("/lead/request-otp", requestAdminBookingLeadOtp);

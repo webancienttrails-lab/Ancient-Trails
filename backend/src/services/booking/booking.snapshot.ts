@@ -3,6 +3,7 @@ import type { PricedDeparture } from "../departure/departure.types";
 import { calculateBalanceDueDate } from "../departure/departure.validation";
 import { calculateBalance, calculateDeposit } from "./booking.deposit";
 import { calculateBookingTotals } from "./booking.pricing";
+import type { BookingTaxSettings } from "./booking-tax-settings";
 
 export type PricingSnapshot = ReturnType<typeof createPricingSnapshot>;
 
@@ -12,18 +13,21 @@ export function createPricingSnapshot({
   gstPercentage = 0,
   tcsApplicable = false,
   tcsExemptionVerified = false,
+  taxRates,
 }: {
   accommodationOption: AccommodationOption;
   departure: PricedDeparture;
   gstPercentage?: number;
   tcsApplicable?: boolean;
   tcsExemptionVerified?: boolean;
+  taxRates?: BookingTaxSettings;
 }) {
   const totals = calculateBookingTotals({
     accommodationOption,
     gstPercentage,
     tcsApplicable,
     tcsExemptionVerified,
+    taxRates,
   });
   const depositAmount = calculateDeposit({
     depositAppliesTo: departure.depositAppliesTo,
@@ -59,6 +63,7 @@ export function createPricingSnapshot({
       totalPrice: accommodationOption.total,
     },
     subtotal: totals.subtotal,
+    taxRates: totals.taxRates,
     gstPercentage: totals.gstPercentage,
     gstAmount: totals.gstAmount,
     packageTotal: totals.packageTotal,

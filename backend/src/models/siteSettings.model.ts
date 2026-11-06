@@ -27,6 +27,7 @@ export const defaultSocialLinks: ISiteSocialLinks = {
 };
 
 export interface ISiteSettings {
+  taxes?: { sgstPercentage: number; cgstPercentage: number; tcsPercentage: number };
   quoteAssistanceTitle?: string;
   logo: string;
   googleBusinessReviewsUrl?: string;
@@ -87,6 +88,14 @@ const socialLinksSchema = new Schema<ISiteSocialLinks>({
 
 const siteSettingsSchema = new Schema<ISiteSettings>(
   {
+    taxes: {
+      type: new Schema({
+        sgstPercentage: { type: Number, min: 0, max: 100, default: 2.5 },
+        cgstPercentage: { type: Number, min: 0, max: 100, default: 2.5 },
+        tcsPercentage: { type: Number, min: 0, max: 100, default: 2 },
+      }, { _id: false }),
+      default: () => ({}),
+    },
     quoteAssistanceTitle: { ...trimmedString, maxlength: 160, default: "Looking for assistance?" },
     logo: { ...trimmedString, maxlength: 500 },
     googleBusinessReviewsUrl: { ...trimmedString, maxlength: 2048, validate: { validator: (value: string) => !value || isGoogleBusinessReviewsUrl(value), message: "Enter a valid HTTPS Google reviews URL" } },

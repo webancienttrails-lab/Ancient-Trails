@@ -1,10 +1,9 @@
+import { bookingTourModel, bookingDepartureModel } from "./booking-tour-scope";
 import crypto from "node:crypto";
 import type { Types } from "mongoose";
 import { Booking, type BookingDocument } from "../../models/booking.model";
 import { BookingPaymentNotice, type IBookingPaymentNotice } from "../../models/bookingPaymentNotice.model";
 import type { BookingPaymentLinkRequestDocument } from "../../models/bookingPaymentLinkRequest.model";
-import { TourDeparture } from "../../models/tourDeparture.model";
-import { Tour } from "../../models/tour.model";
 import { sendBookingPaymentNoticeEmail, sendTourFullPaymentConfirmationEmail } from "../booking-confirmation-email.service";
 import { sendRemainingPaymentReminderWhatsapp, sendTourFullPaymentConfirmationWhatsapp, sendBookingPaymentLinkWhatsapp } from "../msg91-whatsapp.service";
 import { indiaDateKey, paymentLifecycleState } from "./booking.payment-lifecycle-policy";
@@ -64,7 +63,7 @@ export async function processBookingPaymentLifecycle(bookingId: string, hooks: P
     const country = lead?.countryCode?.replace(/\D/g, "") || "91";
     const mobile = lead?.mobileNumber?.replace(/\D/g, "") || "";
     const recipientNumber = mobile.startsWith(country) && mobile.length > 10 ? mobile : country + mobile;
-    const tour = await Tour.findOne({ tourId: booking.tourId });
+    const tour = await bookingTourModel(booking.tourScope).findOne({ tourId: booking.tourId });
     const tourName = tour?.tourName || booking.tourId;
     const reference = booking.bookingReference || booking.id;
     const kind: Kind = state.fullyPaid ? "tour_full_payment_confirmation" : state.airfareDue ? "airfare_payment_link" : "remaining_payment_reminder";
@@ -81,7 +80,7 @@ export async function processBookingPaymentLifecycle(bookingId: string, hooks: P
         const paymentDate = date(current.paymentCapturedAt || now);
         if (channel === "whatsapp") return sendTourFullPaymentConfirmationWhatsapp({ recipientNumber, travellerName, tourName,
           bookingReference: reference, amountPaid: amount(state.paid), paymentDate, crqId: id });
-        const departure = current.departureId ? await TourDeparture.findOne({ departureId: current.departureId }) : null;
+        const departure = current.departureId ? await bookingDepartureModel(current.tourScope).findOne({ departureId: current.departureId }) : null;
         const departureDate = departure?.departureDate || current.pricingSnapshot?.departureDate;
         const returnDate = departure?.returnDate || current.pricingSnapshot?.returnDate;
         const durationDays = departureDate && returnDate
