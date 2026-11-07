@@ -1520,8 +1520,13 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
   ]);
   const bookingSubtotal = selectedAccommodationOption?.total ?? 0;
   const bookingGstAmount = Math.round((bookingSubtotal * gstPercentage) / 100);
-  const bookingTcsAmount = detail.tour.tourType.trim().toLowerCase() === "international"
-    ? Math.round((bookingSubtotal + bookingGstAmount) * taxes.tcsPercentage / 100) : 0;
+  const leadTraveller = completeTravellerDetailForms["adult-1"];
+  const leadVisa = leadTraveller?.nriDocuments?.visa;
+  const bookingTcsExempt = Boolean(leadTraveller?.isNri && leadVisa?.token && !leadVisa.uploading && !leadVisa.error);
+  const bookingTcsPercentage = detail.tour.tourType.trim().toLowerCase() === "international" &&
+    !bookingTcsExempt
+    ? taxes.tcsPercentage : 0;
+  const bookingTcsAmount = Math.round((bookingSubtotal + bookingGstAmount) * bookingTcsPercentage / 100);
   const bookingGrandTotal = bookingSubtotal + bookingGstAmount + bookingTcsAmount;
   const bookingDepositAmount =
     selectedPricedDeparture && selectedAccommodationOption
@@ -2220,7 +2225,8 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
               grandTotal={bookingGrandTotal}
               gstAmount={bookingGstAmount}
               tcsAmount={bookingTcsAmount}
-              tcsPercentage={taxes.tcsPercentage}
+              tcsPercentage={bookingTcsPercentage}
+              tcsExempt={bookingTcsExempt}
               gstPercentage={gstPercentage}
               paymentFeedback={paymentFeedback}
               paymentOption={selectedPaymentOption}
@@ -2279,7 +2285,8 @@ export function SingleTourPage({ tourId, initialData }: { tourId: string; initia
             grandTotal={bookingGrandTotal}
             gstAmount={bookingGstAmount}
             tcsAmount={bookingTcsAmount}
-            tcsPercentage={taxes.tcsPercentage}
+            tcsPercentage={bookingTcsPercentage}
+            tcsExempt={bookingTcsExempt}
             gstPercentage={gstPercentage}
             paymentFeedback={paymentFeedback}
             paymentOption={selectedPaymentOption}
@@ -5124,6 +5131,7 @@ function BookingSummary({
   gstAmount,
   tcsAmount = 0,
   tcsPercentage = 2,
+  tcsExempt = false,
   gstPercentage,
   paymentFeedback,
   paymentOption,
@@ -5140,6 +5148,7 @@ function BookingSummary({
   gstAmount: number;
   tcsAmount?: number;
   tcsPercentage?: number;
+  tcsExempt?: boolean;
   gstPercentage: number;
   paymentFeedback: string;
   paymentOption: BookingPaymentOption;
@@ -5173,7 +5182,16 @@ function BookingSummary({
           label={`GST (${gstPercentage}%)`}
           value={formatCurrency(gstAmount)}
         />
-        {tour.tourType.trim().toLowerCase() === "international" ? <SummaryLine label={`TCS (${tcsPercentage}%)`} value={formatCurrency(tcsAmount)} /> : null}
+        {tour.tourType.trim().toLowerCase() === "international" ? (
+          <>
+            <SummaryLine label={`TCS (${tcsPercentage}%)`} value={tcsAmount === 0 ? "₹0" : formatCurrency(tcsAmount)} />
+            {tcsExempt && tcsAmount === 0 ? (
+              <p className="font-sans text-[12px] leading-relaxed text-secondary/65">
+                TCS excluded: the lead traveller is marked NRI and has uploaded a Visa.
+              </p>
+            ) : null}
+          </>
+        ) : null}
         <SummaryLine label="Package Total (Excluding TCS)" value={formatCurrency(subtotal + gstAmount)} />
         <SummaryLine
           strong

@@ -383,7 +383,7 @@ function MobileDashboardDrawer({
               alt="Ancient Trails"
               width={218}
               height={86}
-              className="h-10 w-auto"
+              className="h-14 w-auto"
             />
           </Link>
           <Button
@@ -708,7 +708,7 @@ export function DashboardTopBar() {
       onMouseLeave={closeMegaMenu}
       className="sticky top-0 isolate z-[120] border-b border-border bg-white/95 backdrop-blur"
     >
-      <div className="flex min-h-[78px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+      <div className="relative flex min-h-[78px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-3 lg:hidden">
           <Button
             type="button"
@@ -720,12 +720,12 @@ export function DashboardTopBar() {
           >
             <Menu className="size-5" strokeWidth={1.9} />
           </Button>
-          <Link href="/" aria-label="Ancient Trails home" className="inline-flex shrink-0">
+          <Link href="/" aria-label="Ancient Trails home" className="absolute left-1/2 top-1/2 inline-flex shrink-0 -translate-x-1/2 -translate-y-1/2">
             <SiteLogo
               alt="Ancient Trails"
               width={218}
               height={86}
-              className="h-11 w-auto"
+              className="h-14 w-auto"
             />
           </Link>
         </div>

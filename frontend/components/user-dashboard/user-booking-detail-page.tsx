@@ -1919,7 +1919,7 @@ function TravellerKycCard({
         {documentOptions.some((option) => option.value === "visa") ? (
           <p className="font-sans text-[12px] font-medium text-secondary/68 sm:col-span-3">
             NRI traveller: PAN Card and Visa are required. OCI Document is optional.
-            {traveller.tcsExempt ? " TCS excluded: NRI buyer exemption verified." : " TCS exemption requires verification of the NRI buyer's eligibility; uploading documents alone does not grant exemption."}
+            {" An NRI lead traveller with an uploaded Visa qualifies for 0% TCS."}
             {!["pan_card", "visa"].every((type) => documents.some((document) => document.documentType === type)) ? " KYC is incomplete until both required documents are uploaded." : " Both required documents are uploaded."}
           </p>
         ) : null}

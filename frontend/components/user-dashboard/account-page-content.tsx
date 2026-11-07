@@ -440,7 +440,7 @@ function BookingKycTravellerCard({
   }
 
   return (
-    <article className="rounded-[7px] border border-border bg-background p-3 sm:p-4">
+    <article className="min-w-0 max-w-full rounded-[7px] border border-border bg-background p-3 sm:p-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h3 className="truncate font-heading text-[15px] font-bold leading-tight text-secondary">
@@ -455,7 +455,7 @@ function BookingKycTravellerCard({
         </span>
       </div>
 
-      <div className="mt-3 grid gap-2">
+      <div className="mt-3 grid min-w-0 grid-cols-1 gap-2">
         {documents.length > 0 ? (
           documents.map((document) => (
             <a
@@ -482,11 +482,11 @@ function BookingKycTravellerCard({
         )}
       </div>
 
-      <form onSubmit={handleUpload} className="mt-3 grid gap-2 lg:grid-cols-[180px_minmax(0,1fr)_auto]">
+      <form onSubmit={handleUpload} className="mt-3 grid min-w-0 grid-cols-1 gap-2 lg:grid-cols-[180px_minmax(0,1fr)_auto]">
         <select
           value={documentType}
           onChange={(event) => setDocumentType(event.target.value as KycDocumentType)}
-          className="h-10 rounded-[6px] border border-border bg-white px-3 font-sans text-[12px] font-semibold text-secondary outline-none focus:border-primary focus:ring-3 focus:ring-primary/15"
+          className="h-10 w-full min-w-0 max-w-full rounded-[6px] border border-border bg-white px-3 font-sans text-[12px] font-semibold text-secondary outline-none focus:border-primary focus:ring-3 focus:ring-primary/15"
         >
           {documentOptions.map((option) => (
             <option key={option.value} value={option.value}>
@@ -500,7 +500,7 @@ function BookingKycTravellerCard({
           type="file"
           accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
           onChange={handleFileChange}
-          className="h-10 rounded-[6px] border border-border bg-white px-3 py-2 font-sans text-[11px] font-semibold text-secondary file:mr-2 file:rounded-[5px] file:border-0 file:bg-brand-button-dark file:px-3 file:py-1 file:text-[10px] file:font-bold file:text-white"
+          className="h-10 w-full min-w-0 max-w-full rounded-[6px] border border-border bg-white px-3 py-2 font-sans text-[11px] font-semibold text-secondary file:mr-2 file:rounded-[5px] file:border-0 file:bg-brand-button-dark file:px-3 file:py-1 file:text-[10px] file:font-bold file:text-white"
         />
         <Button
           type="submit"
@@ -603,7 +603,7 @@ function BookingKycSection({
             <select
               value={selectedBooking?.booking.id || ""}
               onChange={(event) => onSelectBooking(event.target.value)}
-              className="mt-2 h-11 w-full rounded-[6px] border border-border bg-white px-4 font-sans text-[13px] font-semibold text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
+              className="mt-2 h-11 w-full min-w-0 max-w-full rounded-[6px] border border-border bg-white px-4 font-sans text-[13px] font-semibold text-secondary outline-none transition-colors focus:border-primary focus:ring-3 focus:ring-primary/15"
             >
               {bookings.map((booking) => (
                 <option key={booking.booking.id} value={booking.booking.id}>
@@ -614,7 +614,7 @@ function BookingKycSection({
             </select>
           </div>
 
-          <div className="mt-5 grid gap-3">
+          <div className="mt-5 grid min-w-0 grid-cols-1 gap-3">
             {travellers.map((traveller, index) => (
               <BookingKycTravellerCard
                 key={traveller.id || index}
