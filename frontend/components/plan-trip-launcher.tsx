@@ -380,6 +380,7 @@ function getPlannerDestinationById(
 
 export function PlanTripLauncher() {
   const router = useRouter();
+  const [isMobile, setIsMobile] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [activeField, setActiveField] = useState<ActiveField>(null);
   const [panelPosition, setPanelPosition] = useState<PanelPosition | null>(null);
@@ -399,6 +400,14 @@ export function PlanTripLauncher() {
   );
   const launcherRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const updateMobile = () => setIsMobile(media.matches);
+    updateMobile();
+    media.addEventListener("change", updateMobile);
+    return () => media.removeEventListener("change", updateMobile);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -516,7 +525,7 @@ export function PlanTripLauncher() {
     const top = window.innerWidth < 768
       ? Math.max(
           viewportTop + panelPadding,
-          Math.min(desiredTop, viewportBottom - (panelRef.current?.offsetHeight ?? panelVisualHeight) - panelPadding)
+          Math.min(buttonRect.top, viewportBottom) - (panelRef.current?.offsetHeight ?? panelVisualHeight) - panelPadding
         )
       : desiredTop;
 
@@ -564,7 +573,10 @@ export function PlanTripLauncher() {
     }
 
     updatePanelPosition();
-  }, [isOpen, updatePanelPosition]);
+    const observer = new ResizeObserver(updatePanelPosition);
+    if (panelRef.current) observer.observe(panelRef.current);
+    return () => observer.disconnect();
+  }, [isMobile, isOpen, updatePanelPosition]);
 
   useLayoutEffect(() => {
     if (!isOpen || !buttonStartRect || !panelPosition) {
@@ -745,14 +757,14 @@ export function PlanTripLauncher() {
         }
       : null;
 
-  return (
+  const launcher = (
     <>
       {isOpen ? <button
         type="button"
         aria-label="Close trip planner"
         tabIndex={-1}
         onClick={closePlanner}
-        className={`fixed inset-0 z-20 bg-secondary/10 backdrop-blur-[3px] transition-opacity duration-500 ease-out ${
+        className={`fixed inset-0 z-30 bg-secondary/10 backdrop-blur-[3px] transition-opacity duration-500 ease-out md:z-20 ${
           isOpen ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
       /> : null}
@@ -769,16 +781,17 @@ export function PlanTripLauncher() {
         placeToPlan={destinationQuery.trim()}
       />
 
-      <div ref={launcherRef} className="relative z-30 mt-[clamp(1.2rem,6vh,3rem)] inline-flex">
+      <div ref={launcherRef} className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+16px)] left-[calc(50%-16px)] z-50 inline-flex -translate-x-1/2 md:relative md:bottom-auto md:left-auto md:z-30 md:mt-[clamp(1.2rem,6vh,3rem)] md:translate-x-0">
         <Button
           type="button"
           variant="outline"
           aria-expanded={isOpen}
           aria-controls="plan-trip-panel"
-          tabIndex={isOpen ? -1 : 0}
+          tabIndex={isOpen && !isMobile ? -1 : 0}
           onClick={handleLauncherClick}
+          style={isOpen && isMobile ? { color: "#fff" } : undefined}
           className={`${planTripButtonClassName} transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-            isOpen
+            isOpen && !isMobile
               ? "pointer-events-none scale-95 bg-brand-button-dark text-white opacity-0"
               : "opacity-100"
           }`}
@@ -914,6 +927,8 @@ export function PlanTripLauncher() {
       </div> : null}
     </>
   );
+
+  return isMobile ? createPortal(launcher, document.body) : launcher;
 }
 
 export function PlanTripInline({
@@ -1361,11 +1376,14 @@ function useMobileDropdown(active: boolean) {
       const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
       const gap = 12;
       const edge = 12;
+      const headerBottom = document.querySelector("header")?.getBoundingClientRect().bottom ?? 0;
+      const dropdownTop = Math.max(viewportTop + edge, headerBottom + edge);
       const below = Math.max(0, viewportBottom - rect.bottom - gap - edge);
-      const above = Math.max(0, rect.top - viewportTop - gap - edge);
-      const openAbove = below < Math.min(dropdown.scrollHeight, 144) && above > below;
+      const above = Math.max(0, rect.top - dropdownTop - gap);
+      const openAbove = Boolean(field.closest("#plan-trip-panel")) ||
+        (below < Math.min(dropdown.scrollHeight, 144) && above > below);
 
-      dropdown.style.maxHeight = `${openAbove ? above : below}px`;
+      dropdown.style.maxHeight = `${Math.min(220, openAbove ? above : below)}px`;
       dropdown.style.top = openAbove ? "auto" : `calc(100% + ${gap}px)`;
       dropdown.style.bottom = openAbove ? `calc(100% + ${gap}px)` : "auto";
     };

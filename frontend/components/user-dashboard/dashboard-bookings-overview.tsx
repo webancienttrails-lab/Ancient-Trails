@@ -95,7 +95,7 @@ function StatCard({
         <Icon className="size-5 sm:size-7" strokeWidth={1.8} />
       </span>
       <div className="min-w-0">
-        <p className="font-heading text-[28px] font-bold leading-none text-secondary sm:text-[34px]">
+        <p className="font-sans text-[28px] font-bold leading-none text-secondary sm:text-[34px]">
           {isLoading ? "..." : value}
         </p>
         <p className="mt-1.5 font-sans text-[12px] font-semibold leading-none text-secondary sm:mt-2 sm:text-[15px]">

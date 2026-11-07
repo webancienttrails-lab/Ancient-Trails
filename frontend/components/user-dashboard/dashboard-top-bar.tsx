@@ -720,12 +720,14 @@ export function DashboardTopBar() {
           >
             <Menu className="size-5" strokeWidth={1.9} />
           </Button>
-          <SiteLogo
-            alt="Ancient Trails"
-            width={218}
-            height={86}
-            className="h-11 w-auto"
-          />
+          <Link href="/" aria-label="Ancient Trails home" className="inline-flex shrink-0">
+            <SiteLogo
+              alt="Ancient Trails"
+              width={218}
+              height={86}
+              className="h-11 w-auto"
+            />
+          </Link>
         </div>
 
         <nav className="hidden flex-1 justify-center lg:flex">

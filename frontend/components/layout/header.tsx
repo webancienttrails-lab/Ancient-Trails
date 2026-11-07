@@ -1150,6 +1150,7 @@ function AccountMenu({
 
   return (
     <div
+      id="traveller-account-menu"
       inert={!isOpen}
       aria-hidden={!isOpen}
       style={headerLayerStyle}
@@ -1648,7 +1649,6 @@ export function Header() {
   const lastScrollYRef = useRef(0);
   const pageScrollContainerRef = useRef<HTMLElement | null>(null);
   const scrollFrameRef = useRef(0);
-  const accountMenuCloseTimeoutRef = useRef(0);
   const hasConfiguredMegaMenu = hasMegaMenuSettings(megaMenuContent);
   const activeTourColumns = useMemo<TourMenuColumn[]>(() => {
     if (!hasConfiguredMegaMenu || !megaMenuContent) {
@@ -1734,7 +1734,6 @@ export function Header() {
     return () => {
       window.removeEventListener("pointerdown", closeMenus);
       window.removeEventListener("keydown", handleEscape);
-      window.clearTimeout(accountMenuCloseTimeoutRef.current);
     };
   }, [isAccountMenuOpen, isDesktopMenuOpen]);
 
@@ -1991,22 +1990,14 @@ export function Header() {
     setIsSearchOpen(false);
     setHoveredItem(label === "Tours" || label === "Destinations" ? label : null);
   };
-  const openAccountMenu = () => {
+  const toggleAccountMenu = () => {
     setIsDesktopMenuOpen(false);
-    window.clearTimeout(accountMenuCloseTimeoutRef.current);
     setHoveredItem(null);
     setIsSearchOpen(false);
-    setIsAccountMenuOpen(Boolean(travellerUser));
-  };
-  const closeAccountMenu = () => {
-    window.clearTimeout(accountMenuCloseTimeoutRef.current);
-    accountMenuCloseTimeoutRef.current = window.setTimeout(() => {
-      setIsAccountMenuOpen(false);
-    }, 160);
+    setIsAccountMenuOpen((current) => Boolean(travellerUser) && !current);
   };
   const toggleSearch = () => {
     setIsDesktopMenuOpen(false);
-    window.clearTimeout(accountMenuCloseTimeoutRef.current);
     setHoveredItem(null);
     setIsAccountMenuOpen(false);
     setIsMobileMenuOpen(false);
@@ -2014,7 +2005,6 @@ export function Header() {
   };
   const openMobileMenu = () => {
     setIsDesktopMenuOpen(false);
-    window.clearTimeout(accountMenuCloseTimeoutRef.current);
     setHoveredItem(null);
     setIsAccountMenuOpen(false);
     setIsSearchOpen(false);
@@ -2166,19 +2156,30 @@ export function Header() {
 
         <div
           className="relative"
-          onMouseEnter={openAccountMenu}
-          onMouseLeave={closeAccountMenu}
-          onFocus={openAccountMenu}
           onBlur={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget)) {
-              closeAccountMenu();
+              setIsAccountMenuOpen(false);
             }
           }}
         >
           <Link prefetch={false}
             ref={accountLinkRef}
             href={accountHref}
-            aria-label={travellerUser ? "Open traveller dashboard" : "Login"}
+            role={travellerUser ? "button" : undefined}
+            aria-label={travellerUser ? "Account menu" : "Login"}
+            aria-expanded={travellerUser ? isAccountMenuOpen : undefined}
+            aria-controls={travellerUser ? "traveller-account-menu" : undefined}
+            onClick={(event) => {
+              if (!travellerUser) return;
+              event.preventDefault();
+              toggleAccountMenu();
+            }}
+            onKeyDown={(event) => {
+              if (travellerUser && event.key === " ") {
+                event.preventDefault();
+                toggleAccountMenu();
+              }
+            }}
             title={travellerUser ? "My Dashboard" : "Login"}
             className="grid size-9 shrink-0 place-items-center md:text-[10px] rounded-full bg-primary font-sans text-[12px] font-normal uppercase leading-none text-white transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-brand-button-dark"
           >
