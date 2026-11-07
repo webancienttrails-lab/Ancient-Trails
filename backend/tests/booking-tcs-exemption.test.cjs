@@ -7,7 +7,7 @@ const { formatBooking } = require("../dist/controllers/booking.controller");
 const visa = { documentType: "visa", fileUrl: "/uploads/booking-kyc/visa.pdf" };
 
 test("TCS exemption requires NRI status and an uploaded Visa, independently of PAN and OCI", () => {
-  assert.equal(isTravellerTcsExempt({ isNri: true, kycDocuments: [visa] }), false);
+  assert.equal(isTravellerTcsExempt({ isNri: true, kycDocuments: [visa] }), true);
   assert.equal(isTravellerTcsExempt({ isNri: true, tcsExemptionVerified: true, kycDocuments: [visa] }), true);
   assert.equal(isTravellerTcsExempt({ isNri: false, kycDocuments: [visa] }), false);
   assert.equal(isTravellerTcsExempt({ kycDocuments: [visa] }), false);
@@ -33,7 +33,7 @@ test("saved Visa uploads update only the eligible traveller's exemption and pres
   booking.travellers[1].kycDocuments = [visa];
   const restored = new Booking(booking.toObject());
   const formatted = formatBooking(restored);
-  assert.deepEqual(formatted.travellers.map((traveller) => traveller.tcsExempt), [false, false]);
+  assert.deepEqual(formatted.travellers.map((traveller) => traveller.tcsExempt), [true, false]);
   restored.tcsExemptionVerified = true;
   assert.equal(formatBooking(restored).travellers[0].tcsExempt, true);
   assert.equal(formatted.gstAmount, 5000);

@@ -19,9 +19,9 @@ test('international package consideration includes GST and excludes TCS itself',
   assert.equal(domestic.grandTotal, 105000);
 });
 
-test('only verified exemption grants 0%; an NRI declaration and uploaded Visa alone do not', () => {
+test('an NRI with an uploaded Visa qualifies for 0% TCS without a separate admin review', () => {
   const traveller = { isNri: true, kycDocuments: [{ documentType: 'visa', fileUrl: '/uploads/visa.pdf' }] };
-  assert.equal(isTravellerTcsExempt(traveller), false);
+  assert.equal(isTravellerTcsExempt(traveller), true);
   assert.equal(isTravellerTcsExempt({ ...traveller, tcsExemptionVerified: true }), true);
   assert.equal(isTravellerTcsExempt({ ...traveller, isNri: false, tcsExemptionVerified: true }), false);
   const result = calculateBookingTotals({ accommodationOption: option, gstPercentage: 5, tcsApplicable: true, tcsExemptionVerified: true });

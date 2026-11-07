@@ -11,14 +11,14 @@ process.env.JWT_SECRET = "prebooking-kyc-test-secret-for-isolated-tests-only";
 const document = { id: "doc-1", documentType: "visa", documentLabel: "Visa", fileName: "visa.pdf",
   fileUrl: "/uploads/booking-kyc/visa.pdf", mimeType: "application/pdf", uploadedBy: "traveller", uploadedAt: new Date() };
 
-test("signed Visa and OCI uploads persist in bookings and remain unverified until eligibility review", () => {
+test("signed Visa and OCI uploads persist and an NRI Visa qualifies for TCS exemption", () => {
   const tokens = [document, { ...document, id: "oci-1", documentType: "oci" }]
     .map((doc) => signPrebookingKycUpload(doc, "adult-1", "919000000000"));
   const documents = resolvePrebookingKycUploads(tokens, "adult-1", "919000000000");
   const booking = new Booking({ travellers: [{ id: "adult-1", type: "adult", isNri: true, kycDocuments: documents }] });
   const restored = new Booking(booking.toObject());
   assert.equal(restored.travellers[0].kycDocuments.length, 2);
-  assert.equal(isTravellerTcsExempt(restored.travellers[0]), false);
+  assert.equal(isTravellerTcsExempt(restored.travellers[0]), true);
   assert.ok(documents[0].uploadedAt instanceof Date);
 });
 
@@ -59,4 +59,56 @@ test("upload response supplies the server-signed document reference for the sele
   assert.equal(docs[0].fileUrl, "/uploads/booking-kyc/stored-oci.pdf");
   assert.equal(docs[0].fileName, "oci.pdf");
   await assert.rejects(uploadPrebookingKycDocument({ ...request, body: { ...request.body, documentType: "pan_card" } }, response), /Visa or OCI/);
+});
+
+test("checkout snapshots apply NRI Visa exemption only after validating the lead's signed upload", async () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const vm = require("node:vm");
+  const { transformSync } = require("esbuild");
+  const { createPricingSnapshot } = require("../src/services/booking/booking.snapshot.ts");
+  const { normalizeMobileNumber } = require("../src/utils/mobileNumber.ts");
+  const source = fs.readFileSync(path.join(__dirname, "../src/controllers/booking.controller.ts"), "utf8");
+  const start = source.indexOf("function toBookingTravellers(");
+  const end = source.indexOf("type BookingPayload =", start);
+  assert.ok(start >= 0 && end > start);
+  const departure = { departureId: "DEP1", tourId: "TOUR1", departureDate: new Date("2099-12-13"),
+    childPricingRules: [], depositType: "fixed", depositValue: 90000, depositAppliesTo: "booking", balanceDueDaysBefore: 15 };
+  const context = {
+    Date, normalizeMobileNumber, resolvePrebookingKycUploads, isTravellerTcsExempt, createPricingSnapshot,
+    bookingDepartureModel: () => ({ findOne: async () => departure }),
+    bookingTourModel: () => ({ findOne: async () => ({ tourType: "International" }) }),
+    toPricedDeparture: value => value,
+    validateDepartureForBooking: () => ({ isValid: true }),
+    generateOccupancyOptions: () => [{ id: "single", total: 108000, totalTravellers: 1, rooms: [], pricingBreakdown: {} }],
+    getBookingTaxSettings: async () => ({ sgstPercentage: 2.5, cgstPercentage: 2.5, tcsPercentage: 2 }),
+  };
+  vm.createContext(context);
+  vm.runInContext(transformSync(source.slice(start, end), {
+    loader: "ts", target: "es2020", format: "cjs",
+  }).code, context);
+  const token = signPrebookingKycUpload(document, "adult-1", "919000000000");
+  const lead = { isNri: true, firstName: "Test", lastName: "Traveller", mobileNumber: "9000000000", countryCode: "+91" };
+  const payload = { departureId: "DEP1", tourId: "TOUR1", selectedAccommodationOptionId: "single", totalGuest: 1,
+    adultCount: 1, guestDetails: [lead], travellers: [{ ...lead, id: "adult-1", type: "adult", nriDocumentTokens: [token] }] };
+  const snapshot = (await context.createSnapshotPayload(payload)).pricingSnapshot;
+  assert.equal(snapshot.gstAmount, 5400);
+  assert.equal(snapshot.tcsExemptionVerified, true);
+  assert.equal(snapshot.tcsPercentage, 0);
+  assert.equal(snapshot.tcsAmount, 0);
+  assert.equal(snapshot.grandTotal, 113400);
+  assert.equal(snapshot.depositAmount, 90000);
+  assert.equal(snapshot.balanceAmount, 23400);
+  const noVisa = await context.createSnapshotPayload({ ...payload, travellers: [{ ...payload.travellers[0], nriDocumentTokens: [] }] });
+  assert.equal(noVisa.pricingSnapshot.tcsAmount, 2268);
+  const resident = await context.createSnapshotPayload({ ...payload, guestDetails: [{ ...lead, isNri: false }] });
+  assert.equal(resident.pricingSnapshot.tcsAmount, 2268);
+  const ociToken = signPrebookingKycUpload({ ...document, documentType: "oci" }, "adult-1", "919000000000");
+  const ociOnly = await context.createSnapshotPayload({ ...payload, travellers: [{ ...payload.travellers[0], nriDocumentTokens: [ociToken] }] });
+  assert.equal(ociOnly.pricingSnapshot.tcsAmount, 2268);
+  for (const invalidToken of [token + "tampered", signPrebookingKycUpload(document, "adult-2", "919000000000"),
+    signPrebookingKycUpload(document, "adult-1", "918000000000")]) {
+    await assert.rejects(context.createSnapshotPayload({ ...payload,
+      travellers: [{ ...payload.travellers[0], nriDocumentTokens: [invalidToken] }] }), /invalid or expired/);
+  }
 });

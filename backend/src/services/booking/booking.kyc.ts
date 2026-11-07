@@ -17,13 +17,13 @@ export function hasRequiredBookingKycDocuments(uploadedTypes: string[], allowedT
     : allowedTypes.some((type) => uploadedTypes.includes(type));
 }
 
-// Uploaded evidence and an explicit eligibility verification are both required.
+// Call with stored documents or documents resolved from server-signed upload tokens.
 export function isTravellerTcsExempt(traveller: {
   isNri?: boolean;
   tcsExemptionVerified?: boolean;
   kycDocuments?: Array<{ documentType: string; fileUrl: string }>;
 }): boolean {
-  return Boolean(traveller.isNri && traveller.tcsExemptionVerified && traveller.kycDocuments?.some(
+  return Boolean(traveller.isNri && traveller.kycDocuments?.some(
     (document) => document.documentType === "visa" && document.fileUrl.trim().length > 0
   ));
 }

@@ -968,6 +968,14 @@ async function createSnapshotPayload(
     throw new HttpError(400, "Selected accommodation option is no longer available");
   }
 
+  const lead = payload.guestDetails[0];
+  const leadDigits = lead.mobileNumber.replace(/\D/g, "");
+  const countryCode = lead.countryCode.replace(/\D/g, "");
+  const leadPhone = leadDigits.length > 10 && leadDigits.startsWith(countryCode)
+    ? leadDigits : countryCode + leadDigits;
+  const travellers = toBookingTravellers(payload.travellers, pricedDeparture,
+    normalizeMobileNumber(leadPhone));
+
   const pricingSnapshot = createPricingSnapshot({
     taxRates: existingBooking ? getSavedBookingTaxSettings(existingBooking) : await getBookingTaxSettings(),
     accommodationOption: selectedAccommodationOption,
@@ -975,7 +983,8 @@ async function createSnapshotPayload(
     gstPercentage: payload.gstPercentage,
     tcsApplicable: tour?.tourType?.trim().toLowerCase() === "international" &&
       (!existingBooking || existingBooking.tourId !== payload.tourId || existingBooking.tcsApplicable === true),
-    tcsExemptionVerified: Boolean(existingBooking?.tcsExemptionVerified && payload.guestDetails[0]?.isNri &&
+    tcsExemptionVerified: Boolean(lead.isNri && travellers[0] && isTravellerTcsExempt(travellers[0])) ||
+      Boolean(existingBooking?.tcsExemptionVerified && payload.guestDetails[0]?.isNri &&
       payload.guestDetails[0]?.mobileNumber === existingBooking.guestDetails[0]?.mobileNumber &&
       payload.guestDetails[0]?.countryCode === existingBooking.guestDetails[0]?.countryCode &&
       payload.guestDetails[0]?.firstName === existingBooking.guestDetails[0]?.firstName &&
@@ -983,17 +992,10 @@ async function createSnapshotPayload(
       payload.tourId === existingBooking.tourId),
   });
 
-  const lead = payload.guestDetails[0];
-  const leadDigits = lead.mobileNumber.replace(/\D/g, "");
-  const countryCode = lead.countryCode.replace(/\D/g, "");
-  const leadPhone = leadDigits.length > 10 && leadDigits.startsWith(countryCode)
-    ? leadDigits : countryCode + leadDigits;
-
   return {
     departure,
     pricingSnapshot,
-    travellers: toBookingTravellers(payload.travellers, pricedDeparture,
-      normalizeMobileNumber(leadPhone)),
+    travellers,
   };
 }
 
