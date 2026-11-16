@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- This browser test runs directly in Node as CommonJS. */
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -90,8 +91,12 @@ test("modal keyboard focus stays inside, blocks background interaction, and retu
   const compiled = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../lib/modal-focus.ts'), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText;
+  const scrollLockCode = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../lib/scroll-lock.ts'), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+  }).outputText;
+  await evaluate('(() => { const exports={}; ' + scrollLockCode + '; window.scrollLocks=exports; })()');
   await evaluate('document.body.innerHTML=' + JSON.stringify('<button id="enquiry">Enquire Now</button><button id="search">Search</button><button id="menu">Menu</button><button id="behind">Background</button><dialog id="popup" aria-label="Test popup"><input id="first" aria-label="Name"><button id="last">Close</button><button style="display:none">Hidden</button><button disabled>Disabled</button><div hidden><a href="#">Collapsed submenu</a></div></dialog>'));
-  await evaluate('(() => { const exports={}; const require=()=>({}); ' + compiled + '; window.activateModal=exports.activateModal; })()');
+  await evaluate('(() => { const exports={}; const require=name=>name==="@/lib/scroll-lock"?window.scrollLocks:{}; ' + compiled + '; window.activateModal=exports.activateModal; })()');
   const key = async (name, modifiers = 0) => {
     const code = name === 'Tab' ? 9 : name === 'Enter' ? 13 : 27;
     await client.send('Input.dispatchKeyEvent', {type:'keyDown',key:name,code:name,windowsVirtualKeyCode:code,modifiers});
@@ -125,6 +130,42 @@ test("modal keyboard focus stays inside, blocks background interaction, and retu
   assert.equal(await evaluate('document.getElementById("popup").open'), true, 'queued cleanup close events cannot close a reopened dialog');
   await key('Escape');
   assert.equal(await evaluate('document.activeElement.id'), 'menu');
+
+  await t.test('overlapping loaders and dialogs release page scrolling in either close order', async () => {
+    await evaluate(`document.head.insertAdjacentHTML('beforeend','<meta name="viewport" content="width=device-width, initial-scale=1">')`);
+    for (const width of [1440, 390]) {
+      await client.send('Emulation.setDeviceMetricsOverride', {width,height:800,deviceScaleFactor:1,mobile:width<600});
+      await client.send('Emulation.setTouchEmulationEnabled', {enabled:width<600});
+      for (const loaderFirst of [true, false]) {
+        await evaluate(`(() => {
+          document.body.innerHTML='<div style="height:4000px">Dashboard</div><dialog id="popup"><button>Close</button></dialog>';
+          window.scrollTo(0,0);
+          window.releaseLoader=window.scrollLocks.lockDocumentScroll(true);
+          window.cleanup=window.activateModal(document.getElementById('popup'),()=>window.cleanup());
+        })()`);
+        await evaluate(loaderFirst ? 'window.releaseLoader()' : 'window.cleanup()');
+        assert.equal(await evaluate('document.body.style.overflow'), 'hidden', 'remaining overlay retains its lock');
+        await evaluate(loaderFirst ? 'window.cleanup()' : 'window.releaseLoader()');
+        assert.equal(await evaluate('document.body.style.overflow'), '');
+        assert.equal(await evaluate('document.documentElement.style.overflow'), '');
+        await pause(100);
+        if (width<600) {
+          await client.send('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[{x:180,y:500}]});
+          for (let y=480;y>=140;y-=20) {
+            await client.send('Input.dispatchTouchEvent', {type:'touchMove',touchPoints:[{x:180,y}]});
+            await pause(16);
+          }
+          await client.send('Input.dispatchTouchEvent', {type:'touchEnd',touchPoints:[]});
+        } else {
+          await client.send('Input.synthesizeScrollGesture', {x:180,y:500,yDistance:-400,gestureSourceType:'mouse'});
+        }
+        await pause(200);
+        assert.ok(await evaluate('window.scrollY>0'), `${width}px: page scrolls after all overlays close`);
+      }
+    }
+    await client.send('Emulation.setTouchEmulationEnabled', {enabled:false});
+    await client.send('Emulation.setDeviceMetricsOverride', {width:1440,height:900,deviceScaleFactor:1,mobile:false});
+  });
 
   await t.test('header popovers leave sibling controls clickable and preserve outside focus', async () => {
     const popoverCode = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../lib/header-popover.ts'), 'utf8'), {

@@ -1,0 +1,14 @@
+/* Keep status filters unchanged on hover, including the shared brand overrides. */
+button.bookingFilter[aria-pressed="true"],
+button.bookingFilter[aria-pressed="true"]:hover {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+button.bookingFilter[aria-pressed="false"],
+button.bookingFilter[aria-pressed="false"]:hover {
+  background-color: #fff;
+  border-color: var(--primary);
+  color: var(--brand-primary-text);
+}

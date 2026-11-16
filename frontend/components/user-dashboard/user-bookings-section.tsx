@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { Button, ButtonArrow, buttonVariants } from "@/components/ui/button";
+import styles from "./user-bookings-section.module.css";
 import { ApiError } from "@/lib/api";
 import { clearTravellerSession } from "@/lib/auth";
 import { getHomeMediaUrl } from "@/lib/home-travel";
@@ -377,7 +378,7 @@ export function UserBookingsSection() {
 
   return (
     <section className="mt-3 rounded-[8px] border border-border bg-white p-2.5 shadow-[0_14px_34px_rgba(50,50,50,0.035)] sm:mt-4 sm:p-4">
-      <div className="-mx-2 flex min-w-0 gap-2.5 overflow-x-auto px-2 pb-3 [scrollbar-width:none] sm:-mx-1 sm:px-1 [&::-webkit-scrollbar]:hidden">
+      <div className="-mx-2 flex min-w-0 gap-2.5 overflow-x-auto overscroll-x-contain px-2 pb-3 [scrollbar-width:thin] [scrollbar-color:var(--primary)_#fff1e6] sm:-mx-1 sm:px-1 [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-primary [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-[#fff1e6]">
         {bookingTabs.map((tab) => {
           const active = tab === activeTab;
 
@@ -387,9 +388,9 @@ export function UserBookingsSection() {
               type="button"
               aria-pressed={active}
               variant="outline"
-              className={`h-10 min-w-[126px] border-primary px-5 text-[14px] font-normal leading-none sm:min-w-[132px] sm:text-[15px] ${
+              className={`${styles.bookingFilter} h-10 min-w-[126px] border-primary px-5 text-[14px] font-normal leading-none sm:min-w-[132px] sm:text-[15px] ${
                 active
-                  ? "bg-brand-button-dark text-white shadow-[0_8px_18px_rgba(210,107,28,0.2)] hover:bg-brand-button-dark hover:text-white"
+                  ? "bg-primary text-white shadow-[0_8px_18px_rgba(210,107,28,0.2)] hover:bg-primary hover:text-white"
                   : "bg-white text-brand-text hover:bg-white hover:text-brand-text"
               }`}
               onClick={() => {

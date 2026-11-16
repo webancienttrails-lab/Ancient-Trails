@@ -1,4 +1,5 @@
 "use client";
+import { lockDocumentScroll } from "@/lib/scroll-lock";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -40,7 +41,7 @@ export function NotificationBell() {
   useEffect(() => {
     if (!open) return;
     panel.current?.focus();
-    const previous = document.body.style.overflow; document.body.style.overflow = "hidden";
+    const releaseScroll = lockDocumentScroll();
     const keydown = (event: KeyboardEvent) => {
       if (event.key === "Escape") { setOpen(false); button.current?.focus(); }
       if (event.key === "Tab") {
@@ -51,7 +52,7 @@ export function NotificationBell() {
       }
     };
     document.addEventListener("keydown", keydown);
-    return () => { document.body.style.overflow = previous; document.removeEventListener("keydown", keydown); };
+    return () => { releaseScroll(); document.removeEventListener("keydown", keydown); };
   }, [open]);
   async function update(id: string, read: boolean) {
     try { await request("/" + id + "/read", { method: "PATCH", body: JSON.stringify({ read }) }); await load(); } catch { setError("Could not update this notification. Please retry."); }

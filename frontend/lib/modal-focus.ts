@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, type RefObject } from "react";
+import { lockDocumentScroll } from "@/lib/scroll-lock";
 
 // Native modal dialogs provide focus containment and make the rest of the page inert.
 export function activateModal(dialog: HTMLDialogElement, onClose: () => void, initialFocus?: string, returnTarget?: HTMLElement | null) {
   const previous = returnTarget || (document.activeElement instanceof HTMLElement ? document.activeElement : null);
-  const overflow = document.body.style.overflow;
   const cancel = (event: Event) => { event.preventDefault(); event.stopPropagation(); onClose(); };
   // A close event queued during Strict Mode cleanup may arrive after reopening.
   const close = () => { if (!dialog.open) onClose(); };
@@ -36,7 +36,7 @@ export function activateModal(dialog: HTMLDialogElement, onClose: () => void, in
   dialog.addEventListener("click", outside);
   dialog.addEventListener("keydown", cycleFocus);
   if (!dialog.open) dialog.showModal();
-  document.body.style.overflow = "hidden";
+  const releaseScroll = lockDocumentScroll();
   const first = initialFocus ? dialog.querySelector<HTMLElement>(initialFocus) : null;
   first?.focus({ preventScroll: true });
   return () => {
@@ -45,14 +45,14 @@ export function activateModal(dialog: HTMLDialogElement, onClose: () => void, in
     dialog.removeEventListener("click", outside);
     dialog.removeEventListener("keydown", cycleFocus);
     if (dialog.open) dialog.close();
-    document.body.style.overflow = overflow;
+    releaseScroll();
     if (previous?.isConnected && !previous.closest("[inert]")) previous.focus({ preventScroll: true });
   };
 }
 
 export function useModalFocus(ref: RefObject<HTMLDialogElement | null>, open: boolean, onClose: () => void, initialFocus?: string, returnRef?: RefObject<HTMLElement | null>) {
   const latestClose = useRef(onClose);
-  latestClose.current = onClose;
+  useEffect(() => { latestClose.current = onClose; }, [onClose]);
   useEffect(() => {
     if (!open || !ref.current) return;
     return activateModal(ref.current, () => latestClose.current(), initialFocus, returnRef?.current);

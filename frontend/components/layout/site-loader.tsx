@@ -3,6 +3,7 @@
 import type { AnimationItem } from "lottie-web";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { lockDocumentScroll } from "@/lib/scroll-lock";
 
 const loaderDuration = 1500;
 const reducedMotionLoaderDuration = 350;
@@ -69,16 +70,7 @@ function usePreventDocumentScroll(isLocked: boolean) {
       return;
     }
 
-    const previousBodyOverflow = document.body.style.overflow;
-    const previousHtmlOverflow = document.documentElement.style.overflow;
-
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousBodyOverflow;
-      document.documentElement.style.overflow = previousHtmlOverflow;
-    };
+    return lockDocumentScroll(true);
   }, [isLocked]);
 }
 

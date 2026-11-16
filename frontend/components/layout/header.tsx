@@ -1617,7 +1617,7 @@ export function Header() {
   const headerRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
-  const accountLinkRef = useRef<HTMLAnchorElement>(null);
+  const accountButtonRef = useRef<HTMLButtonElement>(null);
   const desktopDialogRef = useRef<HTMLDialogElement>(null);
   const [desktopPosition, setDesktopPosition] = useState<CSSProperties>({});
   useHeaderPopover(desktopDialogRef, isDesktopMenuOpen, () => { setIsDesktopMenuOpen(false); setHoveredItem(null); }, 'nav button, nav a', menuButtonRef);
@@ -1726,7 +1726,7 @@ export function Header() {
     };
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('dialog[open], [role="dialog"][aria-modal="true"]')) return;
-      if (isAccountMenuOpen) { setIsAccountMenuOpen(false); accountLinkRef.current?.focus(); }
+      if (isAccountMenuOpen) { setIsAccountMenuOpen(false); accountButtonRef.current?.focus(); }
       if (isDesktopMenuOpen) { setIsDesktopMenuOpen(false); setHoveredItem(null); menuButtonRef.current?.focus(); }
     };
     window.addEventListener("pointerdown", closeMenus);
@@ -2162,33 +2162,33 @@ export function Header() {
             }
           }}
         >
-          <Link prefetch={false}
-            ref={accountLinkRef}
-            href={accountHref}
-            role={travellerUser ? "button" : undefined}
-            aria-label={travellerUser ? "Account menu" : "Login"}
-            aria-expanded={travellerUser ? isAccountMenuOpen : undefined}
-            aria-controls={travellerUser ? "traveller-account-menu" : undefined}
-            onClick={(event) => {
-              if (!travellerUser) return;
-              event.preventDefault();
-              toggleAccountMenu();
-            }}
-            onKeyDown={(event) => {
-              if (travellerUser && event.key === " ") {
-                event.preventDefault();
-                toggleAccountMenu();
-              }
-            }}
-            title={travellerUser ? "My Dashboard" : "Login"}
-            className="grid size-9 shrink-0 place-items-center md:text-[10px] rounded-full bg-primary font-sans text-[12px] font-normal uppercase leading-none text-white transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-brand-button-dark"
-          >
-            {hasCompletedTravellerName(travellerUser) ? (
-              <span>{getTravellerInitials(travellerUser)}</span>
-            ) : (
+          {travellerUser ? (
+            <button
+              ref={accountButtonRef}
+              type="button"
+              aria-label="Account menu"
+              aria-expanded={isAccountMenuOpen}
+              aria-controls="traveller-account-menu"
+              onClick={toggleAccountMenu}
+              title="My Account"
+              className="grid size-9 shrink-0 place-items-center md:text-[10px] rounded-full bg-primary font-sans text-[12px] font-normal uppercase leading-none text-white transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-brand-button-dark"
+            >
+              {hasCompletedTravellerName(travellerUser) ? (
+                <span>{getTravellerInitials(travellerUser)}</span>
+              ) : (
+                <User className="size-5" strokeWidth={2.3} />
+              )}
+            </button>
+          ) : (
+            <Link prefetch={false}
+              href={loginHref}
+              aria-label="Login"
+              title="Login"
+              className="grid size-9 shrink-0 place-items-center md:text-[10px] rounded-full bg-primary font-sans text-[12px] font-normal uppercase leading-none text-white transition-colors duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-brand-button-dark"
+            >
               <User className="size-5" strokeWidth={2.3} />
-            )}
-          </Link>
+            </Link>
+          )}
 
           {travellerUser ? (
             <>

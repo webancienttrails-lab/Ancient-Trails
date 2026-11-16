@@ -1,4 +1,5 @@
 "use client";
+import { lockDocumentScroll } from "@/lib/scroll-lock";
 
 import { getTravellerAccountName, getTravellerAccountContact } from "@/lib/profile-prompt";
 import { SiteLogo } from "@/components/site-logo";
@@ -629,12 +630,18 @@ export function DashboardTopBar() {
   }, []);
 
   useEffect(() => {
-    document.body.style.overflow = isMobileMenuOpen ? "hidden" : "";
-
-    return () => {
-      document.body.style.overflow = "";
-    };
+    if (!isMobileMenuOpen) return;
+    return lockDocumentScroll();
   }, [isMobileMenuOpen]);
+
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const closeMobileMenu = () => {
+      if (desktop.matches) setIsMobileMenuOpen(false);
+    };
+    desktop.addEventListener("change", closeMobileMenu);
+    return () => desktop.removeEventListener("change", closeMobileMenu);
+  }, []);
 
   const displayName = getTravellerDisplayName(travellerUser);
   const initials = getTravellerInitials(travellerUser);
