@@ -245,4 +245,8 @@
 }
 @media (max-width: 539px) { .heroQuote { width: calc(100% - 40px); } }
 
+@media (max-width: 767px) {
+  .hero { justify-content: flex-end; }
+}
+
 .transportPointers { margin-top: 24px; }

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { type CSSProperties, useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 import { TextReveal } from "./reveal-on-view";
 
@@ -45,16 +45,18 @@ const whyChooseUsFeatures = [
 
 export function WhyChooseUsSection() {
   const [activeFeatureIndex, setActiveFeatureIndex] = useState(0);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
+      if (touchStartRef.current) return;
       setActiveFeatureIndex(
         (currentIndex) => (currentIndex + 1) % whyChooseUsFeatures.length
       );
     }, 3200);
 
     return () => window.clearInterval(intervalId);
-  }, []);
+  }, [activeFeatureIndex]);
 
   return (
     <section
@@ -87,7 +89,7 @@ export function WhyChooseUsSection() {
         <div className="text-center">
           <span className="mx-auto block h-px w-[120px] bg-primary" />
           <TextReveal delay={80}>
-            <p className="mt-5 text-description font-medium uppercase text-button-outline max-lg:text-[12px]">
+            <p className="mt-5 text-description font-medium uppercase text-button-outline max-lg:text-[12px] max-md:!text-[12px]">
               Why Choose Us
             </p>
           </TextReveal>
@@ -98,7 +100,27 @@ export function WhyChooseUsSection() {
           </TextReveal>
         </div>
 
-        <div className="mt-14 overflow-hidden sm:overflow-visible lg:mt-20">
+        <div
+          className="mt-14 touch-pan-y overflow-hidden sm:touch-auto sm:overflow-visible lg:mt-20"
+          onTouchStart={(event) => {
+            if (window.innerWidth >= 640 || event.touches.length !== 1) return;
+            const touch = event.touches[0];
+            touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+          }}
+          onTouchEnd={(event) => {
+            const start = touchStartRef.current;
+            touchStartRef.current = null;
+            if (!start || window.innerWidth >= 640) return;
+            const touch = event.changedTouches[0];
+            const distanceX = touch.clientX - start.x;
+            const distanceY = touch.clientY - start.y;
+            if (Math.abs(distanceX) < 40 || Math.abs(distanceX) <= Math.abs(distanceY)) return;
+            setActiveFeatureIndex((currentIndex) =>
+              (currentIndex + (distanceX < 0 ? 1 : -1) + whyChooseUsFeatures.length) % whyChooseUsFeatures.length
+            );
+          }}
+          onTouchCancel={() => { touchStartRef.current = null; }}
+        >
           <div
             className="flex transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] max-sm:translate-x-[var(--why-feature-offset)] sm:grid sm:translate-x-0 sm:grid-cols-2 sm:gap-y-10 lg:grid-cols-5 lg:gap-y-0"
             style={

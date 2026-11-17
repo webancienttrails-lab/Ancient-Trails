@@ -69,7 +69,7 @@ export function DestinationReferencePage({ destination, images, onImageOpen }: {
           Explore {destination.destinationName} Tours<ButtonArrow className="brightness-0 invert group-hover/button:brightness-100 group-hover/button:invert-0" />
         </Button>
       </div>
-      {quote ? <aside className={styles.heroQuote} aria-label="Destination quote"><blockquote>{quote}</blockquote></aside> : null}
+      {quote ? <aside className={`${styles.heroQuote} max-md:hidden`} aria-label="Destination quote"><blockquote>{quote}</blockquote></aside> : null}
     </section>
 
     <div className={styles.overviewBand}>

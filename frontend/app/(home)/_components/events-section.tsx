@@ -52,31 +52,33 @@ export function EventsSection({
         }
       }}
     >
-      <div className={styles.frame}>
-        <div className={styles.viewport} ref={viewportRef}>
-          <div className={styles.track}>
-            {sortedEvents.map((event, index) => {
-              const image = (
-                <img src={getHomeMediaUrl(event.image)} alt={event.title || `Featured event ${index + 1}`} className={styles.image} loading="lazy" draggable={false} />
-              );
-              return (
-                <div key={event.id} className={styles.slide} role="group" aria-roledescription="slide" aria-label={`${index + 1} of ${sortedEvents.length}`} aria-hidden={index !== selected} inert={index !== selected}>
-                  {image}
-                </div>
-              );
-            })}
+      <div className="home-wide-frame mx-auto w-full px-5 sm:px-8 [@media(min-width:1300px)]:px-12">
+        <div className={styles.frame}>
+          <div className={styles.viewport} ref={viewportRef}>
+            <div className={styles.track}>
+              {sortedEvents.map((event, index) => {
+                const image = (
+                  <img src={getHomeMediaUrl(event.image)} alt={event.title || `Featured event ${index + 1}`} className={styles.image} loading="lazy" draggable={false} />
+                );
+                return (
+                  <div key={event.id} className={styles.slide} role="group" aria-roledescription="slide" aria-label={`${index + 1} of ${sortedEvents.length}`} aria-hidden={index !== selected} inert={index !== selected}>
+                    {image}
+                  </div>
+                );
+              })}
+            </div>
           </div>
+          {sortedEvents.length > 1 && (
+            <>
+              <button type="button" onClick={() => carousel?.scrollPrev()} aria-label="Previous event" className={`${styles.arrow} ${styles.previous}`}>
+                <ChevronLeft aria-hidden="true" />
+              </button>
+              <button type="button" onClick={() => carousel?.scrollNext()} aria-label="Next event" className={`${styles.arrow} ${styles.next}`}>
+                <ChevronRight aria-hidden="true" />
+              </button>
+            </>
+          )}
         </div>
-        {sortedEvents.length > 1 && (
-          <>
-            <button type="button" onClick={() => carousel?.scrollPrev()} aria-label="Previous event" className={`${styles.arrow} ${styles.previous}`}>
-              <ChevronLeft aria-hidden="true" />
-            </button>
-            <button type="button" onClick={() => carousel?.scrollNext()} aria-label="Next event" className={`${styles.arrow} ${styles.next}`}>
-              <ChevronRight aria-hidden="true" />
-            </button>
-          </>
-        )}
       </div>
       {sortedEvents.length > 1 && (
         <div className={styles.dots} aria-label="Choose event">

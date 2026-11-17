@@ -5,14 +5,13 @@
 
 .frame {
   position: relative;
-  width: 75.2%;
-  max-width: 1440px;
+  width: 100%;
   margin-inline: auto;
 }
 
 .viewport {
   overflow: hidden;
-  border-radius: clamp(16px, 1.7vw, 32px);
+  border-radius: 10px;
   box-shadow: 0 9px 15px -8px rgb(187 102 35 / 35%);
 }
 
@@ -118,7 +117,6 @@
 }
 
 @media (max-width: 640px) {
-  .frame { width: calc(100% - 100px); }
   .slide { aspect-ratio: 1.9; }
   .arrow { width: 36px; }
   .previous { right: calc(100% + 7px); }

@@ -924,7 +924,7 @@ export function EgyptExperiencesSection({
       <div className="home-wide-frame mx-auto grid w-full gap-8 px-5 sm:px-0 lg:grid-cols-[minmax(0,848px)_minmax(300px,356px)] lg:justify-between lg:gap-8 [@media(min-width:1300px)]:px-12">
         <div>
           <TextReveal>
-            <p className="text-description font-medium uppercase text-button-outline max-lg:text-[12px]">
+            <p className="text-description font-medium uppercase text-button-outline max-lg:text-[12px] max-md:!text-[12px]">
               Stories | Moments | Memories
             </p>
           </TextReveal>

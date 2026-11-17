@@ -628,7 +628,7 @@ export function TopDestinationsSection({
                 <h3 className="line-clamp-2 min-h-0 break-words font-heading text-[25px] font-bold leading-tight text-secondary sm:text-[30px] lg:min-h-[30px] lg:text-[24px]">
                   {activeDestination.name}
                 </h3>
-                <p className="mt-1 min-h-0 break-words border-b border-primary/20 pb-2 font-sans text-[17px] font-medium text-brand-text sm:text-[20px] lg:min-h-[27px] lg:pb-1 lg:text-description">
+                <p className="mt-1 min-h-0 break-words border-b border-primary/20 pb-2 font-sans text-[14px] font-medium text-brand-text sm:text-[20px] lg:min-h-[27px] lg:pb-1 lg:text-description">
                   {activeDestination.state}
                 </p>
                 {activeTourCategoryLabels.length > 0 ? (

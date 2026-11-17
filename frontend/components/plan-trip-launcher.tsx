@@ -381,6 +381,8 @@ function getPlannerDestinationById(
 export function PlanTripLauncher() {
   const router = useRouter();
   const [isMobile, setIsMobile] = useState(false);
+  const [isMobileDocked, setIsMobileDocked] = useState(false);
+  const [isFooterVisible, setIsFooterVisible] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [activeField, setActiveField] = useState<ActiveField>(null);
   const [panelPosition, setPanelPosition] = useState<PanelPosition | null>(null);
@@ -399,6 +401,7 @@ export function PlanTripLauncher() {
     createFallbackDepartures()
   );
   const launcherRef = useRef<HTMLDivElement>(null);
+  const inlineLauncherRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -410,11 +413,29 @@ export function PlanTripLauncher() {
   }, []);
 
   useEffect(() => {
+    if (!isMobile) return;
+    const hero = inlineLauncherRef.current?.closest("section");
+    const footer = document.querySelector("footer");
+    const heroObserver = new IntersectionObserver(([entry]) => {
+      setIsMobileDocked(entry.boundingClientRect.bottom <= 0);
+    });
+    const footerObserver = new IntersectionObserver(([entry]) => {
+      setIsFooterVisible(entry.isIntersecting);
+    });
+    if (hero) heroObserver.observe(hero);
+    if (footer) footerObserver.observe(footer);
+    return () => {
+      heroObserver.disconnect();
+      footerObserver.disconnect();
+    };
+  }, [isMobile]);
+
+  useEffect(() => {
     if (!isOpen) return;
-    const opener = launcherRef.current?.querySelector("button");
+    const opener = (isMobile && !isMobileDocked ? inlineLauncherRef : launcherRef).current?.querySelector("button");
     panelRef.current?.querySelector<HTMLElement>("input, button")?.focus({ preventScroll: true });
     return () => { if (opener?.isConnected) opener.focus({ preventScroll: true }); };
-  }, [isOpen]);
+  }, [isOpen, isMobile, isMobileDocked]);
 
   const destinationById = useMemo(
     () =>
@@ -522,10 +543,11 @@ export function PlanTripLauncher() {
     const viewportTop = viewport?.offsetTop ?? 0;
     const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
     const desiredTop = buttonRect.top - panelChromeHeight / 2;
+    const mobileBottomInset = Number.parseFloat(getComputedStyle(launcher).bottom) || 16;
     const top = window.innerWidth < 768
       ? Math.max(
           viewportTop + panelPadding,
-          Math.min(buttonRect.top, viewportBottom) - (panelRef.current?.offsetHeight ?? panelVisualHeight) - panelPadding
+          viewportBottom - mobileBottomInset - (panelRef.current?.offsetHeight ?? panelVisualHeight)
         )
       : desiredTop;
 
@@ -547,7 +569,7 @@ export function PlanTripLauncher() {
   }, []);
 
   const openPlanner = useCallback(() => {
-    const launcher = launcherRef.current;
+    const launcher = (isMobile && !isMobileDocked ? inlineLauncherRef : launcherRef).current;
 
     if (launcher) {
       const buttonRect = launcher.getBoundingClientRect();
@@ -565,7 +587,7 @@ export function PlanTripLauncher() {
     setIsCtaFlying(false);
     setIsCtaSettled(false);
     setIsOpen(true);
-  }, []);
+  }, [isMobile, isMobileDocked]);
 
   useLayoutEffect(() => {
     if (!isOpen) {
@@ -757,6 +779,8 @@ export function PlanTripLauncher() {
         }
       : null;
 
+  const hideMobileLauncher = isOpen || !isMobileDocked || isFooterVisible;
+
   const launcher = (
     <>
       {isOpen ? <button
@@ -781,7 +805,17 @@ export function PlanTripLauncher() {
         placeToPlan={destinationQuery.trim()}
       />
 
-      <div ref={launcherRef} className="fixed bottom-[calc(env(safe-area-inset-bottom,0px)+16px)] left-[calc(50%-16px)] z-50 inline-flex -translate-x-1/2 md:relative md:bottom-auto md:left-auto md:z-30 md:mt-[clamp(1.2rem,6vh,3rem)] md:translate-x-0">
+      <div
+        ref={launcherRef}
+        aria-hidden={isMobile && hideMobileLauncher}
+        inert={isMobile && hideMobileLauncher}
+        className={cn(
+          "fixed bottom-[calc(env(safe-area-inset-bottom,0px)+16px)] left-[calc(50%-16px)] z-50 inline-flex -translate-x-1/2 transition-[transform,translate,opacity,visibility] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none md:relative md:bottom-auto md:left-auto md:z-30 md:mt-[clamp(1.2rem,6vh,3rem)] md:translate-x-0",
+          hideMobileLauncher
+            ? "max-md:invisible max-md:pointer-events-none max-md:translate-y-[calc(100%+env(safe-area-inset-bottom,0px)+24px)] max-md:opacity-0"
+            : "translate-y-0 opacity-100"
+        )}
+      >
         <Button
           type="button"
           variant="outline"
@@ -928,7 +962,23 @@ export function PlanTripLauncher() {
     </>
   );
 
-  return isMobile ? createPortal(launcher, document.body) : launcher;
+  return (
+    <>
+      <div ref={inlineLauncherRef} className="mt-6 flex w-full justify-start md:hidden">
+        <Button
+          type="button"
+          variant="outline"
+          aria-expanded={isOpen}
+          aria-controls="plan-trip-panel"
+          onClick={handleLauncherClick}
+          className={planTripButtonClassName}
+        >
+          <PlanTripButtonContent />
+        </Button>
+      </div>
+      {isMobile ? createPortal(launcher, document.body) : launcher}
+    </>
+  );
 }
 
 export function PlanTripInline({

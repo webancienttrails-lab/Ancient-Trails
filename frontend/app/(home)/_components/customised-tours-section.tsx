@@ -196,7 +196,7 @@ export function CustomisedToursSection({
         <div className="relative z-10 grid gap-8 md:grid-cols-2 lg:grid-cols-[minmax(250px,330px)_repeat(3,minmax(0,1fr))] lg:items-start lg:gap-x-8 xl:grid-cols-[330px_250px_260px_220px] xl:justify-between xl:gap-x-[44px]">
           <div className="lg:pt-1">
             <TextReveal visible={isSectionReady}>
-              <p className="text-description font-medium uppercase text-button-outline">
+              <p className="text-description font-medium uppercase text-button-outline max-md:!text-[12px]">
                 Customised Tours
               </p>
             </TextReveal>

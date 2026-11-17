@@ -6,7 +6,6 @@ import { defaultSiteContactSettings, getContactEmailDisplay, getMailtoHref, getP
 import { SocialMediaIcon } from "@/components/ui/social-media-icon";
 import Image from "next/image";
 import Link from "next/link";
-import type { PublicBlogPreview } from "@/lib/blogs";
 import {
   BadgeCheck,
   Compass,
@@ -170,7 +169,7 @@ function TrustItem({
   );
 }
 
-export function SiteFooter({ recentPosts = [] }: { recentPosts?: PublicBlogPreview[] }) {
+export function SiteFooter() {
   const [contact, setContact] = useState<SiteContactSettings>(defaultSiteContactSettings);
   const [socialLinks, setSocialLinks] = useState<SiteSocialLinks>({ facebook: "", instagram: "", linkedin: "", youtube: "" });
   useEffect(() => {
@@ -190,7 +189,7 @@ export function SiteFooter({ recentPosts = [] }: { recentPosts?: PublicBlogPrevi
         alt=""
         fill
         sizes="100vw"
-        className="object-cover object-bottom lg:object-fill"
+        className="object-cover object-bottom max-md:!h-[150%] max-md:object-top lg:object-fill"
       />
       <div className="relative">
         <section className="relative overflow-hidden">
@@ -201,7 +200,7 @@ export function SiteFooter({ recentPosts = [] }: { recentPosts?: PublicBlogPrevi
                   alt="Ancient Trails"
                   width={218}
                   height={86}
-                  className="h-16 w-[162px] lg:h-16 lg:w-auto"
+                  className="h-18 w-[162px] max-md:object-left lg:h-16 lg:w-auto"
                 />
               </Link>
               <p className="mt-3 max-w-[255px] font-sans text-[12px] leading-[1.55] text-[#ead8c3]/82 lg:mt-7 lg:text-[15px] lg:leading-[1.65]">
@@ -234,12 +233,7 @@ export function SiteFooter({ recentPosts = [] }: { recentPosts?: PublicBlogPrevi
           </div>
         </section>
 
-        {recentPosts.length ? <nav aria-label="Recent blog posts" className="relative mx-auto flex w-full max-w-[1440px] flex-wrap gap-x-6 gap-y-2 border-t border-primary/25 px-5 py-5 font-sans text-[13px] text-[#ead8c3]/82 sm:px-8 lg:px-12 xl:px-16">
-          <span className="font-semibold text-[#f1dfcc]">Latest stories</span>
-          {recentPosts.map(post => <Link prefetch={false} key={post.id} href={`/blog/${encodeURIComponent(post.slug)}`} className="transition-colors hover:text-brand-text">{post.title}</Link>)}
-        </nav> : null}
-
-        <section className="relative text-secondary [--brand-primary-text:#d66a1a]">
+        <section className="relative text-secondary max-md:hidden [--brand-primary-text:#d66a1a]">
           <div className="mx-auto grid w-full max-w-[1440px] grid-cols-2 gap-x-2 gap-y-1 px-4 py-3 sm:px-8 sm:py-6 md:grid-cols-2 lg:grid-cols-4 lg:divide-x lg:divide-[#d9a06f]/55 lg:px-12 xl:px-16">
             {trustItems.map((item) => (
               <TrustItem key={item.title} {...item} />

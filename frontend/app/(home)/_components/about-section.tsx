@@ -149,7 +149,7 @@ export function AboutSection() {
             />
             <div className="relative z-10 flex min-h-[230px] max-w-[900px] flex-col justify-center px-3 py-8 sm:px-4">
               <TextReveal>
-                <p className="text-description font-medium uppercase text-button-outline max-lg:text-[12px]">
+                <p className="text-description font-medium uppercase text-button-outline max-lg:text-[12px] max-md:!text-[12px]">
                   About Ancient Trails
                 </p>
               </TextReveal>

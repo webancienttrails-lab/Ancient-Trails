@@ -2063,7 +2063,7 @@ export function Header() {
           width={218}
           height={86}
           priority
-          className="h-14 w-auto max-w-[min(120px,calc(100vw-224px))] object-contain sm:h-16 sm:max-w-none lg:h-[86px]"
+          className="h-18 w-auto max-w-[min(120px,calc(100vw-224px))] object-contain md:h-16 sm:max-w-none lg:h-[86px]"
         />
       </Link>
 

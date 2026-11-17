@@ -1493,7 +1493,7 @@ function ResultsHeader({
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <p className="font-sans text-[16px] font-medium uppercase text-button-outline">
+        <p className="font-sans text-[16px] font-medium uppercase text-button-outline max-md:!text-[12px]">
           {loadError ? "Fallback tours" : "Tour Results"}
         </p>
         <h2 className="mt-1 font-heading text-[30px] font-bold leading-tight text-secondary sm:text-[36px]">

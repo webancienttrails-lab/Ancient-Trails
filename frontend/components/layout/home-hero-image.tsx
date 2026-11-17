@@ -5,7 +5,7 @@ export function HomeHeroImage() {
   const { props: desktop } = getImageProps({ ...shared, src: "/home assets/Briddeshwara temple_banner.webp" });
   const { props: mobile } = getImageProps({ ...shared, src: "/home assets/Mobile_banner.webp" });
   return <picture>
-    <source media="(max-width: 767px)" srcSet={mobile.srcSet} sizes={mobile.sizes} />
+    <source media="(max-width: 767px)" srcSet={mobile.srcSet || mobile.src.replace(/ /g, "%20")} sizes={mobile.sizes} />
     {/* getImageProps provides optimized srcsets; picture selects one hero without preloading both. */}
     {/* eslint-disable-next-line @next/next/no-img-element */}
     <img {...desktop} className="object-cover object-center md:scale-[1.1] lg:scale-[1.12]" />

@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { getSiteOrigin } from "@/lib/site-origin";
 import { JsonLd } from "@/components/seo/json-ld";
 import { websiteStructuredData } from "@/lib/structured-data";
-import { getRecentPublishedBlogs } from "@/lib/server-blog";
 import localFont from "next/font/local";
 import { SiteFooter } from "@/components/layout/footer";
 import { ToastProvider } from "@/components/ui/toast";
@@ -49,7 +48,6 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const recentPosts = await getRecentPublishedBlogs();
   return (
     <html
       lang="en"
@@ -63,7 +61,7 @@ export default async function RootLayout({
           <SiteLoader />
           {children}
           <ProfileCompletionPrompt />
-          <SiteFooter recentPosts={recentPosts} />
+          <SiteFooter />
           <BackToTopButton />
         </ToastProvider>
       </body>

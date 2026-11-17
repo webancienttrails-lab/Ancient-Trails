@@ -49,7 +49,7 @@ export function HomePage({
           <Header />
 
           <div className="flex min-h-0 flex-1 items-start px-0 py-[clamp(0.5rem,3vh,4rem)] pt-[clamp(1.5rem,8vh,4rem)] sm:items-center sm:px-6 sm:pt-[clamp(0.5rem,3vh,4rem)] lg:px-10 [@media(min-width:1300px)]:px-4">
-            <div className="max-w-[430px] text-accent">
+            <div className="max-w-[430px] text-accent max-md:w-full max-md:max-w-none">
               <TextReveal trigger="load" delay={120}>
                 <p className="mb-[clamp(0.5rem,1.5vh,0.75rem)] text-eyebrow font-medium uppercase tracking-normal text-button-outline max-sm:!text-[12px]">
                   Learn. Explore. Remember.

@@ -1580,7 +1580,7 @@ function ResultsIntro() {
   return (
     <div className="mt-6 grid gap-5 md:grid-cols-[minmax(0,1fr)_300px] md:items-end">
       <div>
-        <p className="font-sans text-description font-medium uppercase leading-none tracking-normal text-button-outline">
+        <p className="font-sans text-description font-medium uppercase leading-none tracking-normal text-button-outline max-md:!text-[12px]">
           Explore heritage beyond borders
         </p>
         <h1 className="mt-2 max-w-[420px] font-heading text-title font-bold leading-none tracking-normal text-secondary">
